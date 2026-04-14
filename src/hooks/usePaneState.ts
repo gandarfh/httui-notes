@@ -15,6 +15,7 @@ export interface PaneActions {
   updateContent: (filePath: string, content: string) => void;
   markUnsaved: (paneId: string, filePath: string, unsaved: boolean) => void;
   resizeSplit: (path: number[], ratio: number) => void;
+  restoreLayout: (layout: PaneLayout, activePaneId: string) => void;
 }
 
 // --- Pure helper functions (no hooks, no state) ---
@@ -217,6 +218,14 @@ export function usePaneState() {
     setLayout((prev) => updateSplitRatio(prev, path, ratio));
   }, []);
 
+  const restoreLayout = useCallback(
+    (savedLayout: PaneLayout, savedActivePaneId: string) => {
+      setLayout(savedLayout);
+      setActivePaneId(savedActivePaneId);
+    },
+    [],
+  );
+
   return {
     layout,
     activePaneId,
@@ -235,6 +244,7 @@ export function usePaneState() {
       updateContent,
       markUnsaved,
       resizeSplit,
+      restoreLayout,
     } satisfies PaneActions,
   };
 }

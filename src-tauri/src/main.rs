@@ -116,6 +116,31 @@ fn search_files(
 }
 
 #[tauri::command]
+async fn rebuild_search_index(
+    vault_path: String,
+    pool: tauri::State<'_, SqlitePool>,
+) -> Result<(), String> {
+    httui_notes::search::rebuild_search_index(&pool, &vault_path).await
+}
+
+#[tauri::command]
+async fn search_content(
+    query: String,
+    pool: tauri::State<'_, SqlitePool>,
+) -> Result<Vec<httui_notes::search::ContentSearchResult>, String> {
+    httui_notes::search::search_content(&pool, &query).await
+}
+
+#[tauri::command]
+async fn update_search_entry(
+    file_path: String,
+    content: String,
+    pool: tauri::State<'_, SqlitePool>,
+) -> Result<(), String> {
+    httui_notes::search::update_search_entry(&pool, &file_path, &content).await
+}
+
+#[tauri::command]
 fn stop_watching(
     watcher_state: tauri::State<'_, Mutex<Option<httui_notes::fs::watcher::VaultWatcher>>>,
 ) -> Result<(), String> {
@@ -164,6 +189,9 @@ fn main() {
             start_watching,
             stop_watching,
             search_files,
+            rebuild_search_index,
+            search_content,
+            update_search_entry,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

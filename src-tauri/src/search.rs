@@ -110,6 +110,130 @@ fn fuzzy_score(target: &str, query: &str) -> Option<i32> {
     }
 }
 
+// --- Full-text search (FTS5) ---
+
+#[derive(Debug, Serialize)]
+pub struct ContentSearchResult {
+    pub file_path: String,
+    pub snippet: String,
+}
+
+pub async fn rebuild_search_index(
+    pool: &sqlx::sqlite::SqlitePool,
+    vault_path: &str,
+) -> Result<(), String> {
+    sqlx::query("DELETE FROM search_index")
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Collect all .md files (sync)
+    let root = Path::new(vault_path);
+    let mut files: Vec<(String, String, String)> = Vec::new();
+    collect_md_files_for_index(root, root, &mut files)?;
+
+    // Index all (async)
+    for (relative, title, content) in &files {
+        sqlx::query(
+            "INSERT OR REPLACE INTO search_index (file_path, title, content) VALUES (?1, ?2, ?3)",
+        )
+        .bind(relative)
+        .bind(title)
+        .bind(content)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+fn collect_md_files_for_index(
+    dir: &Path,
+    root: &Path,
+    files: &mut Vec<(String, String, String)>,
+) -> Result<(), String> {
+    let read_dir = std::fs::read_dir(dir).map_err(|e| e.to_string())?;
+    for entry in read_dir {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') {
+            continue;
+        }
+        if path.is_dir() {
+            collect_md_files_for_index(&path, root, files)?;
+        } else if name.ends_with(".md") {
+            let relative = path.strip_prefix(root).unwrap_or(&path).to_string_lossy().to_string();
+            let content = std::fs::read_to_string(&path).unwrap_or_default();
+            let title = name.trim_end_matches(".md").to_string();
+            files.push((relative, title, content));
+        }
+    }
+    Ok(())
+}
+
+pub async fn update_search_entry(
+    pool: &sqlx::sqlite::SqlitePool,
+    file_path: &str,
+    content: &str,
+) -> Result<(), String> {
+    let title = file_path
+        .split('/')
+        .last()
+        .unwrap_or(file_path)
+        .trim_end_matches(".md");
+
+    sqlx::query(
+        "INSERT OR REPLACE INTO search_index (file_path, title, content) VALUES (?1, ?2, ?3)",
+    )
+    .bind(file_path)
+    .bind(title)
+    .bind(content)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+pub async fn remove_search_entry(
+    pool: &sqlx::sqlite::SqlitePool,
+    file_path: &str,
+) -> Result<(), String> {
+    sqlx::query("DELETE FROM search_index WHERE file_path = ?1")
+        .bind(file_path)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub async fn search_content(
+    pool: &sqlx::sqlite::SqlitePool,
+    query: &str,
+) -> Result<Vec<ContentSearchResult>, String> {
+    if query.trim().is_empty() {
+        return Ok(vec![]);
+    }
+
+    let rows = sqlx::query_as::<_, (String, String)>(
+        "SELECT file_path, snippet(search_index, 2, '<mark>', '</mark>', '...', 32) \
+         FROM search_index WHERE search_index MATCH ?1 ORDER BY rank LIMIT 50",
+    )
+    .bind(query)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows
+        .into_iter()
+        .map(|(file_path, snippet)| ContentSearchResult {
+            file_path,
+            snippet,
+        })
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
