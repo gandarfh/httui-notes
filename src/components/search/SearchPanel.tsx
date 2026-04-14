@@ -1,105 +1,45 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Box, Flex, Input, Portal, Text } from "@chakra-ui/react";
-import { searchContent } from "@/lib/tauri/commands";
-import type { ContentSearchResult } from "@/lib/tauri/commands";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { useContentSearch } from "@/hooks/useContentSearch";
 import { LuFileText, LuSearch } from "react-icons/lu";
 
 interface SearchPanelProps {
   open: boolean;
   onClose: () => void;
-  onSelectFile: (filePath: string) => void;
 }
 
-export function SearchPanel({ open, onClose, onSelectFile }: SearchPanelProps) {
+export function SearchPanel({ open, onClose }: SearchPanelProps) {
   if (!open) return null;
-  return (
-    <SearchPanelInner onClose={onClose} onSelectFile={onSelectFile} />
-  );
+  return <SearchPanelInner onClose={onClose} />;
 }
 
-function SearchPanelInner({
-  onClose,
-  onSelectFile,
-}: Omit<SearchPanelProps, "open">) {
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<ContentSearchResult[]>([]);
-  const [selectedIndex, setSelectedIndex] = useState(0);
+function SearchPanelInner({ onClose }: { onClose: () => void }) {
+  const { handleFileSelect } = useWorkspace();
   const inputRef = useRef<HTMLInputElement>(null);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const {
+    query,
+    results,
+    grouped,
+    safeIndex,
+    setSelectedIndex,
+    handleSearch,
+    handleSelect,
+    handleKeyDown,
+  } = useContentSearch({
+    onSelect: handleFileSelect,
+    onClose,
+  });
 
   useEffect(() => {
     setTimeout(() => inputRef.current?.focus(), 50);
   }, []);
 
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [onClose]);
-
-  const handleSearch = useCallback((q: string) => {
-    setQuery(q);
-    setSelectedIndex(0);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      if (q.trim()) {
-        searchContent(q.trim()).then(setResults).catch(() => setResults([]));
-      } else {
-        setResults([]);
-      }
-    }, 150);
-  }, []);
-
-  const handleSelect = useCallback(
-    (index: number) => {
-      const result = results[index];
-      if (result) {
-        onClose();
-        onSelectFile(result.file_path);
-      }
-    },
-    [results, onSelectFile, onClose],
-  );
-
-  const safeIndex =
-    results.length === 0 ? 0 : Math.min(selectedIndex, results.length - 1);
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        const next = (safeIndex + 1) % results.length;
-        setSelectedIndex(next);
-        itemRefs.current[next]?.scrollIntoView({ block: "nearest" });
-      }
-      if (e.key === "ArrowUp") {
-        e.preventDefault();
-        const next = (safeIndex + results.length - 1) % results.length;
-        setSelectedIndex(next);
-        itemRefs.current[next]?.scrollIntoView({ block: "nearest" });
-      }
-      if (e.key === "Enter") {
-        e.preventDefault();
-        handleSelect(safeIndex);
-      }
-    },
-    [safeIndex, results.length, handleSelect],
-  );
-
-  // Group results by file
-  const grouped = results.reduce<
-    Record<string, ContentSearchResult[]>
-  >((acc, r) => {
-    if (!acc[r.file_path]) acc[r.file_path] = [];
-    acc[r.file_path].push(r);
-    return acc;
-  }, {});
+    itemRefs.current[safeIndex]?.scrollIntoView({ block: "nearest" });
+  }, [safeIndex]);
 
   let flatIndex = 0;
 

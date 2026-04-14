@@ -80,8 +80,7 @@ export function Editor({
           vimStorage?.mode === "insert" ? "" : "transparent";
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filePath, editor]);
+  }, [content, filePath, editor]);
 
   if (!editor) return null;
 

@@ -1,38 +1,15 @@
 import { Box, HStack, Text, IconButton, Menu, Portal } from "@chakra-ui/react";
-import { FileTree } from "./FileTree";
-import type { InlineCreate } from "./FileTree";
-import type { FileEntry } from "@/lib/tauri/commands";
+import { FileTree } from "./file-tree";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { LuPlus, LuFileText, LuFolder } from "react-icons/lu";
 
 interface SidebarProps {
   width: number;
-  entries: FileEntry[];
-  activeFile: string | null;
-  inlineCreate: InlineCreate | null;
-  onStartCreate: (type: "note" | "folder", dirPath: string) => void;
-  onFileSelect: (path: string) => void;
-  onCreateNote: (dirPath: string, name: string) => void;
-  onCreateFolder: (dirPath: string, name: string) => void;
-  onRename: (path: string, newName: string) => void;
-  onDelete: (path: string) => void;
-  onCancelInline: () => void;
-  vaultPath: string | null;
 }
 
-export function Sidebar({
-  width,
-  entries,
-  activeFile,
-  inlineCreate,
-  onStartCreate,
-  onFileSelect,
-  onCreateNote,
-  onCreateFolder,
-  onRename,
-  onDelete,
-  onCancelInline,
-  vaultPath,
-}: SidebarProps) {
+export function Sidebar({ width }: SidebarProps) {
+  const { vaultPath, handleStartCreate } = useWorkspace();
+
   return (
     <Box
       w={`${width}px`}
@@ -64,11 +41,11 @@ export function Sidebar({
               <Portal>
                 <Menu.Positioner>
                   <Menu.Content>
-                    <Menu.Item value="note" onSelect={() => onStartCreate("note", "")}>
+                    <Menu.Item value="note" onSelect={() => handleStartCreate("note", "")}>
                       <LuFileText />
                       Nova nota
                     </Menu.Item>
-                    <Menu.Item value="folder" onSelect={() => onStartCreate("folder", "")}>
+                    <Menu.Item value="folder" onSelect={() => handleStartCreate("folder", "")}>
                       <LuFolder />
                       Nova pasta
                     </Menu.Item>
@@ -79,18 +56,7 @@ export function Sidebar({
           )}
         </HStack>
         {vaultPath ? (
-          <FileTree
-            entries={entries}
-            activeFile={activeFile}
-            inlineCreate={inlineCreate}
-            onStartCreate={onStartCreate}
-            onFileSelect={onFileSelect}
-            onCreateNote={onCreateNote}
-            onCreateFolder={onCreateFolder}
-            onRename={onRename}
-            onDelete={onDelete}
-            onCancelInline={onCancelInline}
-          />
+          <FileTree />
         ) : (
           <Box px={3} py={8} textAlign="center">
             <Text fontSize="sm" color="fg.muted">No vault selected</Text>

@@ -3,7 +3,7 @@ import type { PaneLayout, LeafPane } from "@/types/pane";
 import { createLeafPane } from "@/types/pane";
 
 export interface PaneActions {
-  openFile: (filePath: string, content: string) => void;
+  openFile: (filePath: string, content: string, vaultPath: string) => void;
   selectTab: (paneId: string, index: number) => void;
   closeTab: (paneId: string, index: number) => void;
   closeOthers: (paneId: string, index: number) => void;
@@ -15,17 +15,17 @@ export interface PaneActions {
   updateContent: (filePath: string, content: string) => void;
   markUnsaved: (paneId: string, filePath: string, unsaved: boolean) => void;
   resizeSplit: (path: number[], ratio: number) => void;
-  restoreLayout: (layout: PaneLayout, activePaneId: string) => void;
+  restoreLayout: (layout: PaneLayout, activePaneId: string, contents?: Map<string, string>) => void;
 }
 
-// --- Pure helper functions (no hooks, no state) ---
+// --- Pure helper functions (exported for testing) ---
 
-function findLeaf(node: PaneLayout, id: string): LeafPane | null {
+export function findLeaf(node: PaneLayout, id: string): LeafPane | null {
   if (node.type === "leaf") return node.id === id ? node : null;
   return findLeaf(node.children[0], id) ?? findLeaf(node.children[1], id);
 }
 
-function updateLeaf(
+export function updateLeaf(
   node: PaneLayout,
   id: string,
   updater: (leaf: LeafPane) => LeafPane,
@@ -40,7 +40,7 @@ function updateLeaf(
   };
 }
 
-function removeLeaf(node: PaneLayout, id: string): PaneLayout | null {
+export function removeLeaf(node: PaneLayout, id: string): PaneLayout | null {
   if (node.type === "leaf") return node.id === id ? null : node;
   const left = removeLeaf(node.children[0], id);
   const right = removeLeaf(node.children[1], id);
@@ -49,12 +49,12 @@ function removeLeaf(node: PaneLayout, id: string): PaneLayout | null {
   return { ...node, children: [left, right] };
 }
 
-function allLeafIds(node: PaneLayout): string[] {
+export function allLeafIds(node: PaneLayout): string[] {
   if (node.type === "leaf") return [node.id];
   return [...allLeafIds(node.children[0]), ...allLeafIds(node.children[1])];
 }
 
-function updateSplitRatio(
+export function updateSplitRatio(
   node: PaneLayout,
   path: number[],
   ratio: number,
@@ -69,7 +69,7 @@ function updateSplitRatio(
   return node;
 }
 
-function replacePaneInLayout(
+export function replacePaneInLayout(
   node: PaneLayout,
   id: string,
   replacement: PaneLayout,
@@ -101,7 +101,7 @@ export function usePaneState() {
   );
 
   const openFile = useCallback(
-    (filePath: string, content: string) => {
+    (filePath: string, content: string, vaultPath: string) => {
       editorContentsStore.set(filePath, content);
       setLayout((prev) => {
         const leaf = findLeaf(prev, activePaneId);
@@ -115,7 +115,7 @@ export function usePaneState() {
         }
         return updateLeaf(prev, activePaneId, (l) => ({
           ...l,
-          tabs: [...l.tabs, { filePath, unsaved: false }],
+          tabs: [...l.tabs, { filePath, vaultPath, unsaved: false }],
           activeTab: l.tabs.length,
         }));
       });
@@ -219,7 +219,12 @@ export function usePaneState() {
   }, []);
 
   const restoreLayout = useCallback(
-    (savedLayout: PaneLayout, savedActivePaneId: string) => {
+    (savedLayout: PaneLayout, savedActivePaneId: string, contents?: Map<string, string>) => {
+      if (contents) {
+        for (const [filePath, html] of contents) {
+          editorContentsStore.set(filePath, html);
+        }
+      }
       setLayout(savedLayout);
       setActivePaneId(savedActivePaneId);
     },

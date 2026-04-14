@@ -1,5 +1,6 @@
 import { HStack, Text, IconButton, Box, Menu, Portal } from "@chakra-ui/react";
 import { ColorModeButton } from "@/components/ui/color-mode";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
 import {
   LuMenu,
   LuSearch,
@@ -11,20 +12,10 @@ import {
 interface TopBarProps {
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
-  vaultPath: string | null;
-  vaults: string[];
-  onSwitchVault: (path: string) => void;
-  onOpenVault: () => void;
 }
 
-export function TopBar({
-  sidebarOpen,
-  onToggleSidebar,
-  vaultPath,
-  vaults,
-  onSwitchVault,
-  onOpenVault,
-}: TopBarProps) {
+export function TopBar({ sidebarOpen, onToggleSidebar }: TopBarProps) {
+  const { vaultPath, vaults, switchVault, openVault } = useWorkspace();
   const vaultName = vaultPath ? vaultPath.split("/").pop() || vaultPath : null;
 
   return (
@@ -82,14 +73,14 @@ export function TopBar({
                   <Menu.Item
                     key={v}
                     value={v}
-                    onSelect={() => onSwitchVault(v)}
+                    onSelect={() => switchVault(v)}
                     fontWeight={v === vaultPath ? "bold" : "normal"}
                   >
                     {v.split("/").pop()}
                   </Menu.Item>
                 ))}
                 {vaults.length > 0 && <Menu.Separator />}
-                <Menu.Item value="open" onSelect={onOpenVault}>
+                <Menu.Item value="open" onSelect={openVault}>
                   <LuPlus size={14} />
                   <Text>Open folder...</Text>
                 </Menu.Item>

@@ -9,21 +9,28 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "lint": "eslint src/",
-    "format": "prettier --write src/"
+    "format": "prettier --write src/",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "devDependencies": {
     "@chakra-ui/cli": "^3.34.0",
     "@eslint/js": "^9.39.4",
     "@tauri-apps/cli": "^2.10.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^7.0.1",
+    "jsdom": "^29.0.2",
     "prettier": "^3.8.2",
     "typescript": "^6.0.2",
     "typescript-eslint": "^8.58.2",
-    "vite": "^8.0.8"
+    "vite": "^8.0.8",
+    "vitest": "^4.1.4"
   },
   "dependencies": {
     "@chakra-ui/react": "^3.34.0",
