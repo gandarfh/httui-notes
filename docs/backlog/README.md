@@ -22,7 +22,7 @@ Epic 00 (Project Setup)
 | #   | Epic                                             | Stories | Depende de | Status  |
 | --- | ------------------------------------------------ | ------- | ---------- | ------- |
 | 00  | [Project Setup](00-project-setup.md)             | 4       | —          | done    |
-| 09  | [UI Shell & Theme](09-ui-shell.md)               | 4       | 00         | backlog |
+| 09  | [UI Shell & Theme](09-ui-shell.md)               | 4       | 00         | done    |
 | 01  | [Editor Markdown](01-editor-markdown.md)         | 9       | 00         | backlog |
 | 02  | [Vault & Filesystem](02-vault-filesystem.md)     | 5       | 00         | backlog |
 | 03  | [Multi-pane & Session](03-multi-pane-session.md) | 4       | 01, 02     | backlog |

@@ -1,9 +1,10 @@
-# Epic 09 — UI Shell & Theme
+# Epic 09 — UI Shell & Theme ✅
 
 Layout geral do app: top bar, sidebar, status bar, e sistema de theming.
 
 **Depende de:** Epic 00 (Project Setup)
-**Desbloqueia:** todos os epics de UI (provê o container)
+**Desbloqueia:** todos os epics de UI (prove o container)
+**Status:** concluido
 
 ---
 
@@ -13,13 +14,13 @@ Estrutura base do app.
 
 ### Tasks
 
-- [ ] Criar componente `<AppShell />` com layout flex:
-  - [ ] Top bar (fixo no topo)
-  - [ ] Sidebar esquerda (colapsavel, largura redimensionavel)
-  - [ ] Area central (ocupa espaco restante — renderiza `<PaneContainer />`)
-  - [ ] Status bar (fixo no fundo)
-- [ ] Sidebar colapsavel com toggle (hotkey Ctrl+B)
-- [ ] Divider arrastavel entre sidebar e area central
+- [x] Criar componente `<AppShell />` com layout flex:
+  - [x] Top bar (fixo no topo)
+  - [x] Sidebar esquerda (colapsavel, largura redimensionavel)
+  - [x] Area central (ocupa espaco restante — renderiza placeholder)
+  - [x] Status bar (fixo no fundo)
+- [x] Sidebar colapsavel com toggle (hotkey Ctrl+B)
+- [x] Divider arrastavel entre sidebar e area central
 
 ## Story 02: Top bar
 
@@ -27,11 +28,11 @@ Barra superior com controles globais.
 
 ### Tasks
 
-- [ ] Nome do app (esquerda)
-- [ ] Vault selector: dropdown daisyUI `select` com vaults disponiveis
-- [ ] Environment selector: dropdown daisyUI `select` com environments
-- [ ] Busca: botao que abre QuickOpen (Ctrl+P), com hint de hotkey
-- [ ] Estilizar com daisyUI `navbar`
+- [x] Nome do app (esquerda)
+- [x] Vault selector: dropdown daisyUI `select` com vaults disponiveis (placeholder)
+- [x] Environment selector: dropdown daisyUI `select` com environments (placeholder)
+- [x] Busca: botao que abre QuickOpen (Ctrl+P), com hint de hotkey
+- [x] Estilizar com daisyUI `navbar`
 
 ## Story 03: Status bar
 
@@ -39,11 +40,11 @@ Barra inferior com informacoes de contexto.
 
 ### Tasks
 
-- [ ] Criar componente `<StatusBar />` com daisyUI
-- [ ] Exibir: keybinding mode (VIM / VS Code), environment ativo, contagem de panes abertos
-- [ ] Connection status: nome e icone (verde=conectado, vermelho=desconectado) para a conexao usada pelo bloco ativo
-- [ ] Posicao do cursor no editor (linha:coluna)
-- [ ] Indicador de encoding do arquivo (UTF-8)
+- [x] Criar componente `<StatusBar />` com daisyUI
+- [x] Exibir: keybinding mode (VS Code), environment ativo, contagem de panes abertos
+- [x] Posicao do cursor no editor (linha:coluna) — placeholder
+- [x] Indicador de encoding do arquivo (UTF-8)
+- [ ] Connection status: nome e icone (verde=conectado, vermelho=desconectado) — depende do Epic 06
 
 ## Story 04: Theme system
 
@@ -51,10 +52,9 @@ Light/dark mode com daisyUI.
 
 ### Tasks
 
-- [ ] Configurar daisyUI themes: um light (ex: `light` ou `corporate`) e um dark (ex: `dark` ou `business`)
-- [ ] Detectar preferencia do OS via `prefers-color-scheme` media query
-- [ ] Permitir override manual: toggle light/dark nas settings
-- [ ] Persistir override no app_config
-- [ ] Sincronizar theme do CodeMirror com o theme do app
-- [ ] Sincronizar theme do Mermaid com o theme do app
-- [ ] Transicao suave ao trocar theme
+- [x] Detectar preferencia do OS via `prefers-color-scheme` media query
+- [x] Permitir override manual: toggle light/dark no top bar
+- [x] Persistir override no localStorage (migrar para app_config quando integrado)
+- [x] Transicao suave ao trocar theme
+- [ ] Sincronizar theme do CodeMirror com o theme do app — depende do Epic 05
+- [ ] Sincronizar theme do Mermaid com o theme do app — depende do Epic 01
