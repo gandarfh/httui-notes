@@ -23,6 +23,11 @@ pub fn list_workspace(vault_path: &str) -> Result<Vec<FileEntry>, String> {
     list_dir_recursive(root, root)
 }
 
+const IGNORED_DIRS: &[&str] = &[
+    "node_modules", "target", "dist", "build", ".git", "__pycache__",
+    ".next", ".nuxt", ".svelte-kit", "vendor", ".venv", "venv",
+];
+
 fn list_dir_recursive(dir: &Path, root: &Path) -> Result<Vec<FileEntry>, String> {
     let mut entries: Vec<FileEntry> = Vec::new();
 
@@ -33,8 +38,8 @@ fn list_dir_recursive(dir: &Path, root: &Path) -> Result<Vec<FileEntry>, String>
         let path = entry.path();
         let name = entry.file_name().to_string_lossy().to_string();
 
-        // Skip hidden files/dirs
-        if name.starts_with('.') {
+        // Skip hidden files/dirs and known heavy directories
+        if name.starts_with('.') || IGNORED_DIRS.contains(&name.as_str()) {
             continue;
         }
 

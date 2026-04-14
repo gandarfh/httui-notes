@@ -100,6 +100,29 @@ export async function setActiveVault(path: string): Promise<void> {
   await setConfig("active_vault", path);
 }
 
+// --- Session restore (single IPC call) ---
+
+export interface SessionTabContent {
+  file_path: string;
+  vault_path: string;
+  content: string | null;
+}
+
+export interface SessionState {
+  vaults: string[];
+  active_vault: string | null;
+  vim_enabled: boolean;
+  pane_layout: string | null;
+  active_pane_id: string | null;
+  active_file: string | null;
+  file_tree: FileEntry[];
+  tab_contents: SessionTabContent[];
+}
+
+export function restoreSession(): Promise<SessionState> {
+  return invoke("restore_session");
+}
+
 // --- File watcher ---
 
 export function startWatching(vaultPath: string): Promise<void> {

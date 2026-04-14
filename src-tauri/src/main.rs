@@ -149,6 +149,133 @@ fn stop_watching(
     Ok(())
 }
 
+// --- Session restore (single IPC call for startup) ---
+
+#[derive(serde::Serialize)]
+struct SessionTabContent {
+    file_path: String,
+    vault_path: String,
+    content: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+struct SessionState {
+    vaults: Vec<String>,
+    active_vault: Option<String>,
+    vim_enabled: bool,
+    pane_layout: Option<String>,
+    active_pane_id: Option<String>,
+    active_file: Option<String>,
+    file_tree: Vec<httui_notes::fs::FileEntry>,
+    tab_contents: Vec<SessionTabContent>,
+}
+
+// Extracts tab file paths from pane layout JSON
+fn extract_tabs_from_layout(value: &serde_json::Value) -> Vec<(String, String)> {
+    let mut tabs = Vec::new();
+    if let Some(typ) = value.get("type").and_then(|t| t.as_str()) {
+        if typ == "leaf" {
+            if let Some(tab_arr) = value.get("tabs").and_then(|t| t.as_array()) {
+                for tab in tab_arr {
+                    if let (Some(fp), Some(vp)) = (
+                        tab.get("filePath").and_then(|v| v.as_str()),
+                        tab.get("vaultPath").and_then(|v| v.as_str()),
+                    ) {
+                        tabs.push((fp.to_string(), vp.to_string()));
+                    }
+                }
+            }
+        } else if typ == "split" {
+            if let Some(children) = value.get("children").and_then(|c| c.as_array()) {
+                for child in children {
+                    tabs.extend(extract_tabs_from_layout(child));
+                }
+            }
+        }
+    }
+    tabs
+}
+
+#[tauri::command]
+async fn restore_session(
+    pool: tauri::State<'_, SqlitePool>,
+) -> Result<SessionState, String> {
+    // Batch all config reads concurrently
+    let (vaults_raw, vim_raw, active_vault, pane_layout, active_pane_id, active_file) = tokio::join!(
+        httui_notes::config::get_config(&pool, "vaults"),
+        httui_notes::config::get_config(&pool, "vim_enabled"),
+        httui_notes::config::get_config(&pool, "active_vault"),
+        httui_notes::config::get_config(&pool, "pane_layout"),
+        httui_notes::config::get_config(&pool, "active_pane_id"),
+        httui_notes::config::get_config(&pool, "active_file"),
+    );
+
+    let vaults: Vec<String> = vaults_raw
+        .ok()
+        .flatten()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_default();
+
+    let vim_enabled = vim_raw.ok().flatten().as_deref() == Some("true");
+    let active_vault = active_vault.ok().flatten();
+    let pane_layout = pane_layout.ok().flatten();
+    let active_pane_id = active_pane_id.ok().flatten();
+    let active_file = active_file.ok().flatten();
+
+    // Extract tab file paths from saved layout (done in Rust, no extra roundtrip)
+    let tab_files: Vec<(String, String)> = if let Some(ref layout_json) = pane_layout {
+        serde_json::from_str::<serde_json::Value>(layout_json)
+            .map(|v| extract_tabs_from_layout(&v))
+            .unwrap_or_default()
+    } else if let (Some(ref file), Some(ref vault)) = (&active_file, &active_vault) {
+        vec![(file.clone(), vault.clone())]
+    } else {
+        vec![]
+    };
+
+    // Run list_workspace + read all tab files in parallel using blocking tasks
+    let active_vault_clone = active_vault.clone();
+    let tree_handle = tokio::task::spawn_blocking(move || {
+        if let Some(ref vault) = active_vault_clone {
+            httui_notes::fs::list_workspace(vault).unwrap_or_default()
+        } else {
+            vec![]
+        }
+    });
+
+    let mut file_handles = Vec::new();
+    for (file_path, vault_path) in tab_files {
+        let fp = file_path.clone();
+        let vp = vault_path.clone();
+        file_handles.push(tokio::task::spawn_blocking(move || {
+            let content = httui_notes::fs::read_note(&vp, &fp).ok();
+            SessionTabContent {
+                file_path: fp,
+                vault_path: vp,
+                content,
+            }
+        }));
+    }
+
+    let file_tree = tree_handle.await.unwrap_or_default();
+    let mut tab_contents = Vec::new();
+    for handle in file_handles {
+        if let Ok(tab) = handle.await {
+            tab_contents.push(tab);
+        }
+    }
+    Ok(SessionState {
+        vaults,
+        active_vault,
+        vim_enabled,
+        pane_layout,
+        active_pane_id,
+        active_file,
+        file_tree,
+        tab_contents,
+    })
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
@@ -179,6 +306,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             get_config,
             set_config,
+            restore_session,
             list_workspace,
             read_note,
             write_note,

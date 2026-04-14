@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import {
   listWorkspace,
-  listVaults,
   setActiveVault,
   startWatching,
   stopWatching,
@@ -29,12 +28,14 @@ export function useVault() {
       try {
         await stopWatching().catch(() => {});
         setVaultPath(path);
-        await setActiveVault(path);
-        await refreshFileTree(path);
-        await startWatching(path);
+        // Run setActiveVault + refreshFileTree in parallel
+        await Promise.all([
+          setActiveVault(path),
+          refreshFileTree(path),
+        ]);
+        // startWatching + rebuildSearchIndex are fire-and-forget (don't block startup)
+        startWatching(path).catch(() => {});
         rebuildSearchIndex(path).catch(() => {});
-        const savedVaults = await listVaults();
-        setVaults(savedVaults);
       } catch (err) {
         console.error("Failed to switch vault:", err);
       }
@@ -71,7 +72,9 @@ export function useVault() {
     vaultPath,
     vaults,
     entries,
+    setVaultPath,
     setVaults,
+    setEntries,
     refreshFileTree,
     switchVault,
     openVault,
