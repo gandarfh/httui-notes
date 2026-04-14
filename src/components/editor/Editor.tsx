@@ -6,20 +6,29 @@ import Typography from "@tiptap/extension-typography";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import Image from "@tiptap/extension-image";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useMemo } from "react";
 import { createSlashCommands } from "./slashCommands";
+import { VimExtension, VimMode } from "./vim";
 
 interface EditorProps {
   content: string;
   onChange: (content: string) => void;
   filePath: string;
+  vimEnabled?: boolean;
+  onVimModeChange?: (mode: VimMode) => void;
 }
 
-export function Editor({ content, onChange, filePath }: EditorProps) {
+export function Editor({
+  content,
+  onChange,
+  filePath,
+  vimEnabled = false,
+  onVimModeChange,
+}: EditorProps) {
   const isExternalUpdate = useRef(false);
 
-  const editor = useEditor({
-    extensions: [
+  const extensions = useMemo(() => {
+    const exts = [
       StarterKit.configure({
         heading: { levels: [1, 2, 3, 4, 5, 6] },
         link: { openOnClick: false, autolink: true },
@@ -32,21 +41,44 @@ export function Editor({ content, onChange, filePath }: EditorProps) {
       TaskItem.configure({ nested: true }),
       Image,
       createSlashCommands(),
-    ],
-    content,
-    onUpdate: ({ editor }) => {
-      if (!isExternalUpdate.current) {
-        onChange(editor.getHTML());
-      }
-    },
-  });
+    ];
 
-  // Update content when file changes (external load)
+    if (vimEnabled) {
+      exts.push(
+        VimExtension.configure({
+          onModeChange: onVimModeChange,
+        }),
+      );
+    }
+
+    return exts;
+  }, [vimEnabled, onVimModeChange]);
+
+  const editor = useEditor(
+    {
+      extensions,
+      content,
+      onUpdate: ({ editor }) => {
+        if (!isExternalUpdate.current) {
+          onChange(editor.getHTML());
+        }
+      },
+    },
+    [vimEnabled],
+  );
+
   useEffect(() => {
     if (editor && content !== editor.getHTML()) {
       isExternalUpdate.current = true;
       editor.commands.setContent(content);
       isExternalUpdate.current = false;
+      // Restore caret visibility based on vim mode after content swap
+      if (vimEnabled) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const vimStorage = (editor.storage as any)?.vimMode as { mode?: string } | undefined;
+        editor.view.dom.style.caretColor =
+          vimStorage?.mode === "insert" ? "" : "transparent";
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filePath, editor]);

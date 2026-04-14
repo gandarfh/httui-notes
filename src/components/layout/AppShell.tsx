@@ -1,11 +1,13 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { Box, Flex, HStack, Text, Circle } from "@chakra-ui/react";
+import { Box, Flex } from "@chakra-ui/react";
 import { TopBar } from "./TopBar";
 import { Sidebar } from "./Sidebar";
 import { StatusBar } from "./StatusBar";
-import { Editor } from "@/components/editor";
+import { PaneContainer } from "./PaneContainer";
+import { QuickOpen } from "@/components/search/QuickOpen";
 import { markdownToHtml } from "@/lib/markdown/parser";
 import { htmlToMarkdown } from "@/lib/markdown/serializer";
+import { usePaneState } from "@/hooks/usePaneState";
 import {
   listWorkspace,
   readNote,
@@ -39,16 +41,23 @@ export function AppShell() {
   const [vaults, setVaults] = useState<string[]>([]);
   const [entries, setEntries] = useState<FileEntry[]>([]);
 
-  // Editor state
-  const [activeFile, setActiveFile] = useState<string | null>(null);
-  const [editorContent, setEditorContent] = useState("");
-  const [unsaved, setUnsaved] = useState(false);
+  // Quick-open state
+  const [quickOpenOpen, setQuickOpenOpen] = useState(false);
+
+  // Vim state
+  const [vimEnabled, setVimEnabled] = useState(false);
+  const [vimMode, setVimMode] = useState("normal");
 
   // Inline create state
   const [inlineCreate, setInlineCreate] = useState<{
     type: "note" | "folder";
     dirPath: string;
   } | null>(null);
+
+  // Pane state
+  const { layout, activePaneId, editorContents, getActiveLeaf, actions } =
+    usePaneState();
+
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const toggleSidebar = useCallback(() => {
@@ -68,15 +77,14 @@ export function AppShell() {
           if (lastFile) {
             try {
               const markdown = await readNote(active, lastFile);
-              setActiveFile(lastFile);
-              setEditorContent(markdownToHtml(markdown));
+              actions.openFile(lastFile, markdownToHtml(markdown));
             } catch {
-              // File may have been deleted since last session
+              // File may have been deleted
             }
           }
         }
       } catch {
-        // App may not be in Tauri context (dev browser)
+        // App may not be in Tauri context
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -98,8 +106,6 @@ export function AppShell() {
       try {
         await stopWatching().catch(() => {});
         setVaultPath(path);
-        setActiveFile(null);
-        setEditorContent("");
         await setActiveVault(path);
         await refreshFileTree(path);
         await startWatching(path);
@@ -112,7 +118,7 @@ export function AppShell() {
     [refreshFileTree],
   );
 
-  // --- Open vault (native folder picker) ---
+  // --- Open vault ---
   const openVault = useCallback(async () => {
     try {
       const { open: openDialog } = await import("@tauri-apps/plugin-dialog");
@@ -128,63 +134,54 @@ export function AppShell() {
     }
   }, [switchVault]);
 
-  // --- File watcher listener ---
+  // --- File watcher ---
   useEffect(() => {
     const unlisten = listen("fs-event", () => {
-      if (vaultPath) {
-        refreshFileTree(vaultPath);
-      }
+      if (vaultPath) refreshFileTree(vaultPath);
     });
     return () => {
       unlisten.then((fn) => fn());
     };
   }, [vaultPath, refreshFileTree]);
 
-  // --- Open file ---
+  // --- Open file in active pane ---
   const handleFileSelect = useCallback(
     async (filePath: string) => {
       if (!vaultPath) return;
-
-      if (activeFile && unsaved) {
-        await writeNote(vaultPath, activeFile, htmlToMarkdown(editorContent));
-        setUnsaved(false);
-      }
-
       try {
-        const markdown = await readNote(vaultPath, filePath);
-        setActiveFile(filePath);
-        setEditorContent(markdownToHtml(markdown));
-        setUnsaved(false);
+        if (!editorContents.has(filePath)) {
+          const markdown = await readNote(vaultPath, filePath);
+          editorContents.set(filePath, markdownToHtml(markdown));
+        }
+        actions.openFile(filePath, editorContents.get(filePath) ?? "");
         setConfig("active_file", filePath).catch(() => {});
       } catch (err) {
         console.error("Failed to read note:", err);
       }
     },
-    [vaultPath, activeFile, unsaved, editorContent],
+    [vaultPath, editorContents, actions],
   );
 
   // --- Editor change with auto-save ---
   const handleEditorChange = useCallback(
-    (content: string) => {
-      setEditorContent(content);
-      setUnsaved(true);
+    (_paneId: string, filePath: string, content: string) => {
+      actions.updateContent(filePath, content);
+      actions.markUnsaved(activePaneId, filePath, true);
 
-      if (autoSaveTimer.current) {
-        clearTimeout(autoSaveTimer.current);
-      }
+      if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
 
       autoSaveTimer.current = setTimeout(async () => {
-        if (vaultPath && activeFile) {
+        if (vaultPath) {
           try {
-            await writeNote(vaultPath, activeFile, htmlToMarkdown(content));
-            setUnsaved(false);
+            await writeNote(vaultPath, filePath, htmlToMarkdown(content));
+            actions.markUnsaved(activePaneId, filePath, false);
           } catch (err) {
             console.error("Auto-save failed:", err);
           }
         }
       }, 1000);
     },
-    [vaultPath, activeFile],
+    [vaultPath, activePaneId, actions],
   );
 
   // --- CRUD operations (inline) ---
@@ -235,46 +232,75 @@ export function AppShell() {
       const newPath = dir ? `${dir}/${newName}` : newName;
       try {
         await renameNote(vaultPath, path, newPath);
-        if (activeFile === path) {
-          setActiveFile(newPath);
-        }
         await refreshFileTree(vaultPath);
       } catch (err) {
         console.error("Failed to rename:", err);
       }
     },
-    [vaultPath, activeFile, refreshFileTree],
+    [vaultPath, refreshFileTree],
   );
 
   const handleDelete = useCallback(
     async (path: string) => {
       if (!vaultPath) return;
-      // File goes to OS trash, so it's reversible
       try {
         await deleteNote(vaultPath, path);
-        if (activeFile === path) {
-          setActiveFile(null);
-          setEditorContent("");
-        }
         await refreshFileTree(vaultPath);
       } catch (err) {
-        alert(`Failed to delete: ${err}`);
+        console.error("Failed to delete:", err);
       }
     },
-    [vaultPath, activeFile, refreshFileTree],
+    [vaultPath, refreshFileTree],
   );
 
   // --- Keyboard shortcuts ---
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "b") {
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && e.key === "b") {
         e.preventDefault();
         toggleSidebar();
+      }
+      if (mod && e.key === "\\") {
+        e.preventDefault();
+        if (e.shiftKey) actions.splitHorizontal();
+        else actions.splitVertical();
+      }
+      if (mod && e.key === "w") {
+        e.preventDefault();
+        const leaf = getActiveLeaf();
+        if (leaf && leaf.tabs.length > 0) {
+          actions.closeTab(leaf.id, leaf.activeTab);
+        }
+      }
+      if (mod && e.key === "Tab") {
+        e.preventDefault();
+        actions.nextTab();
+      }
+      if (mod && e.key === "p") {
+        e.preventDefault();
+        setQuickOpenOpen(true);
+      }
+      if (mod && e.key === "s") {
+        e.preventDefault();
+        // Force save current file
+        const leaf = getActiveLeaf();
+        if (leaf && leaf.tabs.length > 0 && vaultPath) {
+          const tab = leaf.tabs[leaf.activeTab];
+          if (tab) {
+            const content = editorContents.get(tab.filePath);
+            if (content) {
+              writeNote(vaultPath, tab.filePath, htmlToMarkdown(content))
+                .then(() => actions.markUnsaved(leaf.id, tab.filePath, false))
+                .catch((err) => console.error("Save failed:", err));
+            }
+          }
+        }
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [toggleSidebar]);
+  }, [toggleSidebar, actions, getActiveLeaf, vaultPath, editorContents]);
 
   // --- Resize sidebar ---
   const startResize = useCallback((e: React.MouseEvent) => {
@@ -300,6 +326,13 @@ export function AppShell() {
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
   }, []);
+
+  // Active file for sidebar highlight
+  const activeLeaf = getActiveLeaf();
+  const activeFile =
+    activeLeaf && activeLeaf.tabs.length > 0
+      ? activeLeaf.tabs[activeLeaf.activeTab]?.filePath ?? null
+      : null;
 
   return (
     <Flex h="100vh" direction="column" bg="bg.subtle">
@@ -340,45 +373,41 @@ export function AppShell() {
           </>
         )}
 
-        {/* Main content area */}
-        <Flex flex={1} direction="column" overflow="hidden">
-          {activeFile ? (
-            <>
-              {/* Tab bar */}
-              <HStack
-                h="32px"
-                px={2}
-                bg="bg"
-                borderBottomWidth="1px"
-                borderColor="border"
-              >
-                <Text fontSize="xs" color="fg.subtle" truncate>
-                  {activeFile}
-                </Text>
-                {unsaved && <Circle size="8px" bg="orange.400" />}
-              </HStack>
-              {/* Editor */}
-              <Box flex={1} overflow="hidden">
-                <Editor
-                  content={editorContent}
-                  onChange={handleEditorChange}
-                  filePath={activeFile}
-                />
-              </Box>
-            </>
-          ) : (
-            <Flex h="100%" align="center" justify="center">
-              <Text fontSize="sm" color="fg.muted">
-                {vaultPath
-                  ? "Open a file to start editing"
-                  : "Open a vault to get started"}
-              </Text>
-            </Flex>
-          )}
-        </Flex>
+        {/* Pane area */}
+        <PaneContainer
+          layout={layout}
+          activePaneId={activePaneId}
+          editorContents={editorContents}
+          vimEnabled={vimEnabled}
+          onVimModeChange={(mode) => setVimMode(mode)}
+          onSelectTab={actions.selectTab}
+          onCloseTab={actions.closeTab}
+          onCloseOthers={actions.closeOthers}
+          onCloseAll={actions.closeAll}
+          onEditorChange={handleEditorChange}
+          onPaneClick={actions.setActivePaneId}
+          onSplitResize={actions.resizeSplit}
+        />
       </Flex>
 
-      <StatusBar />
+      <StatusBar
+        paneCount={countLeaves(layout)}
+        vimEnabled={vimEnabled}
+        vimMode={vimMode}
+        onToggleVim={() => setVimEnabled((v) => !v)}
+      />
+
+      <QuickOpen
+        open={quickOpenOpen}
+        onClose={() => setQuickOpenOpen(false)}
+        vaultPath={vaultPath}
+        onSelectFile={handleFileSelect}
+      />
     </Flex>
   );
+}
+
+function countLeaves(node: import("@/types/pane").PaneLayout): number {
+  if (node.type === "leaf") return 1;
+  return countLeaves(node.children[0]) + countLeaves(node.children[1]);
 }

@@ -2,3 +2,31 @@ html, body, #root {
   height: 100%;
   margin: 0;
 }
+
+/* Vim cursor block in normal mode (inline text) */
+.vim-cursor {
+  background-color: var(--chakra-colors-fg);
+  color: var(--chakra-colors-bg);
+  opacity: 0.8;
+}
+
+/* Vim cursor widget for non-text nodes (hr, empty blocks) */
+.vim-cursor-widget {
+  display: inline-block;
+  width: 8px;
+  height: 1.2em;
+  background-color: var(--chakra-colors-fg);
+  opacity: 0.8;
+  vertical-align: text-bottom;
+}
+
+/* Hide native caret completely in normal/visual mode */
+[data-vim-mode="normal"] .ProseMirror,
+[data-vim-mode="visual"] .ProseMirror {
+  caret-color: transparent !important;
+}
+
+/* Ensure caret visible in insert mode */
+[data-vim-mode="insert"] .ProseMirror {
+  caret-color: auto;
+}
