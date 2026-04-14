@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Notes — desktop markdown editor with executable blocks (HTTP client, DB query runner, E2E test runner) inline in documents. Built with Tauri v2 (Rust backend) + React + TypeScript + TipTap + CodeMirror + daisyUI.
+Notes — desktop markdown editor with executable blocks (HTTP client, DB query runner, E2E test runner) inline in documents. Built with Tauri v2 (Rust backend) + React + TypeScript + TipTap + CodeMirror + Chakra UI v3.
 
 ## Commands
 
 ```bash
 # Development
-cargo tauri dev                    # Run app in dev mode (frontend + backend)
+make dev                           # Run app in dev mode (frontend HMR + backend rebuild)
 npm run dev                        # Frontend only (Vite dev server)
 
 # Build
@@ -55,7 +55,7 @@ Full details in `docs/ARCHITECTURE.md`. Key concepts:
 
 ## Key Conventions
 
-- UI components use daisyUI classes (Tailwind plugin). Prefer daisyUI components (`btn`, `card`, `modal`, `badge`, `table`, `select`, etc.) over custom styles.
+- UI components use Chakra UI v3 with Emotion. Use Chakra primitives (Box, Flex, HStack, Menu, Dialog, etc.) and semantic tokens (bg, fg, border). Snippets in `src/components/ui/`. Use `onSelect` (not `onClick`) for `Menu.Item`. Consult the Chakra MCP tools for component examples.
 - Tauri IPC uses `invoke()` from `@tauri-apps/api/core`. Frontend wrappers live in `src/lib/tauri/`.
 - Passwords and env variable values are encrypted via OS keychain (Tauri keychain plugin), never stored in plaintext.
 - Markdown serialization preserves fenced code blocks for executable blocks (```http, ```db-*, ```e2e) — they must survive roundtrip through the TipTap parser/serializer.
