@@ -46,13 +46,14 @@ export function AppShell() {
   });
 
   useSessionPersistence({
-    switchVault: vault.switchVault,
     layout,
     activePaneId,
     actions,
     vimEnabled,
     setVimEnabled,
     setVaults: vault.setVaults,
+    setVaultPath: vault.setVaultPath,
+    setEntries: vault.setEntries,
   });
 
   const shortcutActions = useMemo(

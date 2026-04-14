@@ -1,23 +1,18 @@
 import { useEffect, useRef } from "react";
-import {
-  listVaults,
-  getActiveVault,
-  getConfig,
-  setConfig,
-  readNote,
-} from "@/lib/tauri/commands";
+import { restoreSession, setConfig, startWatching, rebuildSearchIndex } from "@/lib/tauri/commands";
 import { markdownToHtml } from "@/lib/markdown/parser";
 import type { PaneActions } from "@/hooks/usePaneState";
 import type { PaneLayout } from "@/types/pane";
 
 interface UseSessionPersistenceOpts {
-  switchVault: (path: string) => Promise<void>;
   layout: PaneLayout;
   activePaneId: string;
   actions: PaneActions;
   vimEnabled: boolean;
   setVimEnabled: (enabled: boolean) => void;
   setVaults: (vaults: string[]) => void;
+  setVaultPath: (path: string | null) => void;
+  setEntries: (entries: import("@/lib/tauri/commands").FileEntry[]) => void;
 }
 
 // Remove tabs for files that no longer exist from the layout
@@ -43,67 +38,56 @@ function filterDeletedTabs(
 }
 
 export function useSessionPersistence({
-  switchVault,
   layout,
   activePaneId,
   actions,
   vimEnabled,
   setVimEnabled,
   setVaults,
+  setVaultPath,
+  setEntries,
 }: UseSessionPersistenceOpts): void {
   const sessionRestored = useRef(false);
 
-  // Load session on startup
+  // Load session on startup — single IPC roundtrip
   useEffect(() => {
     (async () => {
       try {
-        const savedVaults = await listVaults();
-        setVaults(savedVaults);
+        const session = await restoreSession();
 
-        const savedVim = await getConfig("vim_enabled");
-        if (savedVim === "true") setVimEnabled(true);
+        setVaults(session.vaults);
+        if (session.vim_enabled) setVimEnabled(true);
 
-        const active = await getActiveVault();
-        if (active) {
-          await switchVault(active);
+        if (session.active_vault) {
+          setVaultPath(session.active_vault);
+          setEntries(session.file_tree);
 
-          const savedLayout = await getConfig("pane_layout");
-          const savedPaneId = await getConfig("active_pane_id");
-          if (savedLayout && savedPaneId) {
+          // Fire-and-forget: start watching + rebuild index
+          startWatching(session.active_vault).catch(() => {});
+          rebuildSearchIndex(session.active_vault).catch(() => {});
+
+          if (session.pane_layout && session.active_pane_id) {
             try {
-              const parsed = JSON.parse(savedLayout);
-              // Load all tab content in parallel, using each tab's vaultPath
+              const parsed = JSON.parse(session.pane_layout) as PaneLayout;
+
+              // Convert tab contents from Rust (markdown) to HTML
               const contents = new Map<string, string>();
-              const collectTabs = (node: PaneLayout): { filePath: string; vaultPath: string }[] => {
-                if (node.type === "leaf") return node.tabs.map((t) => ({ filePath: t.filePath, vaultPath: t.vaultPath }));
-                return [...collectTabs(node.children[0]), ...collectTabs(node.children[1])];
-              };
-              await Promise.all(
-                collectTabs(parsed).map(async (tab) => {
-                  try {
-                    const md = await readNote(tab.vaultPath, tab.filePath);
-                    contents.set(tab.filePath, markdownToHtml(md));
-                  } catch {
-                    // File may have been deleted — will be filtered out
-                  }
-                }),
-              );
-              // Filter out tabs for deleted files
+              for (const tab of session.tab_contents) {
+                if (tab.content) {
+                  contents.set(tab.file_path, markdownToHtml(tab.content));
+                }
+              }
+
               const cleanedLayout = filterDeletedTabs(parsed, new Set(contents.keys()));
-              actions.restoreLayout(cleanedLayout, savedPaneId, contents);
+              actions.restoreLayout(cleanedLayout, session.active_pane_id, contents);
             } catch {
               // Invalid layout JSON, use default
             }
-          } else {
-            // Fallback: restore last file
-            const lastFile = await getConfig("active_file");
-            if (lastFile) {
-              try {
-                const markdown = await readNote(active, lastFile);
-                actions.openFile(lastFile, markdownToHtml(markdown), active);
-              } catch {
-                // File may have been deleted
-              }
+          } else if (session.active_file) {
+            // Fallback: active_file content is already in tab_contents
+            const tab = session.tab_contents[0];
+            if (tab?.content) {
+              actions.openFile(tab.file_path, markdownToHtml(tab.content), tab.vault_path);
             }
           }
         }
