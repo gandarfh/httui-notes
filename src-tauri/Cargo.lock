@@ -1856,6 +1856,7 @@ dependencies = [
  "tauri-plugin-notification",
  "tauri-plugin-shell",
  "tauri-plugin-sql",
+ "tempfile",
  "tokio",
  "uuid",
 ]

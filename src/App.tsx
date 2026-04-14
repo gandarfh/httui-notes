@@ -1,4 +1,8 @@
+import { useTheme } from "./hooks/useTheme";
+
 function App() {
+  const { theme, toggleTheme } = useTheme();
+
   return (
     <div className="min-h-screen bg-base-200 flex items-center justify-center">
       <div className="card bg-base-100 shadow-xl p-8">
@@ -8,7 +12,9 @@ function App() {
         </p>
         <div className="flex gap-2">
           <button className="btn btn-primary">Get Started</button>
-          <button className="btn btn-ghost">Learn More</button>
+          <button className="btn btn-ghost" onClick={toggleTheme}>
+            {theme === "dark" ? "Light Mode" : "Dark Mode"}
+          </button>
         </div>
       </div>
     </div>
