@@ -61,11 +61,34 @@ Full details in `docs/ARCHITECTURE.md`. Key concepts:
 - Passwords and env variable values are encrypted via OS keychain (Tauri keychain plugin), never stored in plaintext.
 - Markdown serialization preserves fenced code blocks for executable blocks (```http, ```db-*, ```e2e) — they must survive roundtrip through the TipTap parser/serializer.
 
+## Frontend architecture (hooks + contexts)
+
+**AppShell** is a thin composition layer (~100 lines) that wires hooks and context providers:
+
+**Hooks** (`src/hooks/`):
+- `usePaneState` — pane layout tree, tab management, editor content store (module-level Map)
+- `useVault` — vault path, file tree, switchVault, openVault
+- `useFileOperations` — CRUD (create/rename/delete notes and folders)
+- `useEditorSession` — file open, auto-save (1s debounce), markdown conversion
+- `useKeyboardShortcuts` — global Cmd+B/P/S/W/Tab/\ shortcuts
+- `useSidebarResize` — drag-to-resize sidebar
+- `useSessionPersistence` — startup restore + save-on-change via single `restore_session` IPC call
+- `useFileSearch` / `useContentSearch` / `useEscapeClose` — search modal logic
+
+**Contexts** (`src/contexts/`):
+- `WorkspaceContext` — vault state + file operations + file select (consumed by Sidebar, FileTree, TopBar, QuickOpen, SearchPanel)
+- `PaneContext` — layout + actions + editor change (consumed by PaneContainer, PaneNode, StatusBar, FileTree)
+- `EditorSettingsContext` — vim mode (consumed by PaneNode, StatusBar)
+
+**Component structure:**
+- `src/components/layout/file-tree/` — FileTree, FileTreeNode, InlineInput
+- `src/components/layout/pane/` — PaneContainer, PaneNode, SplitView
+
 ## Multi-pane system
 
-- Pane layout is a binary tree (`src/types/pane.ts`): each node is either a leaf (tabs + editor) or a split (horizontal/vertical with ratio).
+- Pane layout is a binary tree (`src/types/pane.ts`): each node is either a leaf (tabs + editor) or a split (horizontal/vertical with ratio). Each tab stores its `vaultPath` so tabs from different vaults coexist.
 - State managed by `usePaneState` hook (`src/hooks/usePaneState.ts`). Editor contents stored in module-level `Map` outside React state.
-- Session persistence: layout, active pane, vim mode saved to `app_config` as JSON. Restored on startup.
+- Session persistence via `restore_session` Rust command — single IPC call reads all configs, parses layout, reads file contents, and lists workspace in parallel. `list_workspace` filters `node_modules`, `target`, and other heavy directories.
 
 ## Vim mode
 
