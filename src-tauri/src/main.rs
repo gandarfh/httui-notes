@@ -108,6 +108,14 @@ fn start_watching(
 }
 
 #[tauri::command]
+fn search_files(
+    vault_path: String,
+    query: String,
+) -> Result<Vec<httui_notes::search::SearchResult>, String> {
+    httui_notes::search::search_files(&vault_path, &query)
+}
+
+#[tauri::command]
 fn stop_watching(
     watcher_state: tauri::State<'_, Mutex<Option<httui_notes::fs::watcher::VaultWatcher>>>,
 ) -> Result<(), String> {
@@ -155,6 +163,7 @@ fn main() {
             create_folder,
             start_watching,
             stop_watching,
+            search_files,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

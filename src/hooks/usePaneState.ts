@@ -1,0 +1,240 @@
+import { useState, useCallback } from "react";
+import type { PaneLayout, LeafPane } from "@/types/pane";
+import { createLeafPane } from "@/types/pane";
+
+export interface PaneActions {
+  openFile: (filePath: string, content: string) => void;
+  selectTab: (paneId: string, index: number) => void;
+  closeTab: (paneId: string, index: number) => void;
+  closeOthers: (paneId: string, index: number) => void;
+  closeAll: (paneId: string) => void;
+  setActivePaneId: (paneId: string) => void;
+  splitVertical: () => void;
+  splitHorizontal: () => void;
+  nextTab: () => void;
+  updateContent: (filePath: string, content: string) => void;
+  markUnsaved: (paneId: string, filePath: string, unsaved: boolean) => void;
+  resizeSplit: (path: number[], ratio: number) => void;
+}
+
+// --- Pure helper functions (no hooks, no state) ---
+
+function findLeaf(node: PaneLayout, id: string): LeafPane | null {
+  if (node.type === "leaf") return node.id === id ? node : null;
+  return findLeaf(node.children[0], id) ?? findLeaf(node.children[1], id);
+}
+
+function updateLeaf(
+  node: PaneLayout,
+  id: string,
+  updater: (leaf: LeafPane) => LeafPane,
+): PaneLayout {
+  if (node.type === "leaf") return node.id === id ? updater({ ...node }) : node;
+  return {
+    ...node,
+    children: [
+      updateLeaf(node.children[0], id, updater),
+      updateLeaf(node.children[1], id, updater),
+    ],
+  };
+}
+
+function removeLeaf(node: PaneLayout, id: string): PaneLayout | null {
+  if (node.type === "leaf") return node.id === id ? null : node;
+  const left = removeLeaf(node.children[0], id);
+  const right = removeLeaf(node.children[1], id);
+  if (!left) return right;
+  if (!right) return left;
+  return { ...node, children: [left, right] };
+}
+
+function allLeafIds(node: PaneLayout): string[] {
+  if (node.type === "leaf") return [node.id];
+  return [...allLeafIds(node.children[0]), ...allLeafIds(node.children[1])];
+}
+
+function updateSplitRatio(
+  node: PaneLayout,
+  path: number[],
+  ratio: number,
+): PaneLayout {
+  if (path.length === 0 && node.type === "split") return { ...node, ratio };
+  if (node.type === "split" && path.length > 0) {
+    const [head, ...rest] = path;
+    const children: [PaneLayout, PaneLayout] = [...node.children];
+    children[head] = updateSplitRatio(children[head], rest, ratio);
+    return { ...node, children };
+  }
+  return node;
+}
+
+function replacePaneInLayout(
+  node: PaneLayout,
+  id: string,
+  replacement: PaneLayout,
+): PaneLayout {
+  if (node.type === "leaf") return node.id === id ? replacement : node;
+  return {
+    ...node,
+    children: [
+      replacePaneInLayout(node.children[0], id, replacement),
+      replacePaneInLayout(node.children[1], id, replacement),
+    ],
+  };
+}
+
+// Module-level Map — lives outside React, no re-render issues
+const editorContentsStore = new Map<string, string>();
+
+// --- Hook ---
+
+export function usePaneState() {
+  const [layout, setLayout] = useState<PaneLayout>(createLeafPane());
+  const [activePaneId, setActivePaneId] = useState(
+    (layout as LeafPane).id,
+  );
+
+  const getActiveLeaf = useCallback(
+    (): LeafPane | null => findLeaf(layout, activePaneId),
+    [layout, activePaneId],
+  );
+
+  const openFile = useCallback(
+    (filePath: string, content: string) => {
+      editorContentsStore.set(filePath, content);
+      setLayout((prev) => {
+        const leaf = findLeaf(prev, activePaneId);
+        if (!leaf) return prev;
+        const existing = leaf.tabs.findIndex((t) => t.filePath === filePath);
+        if (existing >= 0) {
+          return updateLeaf(prev, activePaneId, (l) => ({
+            ...l,
+            activeTab: existing,
+          }));
+        }
+        return updateLeaf(prev, activePaneId, (l) => ({
+          ...l,
+          tabs: [...l.tabs, { filePath, unsaved: false }],
+          activeTab: l.tabs.length,
+        }));
+      });
+    },
+    [activePaneId],
+  );
+
+  const selectTab = useCallback((paneId: string, index: number) => {
+    setLayout((prev) => updateLeaf(prev, paneId, (l) => ({ ...l, activeTab: index })));
+    setActivePaneId(paneId);
+  }, []);
+
+  const closeTab = useCallback((paneId: string, index: number) => {
+    setLayout((prev) => {
+      const leaf = findLeaf(prev, paneId);
+      if (!leaf) return prev;
+      const newTabs = leaf.tabs.filter((_, i) => i !== index);
+      if (newTabs.length === 0) {
+        const result = removeLeaf(prev, paneId);
+        if (result) {
+          const ids = allLeafIds(result);
+          if (ids.length > 0) setActivePaneId(ids[0]);
+          return result;
+        }
+        return updateLeaf(prev, paneId, (l) => ({ ...l, tabs: [], activeTab: 0 }));
+      }
+      const newActive = Math.min(leaf.activeTab, newTabs.length - 1);
+      return updateLeaf(prev, paneId, (l) => ({ ...l, tabs: newTabs, activeTab: newActive }));
+    });
+  }, []);
+
+  const closeOthers = useCallback((paneId: string, index: number) => {
+    setLayout((prev) =>
+      updateLeaf(prev, paneId, (l) => ({ ...l, tabs: [l.tabs[index]], activeTab: 0 })),
+    );
+  }, []);
+
+  const closeAll = useCallback((paneId: string) => {
+    setLayout((prev) =>
+      updateLeaf(prev, paneId, (l) => ({ ...l, tabs: [], activeTab: 0 })),
+    );
+  }, []);
+
+  const splitVertical = useCallback(() => {
+    setLayout((prev) => {
+      const leaf = findLeaf(prev, activePaneId);
+      if (!leaf) return prev;
+      const newPane = createLeafPane();
+      setActivePaneId(newPane.id);
+      return replacePaneInLayout(prev, activePaneId, {
+        type: "split",
+        direction: "vertical",
+        children: [leaf, newPane],
+        ratio: 0.5,
+      });
+    });
+  }, [activePaneId]);
+
+  const splitHorizontal = useCallback(() => {
+    setLayout((prev) => {
+      const leaf = findLeaf(prev, activePaneId);
+      if (!leaf) return prev;
+      const newPane = createLeafPane();
+      setActivePaneId(newPane.id);
+      return replacePaneInLayout(prev, activePaneId, {
+        type: "split",
+        direction: "horizontal",
+        children: [leaf, newPane],
+        ratio: 0.5,
+      });
+    });
+  }, [activePaneId]);
+
+  const nextTab = useCallback(() => {
+    setLayout((prev) => {
+      const leaf = findLeaf(prev, activePaneId);
+      if (!leaf || leaf.tabs.length <= 1) return prev;
+      const next = (leaf.activeTab + 1) % leaf.tabs.length;
+      return updateLeaf(prev, activePaneId, (l) => ({ ...l, activeTab: next }));
+    });
+  }, [activePaneId]);
+
+  const updateContent = useCallback(
+    (filePath: string, content: string) => {
+      editorContentsStore.set(filePath, content);
+    },
+    [],
+  );
+
+  const markUnsaved = useCallback((paneId: string, filePath: string, unsaved: boolean) => {
+    setLayout((prev) =>
+      updateLeaf(prev, paneId, (l) => ({
+        ...l,
+        tabs: l.tabs.map((t) => (t.filePath === filePath ? { ...t, unsaved } : t)),
+      })),
+    );
+  }, []);
+
+  const resizeSplit = useCallback((path: number[], ratio: number) => {
+    setLayout((prev) => updateSplitRatio(prev, path, ratio));
+  }, []);
+
+  return {
+    layout,
+    activePaneId,
+    editorContents: editorContentsStore,
+    getActiveLeaf,
+    actions: {
+      openFile,
+      selectTab,
+      closeTab,
+      closeOthers,
+      closeAll,
+      setActivePaneId,
+      splitVertical,
+      splitHorizontal,
+      nextTab,
+      updateContent,
+      markUnsaved,
+      resizeSplit,
+    } satisfies PaneActions,
+  };
+}

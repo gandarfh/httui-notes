@@ -109,3 +109,18 @@ export function startWatching(vaultPath: string): Promise<void> {
 export function stopWatching(): Promise<void> {
   return invoke("stop_watching");
 }
+
+// --- Search ---
+
+export interface SearchResult {
+  path: string;
+  name: string;
+  score: number;
+}
+
+export function searchFiles(
+  vaultPath: string,
+  query: string,
+): Promise<SearchResult[]> {
+  return invoke("search_files", { vaultPath, query });
+}
