@@ -56,9 +56,29 @@ Full details in `docs/ARCHITECTURE.md`. Key concepts:
 ## Key Conventions
 
 - UI components use Chakra UI v3 with Emotion. Use Chakra primitives (Box, Flex, HStack, Menu, Dialog, etc.) and semantic tokens (bg, fg, border). Snippets in `src/components/ui/`. Use `onSelect` (not `onClick`) for `Menu.Item`. Consult the Chakra MCP tools for component examples.
+- Do NOT use Chakra `Dialog.Root` for popups that need to return focus to the editor — use `Portal` + `Box` instead. The Dialog focus trap prevents ProseMirror from receiving keyboard input after closing.
 - Tauri IPC uses `invoke()` from `@tauri-apps/api/core`. Frontend wrappers live in `src/lib/tauri/`.
 - Passwords and env variable values are encrypted via OS keychain (Tauri keychain plugin), never stored in plaintext.
 - Markdown serialization preserves fenced code blocks for executable blocks (```http, ```db-*, ```e2e) — they must survive roundtrip through the TipTap parser/serializer.
+
+## Multi-pane system
+
+- Pane layout is a binary tree (`src/types/pane.ts`): each node is either a leaf (tabs + editor) or a split (horizontal/vertical with ratio).
+- State managed by `usePaneState` hook (`src/hooks/usePaneState.ts`). Editor contents stored in module-level `Map` outside React state.
+- Session persistence: layout, active pane, vim mode saved to `app_config` as JSON. Restored on startup.
+
+## Vim mode
+
+- Custom TipTap extension at `src/components/editor/vim/`. Toggle via StatusBar badge.
+- Motions navigate by walking document textblocks (not DOM coordinates) — works with all ProseMirror node types.
+- Normal mode blocks text input via `keypress` preventDefault + `beforeinput` handler.
+- `j/k` find next/previous textblock by iterating positions in the ProseMirror document tree.
+
+## Search
+
+- Quick-open (`Cmd+P`): fuzzy file name search via Rust `search_files` with subsequence scoring.
+- Full-text (`Cmd+Shift+F`): FTS5 index in SQLite, rebuilt on vault switch, `search_content` with snippet highlighting.
+- Both use Portal-based panels (not Dialog) to avoid focus trap issues.
 
 ## Docs
 
