@@ -1,107 +1,116 @@
-import { useTheme } from "@/hooks/useTheme";
+import { HStack, Text, IconButton, Box, Menu, Portal } from "@chakra-ui/react";
+import { ColorModeButton } from "@/components/ui/color-mode";
+import {
+  LuMenu,
+  LuSearch,
+  LuFolder,
+  LuPlus,
+  LuChevronDown,
+} from "react-icons/lu";
 
 interface TopBarProps {
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
+  vaultPath: string | null;
+  vaults: string[];
+  onSwitchVault: (path: string) => void;
+  onOpenVault: () => void;
 }
 
-export function TopBar({ sidebarOpen, onToggleSidebar }: TopBarProps) {
-  const { theme, toggleTheme } = useTheme();
+export function TopBar({
+  sidebarOpen,
+  onToggleSidebar,
+  vaultPath,
+  vaults,
+  onSwitchVault,
+  onOpenVault,
+}: TopBarProps) {
+  const vaultName = vaultPath ? vaultPath.split("/").pop() || vaultPath : null;
 
   return (
-    <div className="navbar bg-base-100 border-b border-base-300 px-2 min-h-0 h-12">
+    <HStack
+      h="48px"
+      px={2}
+      bg="bg"
+      borderBottomWidth="1px"
+      borderColor="border"
+      justify="space-between"
+      flexShrink={0}
+    >
       {/* Left */}
-      <div className="navbar-start gap-2">
-        <button
-          className="btn btn-ghost btn-sm btn-square"
+      <HStack gap={2}>
+        <IconButton
+          aria-label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+          variant="ghost"
+          size="sm"
           onClick={onToggleSidebar}
-          title={sidebarOpen ? "Hide sidebar (Ctrl+B)" : "Show sidebar (Ctrl+B)"}
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-4 w-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M4 6h16M4 12h16M4 18h16"
-            />
-          </svg>
-        </button>
-        <span className="font-semibold text-sm">Notes</span>
-      </div>
+          <LuMenu />
+        </IconButton>
+        <Text fontWeight="semibold" fontSize="sm">
+          Notes
+        </Text>
+      </HStack>
 
       {/* Center */}
-      <div className="navbar-center gap-2">
-        <select className="select select-bordered select-sm w-40" disabled>
-          <option>No vault</option>
-        </select>
-        <select className="select select-bordered select-sm w-36" disabled>
-          <option>No environment</option>
-        </select>
-      </div>
+      <HStack gap={2}>
+        <Menu.Root>
+          <Menu.Trigger asChild>
+            <Box
+              as="button"
+              display="flex"
+              alignItems="center"
+              gap={1.5}
+              px={3}
+              py={1}
+              rounded="md"
+              fontSize="sm"
+              cursor="pointer"
+              _hover={{ bg: "bg.subtle" }}
+            >
+              <LuFolder size={14} />
+              <Text fontSize="xs" maxW="128px" truncate>
+                {vaultName ?? "Open Vault"}
+              </Text>
+              <LuChevronDown size={12} />
+            </Box>
+          </Menu.Trigger>
+          <Portal>
+            <Menu.Positioner>
+              <Menu.Content>
+                {vaults.map((v) => (
+                  <Menu.Item
+                    key={v}
+                    value={v}
+                    onSelect={() => onSwitchVault(v)}
+                    fontWeight={v === vaultPath ? "bold" : "normal"}
+                  >
+                    {v.split("/").pop()}
+                  </Menu.Item>
+                ))}
+                {vaults.length > 0 && <Menu.Separator />}
+                <Menu.Item value="open" onSelect={onOpenVault}>
+                  <LuPlus size={14} />
+                  <Text>Open folder...</Text>
+                </Menu.Item>
+              </Menu.Content>
+            </Menu.Positioner>
+          </Portal>
+        </Menu.Root>
+      </HStack>
 
       {/* Right */}
-      <div className="navbar-end gap-1">
-        <button className="btn btn-ghost btn-sm" disabled>
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-4 w-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-            />
-          </svg>
-          <kbd className="kbd kbd-xs">⌘P</kbd>
-        </button>
-        <button
-          className="btn btn-ghost btn-sm btn-square"
-          onClick={toggleTheme}
-          title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+      <HStack gap={1}>
+        <IconButton
+          aria-label="Search"
+          variant="ghost"
+          size="sm"
+          disabled
         >
-          {theme === "dark" ? (
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"
-              />
-            </svg>
-          ) : (
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"
-              />
-            </svg>
-          )}
-        </button>
-      </div>
-    </div>
+          <LuSearch />
+        </IconButton>
+        <ColorModeButton />
+      </HStack>
+    </HStack>
   );
 }
