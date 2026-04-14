@@ -1,18 +1,13 @@
 import { HStack, Text, Badge, Kbd } from "@chakra-ui/react";
+import { usePaneContext } from "@/contexts/PaneContext";
+import { useEditorSettings } from "@/contexts/EditorSettingsContext";
+import type { PaneLayout } from "@/types/pane";
 
-interface StatusBarProps {
-  paneCount?: number;
-  vimEnabled?: boolean;
-  vimMode?: string;
-  onToggleVim?: () => void;
-}
+export function StatusBar() {
+  const { layout } = usePaneContext();
+  const { vimEnabled, vimMode, toggleVim } = useEditorSettings();
+  const paneCount = countLeaves(layout);
 
-export function StatusBar({
-  paneCount = 1,
-  vimEnabled = false,
-  vimMode = "normal",
-  onToggleVim,
-}: StatusBarProps) {
   return (
     <HStack
       h="24px"
@@ -30,7 +25,7 @@ export function StatusBar({
           size="xs"
           variant="subtle"
           cursor="pointer"
-          onClick={onToggleVim}
+          onClick={toggleVim}
           colorPalette={vimEnabled ? "green" : "gray"}
         >
           {vimEnabled ? "VIM" : "VS Code"}
@@ -61,4 +56,9 @@ export function StatusBar({
       </HStack>
     </HStack>
   );
+}
+
+function countLeaves(node: PaneLayout): number {
+  if (node.type === "leaf") return 1;
+  return countLeaves(node.children[0]) + countLeaves(node.children[1]);
 }
