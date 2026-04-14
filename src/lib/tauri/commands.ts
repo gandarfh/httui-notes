@@ -124,3 +124,23 @@ export function searchFiles(
 ): Promise<SearchResult[]> {
   return invoke("search_files", { vaultPath, query });
 }
+
+export interface ContentSearchResult {
+  file_path: string;
+  snippet: string;
+}
+
+export function rebuildSearchIndex(vaultPath: string): Promise<void> {
+  return invoke("rebuild_search_index", { vaultPath });
+}
+
+export function searchContent(query: string): Promise<ContentSearchResult[]> {
+  return invoke("search_content", { query });
+}
+
+export function updateSearchEntry(
+  filePath: string,
+  content: string,
+): Promise<void> {
+  return invoke("update_search_entry", { filePath, content });
+}

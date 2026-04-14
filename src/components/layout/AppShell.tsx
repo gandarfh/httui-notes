@@ -5,6 +5,7 @@ import { Sidebar } from "./Sidebar";
 import { StatusBar } from "./StatusBar";
 import { PaneContainer } from "./PaneContainer";
 import { QuickOpen } from "@/components/search/QuickOpen";
+import { SearchPanel } from "@/components/search/SearchPanel";
 import { markdownToHtml } from "@/lib/markdown/parser";
 import { htmlToMarkdown } from "@/lib/markdown/serializer";
 import { usePaneState } from "@/hooks/usePaneState";
@@ -23,6 +24,7 @@ import {
   stopWatching,
   getConfig,
   setConfig,
+  rebuildSearchIndex,
 } from "@/lib/tauri/commands";
 import type { FileEntry } from "@/lib/tauri/commands";
 import { listen } from "@tauri-apps/api/event";
@@ -44,6 +46,9 @@ export function AppShell() {
   // Quick-open state
   const [quickOpenOpen, setQuickOpenOpen] = useState(false);
 
+  // Search panel state
+  const [searchPanelOpen, setSearchPanelOpen] = useState(false);
+
   // Vim state
   const [vimEnabled, setVimEnabled] = useState(false);
   const [vimMode, setVimMode] = useState("normal");
@@ -64,22 +69,55 @@ export function AppShell() {
     setSidebarOpen((prev) => !prev);
   }, []);
 
-  // --- Load vaults on startup ---
+  // --- Load session on startup ---
   useEffect(() => {
     (async () => {
       try {
         const savedVaults = await listVaults();
         setVaults(savedVaults);
+
+        // Restore vim mode
+        const savedVim = await getConfig("vim_enabled");
+        if (savedVim === "true") setVimEnabled(true);
+
         const active = await getActiveVault();
         if (active) {
           await switchVault(active);
-          const lastFile = await getConfig("active_file");
-          if (lastFile) {
+
+          // Restore pane layout
+          const savedLayout = await getConfig("pane_layout");
+          const savedPaneId = await getConfig("active_pane_id");
+          if (savedLayout && savedPaneId) {
             try {
-              const markdown = await readNote(active, lastFile);
-              actions.openFile(lastFile, markdownToHtml(markdown));
+              const parsed = JSON.parse(savedLayout);
+              actions.restoreLayout(parsed, savedPaneId);
+              // Load content for all open tabs
+              const loadTabs = (node: import("@/types/pane").PaneLayout) => {
+                if (node.type === "leaf") {
+                  for (const tab of node.tabs) {
+                    readNote(active, tab.filePath)
+                      .then((md) => editorContents.set(tab.filePath, markdownToHtml(md)))
+                      .catch(() => {});
+                  }
+                } else {
+                  loadTabs(node.children[0]);
+                  loadTabs(node.children[1]);
+                }
+              };
+              loadTabs(parsed);
             } catch {
-              // File may have been deleted
+              // Invalid layout JSON, use default
+            }
+          } else {
+            // Fallback: restore last file
+            const lastFile = await getConfig("active_file");
+            if (lastFile) {
+              try {
+                const markdown = await readNote(active, lastFile);
+                actions.openFile(lastFile, markdownToHtml(markdown));
+              } catch {
+                // File may have been deleted
+              }
             }
           }
         }
@@ -89,6 +127,16 @@ export function AppShell() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // --- Save session on changes ---
+  useEffect(() => {
+    setConfig("pane_layout", JSON.stringify(layout)).catch(() => {});
+    setConfig("active_pane_id", activePaneId).catch(() => {});
+  }, [layout, activePaneId]);
+
+  useEffect(() => {
+    setConfig("vim_enabled", vimEnabled ? "true" : "false").catch(() => {});
+  }, [vimEnabled]);
 
   // --- Refresh file tree ---
   const refreshFileTree = useCallback(async (vault: string) => {
@@ -109,6 +157,7 @@ export function AppShell() {
         await setActiveVault(path);
         await refreshFileTree(path);
         await startWatching(path);
+        rebuildSearchIndex(path).catch(() => {});
         const savedVaults = await listVaults();
         setVaults(savedVaults);
       } catch (err) {
@@ -281,6 +330,10 @@ export function AppShell() {
         e.preventDefault();
         setQuickOpenOpen(true);
       }
+      if (mod && e.shiftKey && e.key === "f") {
+        e.preventDefault();
+        setSearchPanelOpen(true);
+      }
       if (mod && e.key === "s") {
         e.preventDefault();
         // Force save current file
@@ -401,6 +454,12 @@ export function AppShell() {
         open={quickOpenOpen}
         onClose={() => setQuickOpenOpen(false)}
         vaultPath={vaultPath}
+        onSelectFile={handleFileSelect}
+      />
+
+      <SearchPanel
+        open={searchPanelOpen}
+        onClose={() => setSearchPanelOpen(false)}
         onSelectFile={handleFileSelect}
       />
     </Flex>
