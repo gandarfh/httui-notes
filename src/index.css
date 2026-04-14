@@ -1,2 +1,10 @@
 @import "tailwindcss";
 @plugin "daisyui";
+
+*,
+*::before,
+*::after {
+  transition-property: background-color, border-color, color;
+  transition-duration: 0.2s;
+  transition-timing-function: ease-in-out;
+}

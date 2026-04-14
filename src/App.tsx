@@ -1,24 +1,7 @@
-import { useTheme } from "./hooks/useTheme";
+import { AppShell } from "@/components/layout";
 
 function App() {
-  const { theme, toggleTheme } = useTheme();
-
-  return (
-    <div className="min-h-screen bg-base-200 flex items-center justify-center">
-      <div className="card bg-base-100 shadow-xl p-8">
-        <h1 className="text-3xl font-bold text-base-content mb-4">Notes</h1>
-        <p className="text-base-content/70 mb-6">
-          Markdown editor with executable blocks
-        </p>
-        <div className="flex gap-2">
-          <button className="btn btn-primary">Get Started</button>
-          <button className="btn btn-ghost" onClick={toggleTheme}>
-            {theme === "dark" ? "Light Mode" : "Dark Mode"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+  return <AppShell />;
 }
 
 export default App;
