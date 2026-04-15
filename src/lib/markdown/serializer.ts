@@ -8,6 +8,28 @@ const turndown = new TurndownService({
   fence: "```",
   emDelimiter: "*",
   strongDelimiter: "**",
+  blankReplacement: (_content, node) => {
+    const el = node as HTMLElement;
+    const dataType = el.getAttribute?.("data-type") ?? "";
+    const dataContent = el.getAttribute?.("data-content") ?? "";
+
+    // Custom blocks are empty divs/spans with data attributes.
+    // Turndown treats them as blank — we must serialize them here.
+    if (dataType === "http-block") {
+      return `\n\`\`\`http\n${dataContent}\n\`\`\`\n`;
+    }
+    if (dataType === "mermaid") {
+      return `\n\`\`\`mermaid\n${dataContent}\n\`\`\`\n`;
+    }
+    if (dataType === "math-block") {
+      return `\n$$${dataContent}$$\n`;
+    }
+    if (dataType === "math-inline") {
+      return `$${dataContent}$`;
+    }
+
+    return el.matches?.("div, p") ? "\n\n" : "";
+  },
 });
 
 // Task lists (checkboxes)

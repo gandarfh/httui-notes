@@ -1,3 +1,4 @@
+import { mergeAttributes } from "@tiptap/core";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 import { ExecutableBlock } from "../ExecutableBlock";
 import { HttpBlockView } from "./HttpBlockView";
@@ -12,17 +13,17 @@ export const HttpBlock = ExecutableBlock.extend({
       alias: {
         default: "",
         parseHTML: (el: HTMLElement) => el.getAttribute("data-alias") ?? "",
-        renderHTML: () => ({}),
+        renderHTML: (attrs: Record<string, string>) => ({ "data-alias": attrs.alias }),
       },
       displayMode: {
         default: "input",
         parseHTML: (el: HTMLElement) => el.getAttribute("data-display-mode") ?? "input",
-        renderHTML: () => ({}),
+        renderHTML: (attrs: Record<string, string>) => ({ "data-display-mode": attrs.displayMode }),
       },
       content: {
         default: "",
         parseHTML: (el: HTMLElement) => el.getAttribute("data-content") ?? "",
-        renderHTML: () => ({}),
+        renderHTML: (attrs: Record<string, string>) => ({ "data-content": attrs.content }),
       },
     };
   },
@@ -31,15 +32,10 @@ export const HttpBlock = ExecutableBlock.extend({
     return [{ tag: 'div[data-type="http-block"]' }];
   },
 
-  renderHTML({ node }) {
+  renderHTML({ HTMLAttributes }) {
     return [
       "div",
-      {
-        "data-type": "http-block",
-        "data-alias": node.attrs.alias,
-        "data-display-mode": node.attrs.displayMode,
-        "data-content": node.attrs.content,
-      },
+      mergeAttributes({ "data-type": "http-block" }, HTMLAttributes),
     ];
   },
 
