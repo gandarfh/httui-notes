@@ -1,0 +1,177 @@
+import type { ReactNode } from "react";
+import { Box, Flex, HStack, Input, Badge, Spinner, IconButton } from "@chakra-ui/react";
+import { LuPenLine, LuColumns2, LuMonitorCheck, LuPlay, LuSquare } from "react-icons/lu";
+import type { DisplayMode, ExecutionState } from "./ExecutableBlock";
+
+interface ExecutableBlockShellProps {
+  blockType: string;
+  alias: string;
+  displayMode: DisplayMode;
+  executionState: ExecutionState;
+  onAliasChange: (alias: string) => void;
+  onDisplayModeChange: (mode: DisplayMode) => void;
+  onRun: () => void;
+  onCancel: () => void;
+  inputSlot: ReactNode;
+  outputSlot: ReactNode;
+  selected?: boolean;
+}
+
+const STATE_COLORS: Record<ExecutionState, string> = {
+  idle: "gray",
+  running: "blue",
+  success: "green",
+  error: "red",
+};
+
+const STATE_LABELS: Record<ExecutionState, string> = {
+  idle: "idle",
+  running: "running",
+  success: "success",
+  error: "error",
+};
+
+const BLOCK_LABELS: Record<string, string> = {
+  http: "HTTP",
+  db: "DB",
+  e2e: "E2E",
+};
+
+const MODE_ICONS: { mode: DisplayMode; label: string; icon: ReactNode }[] = [
+  { mode: "input", label: "Input", icon: <LuPenLine /> },
+  { mode: "split", label: "Split", icon: <LuColumns2 /> },
+  { mode: "output", label: "Output", icon: <LuMonitorCheck /> },
+];
+
+export function ExecutableBlockShell({
+  blockType,
+  alias,
+  displayMode,
+  executionState,
+  onAliasChange,
+  onDisplayModeChange,
+  onRun,
+  onCancel,
+  inputSlot,
+  outputSlot,
+  selected = false,
+}: ExecutableBlockShellProps) {
+  const isRunning = executionState === "running";
+  const showInput = displayMode === "input" || displayMode === "split";
+  const showOutput = displayMode === "output" || displayMode === "split";
+
+  return (
+    <Box
+      border="1px solid"
+      borderColor={selected ? "blue.500" : "border"}
+      rounded="lg"
+      overflow="hidden"
+      my={2}
+      bg="bg"
+    >
+      {/* Header */}
+      <Flex
+        align="center"
+        gap={2}
+        px={3}
+        py={1.5}
+        bg="bg.subtle"
+        borderBottom="1px solid"
+        borderColor="border"
+      >
+        <Badge
+          size="sm"
+          colorPalette={STATE_COLORS[executionState]}
+          variant="solid"
+          fontFamily="mono"
+          fontSize="xs"
+        >
+          {BLOCK_LABELS[blockType] ?? blockType.toUpperCase()}
+        </Badge>
+
+        <Input
+          size="xs"
+          variant="flushed"
+          placeholder="alias..."
+          value={alias}
+          onChange={(e) => onAliasChange(e.target.value)}
+          fontFamily="mono"
+          fontSize="xs"
+          maxW="140px"
+          color="fg.muted"
+          onClick={(e) => e.stopPropagation()}
+        />
+
+        <HStack gap={0} ml="auto">
+          {MODE_ICONS.map(({ mode, label, icon }) => (
+            <IconButton
+              key={mode}
+              aria-label={label}
+              size="2xs"
+              variant={displayMode === mode ? "solid" : "ghost"}
+              colorPalette="gray"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDisplayModeChange(mode);
+              }}
+              fontSize="xs"
+            >
+              {icon}
+            </IconButton>
+          ))}
+        </HStack>
+
+        <Badge size="sm" colorPalette={STATE_COLORS[executionState]} variant="subtle">
+          {isRunning && <Spinner size="xs" mr={1} />}
+          {STATE_LABELS[executionState]}
+        </Badge>
+
+        <IconButton
+          aria-label={isRunning ? "Cancel" : "Run"}
+          size="xs"
+          variant="ghost"
+          colorPalette={isRunning ? "red" : "green"}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (isRunning) { onCancel(); } else { onRun(); }
+          }}
+        >
+          {isRunning ? <LuSquare /> : <LuPlay />}
+        </IconButton>
+      </Flex>
+
+      {/* Content area */}
+      <Flex direction={displayMode === "split" ? "row" : "column"} minH="60px">
+        {showInput && (
+          <Box
+            flex={1}
+            borderRight={displayMode === "split" ? "1px solid" : undefined}
+            borderColor="border"
+            overflow="auto"
+          >
+            {inputSlot}
+          </Box>
+        )}
+
+        {showOutput && (
+          <Box flex={1} overflow="auto">
+            {executionState === "idle" ? (
+              <Flex
+                align="center"
+                justify="center"
+                h="100%"
+                minH="60px"
+                color="fg.muted"
+                fontSize="sm"
+              >
+                Run to see results
+              </Flex>
+            ) : (
+              outputSlot
+            )}
+          </Box>
+        )}
+      </Flex>
+    </Box>
+  );
+}

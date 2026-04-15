@@ -15,6 +15,10 @@ export function markdownToHtml(markdown: string): string {
         customBlocks.push(
           `<div data-type="mermaid" data-content="${escapeAttr(content.trimEnd())}"></div>`,
         );
+      } else if (lang === "http") {
+        customBlocks.push(
+          `<div data-type="http-block" data-content="${escapeAttr(content.trimEnd())}"></div>`,
+        );
       } else {
         customBlocks.push(
           `<pre><code class="language-${lang}">${escapeHtml(content.trimEnd())}</code></pre>`,
