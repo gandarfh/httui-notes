@@ -1,7 +1,7 @@
 import { Node, mergeAttributes } from "@tiptap/core";
 
 export type DisplayMode = "input" | "output" | "split";
-export type ExecutionState = "idle" | "running" | "success" | "error";
+export type ExecutionState = "idle" | "running" | "success" | "error" | "cached";
 
 /**
  * Base TipTap node for all executable blocks (http, db, e2e).

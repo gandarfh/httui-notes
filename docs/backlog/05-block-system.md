@@ -13,13 +13,13 @@ Criar a base TipTap para todos os blocos executaveis.
 
 ### Tasks
 
-- [ ] Criar `ExecutableBlock` — TipTap node abstrato com nodeView React que serve de base para http, db, e2e
-- [ ] Atributos comuns: alias (string), display_mode (input | output | split), state (idle | cached | running | success | error)
-- [ ] Renderizar header do bloco com: icone do tipo, campo alias editavel, toggle de display mode (3 botoes), botao Run
-- [ ] Renderizar area de input (slot para cada tipo de bloco)
-- [ ] Renderizar area de output (slot para cada tipo de bloco)
-- [ ] Controlar visibilidade de input/output baseado no display_mode
-- [ ] Estilizar com daisyUI: `card` como container, `badge` para status, `btn` para acoes
+- [x] Criar `ExecutableBlock` — TipTap node abstrato com nodeView React que serve de base para http, db, e2e
+- [x] Atributos comuns: alias (string), display_mode (input | output | split), state (idle | cached | running | success | error)
+- [x] Renderizar header do bloco com: icone do tipo, campo alias editavel, toggle de display mode (3 botoes), botao Run
+- [x] Renderizar area de input (slot para cada tipo de bloco)
+- [x] Renderizar area de output (slot para cada tipo de bloco)
+- [x] Controlar visibilidade de input/output baseado no display_mode
+- [x] Estilizar com Chakra UI: `Box` como container, `Badge` para status, `IconButton` para acoes
 
 ## Story 02: Display modes
 
@@ -27,12 +27,12 @@ Tres modos de visualizacao por bloco.
 
 ### Tasks
 
-- [ ] Implementar modo **input**: mostra apenas formulario de edicao, output oculto
-- [ ] Implementar modo **output**: mostra apenas resultado, input oculto
-- [ ] Implementar modo **split**: divide bloco verticalmente — input esquerda, output direita
-- [ ] Toggle entre modos via botoes no header do bloco (icones daisyUI)
-- [ ] Default: input quando idle, split quando tem resultado cacheado
-- [ ] Persistir display_mode no atributo do node (salvo no markdown)
+- [x] Implementar modo **input**: mostra apenas formulario de edicao, output oculto
+- [x] Implementar modo **output**: mostra apenas resultado, input oculto
+- [x] Implementar modo **split**: divide bloco verticalmente — input esquerda, output direita
+- [x] Toggle entre modos via botoes no header do bloco (icones Lucide)
+- [x] Default: input quando idle, split quando tem resultado
+- [x] Persistir display_mode no atributo do node (salvo no markdown)
 - [ ] Animacao suave de transicao entre modos
 
 ## Story 03: Estados e ciclo de execucao
@@ -41,12 +41,12 @@ Gerenciar estados do bloco durante execucao.
 
 ### Tasks
 
-- [ ] Implementar maquina de estados: idle -> running -> success/error
-- [ ] Estado **idle**: output area mostra placeholder ("Run to see results")
-- [ ] Estado **running**: output area mostra loading (daisyUI `loading loading-spinner`), botao Run vira Cancel
-- [ ] Estado **success**: output area mostra resultado, badge verde com status
-- [ ] Estado **error**: output area mostra mensagem de erro estilizada (daisyUI `alert alert-error`)
-- [ ] Estado **cached**: ao abrir documento, carregar resultado do block_results se hash bate
+- [x] Implementar maquina de estados: idle -> running -> success/error
+- [x] Estado **idle**: output area mostra placeholder ("Run to see results")
+- [x] Estado **running**: output area mostra Spinner, botao Run vira Cancel
+- [x] Estado **success**: output area mostra resultado, badge verde com status
+- [x] Estado **error**: output area mostra mensagem de erro
+- [x] Estado **cached**: ao abrir documento, carregar resultado do block_results se hash bate
 
 ## Story 04: Cache de resultados
 
@@ -54,12 +54,14 @@ Persistir resultados de execucao no SQLite.
 
 ### Tasks
 
-- [ ] Calcular `block_hash` a partir do conteudo serializado do bloco (SHA-256 ou similar)
-- [ ] Apos execucao com sucesso: salvar em `block_results` (file_path, block_hash, status, response JSON, total_rows, elapsed_ms)
-- [ ] Ao abrir documento: para cada bloco executavel, buscar resultado em block_results por file_path + block_hash
-- [ ] Se hash bate: carregar resultado, setar estado como cached, entrar em split view
-- [ ] Se hash nao bate (conteudo mudou): descartar cache, setar idle
-- [ ] Implementar Tauri commands: `get_block_result`, `save_block_result`
+- [x] Calcular `block_hash` a partir do conteudo serializado do bloco (SHA-256 via Web Crypto API)
+- [x] Apos execucao com sucesso: salvar em `block_results` (file_path, block_hash, status, response JSON, total_rows, elapsed_ms)
+- [x] Ao abrir documento: para cada bloco executavel, buscar resultado em block_results por file_path + block_hash
+- [x] Se hash bate: carregar resultado, setar estado como cached, entrar em split view
+- [x] Se hash nao bate (conteudo mudou): descartar cache, setar idle
+- [x] Implementar Tauri commands: `get_block_result`, `save_block_result`
+- [x] Implementar execucao HTTP real via reqwest (substituiu mock)
+- [x] Implementar Tauri command generico `execute_block` com ExecutorRegistry
 
 ## Story 05: Sistema de referencias entre blocos
 
