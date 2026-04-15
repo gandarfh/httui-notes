@@ -1,0 +1,74 @@
+/* ── Drag handle ── */
+.custom-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  cursor: grab;
+  border-radius: 0.25rem;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.drag-handle:hover .custom-drag-handle,
+.drag-handle[data-dragging="true"] .custom-drag-handle {
+  opacity: 0.5;
+}
+
+.custom-drag-handle:hover {
+  opacity: 1 !important;
+  background-color: var(--chakra-colors-bg-subtle);
+}
+
+.custom-drag-handle:active {
+  cursor: grabbing;
+}
+
+.custom-drag-handle::after {
+  content: '⠿';
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--chakra-colors-fg-muted);
+  line-height: 1;
+}
+
+/* ── Source block dimming during drag ── */
+.is-dragging {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+/* ── Selection highlight during drag ── */
+.ProseMirror-noderangeselection *::selection {
+  background: transparent;
+}
+
+.ProseMirror-noderangeselection * {
+  caret-color: transparent;
+}
+
+.ProseMirror-selectednode,
+.ProseMirror-selectednoderange {
+  position: relative;
+}
+
+.ProseMirror-selectednode::before,
+.ProseMirror-selectednoderange::before {
+  position: absolute;
+  pointer-events: none;
+  z-index: -1;
+  content: '';
+  top: -0.25rem;
+  left: -0.25rem;
+  right: -0.25rem;
+  bottom: -0.25rem;
+  background-color: rgba(59, 130, 246, 0.08);
+  border-radius: 0.25rem;
+}
+
+/* ── Drop cursor indicator ── */
+.ProseMirror-dropcursor {
+  border-top: 2px solid var(--chakra-colors-blue-500);
+  pointer-events: none;
+}
