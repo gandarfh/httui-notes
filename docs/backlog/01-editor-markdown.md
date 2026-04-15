@@ -4,7 +4,7 @@ Implementar o editor TipTap com suporte completo a markdown, slash commands, e r
 
 **Depende de:** Epic 00 (Project Setup)
 **Desbloqueia:** Epic 05 (Block System), Epic 06 (Database Blocks), Epic 07 (HTTP Client)
-**Status:** em andamento (stories core concluidas, stories avancadas pendentes)
+**Status:** concluido
 
 ---
 
@@ -48,63 +48,63 @@ Menu de comandos ao digitar `/`.
 - [x] Suporte a navegacao por teclado (setas + Enter + Escape)
 - [ ] Registrar comandos de blocos executaveis: /http, /sql, /db, /e2e — depende do Epic 05
 
-## Story 04: Drag and drop de blocos
+## Story 04: Drag and drop de blocos ✅
 
 Permitir reordenacao de blocos via drag.
 
 ### Tasks
 
-- [ ] Configurar drag handle nos blocos do TipTap
-- [ ] Implementar drag and drop nativo do ProseMirror
-- [ ] Validacao de referencias ao mover blocos executaveis
+- [x] Configurar drag handle nos blocos do TipTap
+- [x] Implementar drag and drop nativo do ProseMirror
+- [ ] Validacao de referencias ao mover blocos executaveis — depende do Epic 05
 
-## Story 05: GFM tables
+## Story 05: GFM tables ✅
 
 Suporte completo a tabelas estilo GitHub.
 
 ### Tasks
 
-- [ ] Instalar e configurar `@tiptap/extension-table`
-- [ ] Estilizar tabelas com classes daisyUI
-- [ ] Toolbar contextual de tabela
-- [ ] Serializar tabelas como pipe tables no markdown
+- [x] Instalar e configurar `@tiptap/extension-table`
+- [x] Estilizar tabelas com Chakra UI
+- [ ] Toolbar contextual de tabela — adiado
+- [x] Serializar tabelas como pipe tables no markdown
 
-## Story 06: Mermaid diagrams
+## Story 06: Mermaid diagrams ✅
 
 Renderizar blocos ```mermaid como diagramas inline.
 
 ### Tasks
 
-- [ ] Criar TipTap node customizado `MermaidBlock` com nodeView React
-- [ ] Integrar mermaid.js para renderizar SVG
-- [ ] Code editor ao clicar no diagrama
-- [ ] Re-renderizar em tempo real (debounce)
+- [x] Criar TipTap node customizado `MermaidBlock` com nodeView React
+- [x] Integrar mermaid.js para renderizar SVG
+- [x] Code editor ao clicar no diagrama
+- [x] Re-renderizar em tempo real (debounce 500ms)
 
-## Story 07: KaTeX math
+## Story 07: KaTeX math ✅
 
 Renderizar expressoes matematicas inline e display.
 
 ### Tasks
 
-- [ ] Criar TipTap mark/node para math inline e display
-- [ ] Renderizar via KaTeX com fallback
+- [x] Criar TipTap node para math inline (`$...$`) e display (`$$...$$`)
+- [x] Renderizar via KaTeX com fallback
 
-## Story 08: Syntax highlighting em code blocks
+## Story 08: Syntax highlighting em code blocks ✅
 
 Code blocks com language identifier renderizam com highlighting.
 
 ### Tasks
 
-- [ ] Configurar extension `@tiptap/extension-code-block-lowlight`
-- [ ] Instalar highlight.js ou Shiki
-- [ ] Estilizar com cores compatíveis com theme light/dark
+- [x] Configurar extension `@tiptap/extension-code-block-lowlight`
+- [x] Instalar highlight.js + lowlight
+- [x] Estilizar com cores compatíveis com theme light/dark via Chakra tokens
 
-## Story 09: Wikilinks
+## Story 09: Wikilinks ✅
 
 Links internos estilo Obsidian.
 
 ### Tasks
 
-- [ ] Criar TipTap mark/node para wikilinks `[[...]]`
-- [ ] Autocomplete de documentos no vault
-- [ ] Navegacao ao clicar
+- [x] Criar TipTap node para wikilinks `[[...]]`
+- [x] Autocomplete de documentos no vault via `[[` trigger
+- [x] Suporte a sintaxe `[[target|label]]`

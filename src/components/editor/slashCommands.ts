@@ -85,6 +85,65 @@ const COMMANDS: SlashMenuItem[] = [
       editor.chain().focus().deleteRange(range).setHorizontalRule().run();
     },
   },
+  {
+    title: "Formula inline",
+    icon: "∑",
+    shortcut: "$",
+    command: ({ editor, range }) => {
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .insertContent({
+          type: "mathInline",
+          attrs: { content: "x^2" },
+        })
+        .run();
+    },
+  },
+  {
+    title: "Formula em bloco",
+    icon: "∫",
+    shortcut: "$$",
+    command: ({ editor, range }) => {
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .insertContent({
+          type: "mathBlock",
+          attrs: { content: "E = mc^2" },
+        })
+        .run();
+    },
+  },
+  {
+    title: "Diagrama Mermaid",
+    icon: "◇",
+    command: ({ editor, range }) => {
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .insertContent({
+          type: "mermaidBlock",
+          attrs: { content: "graph TD\n  A --> B" },
+        })
+        .run();
+    },
+  },
+  {
+    title: "Tabela",
+    icon: "T#",
+    command: ({ editor, range }) => {
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+        .run();
+    },
+  },
 ];
 
 export function createSlashCommands() {
