@@ -69,12 +69,14 @@ Resolucao de `{{alias.response.path}}`.
 
 ### Tasks
 
-- [ ] Implementar parser de referencias: extrair todas as `{{...}}` de um bloco
-- [ ] Classificar cada referencia: environment variable (sem `.response`) vs block reference (com `.response` ou `.status`)
-- [ ] Para block references: resolver alias -> bloco no documento (buscar apenas acima do bloco atual)
-- [ ] Navegar o JSON do resultado cacheado via dot notation (ex: `response.data.items.0.id`)
-- [ ] Retornar erro claro se: alias nao encontrado, bloco esta abaixo, resultado nao cacheado, path invalido no JSON
+- [x] Implementar parser de referencias: extrair todas as `{{...}}` de um bloco
+- [x] Classificar cada referencia: block reference com path via dot notation
+- [x] Para block references: resolver alias -> bloco no documento (buscar apenas acima do bloco atual)
+- [x] Navegar o JSON do resultado cacheado via dot notation (ex: `response.body.items.0.id`)
+- [x] Retornar erro claro se: alias nao encontrado, bloco esta abaixo, resultado nao cacheado, path invalido no JSON
+- [x] Resolver referencias em URL, headers e body antes de executar HTTP block
 - [ ] Highlight visual de referencias no editor (cor diferente, hover mostra valor resolvido)
+- [ ] Classificar environment variables vs block references (depende de Story 07)
 
 ## Story 06: Resolucao de dependencias
 

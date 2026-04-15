@@ -15,6 +15,8 @@ import type { HttpBlockData, KeyValue, HttpMethod, HttpResponse } from "./types"
 import { DEFAULT_HTTP_DATA } from "./types";
 import { executeBlock, getBlockResult, saveBlockResult } from "@/lib/tauri/commands";
 import { hashBlockContent } from "@/lib/blocks/hash";
+import { resolveAllReferences } from "@/lib/blocks/references";
+import { collectBlocksAbove } from "@/lib/blocks/document";
 
 const cmTransparentBg = EditorView.theme({
   "&": { backgroundColor: "transparent" },
@@ -377,7 +379,7 @@ function HttpOutput({ response, error, cmTheme }: { response: HttpResponse | nul
 
 // --- Main view ---
 
-export function HttpBlockView({ node, updateAttributes, selected }: NodeViewProps) {
+export function HttpBlockView({ node, editor, getPos, updateAttributes, selected }: NodeViewProps) {
   const { colorMode } = useColorMode();
   const { filePath } = useBlockContext();
   const cmTheme = colorMode === "dark" ? "dark" : "light";
@@ -441,7 +443,41 @@ export function HttpBlockView({ node, updateAttributes, selected }: NodeViewProp
     };
 
     try {
-      const result = await executeBlock("http", data);
+      // Resolve {{...}} references before execution
+      const currentPos = (typeof getPos === "function" ? getPos() : 0) ?? 0;
+      const blocks = filePath
+        ? await collectBlocksAbove(editor, currentPos, filePath)
+        : [];
+
+      const resolvedData = { ...data };
+      const allErrors: string[] = [];
+
+      // Resolve URL
+      const urlResult = resolveAllReferences(data.url, blocks, currentPos);
+      resolvedData.url = urlResult.resolved;
+      allErrors.push(...urlResult.errors.map((e) => `URL: ${e.message}`));
+
+      // Resolve header values
+      resolvedData.headers = data.headers.map((h) => {
+        const r = resolveAllReferences(h.value, blocks, currentPos);
+        allErrors.push(...r.errors.map((e) => `Header "${h.key}": ${e.message}`));
+        return { ...h, value: r.resolved };
+      });
+
+      // Resolve body
+      if (data.body) {
+        const bodyResult = resolveAllReferences(data.body, blocks, currentPos);
+        resolvedData.body = bodyResult.resolved;
+        allErrors.push(...bodyResult.errors.map((e) => `Body: ${e.message}`));
+      }
+
+      if (allErrors.length > 0) {
+        setError(`Reference errors:\n${allErrors.join("\n")}`);
+        updateAttributes({ executionState: "error" });
+        return;
+      }
+
+      const result = await executeBlock("http", resolvedData);
       if (cancelled) return;
 
       const resultData = result.data as {
@@ -474,7 +510,7 @@ export function HttpBlockView({ node, updateAttributes, selected }: NodeViewProp
       setError(err instanceof Error ? err.message : String(err));
       updateAttributes({ executionState: "error" });
     }
-  }, [data, rawContent, filePath, updateAttributes]);
+  }, [data, rawContent, filePath, editor, getPos, updateAttributes]);
 
   const handleCancel = useCallback(() => {
     cancelRef.current?.();
