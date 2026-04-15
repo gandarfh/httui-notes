@@ -43,6 +43,20 @@ turndown.addRule("customCodeBlock", {
   },
 });
 
+// HTTP executable blocks
+turndown.addRule("httpBlock", {
+  filter: (node) => {
+    return (
+      node.nodeName === "DIV" &&
+      node.getAttribute("data-type") === "http-block"
+    );
+  },
+  replacement: (_content, node) => {
+    const content = (node as HTMLElement).getAttribute("data-content") || "";
+    return `\n\`\`\`http\n${content}\n\`\`\`\n`;
+  },
+});
+
 // GFM pipe tables
 turndown.addRule("table", {
   filter: "table",

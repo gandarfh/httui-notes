@@ -144,6 +144,30 @@ const COMMANDS: SlashMenuItem[] = [
         .run();
     },
   },
+  {
+    title: "HTTP Request",
+    icon: "⚡",
+    command: ({ editor, range }) => {
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .insertContent({
+          type: "httpBlock",
+          attrs: {
+            blockType: "http",
+            content: JSON.stringify({
+              method: "GET",
+              url: "",
+              params: [],
+              headers: [],
+              body: "",
+            }),
+          },
+        })
+        .run();
+    },
+  },
 ];
 
 export function createSlashCommands() {

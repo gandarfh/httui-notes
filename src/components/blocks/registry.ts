@@ -9,7 +9,8 @@ export interface BlockProps {
 export interface BlockRegistration {
   type: string;
   node: Node;
-  component: ComponentType<BlockProps>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  component: ComponentType<any>;
   defaultAttrs: Record<string, unknown>;
 }
 

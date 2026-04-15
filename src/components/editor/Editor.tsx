@@ -20,6 +20,8 @@ import { MathInline } from "./extensions/MathInline";
 import { MathBlock } from "./extensions/MathBlock";
 import { Wikilink } from "./extensions/Wikilink";
 import { EditorDragDrop } from "./extensions/EditorDragDrop";
+import { registry } from "@/components/blocks/registry";
+import "@/components/blocks/http"; // side-effect: registers HttpBlock
 import "./editor.css";
 import { createWikilinkSuggest } from "./extensions/WikilinkSuggest";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
@@ -82,6 +84,7 @@ export function Editor({
       MermaidBlock,
       MathInline,
       MathBlock,
+      ...registry.getExtensions(),
       Wikilink,
       createWikilinkSuggest({
         getFiles: () => flattenFiles(entriesRef.current),
