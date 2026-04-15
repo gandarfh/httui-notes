@@ -2,16 +2,19 @@ import { NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/core";
 import { Box, Flex, HStack, Input, Badge, IconButton, Tabs } from "@chakra-ui/react";
 import { NativeSelectRoot, NativeSelectField } from "@chakra-ui/react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LuX, LuPlus, LuBraces } from "react-icons/lu";
 import { useColorMode } from "@/components/ui/color-mode";
 import CodeMirror from "@uiw/react-codemirror";
 import { json } from "@codemirror/lang-json";
 import { EditorView } from "@codemirror/view";
 import { ExecutableBlockShell } from "../ExecutableBlockShell";
+import { useBlockContext } from "../BlockContext";
 import type { DisplayMode, ExecutionState } from "../ExecutableBlock";
 import type { HttpBlockData, KeyValue, HttpMethod, HttpResponse } from "./types";
 import { DEFAULT_HTTP_DATA } from "./types";
+import { executeBlock, getBlockResult, saveBlockResult } from "@/lib/tauri/commands";
+import { hashBlockContent } from "@/lib/blocks/hash";
 
 const cmTransparentBg = EditorView.theme({
   "&": { backgroundColor: "transparent" },
@@ -35,27 +38,13 @@ function serializeBlockData(data: HttpBlockData): string {
   return JSON.stringify(data);
 }
 
-// --- Mock execution ---
-async function mockExecute(data: HttpBlockData): Promise<HttpResponse> {
-  if (!data.url.trim()) {
-    throw new Error("URL is required");
-  }
-  await new Promise((r) => setTimeout(r, 800));
+function blockResultToResponse(result: { status_code: number; status_text: string; headers: Record<string, string>; body: string }, elapsedMs: number): HttpResponse {
   return {
-    status: 200,
-    statusText: "OK",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(
-      {
-        message: "Hello from mock",
-        method: data.method,
-        url: data.url,
-        timestamp: new Date().toISOString(),
-      },
-      null,
-      2,
-    ),
-    elapsedMs: 800,
+    status: result.status_code,
+    statusText: result.status_text,
+    headers: result.headers,
+    body: result.body,
+    elapsedMs,
   };
 }
 
@@ -390,6 +379,7 @@ function HttpOutput({ response, error, cmTheme }: { response: HttpResponse | nul
 
 export function HttpBlockView({ node, updateAttributes, selected }: NodeViewProps) {
   const { colorMode } = useColorMode();
+  const { filePath } = useBlockContext();
   const cmTheme = colorMode === "dark" ? "dark" : "light";
   const alias = (node.attrs.alias as string) ?? "";
   const displayMode = (node.attrs.displayMode as DisplayMode) ?? "input";
@@ -399,8 +389,39 @@ export function HttpBlockView({ node, updateAttributes, selected }: NodeViewProp
   const [response, setResponse] = useState<HttpResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const cancelRef = useRef<(() => void) | null>(null);
+  const lastHashRef = useRef<string>("");
 
   const data = parseBlockData(rawContent);
+
+  // Load cached result on mount and when content changes
+  useEffect(() => {
+    if (!filePath || !rawContent) return;
+    let cancelled = false;
+
+    (async () => {
+      const hash = await hashBlockContent(rawContent);
+      lastHashRef.current = hash;
+
+      try {
+        const cached = await getBlockResult(filePath, hash);
+        if (cancelled) return;
+        if (cached) {
+          const parsed = JSON.parse(cached.response);
+          setResponse(blockResultToResponse(parsed, cached.elapsed_ms));
+          setError(null);
+          updateAttributes({ executionState: "cached", displayMode: "split" });
+        } else if (executionState === "cached") {
+          // Hash changed, invalidate
+          setResponse(null);
+          updateAttributes({ executionState: "idle" });
+        }
+      } catch {
+        // Cache lookup failed, ignore
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [filePath, rawContent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDataChange = useCallback(
     (updated: HttpBlockData) => {
@@ -420,19 +441,40 @@ export function HttpBlockView({ node, updateAttributes, selected }: NodeViewProp
     };
 
     try {
-      const res = await mockExecute(data);
+      const result = await executeBlock("http", data);
       if (cancelled) return;
+
+      const resultData = result.data as {
+        status_code: number;
+        status_text: string;
+        headers: Record<string, string>;
+        body: string;
+      };
+      const res = blockResultToResponse(resultData, result.duration_ms);
       setResponse(res);
       updateAttributes({
-        executionState: "success",
+        executionState: result.status === "success" ? "success" : "error",
         displayMode: "split",
       });
+
+      // Save to cache
+      if (filePath) {
+        const hash = await hashBlockContent(rawContent);
+        lastHashRef.current = hash;
+        await saveBlockResult(
+          filePath,
+          hash,
+          result.status,
+          JSON.stringify(resultData),
+          result.duration_ms,
+        );
+      }
     } catch (err) {
       if (cancelled) return;
       setError(err instanceof Error ? err.message : String(err));
       updateAttributes({ executionState: "error" });
     }
-  }, [data, updateAttributes]);
+  }, [data, rawContent, filePath, updateAttributes]);
 
   const handleCancel = useCallback(() => {
     cancelRef.current?.();

@@ -167,3 +167,53 @@ export function updateSearchEntry(
 ): Promise<void> {
   return invoke("update_search_entry", { filePath, content });
 }
+
+// --- Block execution ---
+
+export interface BlockResult {
+  status: string;
+  data: Record<string, unknown>;
+  duration_ms: number;
+}
+
+export function executeBlock(
+  blockType: string,
+  params: unknown,
+): Promise<BlockResult> {
+  return invoke("execute_block", { blockType, params });
+}
+
+// --- Block result cache ---
+
+export interface CachedBlockResult {
+  status: string;
+  response: string;
+  total_rows: number | null;
+  elapsed_ms: number;
+  executed_at: string;
+}
+
+export function getBlockResult(
+  filePath: string,
+  blockHash: string,
+): Promise<CachedBlockResult | null> {
+  return invoke("get_block_result", { filePath, blockHash });
+}
+
+export function saveBlockResult(
+  filePath: string,
+  blockHash: string,
+  status: string,
+  response: string,
+  elapsedMs: number,
+  totalRows?: number | null,
+): Promise<void> {
+  return invoke("save_block_result", {
+    filePath,
+    blockHash,
+    status,
+    response,
+    elapsedMs,
+    totalRows: totalRows ?? null,
+  });
+}

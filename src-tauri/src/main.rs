@@ -5,6 +5,60 @@ use sqlx::sqlite::SqlitePool;
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
 
+// --- Execute block command ---
+
+#[tauri::command]
+async fn execute_block(
+    registry: tauri::State<'_, httui_notes::executor::ExecutorRegistry>,
+    block_type: String,
+    params: serde_json::Value,
+) -> Result<httui_notes::executor::BlockResult, String> {
+    let req = httui_notes::executor::BlockRequest {
+        block_type,
+        params,
+    };
+    registry
+        .execute(req)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+// --- Block result cache commands ---
+
+#[tauri::command]
+async fn get_block_result(
+    pool: tauri::State<'_, SqlitePool>,
+    file_path: String,
+    block_hash: String,
+) -> Result<Option<httui_notes::block_results::CachedBlockResult>, String> {
+    httui_notes::block_results::get_block_result(&pool, &file_path, &block_hash)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn save_block_result(
+    pool: tauri::State<'_, SqlitePool>,
+    file_path: String,
+    block_hash: String,
+    status: String,
+    response: String,
+    elapsed_ms: i64,
+    total_rows: Option<i64>,
+) -> Result<(), String> {
+    httui_notes::block_results::save_block_result(
+        &pool,
+        &file_path,
+        &block_hash,
+        &status,
+        &response,
+        elapsed_ms,
+        total_rows,
+    )
+    .await
+    .map_err(|e| e.to_string())
+}
+
 // --- Config commands ---
 
 #[tauri::command]
@@ -296,6 +350,14 @@ fn main() {
             });
 
             app.manage(pool);
+
+            // Executor registry
+            let mut executor_registry = httui_notes::executor::ExecutorRegistry::new();
+            executor_registry.register(Box::new(
+                httui_notes::executor::http::HttpExecutor::new(),
+            ));
+            app.manage(executor_registry);
+
             app.manage(Arc::new(Mutex::new(Vec::<String>::new()))); // ignore_paths
             app.manage(Mutex::new(
                 None::<httui_notes::fs::watcher::VaultWatcher>,
@@ -304,6 +366,9 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            execute_block,
+            get_block_result,
+            save_block_result,
             get_config,
             set_config,
             restore_session,

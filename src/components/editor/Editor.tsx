@@ -21,6 +21,7 @@ import { MathBlock } from "./extensions/MathBlock";
 import { Wikilink } from "./extensions/Wikilink";
 import { EditorDragDrop } from "./extensions/EditorDragDrop";
 import { registry } from "@/components/blocks/registry";
+import { BlockContextProvider } from "@/components/blocks/BlockContext";
 import "@/components/blocks/http"; // side-effect: registers HttpBlock
 import "./editor.css";
 import { createWikilinkSuggest } from "./extensions/WikilinkSuggest";
@@ -134,6 +135,7 @@ export function Editor({
   if (!editor) return null;
 
   return (
+    <BlockContextProvider value={{ filePath }}>
     <Box h="100%" overflow="hidden" display="flex" flexDirection="column">
       <Box
         flex={1}
@@ -257,5 +259,6 @@ export function Editor({
         </EditorDragDrop>
       </Box>
     </Box>
+    </BlockContextProvider>
   );
 }

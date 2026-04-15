@@ -22,6 +22,7 @@ const STATE_COLORS: Record<ExecutionState, string> = {
   running: "blue",
   success: "green",
   error: "red",
+  cached: "purple",
 };
 
 const STATE_LABELS: Record<ExecutionState, string> = {
@@ -29,6 +30,7 @@ const STATE_LABELS: Record<ExecutionState, string> = {
   running: "running",
   success: "success",
   error: "error",
+  cached: "cached",
 };
 
 const BLOCK_LABELS: Record<string, string> = {
