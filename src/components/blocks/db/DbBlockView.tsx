@@ -7,7 +7,7 @@ import { useColorMode } from "@/components/ui/color-mode";
 import CodeMirror from "@uiw/react-codemirror";
 import { sql, type SQLConfig, PostgreSQL, MySQL, SQLite as SQLiteDialect, schemaCompletionSource, keywordCompletionSource } from "@codemirror/lang-sql";
 import { autocompletion } from "@codemirror/autocomplete";
-import { EditorView } from "@codemirror/view";
+import { EditorView, tooltips } from "@codemirror/view";
 import { ExecutableBlockShell } from "../ExecutableBlockShell";
 import { useBlockContext } from "../BlockContext";
 import type { DisplayMode, ExecutionState } from "../ExecutableBlock";
@@ -33,6 +33,52 @@ const cmTransparentBg = EditorView.theme({
   },
   "& .cm-activeLineGutter, & .cm-activeLine": {
     backgroundColor: "transparent !important",
+  },
+});
+
+const autocompleteTheme = EditorView.baseTheme({
+  ".cm-tooltip": {
+    zIndex: "9999 !important",
+  },
+  ".cm-tooltip-autocomplete": {
+    background: "var(--chakra-colors-bg) !important",
+    border: "1px solid var(--chakra-colors-border) !important",
+    borderRadius: "8px !important",
+    overflow: "hidden",
+    boxShadow: "0 8px 24px rgba(0,0,0,0.4) !important",
+    padding: "4px !important",
+  },
+  ".cm-tooltip-autocomplete ul": {
+    fontFamily: "var(--chakra-fonts-mono)",
+    fontSize: "12px",
+    maxHeight: "200px",
+  },
+  ".cm-tooltip-autocomplete li": {
+    padding: "4px 10px !important",
+    lineHeight: "1.5",
+    borderRadius: "4px",
+    margin: "1px 0",
+  },
+  ".cm-tooltip-autocomplete li[aria-selected]": {
+    background: "rgba(139, 92, 246, 0.2) !important",
+    color: "inherit !important",
+  },
+  ".cm-completionIcon": {
+    display: "none",
+  },
+  ".cm-completionLabel": {
+    fontWeight: "600",
+  },
+  ".cm-completionDetail": {
+    opacity: "0.5",
+    marginLeft: "12px",
+    fontStyle: "normal !important",
+    fontSize: "11px",
+  },
+  ".cm-completionMatchedText": {
+    textDecoration: "none !important",
+    fontWeight: "700",
+    color: "rgb(167, 139, 250)",
   },
 });
 
@@ -171,6 +217,8 @@ function DbInput({
         ],
         activateOnTyping: true,
       }),
+      tooltips({ parent: document.body }),
+      autocompleteTheme,
       EditorView.lineWrapping,
       cmTransparentBg,
       ...referenceHighlight,
