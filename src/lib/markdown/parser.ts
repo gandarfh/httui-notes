@@ -8,7 +8,7 @@ export function markdownToHtml(markdown: string): string {
   // Preserve custom fenced blocks by temporarily replacing them
   const customBlocks: string[] = [];
   const preserved = markdown.replace(
-    /```((?:http|db-[\w:-]+|e2e|mermaid)[^\n]*)\n([\s\S]*?)```/g,
+    /```((?:http|db(?:-[\w:-]+)?|e2e|mermaid)[^\n]*)\n([\s\S]*?)```/g,
     (_match, info: string, content: string) => {
       const index = customBlocks.length;
       const lang = info.split(/\s+/)[0];
@@ -22,6 +22,15 @@ export function markdownToHtml(markdown: string): string {
         const meta = parseInfoMeta(info);
         const attrs = [
           `data-type="http-block"`,
+          `data-content="${escapeAttr(content.trimEnd())}"`,
+          meta.alias ? `data-alias="${escapeAttr(meta.alias)}"` : "",
+          meta.displayMode ? `data-display-mode="${escapeAttr(meta.displayMode)}"` : "",
+        ].filter(Boolean).join(" ");
+        customBlocks.push(`<div ${attrs}></div>`);
+      } else if (lang === "db" || lang.startsWith("db-")) {
+        const meta = parseInfoMeta(info);
+        const attrs = [
+          `data-type="db-block"`,
           `data-content="${escapeAttr(content.trimEnd())}"`,
           meta.alias ? `data-alias="${escapeAttr(meta.alias)}"` : "",
           meta.displayMode ? `data-display-mode="${escapeAttr(meta.displayMode)}"` : "",
