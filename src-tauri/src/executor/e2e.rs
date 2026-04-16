@@ -34,6 +34,8 @@ struct E2eStep {
     method: String,
     url: String,
     #[serde(default)]
+    params: Vec<KeyValue>,
+    #[serde(default)]
     headers: Vec<KeyValue>,
     #[serde(default)]
     body: String,
@@ -132,7 +134,7 @@ impl E2eExecutor {
         );
         let resolved_url = resolve_variables(&raw_url, variables);
 
-        let url = match reqwest::Url::parse(&resolved_url) {
+        let mut url = match reqwest::Url::parse(&resolved_url) {
             Ok(u) => u,
             Err(e) => {
                 return StepResult {
@@ -146,6 +148,14 @@ impl E2eExecutor {
                 };
             }
         };
+
+        // Append query params
+        for kv in &step.params {
+            if !kv.key.is_empty() {
+                let value = resolve_variables(&kv.value, variables);
+                url.query_pairs_mut().append_pair(&kv.key, &value);
+            }
+        }
 
         // Build method
         let method = match step.method.parse::<reqwest::Method>() {
