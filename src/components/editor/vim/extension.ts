@@ -12,6 +12,7 @@ interface VimOptions {
 interface VimStorage {
   mode: VimMode;
   pendingKey: string | null;
+  visualAnchor: number | null;
 }
 
 const vimPluginKey = new PluginKey("vimMode");
@@ -28,7 +29,7 @@ export const VimExtension = Extension.create<VimOptions, VimStorage>({
   },
 
   addStorage() {
-    return { mode: VimMode.Normal, pendingKey: null };
+    return { mode: VimMode.Normal, pendingKey: null, visualAnchor: null };
   },
 
   addProseMirrorPlugins() {
@@ -53,7 +54,7 @@ export const VimExtension = Extension.create<VimOptions, VimStorage>({
       props: {
         decorations(state) {
           const storage = getStorage();
-          if (storage.mode !== VimMode.Insert) {
+          if (storage.mode === VimMode.Normal) {
             const { from } = state.selection;
             const maxPos = state.doc.content.size;
             if (from < 0 || from >= maxPos) return DecorationSet.empty;
@@ -173,10 +174,37 @@ export const VimExtension = Extension.create<VimOptions, VimStorage>({
       return true;
     };
 
+    // v → visual mode
+    keymapObj["v"] = () => {
+      if (getStorage().mode !== VimMode.Normal) return false;
+      const storage = getStorage();
+      const { from } = editor.state.selection;
+      storage.visualAnchor = from;
+      // Set selection covering at least one char so it's visible
+      const { state, view } = editor;
+      const to = Math.min(from + 1, state.doc.content.size);
+      const anchor = state.doc.resolve(from);
+      const head = state.doc.resolve(to);
+      view.dispatch(state.tr.setSelection(new TextSelection(anchor, head)).scrollIntoView());
+      enterMode(VimMode.Visual);
+      setCaretVisibility(editor, true); // Show native caret in visual
+      return true;
+    };
+
     // Escape → normal mode
     keymapObj["Escape"] = () => {
-      if (getStorage().mode === VimMode.Normal) return false;
+      const storage = getStorage();
+      if (storage.mode === VimMode.Normal) return false;
       const { state, view } = editor;
+      if (storage.mode === VimMode.Visual) {
+        // Collapse selection to head position
+        const { head } = state.selection;
+        const pos = state.doc.resolve(head);
+        view.dispatch(state.tr.setSelection(new TextSelection(pos, pos)).scrollIntoView());
+        storage.visualAnchor = null;
+        enterMode(VimMode.Normal);
+        return true;
+      }
       const { from } = state.selection;
       // Move cursor back one (vim convention)
       const $from = state.doc.resolve(from);
@@ -188,17 +216,31 @@ export const VimExtension = Extension.create<VimOptions, VimStorage>({
       return true;
     };
 
-    // Single-key bindings from keymap.ts
-    for (const binding of vimKeymap) {
-      if (binding.key.includes(" ")) continue;
-      if (keymapObj[binding.key]) continue; // already defined above
+    // Single-key bindings from keymap.ts — group by key to support same key in multiple modes
+    const singleKeyBindings = vimKeymap.filter((b) => !b.key.includes(" "));
+    const bindingsByKey = new Map<string, typeof singleKeyBindings>();
+    for (const binding of singleKeyBindings) {
+      const list = bindingsByKey.get(binding.key) ?? [];
+      list.push(binding);
+      bindingsByKey.set(binding.key, list);
+    }
 
-      keymapObj[binding.key] = () => {
-        if (getStorage().mode !== binding.mode) return false;
-        const result = binding.command(editor);
+    for (const [key, bindings] of bindingsByKey) {
+      if (keymapObj[key]) continue; // already defined above (i, a, A, I, C, Escape, v)
+
+      keymapObj[key] = () => {
+        const currentMode = getStorage().mode;
+        const match = bindings.find((b) => b.mode === currentMode);
+        if (!match) return false;
+        const result = match.command(editor);
         // o/O enter insert mode
-        if (result && (binding.key === "o" || binding.key === "O")) {
+        if (result && (key === "o" || key === "O")) {
           enterMode(VimMode.Insert);
+        }
+        // Visual actions return to normal mode
+        if (result && match.mode === VimMode.Visual && (key === "d" || key === "x" || key === "y")) {
+          getStorage().visualAnchor = null;
+          enterMode(VimMode.Normal);
         }
         return result;
       };

@@ -2,12 +2,14 @@ import { HStack, Text, Badge, Kbd, Box } from "@chakra-ui/react";
 import { usePaneContext } from "@/contexts/PaneContext";
 import { useEditorSettings } from "@/contexts/EditorSettingsContext";
 import { useConnectionStatus } from "@/hooks/useConnectionStatus";
+import { useEnvironmentContext } from "@/contexts/EnvironmentContext";
 import type { PaneLayout } from "@/types/pane";
 
 export function StatusBar() {
   const { layout } = usePaneContext();
   const { vimEnabled, vimMode, toggleVim } = useEditorSettings();
   const { activeConnection } = useConnectionStatus();
+  const { activeEnvironment } = useEnvironmentContext();
   const paneCount = countLeaves(layout);
 
   return (
@@ -41,7 +43,7 @@ export function StatusBar() {
             {vimMode.toUpperCase()}
           </Badge>
         )}
-        <Text>default</Text>
+        <Text>{activeEnvironment?.name ?? "No env"}</Text>
         {paneCount > 1 && <Text>{paneCount} panes</Text>}
       </HStack>
       <HStack gap={3}>

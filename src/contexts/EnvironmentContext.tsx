@@ -15,6 +15,7 @@ export interface EnvironmentContextValue {
   setVariable: (environmentId: string, key: string, value: string, isSecret?: boolean) => Promise<EnvVariable>;
   deleteVariable: (id: string) => Promise<void>;
   getActiveVariables: () => Promise<Record<string, string>>;
+  variablesVersion: number;
 }
 
 export const EnvironmentContext = createContext<EnvironmentContextValue | null>(null);

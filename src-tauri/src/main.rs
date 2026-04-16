@@ -359,6 +359,7 @@ struct SessionState {
     pane_layout: Option<String>,
     active_pane_id: Option<String>,
     active_file: Option<String>,
+    scroll_positions: Option<String>,
     file_tree: Vec<httui_notes::fs::FileEntry>,
     tab_contents: Vec<SessionTabContent>,
 }
@@ -394,13 +395,14 @@ async fn restore_session(
     pool: tauri::State<'_, SqlitePool>,
 ) -> Result<SessionState, String> {
     // Batch all config reads concurrently
-    let (vaults_raw, vim_raw, active_vault, pane_layout, active_pane_id, active_file) = tokio::join!(
+    let (vaults_raw, vim_raw, active_vault, pane_layout, active_pane_id, active_file, scroll_positions) = tokio::join!(
         httui_notes::config::get_config(&pool, "vaults"),
         httui_notes::config::get_config(&pool, "vim_enabled"),
         httui_notes::config::get_config(&pool, "active_vault"),
         httui_notes::config::get_config(&pool, "pane_layout"),
         httui_notes::config::get_config(&pool, "active_pane_id"),
         httui_notes::config::get_config(&pool, "active_file"),
+        httui_notes::config::get_config(&pool, "scroll_positions"),
     );
 
     let vaults: Vec<String> = vaults_raw
@@ -414,6 +416,7 @@ async fn restore_session(
     let pane_layout = pane_layout.ok().flatten();
     let active_pane_id = active_pane_id.ok().flatten();
     let active_file = active_file.ok().flatten();
+    let scroll_positions = scroll_positions.ok().flatten();
 
     // Extract tab file paths from saved layout (done in Rust, no extra roundtrip)
     let tab_files: Vec<(String, String)> = if let Some(ref layout_json) = pane_layout {
@@ -464,6 +467,7 @@ async fn restore_session(
         pane_layout,
         active_pane_id,
         active_file,
+        scroll_positions,
         file_tree,
         tab_contents,
     })

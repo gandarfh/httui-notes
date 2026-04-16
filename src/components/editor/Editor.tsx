@@ -11,7 +11,7 @@ import { TableRow } from "@tiptap/extension-table-row";
 import { TableHeader } from "@tiptap/extension-table-header";
 import { TableCell } from "@tiptap/extension-table-cell";
 import { common, createLowlight } from "lowlight";
-import { useRef, useMemo, useCallback } from "react";
+import { useRef, useMemo, useCallback, useEffect } from "react";
 import { createSlashCommands } from "./slashCommands";
 import { VimExtension, VimMode } from "./vim";
 import { MermaidBlock } from "./extensions/MermaidBlock";
@@ -21,6 +21,7 @@ import { Wikilink } from "./extensions/Wikilink";
 import { EditorDragDrop } from "./extensions/EditorDragDrop";
 import { TableToolbar } from "./extensions/TableToolbar";
 import { registry } from "@/components/blocks/registry";
+import { scrollPositionsStore } from "@/hooks/usePaneState";
 import { BlockContextProvider } from "@/components/blocks/BlockContext";
 import "@/components/blocks/http";
 import "@/components/blocks/db";
@@ -109,9 +110,11 @@ export function Editor({
   const isExternalUpdate = useRef(false);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
-  const { entries } = useWorkspace();
+  const { entries, handleFileSelect } = useWorkspace();
   const entriesRef = useRef(entries);
   entriesRef.current = entries;
+  const handleFileSelectRef = useRef(handleFileSelect);
+  handleFileSelectRef.current = handleFileSelect;
 
   const extensions = useMemo(() => {
     const exts = [
@@ -136,7 +139,17 @@ export function Editor({
       MathInline,
       MathBlock,
       ...registry.getExtensions(),
-      Wikilink,
+      Wikilink.configure({
+        onNavigate: (target: string) => {
+          const files = flattenFiles(entriesRef.current);
+          const match = files.find(
+            (f) => f.name === target || f.name === `${target}.md`,
+          );
+          if (match) {
+            handleFileSelectRef.current(match.path);
+          }
+        },
+      }),
       createWikilinkSuggest({
         getFiles: () => flattenFiles(entriesRef.current),
       }),
@@ -184,13 +197,31 @@ export function Editor({
     }
   }
 
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+
+  const handleScroll = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (el) {
+      scrollPositionsStore.set(filePath, el.scrollTop);
+    }
+  }, [filePath]);
+
+  // Restore scroll position when switching files
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (el) {
+      const saved = scrollPositionsStore.get(filePath);
+      el.scrollTop = saved ?? 0;
+    }
+  }, [filePath]);
+
   if (!editor) return null;
 
   return (
     <BlockContextProvider value={{ filePath }}>
     <Box h="100%" overflow="hidden" display="flex" flexDirection="column">
       <TableToolbar editor={editor} />
-      <Box flex={1} overflowY="auto" bg="bg" css={editorCss}>
+      <Box ref={scrollContainerRef} onScroll={handleScroll} flex={1} overflowY="auto" bg="bg" css={editorCss}>
         <EditorDragDrop editor={editor}>
           <EditorContent editor={editor} />
         </EditorDragDrop>

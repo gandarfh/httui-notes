@@ -161,6 +161,7 @@ export function AppShell() {
       setVariable: envHook.setVariable,
       deleteVariable: envHook.deleteVariable,
       getActiveVariables: envHook.getActiveVariables,
+      variablesVersion: envHook.variablesVersion,
     }),
     [envHook],
   );

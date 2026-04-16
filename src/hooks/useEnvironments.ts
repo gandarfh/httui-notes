@@ -14,6 +14,7 @@ import {
 export function useEnvironments() {
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [managerOpen, setManagerOpen] = useState(false);
+  const [variablesVersion, setVariablesVersion] = useState(0);
 
   const activeEnvironment = environments.find((e) => e.is_active) ?? null;
 
@@ -71,7 +72,9 @@ export function useEnvironments() {
 
   const setVariable = useCallback(
     async (environmentId: string, key: string, value: string, isSecret?: boolean) => {
-      return setEnvVarCmd(environmentId, key, value, isSecret);
+      const result = await setEnvVarCmd(environmentId, key, value, isSecret);
+      setVariablesVersion((v) => v + 1);
+      return result;
     },
     [],
   );
@@ -79,6 +82,7 @@ export function useEnvironments() {
   const deleteVariable = useCallback(
     async (id: string) => {
       await deleteEnvVarCmd(id);
+      setVariablesVersion((v) => v + 1);
     },
     [],
   );
@@ -109,6 +113,7 @@ export function useEnvironments() {
     setVariable,
     deleteVariable,
     getActiveVariables,
+    variablesVersion,
     refresh,
   };
 }

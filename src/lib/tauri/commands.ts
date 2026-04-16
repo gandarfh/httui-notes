@@ -115,6 +115,7 @@ export interface SessionState {
   pane_layout: string | null;
   active_pane_id: string | null;
   active_file: string | null;
+  scroll_positions: string | null;
   file_tree: FileEntry[];
   tab_contents: SessionTabContent[];
 }

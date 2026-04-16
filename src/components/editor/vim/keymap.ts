@@ -334,6 +334,105 @@ function copyLine(editor: Editor): boolean {
   return true;
 }
 
+// --- Visual mode helpers ---
+
+function getVisualAnchor(editor: Editor): number | null {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const storage = (editor.storage as any)?.vimMode as { visualAnchor?: number | null } | undefined;
+  return storage?.visualAnchor ?? null;
+}
+
+function visualMove(editor: Editor, newHead: number): boolean {
+  const anchor = getVisualAnchor(editor);
+  if (anchor === null) return false;
+  const { state, view } = editor;
+  const size = state.doc.content.size;
+  const safeHead = Math.max(1, Math.min(newHead, size - 1));
+  // Selection extends from anchor to head+1 (visual covers the char under cursor)
+  const from = Math.min(anchor, safeHead);
+  const to = Math.max(anchor, safeHead) + 1;
+  const safeTo = Math.min(to, size);
+  const $anchor = state.doc.resolve(from);
+  const $head = state.doc.resolve(safeTo);
+  view.dispatch(state.tr.setSelection(new TextSelection($anchor, $head)).scrollIntoView());
+  return true;
+}
+
+function visualMoveRight(editor: Editor): boolean {
+  const { state } = editor;
+  const head = state.selection.to - 1; // to is exclusive
+  const $head = state.doc.resolve(head);
+  const lineEnd = $head.start() + $head.parent.content.size;
+  if (head >= lineEnd - 1) return false;
+  return visualMove(editor, head + 1);
+}
+
+function visualMoveLeft(editor: Editor): boolean {
+  const { state } = editor;
+  const head = state.selection.to - 1;
+  const $head = state.doc.resolve(head);
+  if (head <= $head.start()) return false;
+  return visualMove(editor, head - 1);
+}
+
+function visualMoveDown(editor: Editor): boolean {
+  const { state } = editor;
+  const head = state.selection.to - 1;
+  const $head = state.doc.resolve(head);
+  const depth = $head.depth;
+  let blockEnd: number;
+  try { blockEnd = $head.end(depth); } catch { blockEnd = head; }
+  const maxPos = state.doc.content.size;
+  for (let pos = blockEnd + 1; pos <= maxPos; pos++) {
+    try {
+      const $pos = state.doc.resolve(pos);
+      if ($pos.parent.isTextblock) {
+        const offsetInLine = head - $head.start();
+        const targetOffset = Math.min(offsetInLine, Math.max(0, $pos.parent.content.size - 1));
+        return visualMove(editor, $pos.start() + Math.max(0, targetOffset));
+      }
+    } catch { continue; }
+  }
+  return false;
+}
+
+function visualMoveUp(editor: Editor): boolean {
+  const { state } = editor;
+  const head = state.selection.to - 1;
+  const $head = state.doc.resolve(head);
+  const depth = $head.depth;
+  let blockStart: number;
+  try { blockStart = $head.start(depth); } catch { blockStart = head; }
+  for (let pos = blockStart - 1; pos >= 0; pos--) {
+    try {
+      const $pos = state.doc.resolve(pos);
+      if ($pos.parent.isTextblock) {
+        const offsetInLine = head - $head.start();
+        const targetOffset = Math.min(offsetInLine, Math.max(0, $pos.parent.content.size - 1));
+        return visualMove(editor, $pos.start() + Math.max(0, targetOffset));
+      }
+    } catch { continue; }
+  }
+  return false;
+}
+
+function visualDelete(editor: Editor): boolean {
+  const { state, view } = editor;
+  const { from, to } = state.selection;
+  if (from === to) return false;
+  view.dispatch(state.tr.delete(from, to).scrollIntoView());
+  return true;
+}
+
+function visualCopy(editor: Editor): boolean {
+  const { state } = editor;
+  const { from, to } = state.selection;
+  if (from === to) return false;
+  const text = state.doc.textBetween(from, to);
+  navigator.clipboard.writeText(text).catch(() => {});
+  return true;
+}
+
 // --- Keymap ---
 
 export const vimKeymap: VimKeyBinding[] = [
@@ -371,4 +470,15 @@ export const vimKeymap: VimKeyBinding[] = [
   { key: "d d", mode: VimMode.Normal, command: deleteLine },
   { key: "g g", mode: VimMode.Normal, command: docStart },
   { key: "y y", mode: VimMode.Normal, command: copyLine },
+
+  // Visual mode — motions
+  { key: "h", mode: VimMode.Visual, command: visualMoveLeft },
+  { key: "l", mode: VimMode.Visual, command: visualMoveRight },
+  { key: "j", mode: VimMode.Visual, command: visualMoveDown },
+  { key: "k", mode: VimMode.Visual, command: visualMoveUp },
+
+  // Visual mode — actions
+  { key: "d", mode: VimMode.Visual, command: visualDelete },
+  { key: "x", mode: VimMode.Visual, command: visualDelete },
+  { key: "y", mode: VimMode.Visual, command: visualCopy },
 ];
