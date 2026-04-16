@@ -427,7 +427,7 @@ fn main() {
 
             // TTL cleanup task
             let cm = conn_manager.clone();
-            tokio::spawn(async move {
+            tauri::async_runtime::spawn(async move {
                 let mut interval = tokio::time::interval(Duration::from_secs(60));
                 loop {
                     interval.tick().await;
