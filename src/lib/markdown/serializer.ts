@@ -25,6 +25,16 @@ const turndown = new TurndownService({
       const info = meta ? `http ${meta}` : "http";
       return `\n\`\`\`${info}\n${dataContent}\n\`\`\`\n`;
     }
+    if (dataType === "db-block") {
+      const alias = el.getAttribute?.("data-alias") ?? "";
+      const displayMode = el.getAttribute?.("data-display-mode") ?? "";
+      const meta = [
+        alias ? `alias=${alias}` : "",
+        displayMode && displayMode !== "input" ? `displayMode=${displayMode}` : "",
+      ].filter(Boolean).join(" ");
+      const info = meta ? `db ${meta}` : "db";
+      return `\n\`\`\`${info}\n${dataContent}\n\`\`\`\n`;
+    }
     if (dataType === "mermaid") {
       return `\n\`\`\`mermaid\n${dataContent}\n\`\`\`\n`;
     }
@@ -83,6 +93,28 @@ turndown.addRule("httpBlock", {
   replacement: (_content, node) => {
     const content = (node as HTMLElement).getAttribute("data-content") || "";
     return `\n\`\`\`http\n${content}\n\`\`\`\n`;
+  },
+});
+
+// DB executable blocks
+turndown.addRule("dbBlock", {
+  filter: (node) => {
+    return (
+      node.nodeName === "DIV" &&
+      node.getAttribute("data-type") === "db-block"
+    );
+  },
+  replacement: (_content, node) => {
+    const el = node as HTMLElement;
+    const content = el.getAttribute("data-content") || "";
+    const alias = el.getAttribute("data-alias") ?? "";
+    const displayMode = el.getAttribute("data-display-mode") ?? "";
+    const meta = [
+      alias ? `alias=${alias}` : "",
+      displayMode && displayMode !== "input" ? `displayMode=${displayMode}` : "",
+    ].filter(Boolean).join(" ");
+    const info = meta ? `db ${meta}` : "db";
+    return `\n\`\`\`${info}\n${content}\n\`\`\`\n`;
   },
 });
 
