@@ -5,8 +5,8 @@ import { NativeSelectRoot, NativeSelectField } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useColorMode } from "@/components/ui/color-mode";
 import CodeMirror from "@uiw/react-codemirror";
-import { sql, type SQLConfig, PostgreSQL, MySQL, SQLite as SQLiteDialect, schemaCompletionSource, keywordCompletionSource } from "@codemirror/lang-sql";
-import { autocompletion } from "@codemirror/autocomplete";
+import { sql, type SQLConfig, PostgreSQL, MySQL, SQLite as SQLiteDialect, keywordCompletionSource } from "@codemirror/lang-sql";
+import { autocompletion, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
 import { EditorView, tooltips } from "@codemirror/view";
 import { ExecutableBlockShell } from "../ExecutableBlockShell";
 import { useBlockContext } from "../BlockContext";
@@ -64,12 +64,32 @@ const autocompleteTheme = EditorView.theme({
     color: "inherit !important",
   },
   ".cm-completionIcon": {
-    fontSize: "0 !important",
-    width: "0 !important",
-    padding: "0 !important",
-    marginRight: "0 !important",
-    display: "inline-block",
-    overflow: "hidden",
+    fontSize: "10px",
+    fontFamily: "var(--chakra-fonts-mono)",
+    fontWeight: "700",
+    width: "auto !important",
+    paddingRight: "6px",
+    opacity: "0.6",
+  },
+  ".cm-completionIcon-table::after": {
+    content: "'TBL'",
+    color: "rgb(96, 165, 250)",
+  },
+  ".cm-completionIcon-column::after": {
+    content: "'COL'",
+    color: "rgb(74, 222, 128)",
+  },
+  ".cm-completionIcon-keyword::after": {
+    content: "'SQL'",
+    color: "rgb(192, 132, 252)",
+  },
+  ".cm-completionIcon-variable::after": {
+    content: "'REF'",
+    color: "rgb(251, 146, 60)",
+  },
+  ".cm-completionIcon-property::after": {
+    content: "'KEY'",
+    color: "rgb(148, 163, 184)",
   },
   ".cm-completionLabel": {
     fontWeight: "600",
@@ -139,9 +159,11 @@ function resolveRefsToBindParams(
 // --- Sub-components ---
 
 /**
- * Build a SQLConfig schema object from SchemaEntry[] for CodeMirror SQL autocomplete.
+ * Create a custom completion source from schema entries.
+ * Provides table and column completions with custom icons.
  */
-function buildSqlSchema(entries: SchemaEntry[]): SQLConfig["schema"] {
+function createSchemaCompletionSource(entries: SchemaEntry[]) {
+  // Build table -> columns map
   const tableMap: Record<string, string[]> = {};
   for (const entry of entries) {
     if (!tableMap[entry.table_name]) {
@@ -149,7 +171,56 @@ function buildSqlSchema(entries: SchemaEntry[]): SQLConfig["schema"] {
     }
     tableMap[entry.table_name].push(entry.column_name);
   }
-  return tableMap;
+
+  const tableNames = Object.keys(tableMap);
+
+  // All columns (deduplicated) for top-level suggestions
+  const allColumns = [...new Set(entries.map((e) => e.column_name))];
+
+  return (ctx: CompletionContext): CompletionResult | null => {
+    const word = ctx.matchBefore(/[\w.]*/);
+    if (!word || (word.from === word.to && !ctx.explicit)) return null;
+
+    const text = word.text;
+
+    // After "tableName." -> suggest columns of that table
+    if (text.includes(".")) {
+      const parts = text.split(".");
+      const table = parts[0];
+      const cols = tableMap[table];
+      if (!cols) return null;
+      return {
+        from: word.from + parts[0].length + 1,
+        to: word.to,
+        options: cols.map((col) => ({
+          label: col,
+          type: "column",
+          detail: table,
+        })),
+        filter: true,
+      };
+    }
+
+    // Top-level: suggest tables + all columns
+    const options = [
+      ...tableNames.map((t) => ({
+        label: t,
+        type: "table",
+        detail: `${tableMap[t].length} cols`,
+      })),
+      ...allColumns.map((c) => ({
+        label: c,
+        type: "column",
+      })),
+    ];
+
+    return {
+      from: word.from,
+      to: word.to,
+      options,
+      filter: true,
+    };
+  };
 }
 
 function DbInput({
@@ -208,19 +279,24 @@ function DbInput({
     }
   }, [selectedConn?.driver]);
 
+  const schemaSource = useMemo(
+    () => createSchemaCompletionSource(schema),
+    [schema],
+  );
+
   const sqlExtensions = useMemo(() => {
-    const schemaObj = buildSqlSchema(schema);
     const d = dialect ?? PostgreSQL;
-    const config: SQLConfig = { schema: schemaObj, dialect: d };
+    const config: SQLConfig = { dialect: d };
     return [
       sql(config),
       autocompletion({
         override: [
-          schemaCompletionSource(config),
+          schemaSource,
           keywordCompletionSource(d),
           refCompletionSource,
         ],
         activateOnTyping: true,
+        icons: false,
       }),
       tooltips({ parent: document.body }),
       autocompleteTheme,
@@ -228,7 +304,7 @@ function DbInput({
       cmTransparentBg,
       ...referenceHighlight,
     ];
-  }, [schema, dialect, refCompletionSource]);
+  }, [dialect, schemaSource, refCompletionSource]);
 
   return (
     <Box p={2} display="flex" flexDirection="column" gap={1.5}>
