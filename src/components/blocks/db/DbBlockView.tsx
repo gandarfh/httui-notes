@@ -209,18 +209,38 @@ function createSchemaCompletionSource(entries: SchemaEntry[]) {
       };
     }
 
-    // Top-level: suggest tables + all columns (with table names as detail)
+    // Detect referenced tables from FROM/JOIN clauses
+    const referencedTables = new Set<string>();
+    const tableRefRegex = /(?:FROM|JOIN)\s+(\w+)/gi;
+    const rawSql = ctx.state.doc.toString();
+    let m: RegExpExecArray | null;
+    while ((m = tableRefRegex.exec(rawSql)) !== null) {
+      const t = m[1];
+      if (tableMap[t]) referencedTables.add(t);
+    }
+
+    // If tables are referenced, show only their columns; otherwise show all
+    const columnOptions = referencedTables.size > 0
+      ? [...referencedTables].flatMap((t) =>
+          (tableMap[t] ?? []).map((col) => ({
+            label: col,
+            type: "column" as const,
+            detail: t,
+          })),
+        )
+      : Object.entries(columnTables).map(([col, tables]) => ({
+          label: col,
+          type: "column" as const,
+          detail: tables.join(", "),
+        }));
+
     const options = [
       ...tableNames.map((t) => ({
         label: t,
-        type: "table",
+        type: "table" as const,
         detail: `${tableMap[t].length} cols`,
       })),
-      ...Object.entries(columnTables).map(([col, tables]) => ({
-        label: col,
-        type: "column",
-        detail: tables.join(", "),
-      })),
+      ...columnOptions,
     ];
 
     return {
