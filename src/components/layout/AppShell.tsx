@@ -18,7 +18,9 @@ import { WorkspaceContext } from "@/contexts/WorkspaceContext";
 import { PaneContext } from "@/contexts/PaneContext";
 import { EditorSettingsContext } from "@/contexts/EditorSettingsContext";
 import { EnvironmentContext } from "@/contexts/EnvironmentContext";
+import { ConflictContext } from "@/contexts/ConflictContext";
 import { useEnvironments } from "@/hooks/useEnvironments";
+import { useFileConflicts } from "@/hooks/useFileConflicts";
 
 export function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -32,15 +34,27 @@ export function AppShell() {
 
   // Hooks
   const { sidebarWidth, startResize } = useSidebarResize();
-  const { layout, activePaneId, editorContents, getActiveLeaf, actions } =
+  const { layout, activePaneId, editorContents, unsavedFiles, getActiveLeaf, actions } =
     usePaneState();
   const vault = useVault();
+
+  const fileConflicts = useFileConflicts({
+    vaultPath: vault.vaultPath,
+    editorContents,
+    getOpenFiles: useCallback(() => [...editorContents.keys()], [editorContents]),
+    updateEditorContent: useCallback((filePath: string, content: string) => {
+      editorContents.set(filePath, content);
+      actions.updateContent(filePath, content);
+    }, [editorContents, actions]),
+  });
+
   const editorSession = useEditorSession({
     vaultPath: vault.vaultPath,
     activePaneId,
     editorContents,
     actions,
     getActiveLeaf,
+    hasConflict: fileConflicts.hasConflict,
   });
   const fileOps = useFileOperations({
     vaultPath: vault.vaultPath,
@@ -93,6 +107,7 @@ export function AppShell() {
       handleCreateFolder: fileOps.handleCreateFolder,
       handleRename: fileOps.handleRename,
       handleDelete: fileOps.handleDelete,
+      handleMoveFile: fileOps.handleMoveFile,
       cancelInlineCreate: fileOps.cancelInlineCreate,
       handleFileSelect: editorSession.handleFileSelect,
     }),
@@ -104,11 +119,12 @@ export function AppShell() {
       layout,
       activePaneId,
       editorContents,
+      unsavedFiles,
       getActiveLeaf,
       actions,
       handleEditorChange: editorSession.handleEditorChange,
     }),
-    [layout, activePaneId, editorContents, getActiveLeaf, actions, editorSession.handleEditorChange],
+    [layout, activePaneId, editorContents, unsavedFiles, getActiveLeaf, actions, editorSession.handleEditorChange],
   );
 
   const editorSettingsValue = useMemo(
@@ -119,6 +135,14 @@ export function AppShell() {
       setVimMode,
     }),
     [vimEnabled, vimMode, toggleVim],
+  );
+
+  const conflictValue = useMemo(
+    () => ({
+      hasConflict: fileConflicts.hasConflict,
+      resolveConflict: fileConflicts.resolveConflict,
+    }),
+    [fileConflicts.hasConflict, fileConflicts.resolveConflict],
   );
 
   const envHook = useEnvironments();
@@ -146,6 +170,7 @@ export function AppShell() {
       <PaneContext.Provider value={paneValue}>
         <EditorSettingsContext.Provider value={editorSettingsValue}>
         <EnvironmentContext.Provider value={environmentValue}>
+        <ConflictContext.Provider value={conflictValue}>
           <Flex h="100vh" direction="column" bg="bg.subtle" overflow="hidden">
             <TopBar
               sidebarOpen={sidebarOpen}
@@ -183,6 +208,7 @@ export function AppShell() {
 
             <EnvironmentManager />
           </Flex>
+        </ConflictContext.Provider>
         </EnvironmentContext.Provider>
         </EditorSettingsContext.Provider>
       </PaneContext.Provider>

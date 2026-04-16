@@ -182,6 +182,7 @@ export interface EnvVariable {
   environment_id: string;
   key: string;
   value: string;
+  is_secret: boolean;
   created_at: string;
 }
 
@@ -216,8 +217,9 @@ export function setEnvVariable(
   environmentId: string,
   key: string,
   value: string,
+  isSecret?: boolean,
 ): Promise<EnvVariable> {
-  return invoke("set_env_variable", { environmentId, key, value });
+  return invoke("set_env_variable", { environmentId, key, value, isSecret });
 }
 
 export function deleteEnvVariable(id: string): Promise<void> {

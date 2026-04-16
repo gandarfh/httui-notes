@@ -1,8 +1,8 @@
 import { NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/core";
-import { Box, Flex, HStack, Badge } from "@chakra-ui/react";
+import { Box, Flex, HStack, Badge, Tabs, Input } from "@chakra-ui/react";
 import { NativeSelectRoot, NativeSelectField } from "@chakra-ui/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useColorMode } from "@/components/ui/color-mode";
 import CodeMirror from "@uiw/react-codemirror";
 import { sql, type SQLConfig, PostgreSQL, MySQL, SQLite as SQLiteDialect, keywordCompletionSource } from "@codemirror/lang-sql";
@@ -18,11 +18,12 @@ import { hashBlockContent } from "@/lib/blocks/hash";
 import { resolveAllReferences } from "@/lib/blocks/references";
 import { collectBlocksAbove } from "@/lib/blocks/document";
 import { resolveAndExecuteDependencies } from "@/lib/blocks/dependencies";
-import { referenceHighlight } from "@/lib/blocks/cm-references";
+import { referenceHighlight, createReferenceTooltip } from "@/lib/blocks/cm-references";
 import { createReferenceCompletionSource } from "@/lib/blocks/cm-autocomplete";
 import type { BlockContext } from "@/lib/blocks/references";
 import type { Connection, SchemaEntry } from "@/lib/tauri/connections";
 import { listConnections, getCachedSchema, introspectSchema } from "@/lib/tauri/connections";
+import { listen } from "@tauri-apps/api/event";
 import { ResultTable } from "./ResultTable";
 
 const cmTransparentBg = EditorView.theme({
@@ -258,18 +259,28 @@ function DbInput({
   cmTheme,
   connections,
   blocksRef,
+  getPos,
 }: {
   data: DbBlockData;
   onChange: (data: DbBlockData) => void;
   cmTheme: "light" | "dark";
   connections: Connection[];
   blocksRef: React.RefObject<BlockContext[]>;
+  getPos: (() => number) | boolean;
 }) {
   const [schema, setSchema] = useState<SchemaEntry[]>([]);
 
   const refCompletionSource = useMemo(
     () => createReferenceCompletionSource(() => blocksRef.current ?? []),
     [blocksRef],
+  );
+
+  const refTooltip = useMemo(
+    () => createReferenceTooltip(
+      () => blocksRef.current ?? [],
+      () => (typeof getPos === "function" ? getPos() : 0) ?? 0,
+    ),
+    [blocksRef, getPos],
   );
 
   // Load schema when connection changes
@@ -295,6 +306,26 @@ function DbInput({
     })();
 
     return () => { cancelled = true; };
+  }, [data.connectionId]);
+
+  // Auto-refresh schema when connection reconnects
+  useEffect(() => {
+    if (!data.connectionId) return;
+    let cancelled = false;
+
+    const unlisten = listen<{ connection_id: string; status: string }>("connection-status", (event) => {
+      if (cancelled) return;
+      if (event.payload.connection_id === data.connectionId && event.payload.status === "connected") {
+        introspectSchema(data.connectionId)
+          .then((fresh) => { if (!cancelled) setSchema(fresh); })
+          .catch(() => {});
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      unlisten.then((fn) => fn());
+    };
   }, [data.connectionId]);
 
   // Determine dialect from selected connection
@@ -332,6 +363,7 @@ function DbInput({
       EditorView.lineWrapping,
       cmTransparentBg,
       ...referenceHighlight,
+      refTooltip,
     ];
   }, [dialect, schemaSource, refCompletionSource]);
 
@@ -356,28 +388,56 @@ function DbInput({
         </NativeSelectRoot>
       </Flex>
 
-      {/* SQL editor */}
-      <Box
-        border="1px solid"
-        borderColor="border"
-        rounded="md"
-        overflow="hidden"
-        bg="bg.subtle"
-      >
-        <CodeMirror
-          value={data.query}
-          onChange={(val) => onChange({ ...data, query: val })}
-          extensions={sqlExtensions}
-          basicSetup={{
-            lineNumbers: true,
-            foldGutter: false,
-            autocompletion: false,
-          }}
-          theme={cmTheme}
-          height="80px"
-          style={{ fontSize: "12px" }}
-        />
-      </Box>
+      {/* Tabs: Query / Settings */}
+      <Tabs.Root defaultValue="query" size="sm" variant="line">
+        <Tabs.List>
+          <Tabs.Trigger value="query" fontSize="xs">Query</Tabs.Trigger>
+          <Tabs.Trigger value="settings" fontSize="xs">Settings</Tabs.Trigger>
+        </Tabs.List>
+
+        <Tabs.Content value="query" p={0} pt={2}>
+          <Box
+            border="1px solid"
+            borderColor="border"
+            rounded="md"
+            overflow="hidden"
+            bg="bg.subtle"
+          >
+            <CodeMirror
+              value={data.query}
+              onChange={(val) => onChange({ ...data, query: val })}
+              extensions={sqlExtensions}
+              basicSetup={{
+                lineNumbers: true,
+                foldGutter: false,
+                autocompletion: false,
+              }}
+              theme={cmTheme}
+              height="80px"
+              style={{ fontSize: "12px" }}
+            />
+          </Box>
+        </Tabs.Content>
+
+        <Tabs.Content value="settings" p={0} pt={2}>
+          <Flex align="center" gap={2} px={2} pb={1}>
+            <Box fontSize="xs" color="fg.muted" whiteSpace="nowrap">Timeout (ms)</Box>
+            <Input
+              size="xs"
+              type="number"
+              placeholder="30000"
+              value={data.timeoutMs ?? ""}
+              onChange={(e) => {
+                const val = e.target.value;
+                onChange({ ...data, timeoutMs: val ? parseInt(val, 10) : undefined });
+              }}
+              fontFamily="mono"
+              fontSize="xs"
+              maxW="120px"
+            />
+          </Flex>
+        </Tabs.Content>
+      </Tabs.Root>
     </Box>
   );
 }
@@ -432,7 +492,7 @@ function DbOutput({
 
 // --- Main view ---
 
-export function DbBlockView({
+function DbBlockViewInner({
   node,
   editor,
   getPos,
@@ -653,6 +713,7 @@ export function DbBlockView({
             cmTheme={cmTheme}
             connections={connections}
             blocksRef={blocksRef}
+            getPos={getPos}
           />
         }
         outputSlot={
@@ -666,3 +727,7 @@ export function DbBlockView({
     </NodeViewWrapper>
   );
 }
+
+export const DbBlockView = memo(DbBlockViewInner, (prev, next) =>
+  prev.selected === next.selected && prev.node === next.node,
+);

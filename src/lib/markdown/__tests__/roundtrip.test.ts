@@ -62,3 +62,84 @@ describe("HTTP block roundtrip", () => {
     expect(mdBack).toContain(content);
   });
 });
+
+describe("DB block roundtrip", () => {
+  it("should roundtrip db fenced block", () => {
+    const content = '{"connectionId":"abc-123","query":"SELECT * FROM users","timeoutMs":5000}';
+    const md = `\`\`\`db\n${content}\n\`\`\``;
+
+    const html = markdownToHtml(md);
+    expect(html).toContain('data-type="db-block"');
+
+    const mdBack = htmlToMarkdown(html);
+    expect(mdBack).toContain("```db");
+    expect(mdBack).toContain(content);
+  });
+
+  it("should preserve alias and displayMode on db block", () => {
+    const md = '```db alias=query1 displayMode=split\n{"connectionId":"x","query":"SELECT 1"}\n```';
+
+    const html = markdownToHtml(md);
+    expect(html).toContain('data-alias="query1"');
+    expect(html).toContain('data-display-mode="split"');
+
+    const mdBack = htmlToMarkdown(html);
+    expect(mdBack).toContain("alias=query1");
+    expect(mdBack).toContain("displayMode=split");
+    expect(mdBack).toContain("```db");
+  });
+});
+
+describe("E2E block roundtrip", () => {
+  it("should roundtrip e2e fenced block", () => {
+    const content = '{"baseUrl":"https://api.test.com","defaultHeaders":[],"steps":[{"name":"Login","method":"POST","url":"/auth","headers":[],"body":"{}","params":[],"expect":{"status":200},"extract":{}}]}';
+    const md = `\`\`\`e2e\n${content}\n\`\`\``;
+
+    const html = markdownToHtml(md);
+    expect(html).toContain('data-type="e2e-block"');
+
+    const mdBack = htmlToMarkdown(html);
+    expect(mdBack).toContain("```e2e");
+    expect(mdBack).toContain(content);
+  });
+
+  it("should preserve alias and displayMode on e2e block", () => {
+    const md = '```e2e alias=flow1 displayMode=output\n{"baseUrl":"https://api.test.com","defaultHeaders":[],"steps":[]}\n```';
+
+    const html = markdownToHtml(md);
+    expect(html).toContain('data-alias="flow1"');
+    expect(html).toContain('data-display-mode="output"');
+
+    const mdBack = htmlToMarkdown(html);
+    expect(mdBack).toContain("alias=flow1");
+    expect(mdBack).toContain("displayMode=output");
+    expect(mdBack).toContain("```e2e");
+  });
+});
+
+describe("GFM table roundtrip", () => {
+  it("should roundtrip a simple pipe table", () => {
+    const md = "| Name | Age |\n| --- | --- |\n| Alice | 30 |\n| Bob | 25 |";
+
+    const html = markdownToHtml(md);
+    expect(html).toContain("<table");
+    expect(html).toContain("Alice");
+
+    const mdBack = htmlToMarkdown(html);
+    expect(mdBack).toContain("Alice");
+    expect(mdBack).toContain("Bob");
+    expect(mdBack).toContain("|");
+  });
+
+  it("should preserve table content through roundtrip", () => {
+    const md = "# Data\n\n| Key | Value |\n| --- | --- |\n| host | localhost |\n| port | 5432 |\n\nAfter table.";
+
+    const html = markdownToHtml(md);
+    const mdBack = htmlToMarkdown(html);
+
+    expect(mdBack).toContain("# Data");
+    expect(mdBack).toContain("host");
+    expect(mdBack).toContain("localhost");
+    expect(mdBack).toContain("After table");
+  });
+});

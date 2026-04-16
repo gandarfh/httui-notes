@@ -70,8 +70,8 @@ export function useEnvironments() {
   );
 
   const setVariable = useCallback(
-    async (environmentId: string, key: string, value: string) => {
-      return setEnvVarCmd(environmentId, key, value);
+    async (environmentId: string, key: string, value: string, isSecret?: boolean) => {
+      return setEnvVarCmd(environmentId, key, value, isSecret);
     },
     [],
   );

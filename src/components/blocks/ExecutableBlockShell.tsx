@@ -149,38 +149,48 @@ export function ExecutableBlockShell({
         direction={displayMode === "split" ? { base: "column", md: "row" } : "column"}
         minH="40px"
       >
-        {showInput && (
-          <Box
-            flex={1}
-            minW={displayMode === "split" ? "0" : undefined}
-            borderRightWidth={displayMode === "split" ? { base: "0", md: "1px" } : undefined}
-            borderBottomWidth={displayMode === "split" ? { base: "1px", md: "0" } : undefined}
-            borderStyle="solid"
-            borderColor="border"
-            overflow="auto"
-          >
-            {inputSlot}
-          </Box>
-        )}
+        <Box
+          flex={showInput ? 1 : undefined}
+          minW={displayMode === "split" ? "0" : undefined}
+          borderRightWidth={displayMode === "split" ? { base: "0", md: "1px" } : undefined}
+          borderBottomWidth={displayMode === "split" ? { base: "1px", md: "0" } : undefined}
+          borderStyle="solid"
+          borderColor="border"
+          overflow="hidden"
+          css={{
+            maxHeight: showInput ? "2000px" : "0",
+            opacity: showInput ? 1 : 0,
+            transition: "max-height 0.25s ease, opacity 0.2s ease",
+          }}
+        >
+          {inputSlot}
+        </Box>
 
-        {showOutput && (
-          <Box flex={1} minW={displayMode === "split" ? "0" : undefined} overflow="auto">
-            {executionState === "idle" ? (
-              <Flex
-                align="center"
-                justify="center"
-                h="100%"
-                minH="40px"
-                color="fg.muted"
-                fontSize="sm"
-              >
-                Run to see results
-              </Flex>
-            ) : (
-              outputSlot
-            )}
-          </Box>
-        )}
+        <Box
+          flex={showOutput ? 1 : undefined}
+          minW={displayMode === "split" ? "0" : undefined}
+          overflow="hidden"
+          css={{
+            maxHeight: showOutput ? "2000px" : "0",
+            opacity: showOutput ? 1 : 0,
+            transition: "max-height 0.25s ease, opacity 0.2s ease",
+          }}
+        >
+          {executionState === "idle" ? (
+            <Flex
+              align="center"
+              justify="center"
+              h="100%"
+              minH="40px"
+              color="fg.muted"
+              fontSize="sm"
+            >
+              Run to see results
+            </Flex>
+          ) : (
+            outputSlot
+          )}
+        </Box>
       </Flex>
     </Box>
   );

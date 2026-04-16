@@ -14,23 +14,25 @@ Epic 00 (Project Setup)
 ├── Epic 02 (Vault & Filesystem)
 │   ├── Epic 03 (Multi-pane & Session)
 │   └── Epic 04 (Search)
-└── [shared] Epic 01 → Epic 03
+├── [shared] Epic 01 → Epic 03
+└── Epic 10 (Polish & Pending) ← consolida pendencias de 01-09
 ```
 
 ## Epics
 
-| #   | Epic                                             | Stories | Depende de | Status  |
-| --- | ------------------------------------------------ | ------- | ---------- | ------- |
-| 00  | [Project Setup](00-project-setup.md)             | 4       | —          | done    |
-| 09  | [UI Shell & Theme](09-ui-shell.md)               | 4       | 00         | done    |
-| 01  | [Editor Markdown](01-editor-markdown.md)         | 9       | 00         | partial |
-| 02  | [Vault & Filesystem](02-vault-filesystem.md)     | 5       | 00         | done    |
-| 03  | [Multi-pane & Session](03-multi-pane-session.md) | 4       | 01, 02     | done    |
-| 04  | [Search](04-search.md)                           | 3       | 00, 02     | done    |
-| 05  | [Block System Core](05-block-system.md)          | 8       | 00, 01     | backlog |
-| 06  | [Database Blocks](06-database-blocks.md)         | 7       | 05         | backlog |
-| 07  | [HTTP Client](07-http-client.md)                 | 6       | 05         | backlog |
-| 08  | [E2E Test Runner](08-e2e-runner.md)              | 4       | 05, 07     | backlog |
+| #   | Epic                                             | Stories | Depende de  | Status  |
+| --- | ------------------------------------------------ | ------- | ----------- | ------- |
+| 00  | [Project Setup](00-project-setup.md)             | 4       | —           | done    |
+| 09  | [UI Shell & Theme](09-ui-shell.md)               | 4       | 00          | done    |
+| 01  | [Editor Markdown](01-editor-markdown.md)         | 9       | 00          | done    |
+| 02  | [Vault & Filesystem](02-vault-filesystem.md)     | 5       | 00          | done    |
+| 03  | [Multi-pane & Session](03-multi-pane-session.md) | 4       | 01, 02      | done    |
+| 04  | [Search](04-search.md)                           | 3       | 00, 02      | done    |
+| 05  | [Block System Core](05-block-system.md)          | 8       | 00, 01      | done    |
+| 06  | [Database Blocks](06-database-blocks.md)         | 7       | 05          | done    |
+| 07  | [HTTP Client](07-http-client.md)                 | 6       | 05          | done    |
+| 08  | [E2E Test Runner](08-e2e-runner.md)              | 4       | 05, 07      | done    |
+| 10  | [Polish & Pending](10-polish-pending.md)         | 10      | 05, 06, 07  | done    |
 
 ## Ordem sugerida de implementacao
 
@@ -39,18 +41,35 @@ Epic 00 (Project Setup)
 1. Epic 00 — Project Setup
 2. Epic 09 — UI Shell & Theme (inicia apos scaffold do Epic 00)
 
-**Fase 2 — Editor core (parallelizable)** 3. Epic 01 — Editor Markdown 4. Epic 02 — Vault & Filesystem (paralelo com 01)
+**Fase 2 — Editor core (parallelizable)**
 
-**Fase 3 — Layout & discovery** 5. Epic 03 — Multi-pane & Session 6. Epic 04 — Search (paralelo com 03)
+3. Epic 01 — Editor Markdown
+4. Epic 02 — Vault & Filesystem (paralelo com 01)
 
-**Fase 4 — Executable blocks** 7. Epic 05 — Block System Core
+**Fase 3 — Layout & discovery**
 
-**Fase 5 — Integrations (parallelizable)** 8. Epic 06 — Database Blocks 9. Epic 07 — HTTP Client (paralelo com 06)
+5. Epic 03 — Multi-pane & Session
+6. Epic 04 — Search (paralelo com 03)
 
-**Fase 6 — E2E** 10. Epic 08 — E2E Test Runner
+**Fase 4 — Executable blocks**
+
+7. Epic 05 — Block System Core
+
+**Fase 5 — Integrations (parallelizable)**
+
+8. Epic 06 — Database Blocks
+9. Epic 07 — HTTP Client (paralelo com 06)
+
+**Fase 6 — E2E**
+
+10. Epic 08 — E2E Test Runner
+
+**Fase 7 — Polish & pendencias**
+
+11. Epic 10 — Polish & Pending (seguranca → pipeline → visual → QoL)
 
 ## Metricas
 
-- **Total epics:** 10
-- **Total stories:** 54
-- **Total tasks:** ~180
+- **Total epics:** 11
+- **Total stories:** 64
+- **Total tasks:** ~200

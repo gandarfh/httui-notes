@@ -6,6 +6,7 @@ export interface PaneContextValue {
   layout: PaneLayout;
   activePaneId: string;
   editorContents: Map<string, string>;
+  unsavedFiles: Set<string>;
   getActiveLeaf: () => LeafPane | null;
   actions: PaneActions;
   handleEditorChange: (paneId: string, filePath: string, content: string, vaultPath: string) => void;

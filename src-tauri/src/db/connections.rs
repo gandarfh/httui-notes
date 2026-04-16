@@ -4,6 +4,7 @@ use sqlx::{Column, Row, TypeInfo};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tauri::{AppHandle, Emitter};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
@@ -97,21 +98,41 @@ pub struct UpdateConnection {
 
 // --- ConnectionManager ---
 
+#[derive(Clone, Serialize)]
+struct ConnectionStatusEvent {
+    connection_id: String,
+    name: String,
+    status: String, // "connected" | "disconnected"
+}
+
 pub struct PoolManager {
     app_pool: SqlitePool,
     pools: RwLock<HashMap<String, PoolEntry>>,
+    app_handle: Option<AppHandle>,
 }
 
 struct PoolEntry {
     pool: Arc<DatabasePool>,
+    name: String,
     last_used: Instant,
 }
 
 impl PoolManager {
-    pub fn new(app_pool: SqlitePool) -> Self {
+    pub fn new(app_pool: SqlitePool, app_handle: AppHandle) -> Self {
         Self {
             app_pool,
             pools: RwLock::new(HashMap::new()),
+            app_handle: Some(app_handle),
+        }
+    }
+
+    /// Create without AppHandle (for tests only)
+    #[cfg(test)]
+    pub fn new_without_handle(app_pool: SqlitePool) -> Self {
+        Self {
+            app_pool,
+            pools: RwLock::new(HashMap::new()),
+            app_handle: None,
         }
     }
 
@@ -133,6 +154,7 @@ impl PoolManager {
             .await?
             .ok_or_else(|| format!("Connection '{}' not found", connection_id))?;
 
+        let conn_name = conn.name.clone();
         let pool = Arc::new(create_pool(&conn).await?);
 
         {
@@ -141,17 +163,35 @@ impl PoolManager {
                 connection_id.to_string(),
                 PoolEntry {
                     pool: pool.clone(),
+                    name: conn_name.clone(),
                     last_used: Instant::now(),
                 },
             );
+        }
+
+        if let Some(ref handle) = self.app_handle {
+            let _ = handle.emit("connection-status", ConnectionStatusEvent {
+                connection_id: connection_id.to_string(),
+                name: conn_name,
+                status: "connected".to_string(),
+            });
         }
 
         Ok(pool)
     }
 
     pub async fn invalidate(&self, connection_id: &str) {
-        let mut pools = self.pools.write().await;
-        pools.remove(connection_id);
+        let entry_name = {
+            let mut pools = self.pools.write().await;
+            pools.remove(connection_id).map(|e| e.name)
+        };
+        if let (Some(name), Some(ref handle)) = (entry_name, &self.app_handle) {
+            let _ = handle.emit("connection-status", ConnectionStatusEvent {
+                connection_id: connection_id.to_string(),
+                name,
+                status: "disconnected".to_string(),
+            });
+        }
     }
 
     pub async fn cleanup_expired(&self) {
@@ -172,8 +212,16 @@ impl PoolManager {
 
         if !to_remove.is_empty() {
             let mut pools = self.pools.write().await;
-            for id in to_remove {
-                pools.remove(&id);
+            for id in &to_remove {
+                if let Some(entry) = pools.remove(id) {
+                    if let Some(ref handle) = self.app_handle {
+                        let _ = handle.emit("connection-status", ConnectionStatusEvent {
+                            connection_id: id.clone(),
+                            name: entry.name,
+                            status: "disconnected".to_string(),
+                        });
+                    }
+                }
             }
         }
     }
@@ -200,6 +248,8 @@ impl PoolManager {
 // --- Pool creation ---
 
 fn build_connection_string(conn: &Connection) -> Result<String, String> {
+    use super::keychain::{conn_password_key, resolve_value, KEYCHAIN_SENTINEL};
+
     match conn.driver.as_str() {
         "postgres" => {
             let host = conn.host.as_deref().unwrap_or("localhost");
@@ -209,7 +259,12 @@ fn build_connection_string(conn: &Connection) -> Result<String, String> {
                 .as_deref()
                 .ok_or("database_name is required for postgres")?;
             let user = conn.username.as_deref().unwrap_or("postgres");
-            let password = conn.password.as_deref().unwrap_or("");
+            let db_password = conn.password.as_deref().unwrap_or("");
+            let password = if db_password == KEYCHAIN_SENTINEL {
+                resolve_value(db_password, &conn_password_key(&conn.id)).unwrap_or_default()
+            } else {
+                db_password.to_string()
+            };
             let ssl = conn.ssl_mode.as_deref().unwrap_or("disable");
             Ok(format!(
                 "postgres://{user}:{password}@{host}:{port}/{db}?sslmode={ssl}"
@@ -223,7 +278,12 @@ fn build_connection_string(conn: &Connection) -> Result<String, String> {
                 .as_deref()
                 .ok_or("database_name is required for mysql")?;
             let user = conn.username.as_deref().unwrap_or("root");
-            let password = conn.password.as_deref().unwrap_or("");
+            let db_password = conn.password.as_deref().unwrap_or("");
+            let password = if db_password == KEYCHAIN_SENTINEL {
+                resolve_value(db_password, &conn_password_key(&conn.id)).unwrap_or_default()
+            } else {
+                db_password.to_string()
+            };
             Ok(format!(
                 "mysql://{user}:{password}@{host}:{port}/{db}"
             ))
@@ -349,6 +409,21 @@ pub async fn create_connection(
     let ttl_seconds = input.ttl_seconds.unwrap_or(300);
     let max_pool_size = input.max_pool_size.unwrap_or(5);
 
+    // Store password in keychain if available, fallback to plaintext
+    let db_password = if let Some(ref pw) = input.password {
+        if !pw.is_empty() {
+            use super::keychain::{conn_password_key, store_secret, KEYCHAIN_SENTINEL};
+            match store_secret(&conn_password_key(&id), pw) {
+                Ok(()) => Some(KEYCHAIN_SENTINEL.to_string()),
+                Err(_) => input.password.clone(), // fallback to plaintext
+            }
+        } else {
+            input.password.clone()
+        }
+    } else {
+        None
+    };
+
     sqlx::query(
         r#"INSERT INTO connections
             (id, name, driver, host, port, database_name, username, password,
@@ -362,7 +437,7 @@ pub async fn create_connection(
     .bind(&input.port)
     .bind(&input.database_name)
     .bind(&input.username)
-    .bind(&input.password)
+    .bind(&db_password)
     .bind(&ssl_mode)
     .bind(timeout_ms)
     .bind(query_timeout_ms)
@@ -400,11 +475,20 @@ pub async fn update_connection(
             .username
             .unwrap_or_else(|| existing.username.unwrap_or_default()),
     );
-    let password = Some(
-        input
-            .password
-            .unwrap_or_else(|| existing.password.unwrap_or_default()),
-    );
+    // If a new password is provided, store in keychain
+    let password = if let Some(ref new_pw) = input.password {
+        if !new_pw.is_empty() {
+            use super::keychain::{conn_password_key, store_secret, KEYCHAIN_SENTINEL};
+            match store_secret(&conn_password_key(id), new_pw) {
+                Ok(()) => Some(KEYCHAIN_SENTINEL.to_string()),
+                Err(_) => Some(new_pw.clone()), // fallback to plaintext
+            }
+        } else {
+            Some(String::new())
+        }
+    } else {
+        existing.password // keep existing (may already be sentinel)
+    };
     let ssl_mode = Some(
         input
             .ssl_mode
@@ -457,6 +541,10 @@ pub async fn delete_connection(pool: &SqlitePool, id: &str) -> Result<(), String
     if result.rows_affected() == 0 {
         return Err(format!("Connection '{}' not found", id));
     }
+
+    // Clean up keychain entry (ignore errors — may not exist)
+    use super::keychain::{conn_password_key, delete_secret};
+    let _ = delete_secret(&conn_password_key(id));
 
     Ok(())
 }

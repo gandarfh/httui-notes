@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use sqlx::sqlite::SqlitePool;
 use sqlx::Row;
+use super::keychain;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Environment {
@@ -16,6 +17,7 @@ pub struct EnvVariable {
     pub environment_id: String,
     pub key: String,
     pub value: String,
+    pub is_secret: bool,
     pub created_at: String,
 }
 
@@ -29,11 +31,25 @@ fn row_to_environment(row: &sqlx::sqlite::SqliteRow) -> Environment {
 }
 
 fn row_to_variable(row: &sqlx::sqlite::SqliteRow) -> EnvVariable {
+    let environment_id: String = row.get("environment_id");
+    let key: String = row.get("key");
+    let db_value: String = row.get("value");
+    let is_secret: bool = row.get::<i32, _>("is_secret") != 0;
+
+    // Resolve keychain sentinel if needed
+    let value = if is_secret && db_value == keychain::KEYCHAIN_SENTINEL {
+        keychain::resolve_value(&db_value, &keychain::env_var_key(&environment_id, &key))
+            .unwrap_or(db_value)
+    } else {
+        db_value
+    };
+
     EnvVariable {
         id: row.get("id"),
-        environment_id: row.get("environment_id"),
-        key: row.get("key"),
-        value: row.get("value"),
+        environment_id,
+        key,
+        value,
+        is_secret,
         created_at: row.get("created_at"),
     }
 }
@@ -113,7 +129,7 @@ pub async fn duplicate_environment(
     // Copy variables
     let vars = list_env_variables(pool, source_id).await?;
     for var in vars {
-        set_env_variable(pool, &new_env.id, var.key, var.value).await?;
+        set_env_variable(pool, &new_env.id, var.key, var.value, var.is_secret).await?;
     }
 
     Ok(new_env)
@@ -165,11 +181,22 @@ pub async fn set_env_variable(
     environment_id: &str,
     key: String,
     value: String,
+    is_secret: bool,
 ) -> Result<EnvVariable, String> {
     let key = key.trim().to_string();
     if key.is_empty() {
         return Err("Variable key is required".to_string());
     }
+
+    // If secret, store in keychain and use sentinel in DB
+    let db_value = if is_secret && !value.is_empty() {
+        match keychain::store_secret(&keychain::env_var_key(environment_id, &key), &value) {
+            Ok(()) => keychain::KEYCHAIN_SENTINEL.to_string(),
+            Err(_) => value.clone(), // fallback to plaintext
+        }
+    } else {
+        value.clone()
+    };
 
     // Upsert: try update first, then insert
     let existing = sqlx::query(
@@ -183,8 +210,9 @@ pub async fn set_env_variable(
 
     let var_id = if let Some(row) = existing {
         let id: String = row.get("id");
-        sqlx::query("UPDATE env_variables SET value = ? WHERE id = ?")
-            .bind(&value)
+        sqlx::query("UPDATE env_variables SET value = ?, is_secret = ? WHERE id = ?")
+            .bind(&db_value)
+            .bind(is_secret as i32)
             .bind(&id)
             .execute(pool)
             .await
@@ -193,12 +221,13 @@ pub async fn set_env_variable(
     } else {
         let id = uuid::Uuid::new_v4().to_string();
         sqlx::query(
-            "INSERT INTO env_variables (id, environment_id, key, value) VALUES (?, ?, ?, ?)",
+            "INSERT INTO env_variables (id, environment_id, key, value, is_secret) VALUES (?, ?, ?, ?, ?)",
         )
         .bind(&id)
         .bind(environment_id)
         .bind(&key)
-        .bind(&value)
+        .bind(&db_value)
+        .bind(is_secret as i32)
         .execute(pool)
         .await
         .map_err(|e| format!("Failed to insert variable: {e}"))?;
@@ -215,6 +244,13 @@ pub async fn set_env_variable(
 }
 
 pub async fn delete_env_variable(pool: &SqlitePool, id: &str) -> Result<(), String> {
+    // Fetch before deleting to clean up keychain if needed
+    let row = sqlx::query("SELECT environment_id, key, is_secret FROM env_variables WHERE id = ?")
+        .bind(id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch variable: {e}"))?;
+
     let result = sqlx::query("DELETE FROM env_variables WHERE id = ?")
         .bind(id)
         .execute(pool)
@@ -223,6 +259,16 @@ pub async fn delete_env_variable(pool: &SqlitePool, id: &str) -> Result<(), Stri
 
     if result.rows_affected() == 0 {
         return Err("Variable not found".to_string());
+    }
+
+    // Clean up keychain entry if it was a secret
+    if let Some(row) = row {
+        let is_secret: bool = row.get::<i32, _>("is_secret") != 0;
+        if is_secret {
+            let env_id: String = row.get("environment_id");
+            let key: String = row.get("key");
+            let _ = keychain::delete_secret(&keychain::env_var_key(&env_id, &key));
+        }
     }
 
     Ok(())
@@ -295,7 +341,7 @@ mod tests {
         let env = create_environment(&pool, "local".to_string()).await.unwrap();
 
         // Create
-        let var = set_env_variable(&pool, &env.id, "BASE_URL".to_string(), "http://localhost:3000".to_string()).await.unwrap();
+        let var = set_env_variable(&pool, &env.id, "BASE_URL".to_string(), "http://localhost:3000".to_string(), false).await.unwrap();
         assert_eq!(var.key, "BASE_URL");
         assert_eq!(var.value, "http://localhost:3000");
 
@@ -304,7 +350,7 @@ mod tests {
         assert_eq!(vars.len(), 1);
 
         // Upsert (update existing key)
-        let updated = set_env_variable(&pool, &env.id, "BASE_URL".to_string(), "http://localhost:8080".to_string()).await.unwrap();
+        let updated = set_env_variable(&pool, &env.id, "BASE_URL".to_string(), "http://localhost:8080".to_string(), false).await.unwrap();
         assert_eq!(updated.id, var.id); // same id
         assert_eq!(updated.value, "http://localhost:8080");
 
@@ -322,8 +368,8 @@ mod tests {
         let (_tmp, pool) = setup().await;
 
         let env = create_environment(&pool, "local".to_string()).await.unwrap();
-        set_env_variable(&pool, &env.id, "API_KEY".to_string(), "secret123".to_string()).await.unwrap();
-        set_env_variable(&pool, &env.id, "BASE_URL".to_string(), "http://localhost".to_string()).await.unwrap();
+        set_env_variable(&pool, &env.id, "API_KEY".to_string(), "secret123".to_string(), false).await.unwrap();
+        set_env_variable(&pool, &env.id, "BASE_URL".to_string(), "http://localhost".to_string(), false).await.unwrap();
 
         let dup = duplicate_environment(&pool, &env.id, "staging".to_string()).await.unwrap();
         assert_eq!(dup.name, "staging");
@@ -340,7 +386,7 @@ mod tests {
         let (_tmp, pool) = setup().await;
 
         let env = create_environment(&pool, "local".to_string()).await.unwrap();
-        set_env_variable(&pool, &env.id, "KEY".to_string(), "val".to_string()).await.unwrap();
+        set_env_variable(&pool, &env.id, "KEY".to_string(), "val".to_string(), false).await.unwrap();
 
         delete_environment(&pool, &env.id).await.unwrap();
 

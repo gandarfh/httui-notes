@@ -80,7 +80,7 @@ describe("usePaneState", () => {
     }
   });
 
-  it("markUnsaved toggles tab unsaved state", () => {
+  it("markUnsaved toggles unsavedFiles set", () => {
     const { result } = renderHook(() => usePaneState());
     act(() => {
       result.current.actions.openFile("a.md", "a", V);
@@ -89,15 +89,11 @@ describe("usePaneState", () => {
     act(() => {
       result.current.actions.markUnsaved(paneId, "a.md", true);
     });
-    if (result.current.layout.type === "leaf") {
-      expect(result.current.layout.tabs[0].unsaved).toBe(true);
-    }
+    expect(result.current.unsavedFiles.has("a.md")).toBe(true);
     act(() => {
       result.current.actions.markUnsaved(paneId, "a.md", false);
     });
-    if (result.current.layout.type === "leaf") {
-      expect(result.current.layout.tabs[0].unsaved).toBe(false);
-    }
+    expect(result.current.unsavedFiles.has("a.md")).toBe(false);
   });
 
   it("nextTab cycles to next tab", () => {

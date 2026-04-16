@@ -48,7 +48,7 @@ Renderizar imagens, PDFs e outros binarios inline.
 - [x] Imagens (image/png, image/jpeg, image/gif, image/svg+xml): renderizar inline com `<img>` e tamanho max contido no bloco
 - [x] PDFs: renderizar com `<iframe>`
 - [x] Outros binarios: mostrar info (content-type, tamanho) com icone
-- [ ] Botao de maximizar em todos os previews: abre modal fullscreen com o conteudo em tamanho maximo
+- [x] Botao de maximizar em todos os previews: abre modal fullscreen com o conteudo em tamanho maximo — `BinaryPreview` em `HttpBlockView.tsx`
 - [x] Botao de download para salvar o response no filesystem
 
 ## Story 04: Execute HTTP request no backend ✅
@@ -75,7 +75,7 @@ Gerenciamento de agrupamentos de variaveis.
 - [x] Implementar Tauri commands: `list_environments`, `create_environment`, `set_active_environment`
 - [x] Implementar Tauri commands: `list_env_variables`, `set_env_variable`, `delete_env_variable`
 - [x] Implementar Tauri commands adicionais: `delete_environment`, `duplicate_environment`
-- [ ] Encriptar values via OS keychain (adiado — passwords de DB tambem sao plaintext)
+- [x] Encriptar values via OS keychain — campo `is_secret` + keyring crate em `keychain.rs`
 - [x] Criar UI de environment selector no top bar (dropdown com globe icon)
 - [x] Criar UI de gerenciamento de environments (drawer lateral):
   - [x] Lista de environments na sidebar

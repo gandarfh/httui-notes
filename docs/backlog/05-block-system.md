@@ -1,9 +1,10 @@
-# Epic 05 — Block System Core
+# Epic 05 — Block System Core ✅
 
 Sistema central de blocos executaveis: display modes, cache, referencias entre blocos, resolucao de dependencias, e autocomplete.
 
 **Depende de:** Epic 00 (SQLite), Epic 01 (Editor)
 **Desbloqueia:** Epic 06 (DB Blocks), Epic 07 (HTTP Client), Epic 08 (E2E Runner)
+**Status:** concluido
 
 ---
 
@@ -33,7 +34,7 @@ Tres modos de visualizacao por bloco.
 - [x] Toggle entre modos via botoes no header do bloco (icones Lucide)
 - [x] Default: input quando idle, split quando tem resultado
 - [x] Persistir display_mode no atributo do node (salvo no markdown)
-- [ ] Animacao suave de transicao entre modos
+- [x] Animacao suave de transicao entre modos — CSS transitions em `ExecutableBlockShell.tsx`
 
 ## Story 03: Estados e ciclo de execucao
 
@@ -75,8 +76,8 @@ Resolucao de `{{alias.response.path}}`.
 - [x] Navegar o JSON do resultado cacheado via dot notation (ex: `response.body.items.0.id`)
 - [x] Retornar erro claro se: alias nao encontrado, bloco esta abaixo, resultado nao cacheado, path invalido no JSON
 - [x] Resolver referencias em URL, headers e body antes de executar HTTP block
-- [ ] Highlight visual de referencias no editor (cor diferente, hover mostra valor resolvido)
-- [ ] Classificar environment variables vs block references (depende de Story 07)
+- [x] Highlight visual de referencias no editor (cor diferente, hover mostra valor resolvido) — `cm-references.ts` com `createReferenceTooltip()`
+- [x] Classificar environment variables vs block references — `extractReferencedAliases()` em `dependencies.ts` exclui env vars (sem dots)
 
 ## Story 06: Resolucao de dependencias
 
@@ -89,7 +90,7 @@ Execucao recursiva de dependencias ao rodar um bloco.
 - [x] Se nao tem cache: executar o bloco dependencia primeiro (recursivo)
 - [x] Construir DAG de execucao e executar em ordem topologica
 - [x] Resolver referencias dentro dos blocos dependentes antes de executar
-- [ ] Se dois blocos executam simultaneamente e compartilham dependencia: lock por block_id, executar uma vez, ambos esperam
+- [x] Se dois blocos executam simultaneamente e compartilham dependencia: lock por block_id, executar uma vez, ambos esperam — `inflightExecutions` Map em `dependencies.ts`
 - [x] Mostrar indicador visual no bloco: "Executing alias..." durante resolucao
 - [x] Timeout global para resolucao de dependencias (10s, previne loops infinitos)
 - [x] Deteccao de ciclos com erro claro
@@ -102,11 +103,11 @@ Dois modos de interpolacao: string (HTTP) e bind parameters (SQL).
 
 - [x] Implementar interpolacao string: substituir `{{...}}` pelo valor resolvido como texto
 - [x] Usar interpolacao string para: HTTP url, headers, body
-- [ ] Implementar interpolacao bind: converter `{{...}}` para placeholder do driver ($1, ?, etc.) e coletar valores (depende de Epic 06 - DB Blocks)
-- [ ] Usar interpolacao bind para: SQL queries (nunca string interpolation) (depende de Epic 06)
-- [ ] Resolver environment variables: buscar no environment ativo (tabela env_variables) (depende de environments UI)
+- [x] Implementar interpolacao bind: converter `{{...}}` para placeholder do driver ($1, ?, etc.) e coletar valores — `resolveRefsToBindParams()` em `DbBlockView.tsx`
+- [x] Usar interpolacao bind para: SQL queries (nunca string interpolation)
+- [x] Resolver environment variables: buscar no environment ativo (tabela env_variables) — `resolveAllReferences()` em `references.ts`
 - [x] Resolver block references: buscar no cache de resultados (block_results)
-- [ ] Prioridade: block reference > environment variable (se alias colide com env var, bloco ganha)
+- [x] Prioridade: block reference > environment variable (se alias colide com env var, bloco ganha) — `resolveAllReferences()` tenta block ref primeiro
 
 ## Story 08: Autocomplete no CodeMirror
 
@@ -115,9 +116,9 @@ Provider de autocomplete para campos dos blocos.
 ### Tasks
 
 - [x] Criar CodeMirror extension de autocomplete customizada
-- [ ] Trigger ao digitar `{{`: listar environment variables do environment ativo (depende de environments)
+- [x] Trigger ao digitar `{{`: listar environment variables do environment ativo — `cm-autocomplete.ts`
 - [x] Trigger ao digitar `{{`: listar blocos anteriores no documento que tem alias (mostrar alias + tipo do bloco)
 - [x] Apos selecionar um alias: navegar a arvore JSON do resultado cacheado com dot notation (mostrar keys disponiveis a cada `.`)
-- [ ] Para SQL blocks: autocomplete de tabelas e colunas da conexao selecionada (via schema_cache) (depende de Epic 06)
-- [ ] SQL autocomplete triggered apos keywords: FROM, JOIN, WHERE, SELECT, INSERT INTO, UPDATE, etc. (depende de Epic 06)
+- [x] Para SQL blocks: autocomplete de tabelas e colunas da conexao selecionada (via schema_cache) — `createSchemaCompletionSource()` em `DbBlockView.tsx`
+- [x] SQL autocomplete triggered apos keywords: FROM, JOIN, WHERE, SELECT, INSERT INTO, UPDATE, etc.
 - [x] Estilizar popup de autocomplete com tema consistente (z-index, shadow, cores, fonte mono)

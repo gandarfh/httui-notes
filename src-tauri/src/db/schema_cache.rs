@@ -237,7 +237,7 @@ mod tests {
         .await
         .unwrap();
 
-        let manager = Arc::new(PoolManager::new(app_pool.clone()));
+        let manager = Arc::new(PoolManager::new_without_handle(app_pool.clone()));
         (manager, app_pool, conn.id)
     }
 

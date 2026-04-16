@@ -14,6 +14,7 @@ export interface WorkspaceContextValue {
   handleCreateFolder: (dirPath: string, name: string) => Promise<void>;
   handleRename: (path: string, newName: string) => Promise<void>;
   handleDelete: (path: string) => Promise<void>;
+  handleMoveFile: (sourcePath: string, targetDir: string) => Promise<void>;
   cancelInlineCreate: () => void;
   handleFileSelect: (filePath: string) => Promise<void>;
 }

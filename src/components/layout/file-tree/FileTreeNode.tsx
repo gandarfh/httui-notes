@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { Box, Text, HStack, VStack, Menu, Portal } from "@chakra-ui/react";
+import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { usePaneContext } from "@/contexts/PaneContext";
 import type { FileEntry } from "@/lib/tauri/commands";
@@ -33,6 +34,17 @@ export function FileTreeNode({
 
   const [expanded, setExpanded] = useState(depth === 0);
   const [renaming, setRenaming] = useState(false);
+
+  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
+    id: `drag-${entry.path}`,
+    data: { path: entry.path, name: entry.name },
+  });
+
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `drop-${entry.path}`,
+    data: { dirPath: entry.is_dir ? entry.path : "" },
+    disabled: !entry.is_dir,
+  });
 
   const activeLeaf = getActiveLeaf();
   const activeFile =
@@ -102,6 +114,12 @@ export function FileTreeNode({
       <Menu.Root>
         <Menu.ContextTrigger asChild>
           <HStack
+            ref={(node) => {
+              setDragRef(node);
+              if (entry.is_dir) setDropRef(node);
+            }}
+            {...listeners}
+            {...attributes}
             as="button"
             w="100%"
             px={2}
@@ -109,10 +127,14 @@ export function FileTreeNode({
             pl={`${depth * 16 + 8}px`}
             gap={1.5}
             rounded="md"
-            cursor="pointer"
-            bg={isActive ? "bg.emphasized" : "transparent"}
-            _hover={{ bg: isActive ? "bg.emphasized" : "bg.subtle" }}
-            transition="background 0.1s"
+            cursor={isDragging ? "grabbing" : "pointer"}
+            bg={isOver ? "blue.subtle" : isActive ? "bg.emphasized" : "transparent"}
+            _hover={{ bg: isOver ? "blue.subtle" : isActive ? "bg.emphasized" : "bg.subtle" }}
+            borderWidth={isOver ? "1px" : undefined}
+            borderColor={isOver ? "blue.500" : undefined}
+            borderStyle={isOver ? "dashed" : undefined}
+            opacity={isDragging ? 0.5 : 1}
+            transition="background 0.1s, opacity 0.1s"
             onClick={handleClick}
           >
             {entry.is_dir && (

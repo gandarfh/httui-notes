@@ -96,6 +96,24 @@ export function useFileOperations({
     [vaultPath, refreshFileTree],
   );
 
+  const handleMoveFile = useCallback(
+    async (sourcePath: string, targetDir: string) => {
+      if (!vaultPath) return;
+      const fileName = sourcePath.includes("/")
+        ? sourcePath.substring(sourcePath.lastIndexOf("/") + 1)
+        : sourcePath;
+      const newPath = targetDir ? `${targetDir}/${fileName}` : fileName;
+      if (newPath === sourcePath) return;
+      try {
+        await renameNote(vaultPath, sourcePath, newPath);
+        await refreshFileTree(vaultPath);
+      } catch (err) {
+        console.error("Failed to move file:", err);
+      }
+    },
+    [vaultPath, refreshFileTree],
+  );
+
   return {
     inlineCreate,
     handleStartCreate,
@@ -103,6 +121,7 @@ export function useFileOperations({
     handleCreateFolder,
     handleRename,
     handleDelete,
+    handleMoveFile,
     cancelInlineCreate,
   };
 }

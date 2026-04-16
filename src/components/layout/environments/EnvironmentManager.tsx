@@ -18,6 +18,8 @@ import {
   LuEye,
   LuEyeOff,
   LuCheck,
+  LuLock,
+  LuLockOpen,
 } from "react-icons/lu";
 import { useEnvironmentContext } from "@/contexts/EnvironmentContext";
 import type { EnvVariable } from "@/lib/tauri/commands";
@@ -41,7 +43,7 @@ export function EnvironmentManager() {
   const [variables, setVariables] = useState<EnvVariable[]>([]);
   const [newEnvName, setNewEnvName] = useState("");
   const [creating, setCreating] = useState(false);
-  const [maskedKeys, setMaskedKeys] = useState<Set<string>>(new Set());
+  const [revealedKeys, setRevealedKeys] = useState<Set<string>>(new Set());
 
   // Select first environment on open or when list changes
   useEffect(() => {
@@ -92,9 +94,9 @@ export function EnvironmentManager() {
   );
 
   const handleSetVariable = useCallback(
-    async (key: string, value: string) => {
+    async (key: string, value: string, isSecret?: boolean) => {
       if (!selectedEnvId || !key.trim()) return;
-      await setVariable(selectedEnvId, key, value);
+      await setVariable(selectedEnvId, key, value, isSecret);
       await refreshVariables();
     },
     [selectedEnvId, setVariable, refreshVariables],
@@ -108,8 +110,8 @@ export function EnvironmentManager() {
     [deleteVariable, refreshVariables],
   );
 
-  const toggleMask = (varId: string) => {
-    setMaskedKeys((prev) => {
+  const toggleReveal = (varId: string) => {
+    setRevealedKeys((prev) => {
       const next = new Set(prev);
       if (next.has(varId)) {
         next.delete(varId);
@@ -254,7 +256,7 @@ export function EnvironmentManager() {
                 envName={environments.find((e) => e.id === selectedEnvId)?.name ?? ""}
                 isActive={activeEnvironment?.id === selectedEnvId}
                 variables={variables}
-                maskedKeys={maskedKeys}
+                revealedKeys={revealedKeys}
                 onSetActive={() => switchEnvironment(selectedEnvId)}
                 onDuplicate={() =>
                   handleDuplicate(
@@ -265,7 +267,7 @@ export function EnvironmentManager() {
                 onDelete={() => handleDelete(selectedEnvId)}
                 onSetVariable={handleSetVariable}
                 onDeleteVariable={handleDeleteVariable}
-                onToggleMask={toggleMask}
+                onToggleReveal={toggleReveal}
               />
             ) : (
               <Flex
@@ -291,24 +293,24 @@ function VariablesEditor({
   envName,
   isActive,
   variables,
-  maskedKeys,
+  revealedKeys,
   onSetActive,
   onDuplicate,
   onDelete,
   onSetVariable,
   onDeleteVariable,
-  onToggleMask,
+  onToggleReveal,
 }: {
   envName: string;
   isActive: boolean;
   variables: EnvVariable[];
-  maskedKeys: Set<string>;
+  revealedKeys: Set<string>;
   onSetActive: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
-  onSetVariable: (key: string, value: string) => Promise<void>;
+  onSetVariable: (key: string, value: string, isSecret?: boolean) => Promise<void>;
   onDeleteVariable: (id: string) => Promise<void>;
-  onToggleMask: (varId: string) => void;
+  onToggleReveal: (varId: string) => void;
 }) {
   const [newKey, setNewKey] = useState("");
   const [newValue, setNewValue] = useState("");
@@ -370,11 +372,11 @@ function VariablesEditor({
           <VariableRow
             key={v.id}
             variable={v}
-            masked={!maskedKeys.has(v.id)}
+            revealed={revealedKeys.has(v.id)}
             isLast={i === variables.length - 1}
-            onSave={(value) => onSetVariable(v.key, value)}
+            onSave={(value, isSecret) => onSetVariable(v.key, value, isSecret)}
             onDelete={() => onDeleteVariable(v.id)}
-            onToggleMask={() => onToggleMask(v.id)}
+            onToggleReveal={() => onToggleReveal(v.id)}
           />
         ))}
 
@@ -436,27 +438,34 @@ function VariablesEditor({
 
 function VariableRow({
   variable,
-  masked,
+  revealed,
   isLast,
   onSave,
   onDelete,
-  onToggleMask,
+  onToggleReveal,
 }: {
   variable: EnvVariable;
-  masked: boolean;
+  revealed: boolean;
   isLast: boolean;
-  onSave: (value: string) => Promise<void>;
+  onSave: (value: string, isSecret?: boolean) => Promise<void>;
   onDelete: () => Promise<void>;
-  onToggleMask: () => void;
+  onToggleReveal: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(variable.value);
 
+  const isSecret = variable.is_secret;
+  const shouldMask = isSecret && !revealed;
+
   const handleSave = async () => {
     if (editValue !== variable.value) {
-      await onSave(editValue);
+      await onSave(editValue, isSecret);
     }
     setEditing(false);
+  };
+
+  const handleToggleSecret = async () => {
+    await onSave(variable.value, !isSecret);
   };
 
   return (
@@ -508,18 +517,30 @@ function VariableRow({
             }}
             minH="20px"
           >
-            {masked ? "••••••••" : variable.value}
+            {shouldMask ? "••••••••" : variable.value}
           </Text>
         )}
       </Box>
       <IconButton
-        aria-label={masked ? "Show value" : "Hide value"}
+        aria-label={isSecret ? "Mark as plain" : "Mark as secret"}
         size="2xs"
         variant="ghost"
-        onClick={onToggleMask}
+        colorPalette={isSecret ? "purple" : "gray"}
+        onClick={handleToggleSecret}
+        title={isSecret ? "Encrypted in keychain" : "Click to encrypt"}
       >
-        {masked ? <LuEye /> : <LuEyeOff />}
+        {isSecret ? <LuLock /> : <LuLockOpen />}
       </IconButton>
+      {isSecret && (
+        <IconButton
+          aria-label={revealed ? "Hide value" : "Show value"}
+          size="2xs"
+          variant="ghost"
+          onClick={onToggleReveal}
+        >
+          {revealed ? <LuEyeOff /> : <LuEye />}
+        </IconButton>
+      )}
       <IconButton
         aria-label="Delete variable"
         size="2xs"

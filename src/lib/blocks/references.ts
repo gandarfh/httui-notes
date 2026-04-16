@@ -131,14 +131,10 @@ export function resolveReference(
 /**
  * Resolve all {{...}} references in text.
  * Returns resolved text and any errors (does not abort on first error).
- */
-/**
- * Resolve all {{...}} references in text.
- * Returns resolved text and any errors (does not abort on first error).
  *
- * Resolution order for each {{ref}}:
- * 1. If ref has no path (no dots) and matches an env variable key → use env value
- * 2. Otherwise → resolve as block reference
+ * Resolution priority for each {{ref}}:
+ * 1. Block reference (if a block with matching alias exists above) → use cached result
+ * 2. Environment variable (if no block match and no dots) → use env value
  */
 export function resolveAllReferences(
   text: string,
@@ -160,10 +156,15 @@ export function resolveAllReferences(
     try {
       let value: string;
 
-      // Environment variable: {{KEY}} (no dots in path)
-      if (ref.path.length === 0 && envVariables && ref.alias in envVariables) {
+      // Try block reference first (block ref > env var when alias collides)
+      const matchingBlock = blocks.find((b) => b.alias === ref.alias && b.pos < currentPos);
+      if (matchingBlock) {
+        value = resolveReference(ref, blocks, currentPos);
+      } else if (ref.path.length === 0 && envVariables && ref.alias in envVariables) {
+        // Fallback to environment variable: {{KEY}} (no dots, no matching block)
         value = envVariables[ref.alias];
       } else {
+        // No block, no env var — let resolveReference produce the proper error
         value = resolveReference(ref, blocks, currentPos);
       }
 
