@@ -16,7 +16,7 @@ Implementar gerenciamento de conexoes no Rust.
 
 - [x] Implementar Tauri commands: `list_connections`, `create_connection`, `update_connection`, `delete_connection`
 - [x] Validar campos obrigatorios por driver (postgres precisa de host/port, sqlite precisa de path)
-- [ ] Encriptar password via OS keychain (Tauri keychain plugin)
+- [x] Encriptar password via OS keychain — `keyring` crate em `keychain.rs`, sentinel `__KEYCHAIN__` no SQLite
 - [x] Implementar `test_connection` — tentar conectar com timeout, retornar sucesso ou mensagem de erro
 - [x] Ao atualizar conexao: destruir pool existente e recriar
 - [x] Escrever testes com SQLite in-memory como driver de teste
@@ -31,8 +31,8 @@ Gerenciar pools de conexao no Rust.
 - [x] Montar connection string internamente a partir dos campos individuais (host, port, database, user, password, ssl_mode)
 - [x] Configurar pool com: max_pool_size do registro, timeout_ms como connect_timeout
 - [x] Implementar TTL: fechar conexoes idle apos ttl_seconds
-- [ ] Manter estado de conexao (connected/disconnected) acessivel pelo frontend
-- [ ] Emitir evento Tauri ao mudar estado de conexao (para atualizar UI em tempo real)
+- [x] Manter estado de conexao (connected/disconnected) acessivel pelo frontend — `useConnectionStatus.ts`
+- [x] Emitir evento Tauri ao mudar estado de conexao (para atualizar UI em tempo real) — `PoolManager` emite `connection-status`
 
 ## Story 03: UI de connections manager
 
@@ -64,7 +64,7 @@ Interface do bloco de database no editor.
 - [x] UI de input:
   - [x] Connection selector (dropdown com conexoes disponiveis)
   - [x] Query editor (CodeMirror com lang-sql, dialect por driver, theme sincronizado)
-  - [ ] Timeout override (input numerico opcional)
+  - [x] Timeout override (input numerico opcional) — aba Settings no `DbInput`
 - [x] UI de output:
   - [x] Status badge ("N rows")
   - [x] Tempo de execucao
@@ -121,7 +121,7 @@ Metadata de tabelas e colunas para autocomplete.
 - [x] Retornar lista de: table_name, column_name, data_type
 - [x] Salvar no `schema_cache` com `cached_at` timestamp
 - [x] Implementar TTL: se cached_at > TTL, re-introspect automaticamente
-- [ ] Refresh automatico ao conectar/reconectar
+- [x] Refresh automatico ao conectar/reconectar — listener `connection-status` em `DbInput`
 - [x] SQL autocomplete context-aware:
   - [x] Tabelas (TBL) e colunas (COL) com icons de texto coloridos
   - [x] Colunas filtradas por tabelas no FROM/JOIN
@@ -133,8 +133,8 @@ Metadata de tabelas e colunas para autocomplete.
 
 ## Pendente (futuro)
 
-- [ ] Encriptar passwords via OS keychain
-- [ ] Estado de conexao (connected/disconnected) em tempo real
-- [ ] Eventos Tauri ao mudar estado de conexao
-- [ ] Timeout override UI no bloco
-- [ ] Refresh automatico de schema ao conectar/reconectar
+- [x] Encriptar passwords via OS keychain — `keychain.rs`
+- [x] Estado de conexao (connected/disconnected) em tempo real — `useConnectionStatus.ts`
+- [x] Eventos Tauri ao mudar estado de conexao — `PoolManager` emite `connection-status`
+- [x] Timeout override UI no bloco DB — aba Settings em `DbInput`
+- [x] Refresh automatico de schema ao conectar/reconectar — listener `connection-status`

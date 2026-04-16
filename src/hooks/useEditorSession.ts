@@ -11,6 +11,7 @@ interface UseEditorSessionOpts {
   editorContents: Map<string, string>;
   actions: PaneActions;
   getActiveLeaf: () => LeafPane | null;
+  hasConflict?: (filePath: string) => boolean;
 }
 
 export function useEditorSession({
@@ -19,6 +20,7 @@ export function useEditorSession({
   editorContents,
   actions,
   getActiveLeaf,
+  hasConflict,
 }: UseEditorSessionOpts) {
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -47,6 +49,7 @@ export function useEditorSession({
       if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
 
       autoSaveTimer.current = setTimeout(async () => {
+        if (hasConflict?.(filePath)) return;
         try {
           await writeNote(tabVaultPath, filePath, htmlToMarkdown(content));
           actions.markUnsaved(activePaneId, filePath, false);

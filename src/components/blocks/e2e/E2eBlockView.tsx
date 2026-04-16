@@ -2,7 +2,7 @@ import { NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/core";
 import { Box, Flex, HStack, Text, Badge, IconButton, Input, Tabs } from "@chakra-ui/react";
 import { NativeSelectRoot, NativeSelectField } from "@chakra-ui/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   LuX,
   LuPlus,
@@ -31,7 +31,7 @@ import { hashBlockContent } from "@/lib/blocks/hash";
 import { resolveAllReferences, type BlockContext } from "@/lib/blocks/references";
 import { collectBlocksAbove } from "@/lib/blocks/document";
 import { resolveAndExecuteDependencies } from "@/lib/blocks/dependencies";
-import { referenceHighlight } from "@/lib/blocks/cm-references";
+import { referenceHighlight, createReferenceTooltip } from "@/lib/blocks/cm-references";
 import { createReferenceAutocomplete } from "@/lib/blocks/cm-autocomplete";
 import { useEnvironmentContext } from "@/contexts/EnvironmentContext";
 
@@ -752,7 +752,7 @@ function escapeHtml(text: string): string {
 /* ------------------------------------------------------------------ */
 /*  Main E2E Block View                                                */
 /* ------------------------------------------------------------------ */
-export function E2eBlockView({ node, editor, getPos, updateAttributes, selected }: NodeViewProps) {
+function E2eBlockViewInner({ node, editor, getPos, updateAttributes, selected }: NodeViewProps) {
   const { filePath } = useBlockContext();
   const { colorMode } = useColorMode();
   const cmTheme = colorMode === "dark" ? "dark" : "light";
@@ -838,11 +838,15 @@ export function E2eBlockView({ node, editor, getPos, updateAttributes, selected 
   // Refs for autocomplete data
   const blocksRef = useRef<BlockContext[]>([]);
   const envKeysRef = useRef<string[]>([]);
+  const envVarsRef = useRef<Record<string, string>>({});
 
   useEffect(() => {
     let cancelled = false;
     getActiveVariables().then((vars) => {
-      if (!cancelled) envKeysRef.current = Object.keys(vars);
+      if (!cancelled) {
+        envKeysRef.current = Object.keys(vars);
+        envVarsRef.current = vars;
+      }
     });
     return () => { cancelled = true; };
   }, [getActiveVariables]);
@@ -857,12 +861,21 @@ export function E2eBlockView({ node, editor, getPos, updateAttributes, selected 
     return () => { cancelled = true; };
   }, [filePath, editor, getPos]);
 
+  const refTooltip = useMemo(
+    () => createReferenceTooltip(
+      () => blocksRef.current ?? [],
+      () => (typeof getPos === "function" ? getPos() : 0) ?? 0,
+      () => envVarsRef.current ?? {},
+    ),
+    [blocksRef, envVarsRef, getPos],
+  );
+
   const autocompleteExt = useMemo(
     () => [createReferenceAutocomplete(
       () => blocksRef.current ?? [],
       () => envKeysRef.current ?? [],
-    )],
-    [blocksRef, envKeysRef],
+    ), refTooltip],
+    [blocksRef, envKeysRef, refTooltip],
   );
 
   // Execution handler
@@ -1122,3 +1135,7 @@ export function E2eBlockView({ node, editor, getPos, updateAttributes, selected 
     </NodeViewWrapper>
   );
 }
+
+export const E2eBlockView = memo(E2eBlockViewInner, (prev, next) =>
+  prev.selected === next.selected && prev.node === next.node,
+);

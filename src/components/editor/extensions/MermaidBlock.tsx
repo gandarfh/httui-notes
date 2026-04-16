@@ -2,19 +2,28 @@ import { Node, mergeAttributes } from "@tiptap/core";
 import { ReactNodeViewRenderer, NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/core";
 import { Box, Textarea } from "@chakra-ui/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import mermaid from "mermaid";
+import { useColorMode } from "@/components/ui/color-mode";
 
 mermaid.initialize({ startOnLoad: false, theme: "default" });
 
 let mermaidIdCounter = 0;
 
-function MermaidNodeView({ node, updateAttributes, selected }: NodeViewProps) {
+const MermaidNodeView = memo(function MermaidNodeViewInner({ node, updateAttributes, selected }: NodeViewProps) {
   const content = node.attrs.content as string;
+  const { colorMode } = useColorMode();
   const [editing, setEditing] = useState(false);
   const [svg, setSvg] = useState("");
   const [error, setError] = useState("");
   const renderTimeout = useRef<ReturnType<typeof setTimeout>>(null);
+
+  useEffect(() => {
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: colorMode === "dark" ? "dark" : "default",
+    });
+  }, [colorMode]);
 
   useEffect(() => {
     if (renderTimeout.current) clearTimeout(renderTimeout.current);
@@ -32,7 +41,7 @@ function MermaidNodeView({ node, updateAttributes, selected }: NodeViewProps) {
     return () => {
       if (renderTimeout.current) clearTimeout(renderTimeout.current);
     };
-  }, [content]);
+  }, [content, colorMode]);
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -88,7 +97,7 @@ function MermaidNodeView({ node, updateAttributes, selected }: NodeViewProps) {
       </Box>
     </NodeViewWrapper>
   );
-}
+}, (prev, next) => prev.selected === next.selected && prev.node === next.node);
 
 export const MermaidBlock = Node.create({
   name: "mermaidBlock",

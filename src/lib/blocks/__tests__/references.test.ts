@@ -177,4 +177,50 @@ describe("resolveAllReferences", () => {
     const { resolved } = resolveAllReferences("{{login.response.body}}", blocks, 100);
     expect(resolved).toBe(JSON.stringify({ id: 101, token: "abc123" }));
   });
+
+  it("resolves env variable when no matching block alias", () => {
+    const envVars = { API_KEY: "secret-key" };
+    const { resolved, errors } = resolveAllReferences("Bearer {{API_KEY}}", blocks, 100, envVars);
+    expect(errors).toHaveLength(0);
+    expect(resolved).toBe("Bearer secret-key");
+  });
+
+  it("block reference takes priority over env var with same name", () => {
+    const envVars = { login: "env-value-should-lose" };
+    const { resolved, errors } = resolveAllReferences(
+      "{{login.response.body.token}}",
+      blocks,
+      100,
+      envVars,
+    );
+    expect(errors).toHaveLength(0);
+    expect(resolved).toBe("abc123");
+  });
+
+  it("block alias without path takes priority over env var with same name", () => {
+    // Block "login" exists and has cache, but {{login}} with no path navigates
+    // the context root — should resolve as block ref, not env var
+    const envVars = { login: "env-value-should-lose" };
+    const { resolved, errors } = resolveAllReferences(
+      "{{login}}",
+      blocks,
+      100,
+      envVars,
+    );
+    expect(errors).toHaveLength(0);
+    // resolveReference with empty path returns the full context as JSON
+    expect(JSON.parse(resolved)).toHaveProperty("response");
+  });
+
+  it("falls back to env var when block has no cache and ref has no path", () => {
+    const blocksNoCache: BlockContext[] = [
+      { alias: "myvar", blockType: "http", pos: 5, content: "{}", cachedResult: null },
+    ];
+    const envVars = { myvar: "from-env" };
+    // Block exists but has no cache, and ref has no path → should NOT fall back to env
+    // because block alias match takes priority (produces error about missing cache)
+    const { errors } = resolveAllReferences("{{myvar}}", blocksNoCache, 100, envVars);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toContain("no cached result");
+  });
 });

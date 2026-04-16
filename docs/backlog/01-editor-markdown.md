@@ -1,4 +1,4 @@
-# Epic 01 — Editor Markdown (parcial)
+# Epic 01 — Editor Markdown ✅
 
 Implementar o editor TipTap com suporte completo a markdown, slash commands, e rendering de blocos especiais.
 
@@ -32,8 +32,8 @@ Converter entre conteudo TipTap (HTML) e markdown no filesystem.
 - [x] Preservar fenced code blocks customizados (```http, ```db-*, ```e2e) como nodes opacos durante parse/serialize
 - [x] Suportar: headings, paragraphs, bold, italic, strikethrough, code inline, code blocks, lists, blockquotes, horizontal rules, links, images
 - [x] Integrar no AppShell: read_note -> markdownToHtml -> editor, editor -> htmlToMarkdown -> write_note
-- [ ] Suportar tabelas GFM (pipe tables) — adiado para Story 05
-- [ ] Escrever testes de roundtrip — adiado
+- [x] Suportar tabelas GFM (pipe tables) — implementado em Story 05
+- [x] Escrever testes de roundtrip — HTTP, DB, E2E blocks + tabelas GFM em `roundtrip.test.ts`
 
 ## Story 03: Slash commands ✅
 
@@ -46,7 +46,7 @@ Menu de comandos ao digitar `/`.
 - [x] Registrar comandos basicos: Heading 1/2/3, Bullet List, Numbered List, Task List, Quote, Code Block, Divider
 - [x] Suporte a filtro fuzzy pelo texto digitado
 - [x] Suporte a navegacao por teclado (setas + Enter + Escape)
-- [ ] Registrar comandos de blocos executaveis: /http, /sql, /db, /e2e — depende do Epic 05
+- [x] Registrar comandos de blocos executaveis: /http, /db, /e2e — implementado em `slashCommands.ts`
 
 ## Story 04: Drag and drop de blocos ✅
 
@@ -56,7 +56,7 @@ Permitir reordenacao de blocos via drag.
 
 - [x] Configurar drag handle nos blocos do TipTap
 - [x] Implementar drag and drop nativo do ProseMirror
-- [ ] Validacao de referencias ao mover blocos executaveis — depende do Epic 05
+- [x] Validacao de referencias ao mover blocos executaveis — `validateBlockMove()` em `EditorDragDrop.tsx`
 
 ## Story 05: GFM tables ✅
 
@@ -66,7 +66,7 @@ Suporte completo a tabelas estilo GitHub.
 
 - [x] Instalar e configurar `@tiptap/extension-table`
 - [x] Estilizar tabelas com Chakra UI
-- [ ] Toolbar contextual de tabela — adiado
+- [x] Toolbar contextual de tabela — implementado em `TableToolbar.tsx`
 - [x] Serializar tabelas como pipe tables no markdown
 
 ## Story 06: Mermaid diagrams ✅

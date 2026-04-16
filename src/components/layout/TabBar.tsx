@@ -5,6 +5,7 @@ import type { TabState } from "@/types/pane";
 interface TabBarProps {
   tabs: TabState[];
   activeTab: number;
+  unsavedFiles: Set<string>;
   onSelectTab: (index: number) => void;
   onCloseTab: (index: number) => void;
   onCloseOthers: (index: number) => void;
@@ -14,6 +15,7 @@ interface TabBarProps {
 export function TabBar({
   tabs,
   activeTab,
+  unsavedFiles,
   onSelectTab,
   onCloseTab,
   onCloseOthers,
@@ -62,7 +64,7 @@ export function TabBar({
                 <Text fontSize="xs" color={isActive ? "fg" : "fg.subtle"} whiteSpace="nowrap">
                   {fileName}
                 </Text>
-                {tab.unsaved && <Circle size="6px" bg="orange.400" />}
+                {unsavedFiles.has(tab.filePath) && <Circle size="6px" bg="orange.400" />}
                 <IconButton
                   aria-label="Close tab"
                   variant="ghost"

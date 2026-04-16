@@ -44,7 +44,7 @@ Barra inferior com informacoes de contexto.
 - [x] Exibir: keybinding mode (VS Code), environment ativo, contagem de panes abertos
 - [x] Posicao do cursor no editor (linha:coluna) — placeholder
 - [x] Indicador de encoding do arquivo (UTF-8)
-- [ ] Connection status: nome e icone (verde=conectado, vermelho=desconectado) — depende do Epic 06
+- [x] Connection status: nome e icone (verde=conectado, vermelho=desconectado) — `useConnectionStatus.ts` + `StatusBar.tsx`
 
 ## Story 04: Theme system
 
@@ -56,5 +56,5 @@ Light/dark mode com daisyUI.
 - [x] Permitir override manual: toggle light/dark no top bar
 - [x] Persistir override no localStorage (migrar para app_config quando integrado)
 - [x] Transicao suave ao trocar theme
-- [ ] Sincronizar theme do CodeMirror com o theme do app — depende do Epic 05
-- [ ] Sincronizar theme do Mermaid com o theme do app — depende do Epic 01
+- [x] Sincronizar theme do CodeMirror com o theme do app — via `theme={cmTheme}` prop em todos os block views
+- [x] Sincronizar theme do Mermaid com o theme do app — `mermaid.initialize()` reativo com `colorMode` em `MermaidBlock.tsx`

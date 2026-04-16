@@ -84,8 +84,9 @@ export function replacePaneInLayout(
   };
 }
 
-// Module-level Map — lives outside React, no re-render issues
+// Module-level stores — live outside React, no re-render issues
 const editorContentsStore = new Map<string, string>();
+const unsavedFilesStore = new Set<string>();
 
 // --- Hook ---
 
@@ -205,13 +206,12 @@ export function usePaneState() {
     [],
   );
 
-  const markUnsaved = useCallback((paneId: string, filePath: string, unsaved: boolean) => {
-    setLayout((prev) =>
-      updateLeaf(prev, paneId, (l) => ({
-        ...l,
-        tabs: l.tabs.map((t) => (t.filePath === filePath ? { ...t, unsaved } : t)),
-      })),
-    );
+  const markUnsaved = useCallback((_paneId: string, filePath: string, unsaved: boolean) => {
+    if (unsaved) {
+      unsavedFilesStore.add(filePath);
+    } else {
+      unsavedFilesStore.delete(filePath);
+    }
   }, []);
 
   const resizeSplit = useCallback((path: number[], ratio: number) => {
@@ -235,6 +235,7 @@ export function usePaneState() {
     layout,
     activePaneId,
     editorContents: editorContentsStore,
+    unsavedFiles: unsavedFilesStore,
     getActiveLeaf,
     actions: {
       openFile,

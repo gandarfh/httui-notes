@@ -47,7 +47,7 @@ Arvore de arquivos e pastas do vault na sidebar esquerda.
 - [x] Clicar num arquivo abre no editor
 - [x] Clicar numa pasta expande/colapsa
 - [x] Context menu (right-click) com: New Note, New Folder, Rename, Delete
-- [ ] Drag and drop de arquivos entre pastas — adiado para futuro
+- [x] Drag and drop de arquivos entre pastas — implementado com `@dnd-kit/core` em `FileTree.tsx` e `FileTreeNode.tsx`
 - [x] Destacar arquivo atualmente aberto no pane ativo
 - [x] Ordenar: pastas primeiro, depois arquivos, ambos em ordem alfabetica
 
@@ -60,7 +60,7 @@ Detectar mudancas externas no vault e reagir.
 - [x] Implementar `watch_vault` no Rust usando notify crate
 - [x] Emitir eventos Tauri para o frontend: file_created, file_modified, file_deleted
 - [x] No frontend: atualizar file tree automaticamente ao receber eventos
-- [ ] Se um arquivo aberto no editor for modificado externamente: dialog de conflito — adiado
+- [x] Se um arquivo aberto no editor for modificado externamente: banner de conflito (Reload / Keep Mine) — `ConflictBanner.tsx` + `useFileConflicts.ts`
 - [x] Debounce de eventos (300ms)
 - [x] Ignorar eventos causados pelo proprio app (ao salvar)
 
@@ -72,5 +72,5 @@ Salvar documento automaticamente ao editar.
 
 - [x] Implementar auto-save com debounce (salvar 1s apos ultima edicao)
 - [x] Mostrar indicador de estado no tab: unsaved (dot amarelo)
-- [ ] Nao fazer auto-save se o arquivo tem conflito externo pendente — depende do dialog de conflito
+- [x] Nao fazer auto-save se o arquivo tem conflito externo pendente — implementado em `useEditorSession.ts` via `hasConflict` check
 - [x] Salvar imediatamente ao trocar de arquivo

@@ -1,11 +1,13 @@
-import { HStack, Text, Badge, Kbd } from "@chakra-ui/react";
+import { HStack, Text, Badge, Kbd, Box } from "@chakra-ui/react";
 import { usePaneContext } from "@/contexts/PaneContext";
 import { useEditorSettings } from "@/contexts/EditorSettingsContext";
+import { useConnectionStatus } from "@/hooks/useConnectionStatus";
 import type { PaneLayout } from "@/types/pane";
 
 export function StatusBar() {
   const { layout } = usePaneContext();
   const { vimEnabled, vimMode, toggleVim } = useEditorSettings();
+  const { activeConnection } = useConnectionStatus();
   const paneCount = countLeaves(layout);
 
   return (
@@ -43,6 +45,17 @@ export function StatusBar() {
         {paneCount > 1 && <Text>{paneCount} panes</Text>}
       </HStack>
       <HStack gap={3}>
+        {activeConnection && (
+          <HStack gap={1}>
+            <Box
+              w="6px"
+              h="6px"
+              rounded="full"
+              bg={activeConnection.status === "connected" ? "green.500" : "red.500"}
+            />
+            <Text>{activeConnection.name}</Text>
+          </HStack>
+        )}
         <HStack gap={1}>
           <Kbd size="sm">⌘P</Kbd>
           <Text>buscar</Text>

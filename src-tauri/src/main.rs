@@ -329,8 +329,9 @@ async fn set_env_variable(
     environment_id: String,
     key: String,
     value: String,
+    is_secret: Option<bool>,
 ) -> Result<httui_notes::db::environments::EnvVariable, String> {
-    httui_notes::db::environments::set_env_variable(&pool, &environment_id, key, value).await
+    httui_notes::db::environments::set_env_variable(&pool, &environment_id, key, value, is_secret.unwrap_or(false)).await
 }
 
 #[tauri::command]
@@ -490,7 +491,7 @@ fn main() {
             app.manage(pool.clone());
 
             // Connection pool manager
-            let conn_manager = Arc::new(PoolManager::new(pool));
+            let conn_manager = Arc::new(PoolManager::new(pool, app.handle().clone()));
             app.manage(conn_manager.clone());
 
             // TTL cleanup task

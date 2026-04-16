@@ -6,6 +6,13 @@ import { hashBlockContent } from "./hash";
 
 const DEPENDENCY_TIMEOUT_MS = 10_000;
 
+/**
+ * Module-level map for deduplicating in-flight dependency executions.
+ * If two blocks both depend on the same upstream block, only one execution
+ * happens — the second caller awaits the same Promise.
+ */
+const inflightExecutions = new Map<string, Promise<void>>();
+
 export interface DependencyResult {
   blocks: BlockContext[];
   executed: string[]; // aliases of blocks that were executed
@@ -115,6 +122,22 @@ export async function resolveAndExecuteDependencies(
         throw new Error("Dependency resolution timed out");
       }
 
+      // Deduplicate: if another caller is already executing this block, wait for it
+      const inflight = inflightExecutions.get(alias);
+      if (inflight) {
+        onProgress?.(`Waiting for "${alias}"...`);
+        await inflight;
+        // After inflight completes, refresh the block's cached result
+        const refreshed = await collectAllBlocks(editor, filePath);
+        const updatedBlock = refreshed.find((b) => b.alias === alias);
+        const currentBlock = allBlocks.find((b) => b.alias === alias);
+        if (updatedBlock?.cachedResult && currentBlock) {
+          currentBlock.cachedResult = updatedBlock.cachedResult;
+        }
+        executed.push(alias);
+        continue;
+      }
+
       const block = allBlocks.find((b) => b.alias === alias);
       if (!block) continue;
 
@@ -125,53 +148,62 @@ export async function resolveAndExecuteDependencies(
 
       onProgress?.(`Executing "${alias}"...`);
 
-      // Parse block data for execution
-      let blockData: { url?: string; headers?: { key: string; value: string }[]; body?: string; method?: string; params?: unknown[] };
+      // Create and register the execution promise
+      const executionPromise = (async () => {
+        // Parse block data for execution
+        let blockData: { url?: string; headers?: { key: string; value: string }[]; body?: string; method?: string; params?: unknown[] };
+        try {
+          blockData = JSON.parse(block.content);
+        } catch {
+          throw new Error(`Failed to parse block data for "${alias}"`);
+        }
+
+        // Resolve references in the dependency block (its deps are already executed)
+        if (blockData.url) {
+          const r = resolveAllReferences(blockData.url, allBlocks, block.pos);
+          if (r.errors.length > 0) throw new Error(`"${alias}" URL: ${r.errors[0].message}`);
+          blockData.url = r.resolved;
+        }
+        if (blockData.headers) {
+          blockData.headers = blockData.headers.map((h) => {
+            const r = resolveAllReferences(h.value, allBlocks, block.pos);
+            if (r.errors.length > 0) throw new Error(`"${alias}" header "${h.key}": ${r.errors[0].message}`);
+            return { ...h, value: r.resolved };
+          });
+        }
+        if (blockData.body) {
+          const r = resolveAllReferences(blockData.body, allBlocks, block.pos);
+          if (r.errors.length > 0) throw new Error(`"${alias}" body: ${r.errors[0].message}`);
+          blockData.body = r.resolved;
+        }
+
+        const result = await executeBlock(block.blockType || "http", blockData);
+
+        // Save to cache
+        const hash = await hashBlockContent(block.content);
+        const resultData = result.data as Record<string, unknown>;
+        await saveBlockResult(
+          filePath,
+          hash,
+          result.status,
+          JSON.stringify(resultData),
+          result.duration_ms,
+        );
+
+        // Update block context with result
+        block.cachedResult = {
+          status: result.status,
+          response: JSON.stringify(resultData),
+        };
+      })();
+
+      inflightExecutions.set(alias, executionPromise);
       try {
-        blockData = JSON.parse(block.content);
-      } catch {
-        throw new Error(`Failed to parse block data for "${alias}"`);
+        await executionPromise;
+        executed.push(alias);
+      } finally {
+        inflightExecutions.delete(alias);
       }
-
-      // Resolve references in the dependency block (its deps are already executed)
-      if (blockData.url) {
-        const r = resolveAllReferences(blockData.url, allBlocks, block.pos);
-        if (r.errors.length > 0) throw new Error(`"${alias}" URL: ${r.errors[0].message}`);
-        blockData.url = r.resolved;
-      }
-      if (blockData.headers) {
-        blockData.headers = blockData.headers.map((h) => {
-          const r = resolveAllReferences(h.value, allBlocks, block.pos);
-          if (r.errors.length > 0) throw new Error(`"${alias}" header "${h.key}": ${r.errors[0].message}`);
-          return { ...h, value: r.resolved };
-        });
-      }
-      if (blockData.body) {
-        const r = resolveAllReferences(blockData.body, allBlocks, block.pos);
-        if (r.errors.length > 0) throw new Error(`"${alias}" body: ${r.errors[0].message}`);
-        blockData.body = r.resolved;
-      }
-
-      const result = await executeBlock(block.blockType || "http", blockData);
-
-      // Save to cache
-      const hash = await hashBlockContent(block.content);
-      const resultData = result.data as Record<string, unknown>;
-      await saveBlockResult(
-        filePath,
-        hash,
-        result.status,
-        JSON.stringify(resultData),
-        result.duration_ms,
-      );
-
-      // Update block context with result
-      block.cachedResult = {
-        status: result.status,
-        response: JSON.stringify(resultData),
-      };
-
-      executed.push(alias);
     }
   } finally {
     clearTimeout(timeout);

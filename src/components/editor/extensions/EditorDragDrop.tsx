@@ -12,6 +12,7 @@ import {
 import { useState, useCallback, useEffect, useRef } from "react";
 import { Box } from "@chakra-ui/react";
 import type { Editor } from "@tiptap/core";
+import { extractReferencedAliases } from "@/lib/blocks/dependencies";
 
 interface DragState {
   blockPos: number;
@@ -33,6 +34,80 @@ interface HandlePos {
   visible: boolean;
   blockPos: number;
   depth: number;
+}
+
+const EXECUTABLE_BLOCK_TYPES = ["httpBlock", "dbBlock", "e2eBlock"];
+
+/**
+ * Validate that moving a block to a new position doesn't break reference DAG.
+ * Returns error message if invalid, null if ok.
+ */
+function validateBlockMove(
+  editor: Editor,
+  movedNode: import("@tiptap/pm/model").Node,
+  targetPos: number,
+): string | null {
+  const { doc } = editor.state;
+
+  // Only validate executable blocks
+  if (!EXECUTABLE_BLOCK_TYPES.includes(movedNode.type.name)) return null;
+
+  const movedAlias = (movedNode.attrs.alias as string) ?? "";
+  const movedContent = (movedNode.attrs.content as string) ?? "";
+
+  // 1. Check if moved block references blocks that would be below it at targetPos
+  const referencedAliases = extractReferencedAliases(movedContent);
+  if (referencedAliases.length > 0) {
+    // Collect all block aliases and positions in current doc (after source deleted)
+    const blockPositions = new Map<string, number>();
+    doc.descendants((node, pos) => {
+      if (EXECUTABLE_BLOCK_TYPES.includes(node.type.name)) {
+        const alias = (node.attrs.alias as string) ?? "";
+        if (alias) blockPositions.set(alias, pos);
+      }
+      return false;
+    });
+
+    for (const refAlias of referencedAliases) {
+      const refPos = blockPositions.get(refAlias);
+      if (refPos !== undefined && refPos >= targetPos) {
+        return `Cannot move: references "{{${refAlias}}}" which would be below`;
+      }
+    }
+  }
+
+  // 2. Check if any block above targetPos references the moved block
+  if (movedAlias) {
+    doc.descendants((node, pos) => {
+      if (pos >= targetPos) return false;
+      if (!EXECUTABLE_BLOCK_TYPES.includes(node.type.name)) return false;
+      const content = (node.attrs.content as string) ?? "";
+      const refs = extractReferencedAliases(content);
+      if (refs.includes(movedAlias)) {
+        // This block references us and would remain above — that's fine
+      }
+      return false;
+    });
+
+    // Check if blocks BELOW targetPos reference the moved block (they'd break)
+    let violation: string | null = null;
+    doc.descendants((node, pos) => {
+      if (violation) return false;
+      if (pos < targetPos) return false;
+      if (!EXECUTABLE_BLOCK_TYPES.includes(node.type.name)) return false;
+      const content = (node.attrs.content as string) ?? "";
+      const refs = extractReferencedAliases(content);
+      if (refs.includes(movedAlias)) {
+        const alias = (node.attrs.alias as string) ?? node.type.name;
+        violation = `Cannot move: "${alias}" below references "{{${movedAlias}}}"`;
+      }
+      return false;
+    });
+
+    if (violation) return violation;
+  }
+
+  return null;
 }
 
 // Node types that are wrappers (not individually draggable)
@@ -142,35 +217,42 @@ export function EditorDragDrop({ editor, children }: EditorDragDropProps) {
     }),
   );
 
-  // Track mouse to position the drag handle
+  // Track mouse to position the drag handle (throttled with rAF)
   useEffect(() => {
     if (!editor) return;
     const view = editor.view;
+    let rafId: number | null = null;
 
     const onMouseMove = (e: MouseEvent) => {
-      const block = findBlockAtCursor(editor, e.clientX, e.clientY);
-      if (!block) {
-        setHandlePos((p) => ({ ...p, visible: false }));
-        return;
-      }
-
-      const blockRect = block.dom.getBoundingClientRect();
-      setHandlePos({
-        top: blockRect.top + 2,
-        left: blockRect.left - 26,
-        visible: true,
-        blockPos: block.blockPos,
-        depth: block.depth,
+      if (rafId !== null) return;
+      const x = e.clientX;
+      const y = e.clientY;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        const block = findBlockAtCursor(editor, x, y);
+        if (!block) {
+          setHandlePos((p) => p.visible ? { ...p, visible: false } : p);
+          return;
+        }
+        const blockRect = block.dom.getBoundingClientRect();
+        setHandlePos({
+          top: blockRect.top + 2,
+          left: blockRect.left - 26,
+          visible: true,
+          blockPos: block.blockPos,
+          depth: block.depth,
+        });
       });
     };
 
     const onMouseLeave = () => {
-      setHandlePos((p) => ({ ...p, visible: false }));
+      setHandlePos((p) => p.visible ? { ...p, visible: false } : p);
     };
 
     view.dom.addEventListener("mousemove", onMouseMove);
     view.dom.addEventListener("mouseleave", onMouseLeave);
     return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
       view.dom.removeEventListener("mousemove", onMouseMove);
       view.dom.removeEventListener("mouseleave", onMouseLeave);
     };
@@ -241,6 +323,18 @@ export function EditorDragDrop({ editor, children }: EditorDragDropProps) {
       const target = findDropTarget(editor, pointerX, pointerY, -1);
 
       if (target) {
+        // Validate reference DAG before completing the move
+        const moveError = validateBlockMove(editor, sourceNode, target.targetPos);
+        if (moveError) {
+          // Invalid move — put it back and warn
+          console.warn(moveError);
+          const { tr } = editor.state;
+          tr.insert(dragState.blockPos, sourceNode);
+          editor.view.dispatch(tr);
+          setDragState(null);
+          setDropIndicator(null);
+          return;
+        }
         // Insert at drop position
         const { tr } = editor.state;
         tr.insert(target.targetPos, sourceNode);

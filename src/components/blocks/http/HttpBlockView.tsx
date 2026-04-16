@@ -2,8 +2,9 @@ import { NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/core";
 import { Box, Flex, HStack, Text, Badge, IconButton, Input, Tabs } from "@chakra-ui/react";
 import { NativeSelectRoot, NativeSelectField } from "@chakra-ui/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LuX, LuPlus, LuBraces, LuCopy, LuChevronDown, LuCheck, LuDownload, LuFile } from "react-icons/lu";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { LuX, LuPlus, LuBraces, LuCopy, LuChevronDown, LuCheck, LuDownload, LuFile, LuMaximize2 } from "react-icons/lu";
+import { Portal } from "@chakra-ui/react";
 import { common, createLowlight } from "lowlight";
 
 const lowlight = createLowlight(common);
@@ -21,7 +22,7 @@ import { hashBlockContent } from "@/lib/blocks/hash";
 import { resolveAllReferences } from "@/lib/blocks/references";
 import { collectBlocksAbove } from "@/lib/blocks/document";
 import { resolveAndExecuteDependencies } from "@/lib/blocks/dependencies";
-import { referenceHighlight } from "@/lib/blocks/cm-references";
+import { referenceHighlight, createReferenceTooltip } from "@/lib/blocks/cm-references";
 import { createReferenceAutocomplete } from "@/lib/blocks/cm-autocomplete";
 import type { BlockContext } from "@/lib/blocks/references";
 import { useEnvironmentContext } from "@/contexts/EnvironmentContext";
@@ -296,12 +297,16 @@ function HttpInput({
   cmTheme,
   blocksRef,
   envKeysRef,
+  envVarsRef,
+  getPos,
 }: {
   data: HttpBlockData;
   onChange: (data: HttpBlockData) => void;
   cmTheme: "light" | "dark";
   blocksRef: React.RefObject<BlockContext[]>;
   envKeysRef: React.RefObject<string[]>;
+  envVarsRef: React.RefObject<Record<string, string>>;
+  getPos: (() => number) | boolean;
 }) {
   const showBody = METHODS_WITH_BODY.includes(data.method);
 
@@ -311,6 +316,15 @@ function HttpInput({
       () => envKeysRef.current ?? [],
     ),
     [blocksRef, envKeysRef],
+  );
+
+  const refTooltip = useMemo(
+    () => createReferenceTooltip(
+      () => blocksRef.current ?? [],
+      () => (typeof getPos === "function" ? getPos() : 0) ?? 0,
+      () => envVarsRef.current ?? {},
+    ),
+    [blocksRef, envVarsRef, getPos],
   );
 
   const jsonError = useMemo(() => {
@@ -354,7 +368,7 @@ function HttpInput({
             onChange={(val) => onChange({ ...data, url: val })}
             placeholder="https://api.example.com/endpoint"
             cmTheme={cmTheme}
-            extensions={[refAutocomplete]}
+            extensions={[refAutocomplete, refTooltip]}
           />
         </Box>
       </Flex>
@@ -428,7 +442,7 @@ function HttpInput({
               <CodeMirror
                 value={data.body}
                 onChange={(val) => onChange({ ...data, body: val })}
-                extensions={[json(), EditorView.lineWrapping, cmTransparentBg, ...referenceHighlight, refAutocomplete]}
+                extensions={[json(), EditorView.lineWrapping, cmTransparentBg, ...referenceHighlight, refAutocomplete, refTooltip]}
                 basicSetup={{ lineNumbers: false, foldGutter: false, autocompletion: false }}
                 theme={cmTheme}
                 height="80px"
@@ -553,9 +567,21 @@ function BinaryPreview({
 }) {
   const ct = contentType.toLowerCase();
   const dataUrl = `data:${contentType};base64,${binary.data}`;
+  const [maximized, setMaximized] = useState(false);
 
   const ext = ct.split("/").pop()?.split(";")[0] ?? "bin";
   const filename = `response.${ext}`;
+
+  const canMaximize = ct.startsWith("image/") || ct === "application/pdf";
+
+  useEffect(() => {
+    if (!maximized) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMaximized(false);
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [maximized]);
 
   return (
     <Box display="flex" flexDirection="column" gap={2}>
@@ -610,15 +636,72 @@ function BinaryPreview({
         </Flex>
       )}
 
-      <IconButton
-        aria-label="Download"
-        size="xs"
-        variant="outline"
-        alignSelf="flex-start"
-        onClick={() => downloadBase64(binary.data, contentType, filename)}
-      >
-        <LuDownload />
-      </IconButton>
+      <HStack>
+        <IconButton
+          aria-label="Download"
+          size="xs"
+          variant="outline"
+          onClick={() => downloadBase64(binary.data, contentType, filename)}
+        >
+          <LuDownload />
+        </IconButton>
+        {canMaximize && (
+          <IconButton
+            aria-label="Maximize"
+            size="xs"
+            variant="outline"
+            onClick={() => setMaximized(true)}
+          >
+            <LuMaximize2 />
+          </IconButton>
+        )}
+      </HStack>
+
+      {maximized && (
+        <Portal>
+          <Box
+            position="fixed"
+            top={0}
+            left={0}
+            right={0}
+            bottom={0}
+            zIndex={9999}
+            bg="blackAlpha.800"
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+            onClick={() => setMaximized(false)}
+          >
+            <Box onClick={(e) => e.stopPropagation()}>
+              {ct.startsWith("image/") ? (
+                <img
+                  src={dataUrl}
+                  alt="Response"
+                  style={{ maxWidth: "90vw", maxHeight: "90vh", objectFit: "contain" }}
+                />
+              ) : ct === "application/pdf" ? (
+                <iframe
+                  src={dataUrl}
+                  title="PDF Preview"
+                  style={{ width: "90vw", height: "90vh", border: "none", borderRadius: "8px" }}
+                />
+              ) : null}
+            </Box>
+            <IconButton
+              aria-label="Close"
+              position="absolute"
+              top={4}
+              right={4}
+              size="sm"
+              variant="solid"
+              colorPalette="gray"
+              onClick={() => setMaximized(false)}
+            >
+              <LuX />
+            </IconButton>
+          </Box>
+        </Portal>
+      )}
     </Box>
   );
 }
@@ -774,7 +857,7 @@ function HttpOutput({ response, error }: { response: HttpResponse | null; error:
 
 // --- Main view ---
 
-export function HttpBlockView({ node, editor, getPos, updateAttributes, selected }: NodeViewProps) {
+function HttpBlockViewInner({ node, editor, getPos, updateAttributes, selected }: NodeViewProps) {
   const { colorMode } = useColorMode();
   const { filePath } = useBlockContext();
   const { getActiveVariables } = useEnvironmentContext();
@@ -791,12 +874,16 @@ export function HttpBlockView({ node, editor, getPos, updateAttributes, selected
   const lastHashRef = useRef<string>("");
   const blocksRef = useRef<BlockContext[]>([]);
   const envKeysRef = useRef<string[]>([]);
+  const envVarsRef = useRef<Record<string, string>>({});
 
-  // Keep envKeysRef updated for autocomplete
+  // Keep envKeysRef and envVarsRef updated for autocomplete + tooltip
   useEffect(() => {
     let cancelled = false;
     getActiveVariables().then((vars) => {
-      if (!cancelled) envKeysRef.current = Object.keys(vars);
+      if (!cancelled) {
+        envKeysRef.current = Object.keys(vars);
+        envVarsRef.current = vars;
+      }
     });
     return () => { cancelled = true; };
   }, [getActiveVariables]);
@@ -984,9 +1071,13 @@ export function HttpBlockView({ node, editor, getPos, updateAttributes, selected
         onCancel={handleCancel}
         selected={selected}
         statusText={depStatus}
-        inputSlot={<HttpInput data={data} onChange={handleDataChange} cmTheme={cmTheme} blocksRef={blocksRef} envKeysRef={envKeysRef} />}
+        inputSlot={<HttpInput data={data} onChange={handleDataChange} cmTheme={cmTheme} blocksRef={blocksRef} envKeysRef={envKeysRef} envVarsRef={envVarsRef} getPos={getPos} />}
         outputSlot={<HttpOutput response={response} error={error} />}
       />
     </NodeViewWrapper>
   );
 }
+
+export const HttpBlockView = memo(HttpBlockViewInner, (prev, next) =>
+  prev.selected === next.selected && prev.node === next.node,
+);

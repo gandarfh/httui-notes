@@ -12,7 +12,7 @@ export interface EnvironmentContextValue {
   deleteEnvironment: (id: string) => Promise<void>;
   duplicateEnvironment: (sourceId: string, newName: string) => Promise<void>;
   loadVariables: (environmentId: string) => Promise<EnvVariable[]>;
-  setVariable: (environmentId: string, key: string, value: string) => Promise<EnvVariable>;
+  setVariable: (environmentId: string, key: string, value: string, isSecret?: boolean) => Promise<EnvVariable>;
   deleteVariable: (id: string) => Promise<void>;
   getActiveVariables: () => Promise<Record<string, string>>;
 }
