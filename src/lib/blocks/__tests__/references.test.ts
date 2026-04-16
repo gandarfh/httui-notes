@@ -90,6 +90,7 @@ describe("resolveAllReferences", () => {
   const blocks: BlockContext[] = [
     {
       alias: "login",
+      blockType: "http",
       pos: 10,
       content: "{}",
       cachedResult: {
@@ -102,6 +103,7 @@ describe("resolveAllReferences", () => {
     },
     {
       alias: "users",
+      blockType: "http",
       pos: 50,
       content: "{}",
       cachedResult: {
@@ -158,7 +160,7 @@ describe("resolveAllReferences", () => {
 
   it("returns error for block without cache", () => {
     const blocksNoCache: BlockContext[] = [
-      { alias: "nocache", pos: 5, content: "{}", cachedResult: null },
+      { alias: "nocache", blockType: "http", pos: 5, content: "{}", cachedResult: null },
     ];
     const { errors } = resolveAllReferences("{{nocache.response.x}}", blocksNoCache, 100);
     expect(errors).toHaveLength(1);

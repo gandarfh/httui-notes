@@ -35,6 +35,16 @@ const turndown = new TurndownService({
       const info = meta ? `db ${meta}` : "db";
       return `\n\`\`\`${info}\n${dataContent}\n\`\`\`\n`;
     }
+    if (dataType === "e2e-block") {
+      const alias = el.getAttribute?.("data-alias") ?? "";
+      const displayMode = el.getAttribute?.("data-display-mode") ?? "";
+      const meta = [
+        alias ? `alias=${alias}` : "",
+        displayMode && displayMode !== "input" ? `displayMode=${displayMode}` : "",
+      ].filter(Boolean).join(" ");
+      const info = meta ? `e2e ${meta}` : "e2e";
+      return `\n\`\`\`${info}\n${dataContent}\n\`\`\`\n`;
+    }
     if (dataType === "mermaid") {
       return `\n\`\`\`mermaid\n${dataContent}\n\`\`\`\n`;
     }
@@ -93,6 +103,28 @@ turndown.addRule("httpBlock", {
   replacement: (_content, node) => {
     const content = (node as HTMLElement).getAttribute("data-content") || "";
     return `\n\`\`\`http\n${content}\n\`\`\`\n`;
+  },
+});
+
+// E2E executable blocks
+turndown.addRule("e2eBlock", {
+  filter: (node) => {
+    return (
+      node.nodeName === "DIV" &&
+      node.getAttribute("data-type") === "e2e-block"
+    );
+  },
+  replacement: (_content, node) => {
+    const el = node as HTMLElement;
+    const content = el.getAttribute("data-content") || "";
+    const alias = el.getAttribute("data-alias") ?? "";
+    const displayMode = el.getAttribute("data-display-mode") ?? "";
+    const meta = [
+      alias ? `alias=${alias}` : "",
+      displayMode && displayMode !== "input" ? `displayMode=${displayMode}` : "",
+    ].filter(Boolean).join(" ");
+    const info = meta ? `e2e ${meta}` : "e2e";
+    return `\n\`\`\`${info}\n${content}\n\`\`\`\n`;
   },
 });
 

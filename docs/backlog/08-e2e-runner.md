@@ -13,24 +13,24 @@ Interface de configuracao do E2E block.
 
 ### Tasks
 
-- [ ] Criar TipTap node `E2eBlock` estendendo `ExecutableBlock`
-- [ ] UI de input:
-  - [ ] Base URL: input com autocomplete `{{...}}`
-  - [ ] Default headers: lista editavel key-value (herdados por todos os steps)
-  - [ ] Steps: lista ordenavel (drag and drop para reordenar)
-- [ ] Cada step renderiza como um card colapsavel (daisyUI `collapse`) com:
-  - [ ] Name: input de texto
-  - [ ] Method: dropdown
-  - [ ] URL: input de texto (path relativo ao base_url)
-  - [ ] Headers: lista editavel (override dos defaults, colapsavel)
-  - [ ] Body: CodeMirror JSON (visivel para POST/PUT/PATCH)
-  - [ ] Expect (secao colapsavel):
-    - [ ] Status: input numerico
-    - [ ] JSON match: key-value editor (key = JSON path, value = expected value)
-    - [ ] Body contains: lista de strings
-  - [ ] Extract: key-value editor (variable_name = JSON path do response)
-- [ ] Botao "+ Add Step" no final da lista
-- [ ] Botao de remover em cada step
+- [x] Criar TipTap node `E2eBlock` estendendo `ExecutableBlock`
+- [x] UI de input:
+  - [x] Base URL: input com autocomplete `{{...}}`
+  - [x] Default headers: lista editavel key-value (herdados por todos os steps)
+  - [x] Steps: lista ordenavel (botoes up/down para reordenar)
+- [x] Cada step renderiza como um card colapsavel com:
+  - [x] Name: input de texto
+  - [x] Method: dropdown
+  - [x] URL: input de texto (path relativo ao base_url)
+  - [x] Headers: lista editavel (override dos defaults, colapsavel)
+  - [x] Body: CodeMirror JSON (visivel para POST/PUT/PATCH)
+  - [x] Expect (secao colapsavel):
+    - [x] Status: input numerico
+    - [x] JSON match: key-value editor (key = JSON path, value = expected value)
+    - [x] Body contains: lista de strings
+  - [x] Extract: key-value editor (variable_name = JSON path do response)
+- [x] Botao "+ Add Step" no final da lista
+- [x] Botao de remover em cada step
 
 ## Story 02: E2E block UI — output
 
@@ -38,17 +38,17 @@ Renderizar resultados da execucao E2E.
 
 ### Tasks
 
-- [ ] Summary no topo: "2/3 passed" com barra de progresso (daisyUI `progress`)
-  - [ ] Barra verde se todos passaram, vermelha se algum falhou
-- [ ] Lista de steps com resultado:
-  - [ ] Icone: check verde (passed) ou x vermelho (failed)
-  - [ ] Nome do step
-  - [ ] HTTP status recebido
-  - [ ] Tempo de execucao
-- [ ] Cada step e expandivel (daisyUI `collapse`) mostrando:
-  - [ ] Response body (com syntax highlighting)
-  - [ ] Assertions: lista com expected vs received, diff visual para falhas
-  - [ ] Variaveis extraidas: lista key=value
+- [x] Summary no topo: "2/3 passed" com barra de progresso (Chakra UI)
+  - [x] Barra verde se todos passaram, vermelha se algum falhou
+- [x] Lista de steps com resultado:
+  - [x] Icone: check verde (passed) ou x vermelho (failed)
+  - [x] Nome do step
+  - [x] HTTP status recebido
+  - [x] Tempo de execucao
+- [x] Cada step e expandivel mostrando:
+  - [x] Response body (com syntax highlighting via lowlight)
+  - [x] Assertions: lista com expected vs received, diff visual para falhas
+  - [x] Variaveis extraidas: lista key=value
 
 ## Story 03: E2E runner no backend
 
@@ -56,21 +56,21 @@ Implementar execucao sequencial de steps no Rust.
 
 ### Tasks
 
-- [ ] Implementar `run_e2e_suite` — recebe: base_url, default_headers, steps array
-- [ ] Executar steps sequencialmente (ordem do array)
-- [ ] Para cada step:
-  - [ ] Montar URL: base_url + step.url
-  - [ ] Merge headers: default_headers + step.headers (step override default)
-  - [ ] Resolver variaveis `{{...}}` incluindo extractions de steps anteriores
-  - [ ] Executar HTTP request (reutilizar logica do `execute_http_request`)
-  - [ ] Validar expectations:
-    - [ ] Status: comparar com expected
-    - [ ] JSON match: navegar response JSON e comparar valores
-    - [ ] Body contains: verificar se body contem cada string
-  - [ ] Processar extractions: extrair valores do response JSON e armazenar para steps seguintes
-  - [ ] Se step falha: continuar executando os demais (nao abortar)
-- [ ] Retornar resultado por step: passed/failed, errors (array de strings com detalhes), response, elapsed_ms, extractions
-- [ ] Escrever testes com mock server para cenarios de sucesso e falha
+- [x] Implementar `E2eExecutor` — recebe: base_url, default_headers, steps array
+- [x] Executar steps sequencialmente (ordem do array)
+- [x] Para cada step:
+  - [x] Montar URL: base_url + step.url
+  - [x] Merge headers: default_headers + step.headers (step override default)
+  - [x] Resolver variaveis `{{...}}` incluindo extractions de steps anteriores
+  - [x] Executar HTTP request (reutilizar reqwest Client)
+  - [x] Validar expectations:
+    - [x] Status: comparar com expected
+    - [x] JSON match: navegar response JSON e comparar valores
+    - [x] Body contains: verificar se body contem cada string
+  - [x] Processar extractions: extrair valores do response JSON e armazenar para steps seguintes
+  - [x] Se step falha: continuar executando os demais (nao abortar)
+- [x] Retornar resultado por step: passed/failed, errors (array de strings com detalhes), response, elapsed_ms, extractions
+- [x] Escrever testes com mock server (wiremock) para cenarios de sucesso e falha (8 testes)
 
 ## Story 04: Serializacao E2E no markdown
 
@@ -78,8 +78,18 @@ Converter E2E block de/para fenced code block.
 
 ### Tasks
 
-- [ ] Serializar como ` ```e2e ` com YAML interno seguindo schema da spec
-- [ ] Parser: ler YAML e popular atributos do TipTap node
-- [ ] Serializer: converter atributos do node para YAML
-- [ ] Preservar extractions e expects no roundtrip
-- [ ] Suportar variaveis `{{...}}` em todos os campos de texto (url, headers, body, expect values)
+- [x] Serializar como ` ```e2e ` com JSON interno (seguindo padrao dos outros blocos)
+- [x] Parser: ler JSON e popular atributos do TipTap node
+- [x] Serializer: converter atributos do node para JSON
+- [x] Preservar extractions e expects no roundtrip
+- [x] Suportar variaveis `{{...}}` em todos os campos de texto (url, headers, body, expect values)
+
+---
+
+## Notas de implementacao
+
+- Reordenacao de steps usa botoes up/down (sem dependencia de DnD library)
+- UI usa Chakra UI v3 (nao daisyUI como originalmente descrito no backlog)
+- Formato de serializacao e JSON (consistente com http e db blocks), nao YAML
+- `dependencies.ts` generalizado para suportar execucao de qualquer blockType (nao apenas HTTP)
+- Slash command `/e2e` adicionado (titulo "E2E Test")

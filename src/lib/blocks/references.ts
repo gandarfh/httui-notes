@@ -8,6 +8,7 @@ export interface Reference {
 
 export interface BlockContext {
   alias: string;
+  blockType: string;
   pos: number;
   content: string;
   cachedResult: {

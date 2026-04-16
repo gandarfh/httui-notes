@@ -1,4 +1,5 @@
 pub mod db;
+pub mod e2e;
 pub mod http;
 
 use async_trait::async_trait;

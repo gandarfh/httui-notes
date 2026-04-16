@@ -164,7 +164,7 @@ export async function resolveAndExecuteDependencies(
         blockData.body = r.resolved;
       }
 
-      const result = await executeBlock("http", blockData);
+      const result = await executeBlock(block.blockType || "http", blockData);
 
       // Save to cache
       const hash = await hashBlockContent(block.content);

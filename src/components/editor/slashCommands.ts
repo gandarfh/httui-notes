@@ -189,6 +189,28 @@ const COMMANDS: SlashMenuItem[] = [
         .run();
     },
   },
+  {
+    title: "E2E Test",
+    icon: "🧪",
+    command: ({ editor, range }) => {
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .insertContent({
+          type: "e2eBlock",
+          attrs: {
+            blockType: "e2e",
+            content: JSON.stringify({
+              baseUrl: "",
+              headers: [],
+              steps: [],
+            }),
+          },
+        })
+        .run();
+    },
+  },
 ];
 
 export function createSlashCommands() {
