@@ -11,7 +11,7 @@ export const DEFAULT_DB_DATA: DbBlockData = {
 
 export interface DbSelectResponse {
   columns: { name: string; type: string }[];
-  rows: (string | number | boolean | null)[][];
+  rows: Record<string, string | number | boolean | null>[];
   total_rows: number;
   page: number;
   page_size: number;
