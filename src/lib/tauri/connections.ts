@@ -73,3 +73,24 @@ export function deleteConnection(id: string): Promise<void> {
 export function testConnection(id: string): Promise<void> {
   return invoke("test_connection", { id });
 }
+
+// --- Schema introspection ---
+
+export interface SchemaEntry {
+  table_name: string;
+  column_name: string;
+  data_type: string | null;
+}
+
+export function introspectSchema(
+  connectionId: string,
+): Promise<SchemaEntry[]> {
+  return invoke("introspect_schema", { connectionId });
+}
+
+export function getCachedSchema(
+  connectionId: string,
+  ttlSeconds?: number,
+): Promise<SchemaEntry[] | null> {
+  return invoke("get_cached_schema", { connectionId, ttlSeconds });
+}

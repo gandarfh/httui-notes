@@ -62,6 +62,26 @@ async fn save_block_result(
     .map_err(|e| e.to_string())
 }
 
+// --- Schema introspection commands ---
+
+#[tauri::command]
+async fn introspect_schema(
+    pool: tauri::State<'_, SqlitePool>,
+    conn_manager: tauri::State<'_, Arc<PoolManager>>,
+    connection_id: String,
+) -> Result<Vec<httui_notes::db::schema_cache::SchemaEntry>, String> {
+    httui_notes::db::schema_cache::introspect_schema(&conn_manager, &pool, &connection_id).await
+}
+
+#[tauri::command]
+async fn get_cached_schema(
+    pool: tauri::State<'_, SqlitePool>,
+    connection_id: String,
+    ttl_seconds: Option<i64>,
+) -> Result<Option<Vec<httui_notes::db::schema_cache::SchemaEntry>>, String> {
+    httui_notes::db::schema_cache::get_cached_schema(&pool, &connection_id, ttl_seconds.unwrap_or(300)).await
+}
+
 // --- Config commands ---
 
 #[tauri::command]
@@ -457,6 +477,8 @@ fn main() {
             update_connection,
             delete_connection,
             test_connection,
+            introspect_schema,
+            get_cached_schema,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
