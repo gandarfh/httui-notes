@@ -756,7 +756,7 @@ function E2eBlockViewInner({ node, editor, getPos, updateAttributes, selected }:
   const { filePath } = useBlockContext();
   const { colorMode } = useColorMode();
   const cmTheme = colorMode === "dark" ? "dark" : "light";
-  const { getActiveVariables } = useEnvironmentContext();
+  const { getActiveVariables, variablesVersion } = useEnvironmentContext();
 
   // Parse block data
   const [data, setData] = useState<E2eBlockData>(() => {
@@ -849,7 +849,7 @@ function E2eBlockViewInner({ node, editor, getPos, updateAttributes, selected }:
       }
     });
     return () => { cancelled = true; };
-  }, [getActiveVariables]);
+  }, [getActiveVariables, variablesVersion]);
 
   useEffect(() => {
     if (!filePath || !editor) return;

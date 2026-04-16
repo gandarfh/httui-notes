@@ -87,6 +87,7 @@ export function replacePaneInLayout(
 // Module-level stores — live outside React, no re-render issues
 const editorContentsStore = new Map<string, string>();
 const unsavedFilesStore = new Set<string>();
+export const scrollPositionsStore = new Map<string, number>();
 
 // --- Hook ---
 
@@ -236,6 +237,7 @@ export function usePaneState() {
     activePaneId,
     editorContents: editorContentsStore,
     unsavedFiles: unsavedFilesStore,
+    scrollPositions: scrollPositionsStore,
     getActiveLeaf,
     actions: {
       openFile,

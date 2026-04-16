@@ -115,6 +115,7 @@ struct PoolEntry {
     pool: Arc<DatabasePool>,
     name: String,
     last_used: Instant,
+    ttl_seconds: u64,
 }
 
 impl PoolManager {
@@ -165,6 +166,7 @@ impl PoolManager {
                     pool: pool.clone(),
                     name: conn_name.clone(),
                     last_used: Instant::now(),
+                    ttl_seconds: conn.ttl_seconds as u64,
                 },
             );
         }
@@ -195,17 +197,17 @@ impl PoolManager {
     }
 
     pub async fn cleanup_expired(&self) {
-        let to_check: Vec<(String, Instant)> = {
+        let to_check: Vec<(String, Instant, u64)> = {
             let pools = self.pools.read().await;
             pools
                 .iter()
-                .map(|(id, entry)| (id.clone(), entry.last_used))
+                .map(|(id, entry)| (id.clone(), entry.last_used, entry.ttl_seconds))
                 .collect()
         };
 
         let mut to_remove = Vec::new();
-        for (id, last_used) in &to_check {
-            if last_used.elapsed() > Duration::from_secs(600) {
+        for (id, last_used, ttl_seconds) in &to_check {
+            if last_used.elapsed() > Duration::from_secs(*ttl_seconds) {
                 to_remove.push(id.clone());
             }
         }

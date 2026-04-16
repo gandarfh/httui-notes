@@ -3,9 +3,10 @@ import { ReactNodeViewRenderer, NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/core";
 import { Box } from "@chakra-ui/react";
 
-function WikilinkView({ node }: NodeViewProps) {
+function WikilinkView({ node, extension }: NodeViewProps) {
   const target = node.attrs.target as string;
   const label = node.attrs.label as string || target;
+  const onNavigate = (extension.options as WikilinkOptions).onNavigate;
 
   return (
     <NodeViewWrapper as="span" style={{ display: "inline" }}>
@@ -18,6 +19,7 @@ function WikilinkView({ node }: NodeViewProps) {
         textDecorationColor="blue.300"
         _hover={{ textDecorationStyle: "solid" }}
         data-wikilink={target}
+        onClick={() => onNavigate?.(target)}
       >
         {label}
       </Box>

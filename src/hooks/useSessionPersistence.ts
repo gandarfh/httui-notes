@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { restoreSession, setConfig, startWatching, rebuildSearchIndex } from "@/lib/tauri/commands";
 import { markdownToHtml } from "@/lib/markdown/parser";
 import type { PaneActions } from "@/hooks/usePaneState";
+import { scrollPositionsStore } from "@/hooks/usePaneState";
 import type { PaneLayout } from "@/types/pane";
 
 interface UseSessionPersistenceOpts {
@@ -80,6 +81,16 @@ export function useSessionPersistence({
 
               const cleanedLayout = filterDeletedTabs(parsed, new Set(contents.keys()));
               actions.restoreLayout(cleanedLayout, session.active_pane_id, contents);
+
+              // Restore scroll positions
+              if (session.scroll_positions) {
+                try {
+                  const positions = JSON.parse(session.scroll_positions) as Record<string, number>;
+                  for (const [fp, pos] of Object.entries(positions)) {
+                    scrollPositionsStore.set(fp, pos);
+                  }
+                } catch { /* invalid JSON, ignore */ }
+              }
             } catch {
               // Invalid layout JSON, use default
             }
@@ -105,6 +116,7 @@ export function useSessionPersistence({
     if (!sessionRestored.current) return;
     setConfig("pane_layout", JSON.stringify(layout)).catch(() => {});
     setConfig("active_pane_id", activePaneId).catch(() => {});
+    setConfig("scroll_positions", JSON.stringify(Object.fromEntries(scrollPositionsStore))).catch(() => {});
   }, [layout, activePaneId]);
 
   // Save vim preference (only after session restore completes)

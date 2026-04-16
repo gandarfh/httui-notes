@@ -860,7 +860,7 @@ function HttpOutput({ response, error }: { response: HttpResponse | null; error:
 function HttpBlockViewInner({ node, editor, getPos, updateAttributes, selected }: NodeViewProps) {
   const { colorMode } = useColorMode();
   const { filePath } = useBlockContext();
-  const { getActiveVariables } = useEnvironmentContext();
+  const { getActiveVariables, variablesVersion } = useEnvironmentContext();
   const cmTheme = colorMode === "dark" ? "dark" : "light";
   const alias = (node.attrs.alias as string) ?? "";
   const displayMode = (node.attrs.displayMode as DisplayMode) ?? "input";
@@ -886,7 +886,7 @@ function HttpBlockViewInner({ node, editor, getPos, updateAttributes, selected }
       }
     });
     return () => { cancelled = true; };
-  }, [getActiveVariables]);
+  }, [getActiveVariables, variablesVersion]);
 
   // Keep blocksRef updated for autocomplete
   useEffect(() => {
