@@ -23,6 +23,7 @@ import { EditorDragDrop } from "./extensions/EditorDragDrop";
 import { registry } from "@/components/blocks/registry";
 import { BlockContextProvider } from "@/components/blocks/BlockContext";
 import "@/components/blocks/http"; // side-effect: registers HttpBlock
+import "@/components/blocks/db"; // side-effect: registers DbBlock
 import "./editor.css";
 import { createWikilinkSuggest } from "./extensions/WikilinkSuggest";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
