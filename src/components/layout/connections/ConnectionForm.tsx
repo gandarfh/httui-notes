@@ -11,7 +11,8 @@ import {
   Portal,
 } from "@chakra-ui/react";
 import { NativeSelectRoot, NativeSelectField } from "@chakra-ui/react";
-import { LuX, LuPlugZap, LuChevronDown, LuChevronRight } from "react-icons/lu";
+import { LuX, LuPlugZap, LuChevronDown, LuChevronRight, LuFolderOpen } from "react-icons/lu";
+import { open } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Connection, CreateConnectionInput } from "@/lib/tauri/connections";
 import {
@@ -263,12 +264,34 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
               <Text fontSize="xs" fontWeight="medium" mb={1} color="fg.muted">
                 {isSqlite ? "File Path" : "Database"}
               </Text>
-              <Input
-                size="sm"
-                value={dbName}
-                onChange={(e) => setDbName(e.target.value)}
-                placeholder={isSqlite ? "/path/to/database.db" : "mydb"}
-              />
+              <Flex gap={1}>
+                <Input
+                  size="sm"
+                  flex={1}
+                  value={dbName}
+                  onChange={(e) => setDbName(e.target.value)}
+                  placeholder={isSqlite ? "/path/to/database.db" : "mydb"}
+                />
+                {isSqlite && (
+                  <IconButton
+                    aria-label="Browse"
+                    size="sm"
+                    variant="outline"
+                    onClick={async () => {
+                      const selected = await open({
+                        multiple: false,
+                        filters: [
+                          { name: "SQLite", extensions: ["db", "sqlite", "sqlite3"] },
+                          { name: "All", extensions: ["*"] },
+                        ],
+                      });
+                      if (selected) setDbName(selected);
+                    }}
+                  >
+                    <LuFolderOpen />
+                  </IconButton>
+                )}
+              </Flex>
             </Box>
 
             {/* Username + Password (not for SQLite) */}
