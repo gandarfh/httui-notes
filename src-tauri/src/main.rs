@@ -420,6 +420,9 @@ fn main() {
             executor_registry.register(Box::new(
                 httui_notes::executor::http::HttpExecutor::new(),
             ));
+            executor_registry.register(Box::new(
+                httui_notes::executor::db::DbExecutor::new(conn_manager),
+            ));
             app.manage(executor_registry);
 
             app.manage(Arc::new(Mutex::new(Vec::<String>::new()))); // ignore_paths
