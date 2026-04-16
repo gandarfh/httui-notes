@@ -88,8 +88,13 @@ Converter E2E block de/para fenced code block.
 
 ## Notas de implementacao
 
+- Cada step segue o layout visual do HTTP block: method selector colorido + URL em border box
+- Dois grupos de tabs por step: Request (Params / Headers / Body) e Assertions (Expect / Extract)
+- KV editors e string list editors seguem o padrao bordered do HTTP block (KeyValueRow com separador vertical)
 - Reordenacao de steps usa botoes up/down (sem dependencia de DnD library)
 - UI usa Chakra UI v3 (nao daisyUI como originalmente descrito no backlog)
 - Formato de serializacao e JSON (consistente com http e db blocks), nao YAML
-- `dependencies.ts` generalizado para suportar execucao de qualquer blockType (nao apenas HTTP)
+- `dependencies.ts` generalizado: escaneia conteudo inteiro por `{{...}}` (funciona para qualquer blockType)
+- Env vars (`{{KEY}}` sem dots) corretamente excluidas da extracao de dependencias de blocos
+- Query params suportados por step (tab Params, appendidos a URL no backend)
 - Slash command `/e2e` adicionado (titulo "E2E Test")
