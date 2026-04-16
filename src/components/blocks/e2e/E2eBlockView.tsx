@@ -1,6 +1,6 @@
 import { NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/core";
-import { Box, Flex, HStack, Text, Badge, IconButton, Input } from "@chakra-ui/react";
+import { Box, Flex, HStack, Text, Badge, IconButton, Input, Tabs } from "@chakra-ui/react";
 import { NativeSelectRoot, NativeSelectField } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -369,7 +369,7 @@ function StepCard({
         </HStack>
       </Flex>
 
-      {/* Step content — HTTP-block-style layout */}
+      {/* Step content — HTTP-block-style layout with tabs */}
       {expanded && (
         <Box p={2} display="flex" flexDirection="column" gap={1.5}>
           {/* Method + URL — matching HTTP block pattern */}
@@ -401,107 +401,126 @@ function StepCard({
             </Box>
           </Flex>
 
-          {/* Headers */}
-          <Section title="Headers" badge={
-            step.headers.length > 0 ? (
-              <Badge size="sm" variant="subtle" colorPalette="gray">{step.headers.length}</Badge>
-            ) : undefined
-          }>
-            <KVEditor
-              items={step.headers}
-              onChange={(headers) => onChange({ ...step, headers })}
-              keyPlaceholder="Header"
-              valuePlaceholder="Value"
-              cmTheme={cmTheme}
-              autocompleteExt={autocompleteExt}
-            />
-          </Section>
+          {/* Tabs: Headers / Body / Expect / Extract */}
+          <Tabs.Root defaultValue="headers" size="sm" variant="line">
+            <Tabs.List>
+              <Tabs.Trigger value="headers" fontSize="xs">
+                Headers
+                {step.headers.length > 0 && (
+                  <Badge size="sm" variant="subtle" colorPalette="gray" fontFamily="mono" ml={1}>
+                    {step.headers.length}
+                  </Badge>
+                )}
+              </Tabs.Trigger>
+              {showBody && (
+                <Tabs.Trigger value="body" fontSize="xs">
+                  Body
+                </Tabs.Trigger>
+              )}
+              <Tabs.Trigger value="expect" fontSize="xs">
+                Expect
+                {expectCount > 0 && (
+                  <Badge size="sm" variant="subtle" colorPalette="blue" fontFamily="mono" ml={1}>
+                    {expectCount}
+                  </Badge>
+                )}
+              </Tabs.Trigger>
+              <Tabs.Trigger value="extract" fontSize="xs">
+                Extract
+                {step.extract.length > 0 && (
+                  <Badge size="sm" variant="subtle" colorPalette="purple" fontFamily="mono" ml={1}>
+                    {step.extract.length}
+                  </Badge>
+                )}
+              </Tabs.Trigger>
+            </Tabs.List>
 
-          {/* Body */}
-          {showBody && (
-            <Section title="Body" defaultOpen={!!step.body}>
-              <CodeMirror
-                value={step.body}
-                onChange={(v) => onChange({ ...step, body: v })}
-                extensions={[json(), cmTransparentBg, ...referenceHighlight, ...(autocompleteExt ?? [])]}
-                basicSetup={{
-                  lineNumbers: true,
-                  foldGutter: false,
-                  autocompletion: false,
-                  highlightActiveLine: false,
-                }}
-                theme={cmTheme}
-                height="auto"
-                minHeight="60px"
-                maxHeight="200px"
-                placeholder='{"key": "value"}'
-                style={{ fontFamily: "var(--chakra-fonts-mono)", fontSize: "12px" }}
-              />
-            </Section>
-          )}
-
-          {/* Expect */}
-          <Section title="Expect" badge={
-            expectCount > 0 ? (
-              <Badge size="sm" variant="subtle" colorPalette="blue">{expectCount}</Badge>
-            ) : undefined
-          }>
-            <Box mb={2}>
-              <Text fontSize="2xs" color="fg.muted" mb={1}>Status</Text>
-              <Input
-                size="xs"
-                type="number"
-                placeholder="200"
-                value={step.expect.status ?? ""}
-                onChange={(e) => {
-                  const val = e.target.value ? parseInt(e.target.value) : undefined;
-                  onChange({ ...step, expect: { ...step.expect, status: val } });
-                }}
-                fontFamily="mono"
-                fontSize="xs"
-                maxW="80px"
-              />
-            </Box>
-            <Box mb={2}>
-              <Text fontSize="2xs" color="fg.muted" mb={1}>JSON Match</Text>
+            <Tabs.Content value="headers" p={0} pt={2}>
               <KVEditor
-                items={step.expect.json}
-                onChange={(j) => onChange({ ...step, expect: { ...step.expect, json: j } })}
-                keyPlaceholder="JSON path"
-                valuePlaceholder="Expected value"
+                items={step.headers}
+                onChange={(headers) => onChange({ ...step, headers })}
+                keyPlaceholder="Header name"
+                valuePlaceholder="Value"
                 cmTheme={cmTheme}
+                autocompleteExt={autocompleteExt}
               />
-            </Box>
-            <Box>
-              <Text fontSize="2xs" color="fg.muted" mb={1}>Body Contains</Text>
-              <StringListEditor
-                items={step.expect.bodyContains}
-                onChange={(bc) => onChange({ ...step, expect: { ...step.expect, bodyContains: bc } })}
-                placeholder="String to find..."
-                cmTheme={cmTheme}
-              />
-            </Box>
-          </Section>
+            </Tabs.Content>
 
-          {/* Extract */}
-          <Section title="Extract" badge={
-            step.extract.length > 0 ? (
-              <Badge size="sm" variant="subtle" colorPalette="purple">{step.extract.length}</Badge>
-            ) : undefined
-          }>
-            <KVEditor
-              items={step.extract.map((e) => ({ key: e.name, value: e.path }))}
-              onChange={(items) =>
-                onChange({
-                  ...step,
-                  extract: items.map((i) => ({ name: i.key, path: i.value })),
-                })
-              }
-              keyPlaceholder="Variable name"
-              valuePlaceholder="JSON path"
-              cmTheme={cmTheme}
-            />
-          </Section>
+            {showBody && (
+              <Tabs.Content value="body" p={0} pt={2}>
+                <CodeMirror
+                  value={step.body}
+                  onChange={(v) => onChange({ ...step, body: v })}
+                  extensions={[json(), cmTransparentBg, ...referenceHighlight, ...(autocompleteExt ?? [])]}
+                  basicSetup={{
+                    lineNumbers: true,
+                    foldGutter: false,
+                    autocompletion: false,
+                    highlightActiveLine: false,
+                  }}
+                  theme={cmTheme}
+                  height="auto"
+                  minHeight="60px"
+                  maxHeight="200px"
+                  placeholder='{"key": "value"}'
+                  style={{ fontFamily: "var(--chakra-fonts-mono)", fontSize: "12px" }}
+                />
+              </Tabs.Content>
+            )}
+
+            <Tabs.Content value="expect" p={0} pt={2}>
+              <Box mb={2}>
+                <Text fontSize="2xs" color="fg.muted" mb={1}>Status</Text>
+                <Input
+                  size="xs"
+                  type="number"
+                  placeholder="200"
+                  value={step.expect.status ?? ""}
+                  onChange={(e) => {
+                    const val = e.target.value ? parseInt(e.target.value) : undefined;
+                    onChange({ ...step, expect: { ...step.expect, status: val } });
+                  }}
+                  fontFamily="mono"
+                  fontSize="xs"
+                  maxW="80px"
+                />
+              </Box>
+              <Box mb={2}>
+                <Text fontSize="2xs" color="fg.muted" mb={1}>JSON Match</Text>
+                <KVEditor
+                  items={step.expect.json}
+                  onChange={(j) => onChange({ ...step, expect: { ...step.expect, json: j } })}
+                  keyPlaceholder="JSON path"
+                  valuePlaceholder="Expected value"
+                  cmTheme={cmTheme}
+                />
+              </Box>
+              <Box>
+                <Text fontSize="2xs" color="fg.muted" mb={1}>Body Contains</Text>
+                <StringListEditor
+                  items={step.expect.bodyContains}
+                  onChange={(bc) => onChange({ ...step, expect: { ...step.expect, bodyContains: bc } })}
+                  placeholder="String to find..."
+                  cmTheme={cmTheme}
+                />
+              </Box>
+            </Tabs.Content>
+
+            <Tabs.Content value="extract" p={0} pt={2}>
+              <KVEditor
+                items={step.extract.map((e) => ({ key: e.name, value: e.path }))}
+                onChange={(items) =>
+                  onChange({
+                    ...step,
+                    extract: items.map((i) => ({ name: i.key, path: i.value })),
+                  })
+                }
+                keyPlaceholder="Variable name"
+                valuePlaceholder="JSON path"
+                cmTheme={cmTheme}
+              />
+            </Tabs.Content>
+          </Tabs.Root>
         </Box>
       )}
     </Box>
