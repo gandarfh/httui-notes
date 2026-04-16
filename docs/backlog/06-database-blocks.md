@@ -4,6 +4,7 @@ Connections manager, DB block UI, execucao de queries com prepared statements, s
 
 **Depende de:** Epic 05 (Block System)
 **Desbloqueia:** nenhum
+**Status:** Implementado
 
 ---
 
@@ -40,16 +41,17 @@ Interface para gerenciar conexoes na sidebar.
 ### Tasks
 
 - [x] Criar secao "Connections" na sidebar abaixo do file tree
-- [x] Listar conexoes com: nome, driver (icone), status (badge verde/vermelho daisyUI)
+- [x] Listar conexoes com: nome, driver (icone), status (badge verde/vermelho)
 - [x] Botao "+" para adicionar nova conexao
-- [x] Modal/drawer de criacao/edicao com campos:
+- [x] Form de criacao/edicao (Portal + Box, sem Dialog) com campos:
   - [x] Name (input text)
   - [x] Driver (select: postgres, mysql, sqlite)
   - [x] Host, Port, Database, Username, Password (inputs, adaptar por driver)
   - [x] SSL Mode (select)
   - [x] Advanced: timeout_ms, query_timeout_ms, ttl_seconds, max_pool_size (colapsavel)
-- [x] Botao "Test Connection" no modal com feedback visual (loading -> success/error)
-- [x] Context menu na conexao: Edit, Delete, Test, Refresh Schema
+- [x] File browse nativo para SQLite (filtro .db/.sqlite/.sqlite3)
+- [x] Botao "Test Connection" no form com feedback visual (loading -> success/error)
+- [x] Context menu na conexao: Edit, Delete, Test, Refresh
 
 ## Story 04: DB block UI
 
@@ -58,16 +60,21 @@ Interface do bloco de database no editor.
 ### Tasks
 
 - [x] Criar TipTap node `DbBlock` estendendo `ExecutableBlock`
+- [x] Slash command `/database query` para inserir DB block
 - [x] UI de input:
-  - [x] Connection selector (dropdown com conexoes disponiveis e status)
-  - [x] Query editor (CodeMirror com lang-sql, theme sincronizado com app)
+  - [x] Connection selector (dropdown com conexoes disponiveis)
+  - [x] Query editor (CodeMirror com lang-sql, dialect por driver, theme sincronizado)
   - [ ] Timeout override (input numerico opcional)
 - [x] UI de output:
-  - [x] Status badge ("247 rows", badge)
+  - [x] Status badge ("N rows")
   - [x] Tempo de execucao
-  - [x] Tabela paginada (detalhado na Story 05)
+  - [x] Tabela paginada (Story 05)
   - [x] Para mutacoes: "N rows affected" (badge)
-- [ ] Serializar como fenced code block: ` ```db-{driver}:{connection_name} `
+  - [x] Erros visiveis (switch automatico para split mode)
+- [x] Serializar como fenced code block: ` ```db ` com metadata (alias, displayMode)
+- [x] Persistencia markdown (roundtrip save/reload)
+- [x] Block references: `{{alias.response.rows.0.coluna}}` com bind params (nunca interpolacao)
+- [x] Rows como objetos (keyed por nome da coluna, nao arrays)
 
 ## Story 05: Tabela paginada (DBeaver-style)
 
@@ -76,14 +83,14 @@ Renderizar resultados de queries em tabela com paginacao.
 ### Tasks
 
 - [x] Criar componente `<ResultTable />`
-- [x] Cabecalho com nomes das colunas (do array `columns` do resultado)
+- [x] Cabecalho com nomes das colunas (sticky headers)
 - [x] Rows da pagina atual com celulas formatadas (truncar valores longos com tooltip)
 - [x] Barra de paginacao:
   - [x] Botoes: primeira pagina, anterior, proxima, ultima
   - [x] Input "Go to page" com total de paginas
   - [x] Exibir "Showing 101-200 of 247 rows"
 - [x] Page size default: 100, configuravel (dropdown com 25, 50, 100, 500)
-- [x] Ao mudar pagina: chamar `execute_query` com page number novo (re-executa com LIMIT/OFFSET)
+- [x] Ao mudar pagina: re-executa com LIMIT/OFFSET
 - [x] Valores NULL renderizam com estilo distinct (texto "NULL" em italico cinza)
 
 ## Story 06: Execute query no backend
@@ -95,7 +102,7 @@ Implementar execucao de queries SQL no Rust.
 - [x] Implementar `execute_query` — recebe connection_id, query parametrizada, bind values, page, page_size
 - [x] Obter pool da conexao (criar se nao existe)
 - [x] Executar com prepared statement via sqlx (bind parameters, nunca interpolacao)
-- [x] Para SELECT: retornar columns (nomes e tipos), rows (pagina atual), total_rows
+- [x] Para SELECT: retornar columns (nomes e tipos), rows como objetos, total_rows
 - [x] Para INSERT/UPDATE/DELETE: retornar rows_affected
 - [x] Respeitar query_timeout_ms da conexao (ou override do bloco)
 - [x] Tratar erros: connection failure, query syntax error, timeout — com mensagens claras
@@ -115,4 +122,19 @@ Metadata de tabelas e colunas para autocomplete.
 - [x] Salvar no `schema_cache` com `cached_at` timestamp
 - [x] Implementar TTL: se cached_at > TTL, re-introspect automaticamente
 - [ ] Refresh automatico ao conectar/reconectar
-- [x] Alimentar autocomplete do CodeMirror no SQL editor (tabelas apos FROM/JOIN, colunas apos SELECT/WHERE)
+- [x] SQL autocomplete context-aware:
+  - [x] Tabelas (TBL) e colunas (COL) com icons de texto coloridos
+  - [x] Colunas filtradas por tabelas no FROM/JOIN
+  - [x] Colunas mostram tabela de origem no detalhe
+  - [x] Keywords SQL (SQL) por dialect
+  - [x] Referências {{...}} (REF) coexistem com SQL autocomplete
+
+---
+
+## Pendente (futuro)
+
+- [ ] Encriptar passwords via OS keychain
+- [ ] Estado de conexao (connected/disconnected) em tempo real
+- [ ] Eventos Tauri ao mudar estado de conexao
+- [ ] Timeout override UI no bloco
+- [ ] Refresh automatico de schema ao conectar/reconectar
