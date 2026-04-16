@@ -56,3 +56,50 @@ export async function collectBlocksAbove(
 
   return blocks;
 }
+
+/**
+ * Collect ALL executable blocks in the document (for dependency resolution).
+ * Unlike collectBlocksAbove, this has no position filter.
+ */
+export async function collectAllBlocks(
+  editor: Editor,
+  filePath: string,
+): Promise<BlockContext[]> {
+  const { doc } = editor.state;
+  const blocks: BlockContext[] = [];
+
+  doc.descendants((node, pos) => {
+    if (EXECUTABLE_BLOCK_TYPES.includes(node.type.name)) {
+      const alias = (node.attrs.alias as string) ?? "";
+      if (alias) {
+        blocks.push({
+          alias,
+          pos,
+          content: (node.attrs.content as string) ?? "",
+          cachedResult: null,
+        });
+      }
+    }
+    return false;
+  });
+
+  await Promise.all(
+    blocks.map(async (block) => {
+      if (!block.content) return;
+      try {
+        const hash = await hashBlockContent(block.content);
+        const cached = await getBlockResult(filePath, hash);
+        if (cached) {
+          block.cachedResult = {
+            status: cached.status,
+            response: cached.response,
+          };
+        }
+      } catch {
+        // Cache lookup failed
+      }
+    }),
+  );
+
+  return blocks;
+}
