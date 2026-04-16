@@ -30,16 +30,25 @@ describe("HTTP block roundtrip", () => {
     const md = '# Test\n\n```http\n{"method":"GET","url":"https://example.com","params":[],"headers":[],"body":""}\n```\n\nSome text after.';
 
     const html = markdownToHtml(md);
-    console.log("HTML from MD:", html);
-
     expect(html).toContain('data-type="http-block"');
 
     const mdBack = htmlToMarkdown(html);
-    console.log("MD back:", mdBack);
-
     expect(mdBack).toContain("```http");
     expect(mdBack).toContain("# Test");
     expect(mdBack).toContain("Some text after");
+  });
+
+  it("should preserve alias and displayMode through roundtrip", () => {
+    const md = '```http alias=login displayMode=split\n{"method":"POST","url":"https://api.test.com","params":[],"headers":[],"body":""}\n```';
+
+    const html = markdownToHtml(md);
+    expect(html).toContain('data-alias="login"');
+    expect(html).toContain('data-display-mode="split"');
+
+    const mdBack = htmlToMarkdown(html);
+    expect(mdBack).toContain("alias=login");
+    expect(mdBack).toContain("displayMode=split");
+    expect(mdBack).toContain("```http");
   });
 
   it("should preserve JSON content through roundtrip", () => {

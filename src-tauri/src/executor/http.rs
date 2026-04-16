@@ -115,10 +115,14 @@ impl Executor for HttpExecutor {
             .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
             .collect();
 
-        let body = response
+        let body_text = response
             .text()
             .await
             .map_err(|e| ExecutorError(format!("Failed to read body: {e}")))?;
+
+        // Try to parse body as JSON; fall back to raw string
+        let body_value = serde_json::from_str::<serde_json::Value>(&body_text)
+            .unwrap_or_else(|_| serde_json::Value::String(body_text));
 
         let status = if status_code < 400 {
             "success"
@@ -132,7 +136,7 @@ impl Executor for HttpExecutor {
                 "status_code": status_code,
                 "status_text": status_text,
                 "headers": resp_headers,
-                "body": body,
+                "body": body_value,
             }),
             duration_ms,
         })
