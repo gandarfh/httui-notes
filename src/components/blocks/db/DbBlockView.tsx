@@ -145,10 +145,16 @@ function DbInput({
     return () => { cancelled = true; };
   }, [data.connectionId]);
 
-  const sqlConfig = useMemo<SQLConfig>(() => {
+  const sqlExtensions = useMemo(() => {
     const schemaObj = buildSqlSchema(schema);
-    return { schema: schemaObj };
-  }, [schema]);
+    return [
+      sql({ schema: schemaObj }),
+      EditorView.lineWrapping,
+      cmTransparentBg,
+      ...referenceHighlight,
+      refAutocomplete,
+    ];
+  }, [schema, refAutocomplete]);
 
   return (
     <Box p={2} display="flex" flexDirection="column" gap={1.5}>
@@ -182,17 +188,11 @@ function DbInput({
         <CodeMirror
           value={data.query}
           onChange={(val) => onChange({ ...data, query: val })}
-          extensions={[
-            sql(sqlConfig),
-            EditorView.lineWrapping,
-            cmTransparentBg,
-            ...referenceHighlight,
-            refAutocomplete,
-          ]}
+          extensions={sqlExtensions}
           basicSetup={{
             lineNumbers: true,
             foldGutter: false,
-            autocompletion: false,
+            autocompletion: true,
           }}
           theme={cmTheme}
           height="80px"
