@@ -131,10 +131,19 @@ export function resolveReference(
  * Resolve all {{...}} references in text.
  * Returns resolved text and any errors (does not abort on first error).
  */
+/**
+ * Resolve all {{...}} references in text.
+ * Returns resolved text and any errors (does not abort on first error).
+ *
+ * Resolution order for each {{ref}}:
+ * 1. If ref has no path (no dots) and matches an env variable key → use env value
+ * 2. Otherwise → resolve as block reference
+ */
 export function resolveAllReferences(
   text: string,
   blocks: BlockContext[],
   currentPos: number,
+  envVariables?: Record<string, string>,
 ): { resolved: string; errors: ReferenceError[] } {
   const refs = parseReferences(text);
   if (refs.length === 0) {
@@ -148,7 +157,15 @@ export function resolveAllReferences(
   for (let i = refs.length - 1; i >= 0; i--) {
     const ref = refs[i];
     try {
-      const value = resolveReference(ref, blocks, currentPos);
+      let value: string;
+
+      // Environment variable: {{KEY}} (no dots in path)
+      if (ref.path.length === 0 && envVariables && ref.alias in envVariables) {
+        value = envVariables[ref.alias];
+      } else {
+        value = resolveReference(ref, blocks, currentPos);
+      }
+
       resolved = resolved.slice(0, ref.start) + value + resolved.slice(ref.end);
     } catch (err) {
       errors.push({

@@ -1,4 +1,5 @@
 pub mod connections;
+pub mod environments;
 pub mod schema_cache;
 
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};

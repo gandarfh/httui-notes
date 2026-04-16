@@ -1,12 +1,15 @@
-import { HStack, Text, IconButton, Box, Menu, Portal } from "@chakra-ui/react";
+import { HStack, Text, IconButton, Box, Badge, Menu, Portal } from "@chakra-ui/react";
 import { ColorModeButton } from "@/components/ui/color-mode";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { useEnvironmentContext } from "@/contexts/EnvironmentContext";
 import {
   LuMenu,
   LuSearch,
   LuFolder,
   LuPlus,
   LuChevronDown,
+  LuGlobe,
+  LuSettings,
 } from "react-icons/lu";
 
 interface TopBarProps {
@@ -16,6 +19,7 @@ interface TopBarProps {
 
 export function TopBar({ sidebarOpen, onToggleSidebar }: TopBarProps) {
   const { vaultPath, vaults, switchVault, openVault } = useWorkspace();
+  const { environments, activeEnvironment, switchEnvironment, openManager } = useEnvironmentContext();
   const vaultName = vaultPath ? vaultPath.split("/").pop() || vaultPath : null;
 
   return (
@@ -83,6 +87,64 @@ export function TopBar({ sidebarOpen, onToggleSidebar }: TopBarProps) {
                 <Menu.Item value="open" onSelect={openVault}>
                   <LuPlus size={14} />
                   <Text>Open folder...</Text>
+                </Menu.Item>
+              </Menu.Content>
+            </Menu.Positioner>
+          </Portal>
+        </Menu.Root>
+
+        <Menu.Root>
+          <Menu.Trigger asChild>
+            <Box
+              as="button"
+              display="flex"
+              alignItems="center"
+              gap={1.5}
+              px={3}
+              py={1}
+              rounded="md"
+              fontSize="sm"
+              cursor="pointer"
+              _hover={{ bg: "bg.subtle" }}
+            >
+              <LuGlobe size={14} />
+              <Text fontSize="xs" maxW="128px" truncate>
+                {activeEnvironment?.name ?? "No env"}
+              </Text>
+              {activeEnvironment && (
+                <Badge size="xs" colorPalette="green" variant="subtle">
+                  active
+                </Badge>
+              )}
+              <LuChevronDown size={12} />
+            </Box>
+          </Menu.Trigger>
+          <Portal>
+            <Menu.Positioner>
+              <Menu.Content>
+                <Menu.Item
+                  value="none"
+                  onSelect={() => switchEnvironment(null)}
+                  fontWeight={!activeEnvironment ? "bold" : "normal"}
+                  color={!activeEnvironment ? "fg" : "fg.muted"}
+                >
+                  No environment
+                </Menu.Item>
+                {environments.length > 0 && <Menu.Separator />}
+                {environments.map((env) => (
+                  <Menu.Item
+                    key={env.id}
+                    value={env.id}
+                    onSelect={() => switchEnvironment(env.id)}
+                    fontWeight={env.is_active ? "bold" : "normal"}
+                  >
+                    {env.name}
+                  </Menu.Item>
+                ))}
+                <Menu.Separator />
+                <Menu.Item value="manage" onSelect={openManager}>
+                  <LuSettings size={14} />
+                  <Text>Manage environments...</Text>
                 </Menu.Item>
               </Menu.Content>
             </Menu.Positioner>

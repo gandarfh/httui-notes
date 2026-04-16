@@ -6,6 +6,7 @@ import { StatusBar } from "./StatusBar";
 import { PaneContainer } from "./pane";
 import { QuickOpen } from "@/components/search/QuickOpen";
 import { SearchPanel } from "@/components/search/SearchPanel";
+import { EnvironmentManager } from "./environments/EnvironmentManager";
 import { usePaneState } from "@/hooks/usePaneState";
 import { useVault } from "@/hooks/useVault";
 import { useFileOperations } from "@/hooks/useFileOperations";
@@ -16,6 +17,8 @@ import { useSessionPersistence } from "@/hooks/useSessionPersistence";
 import { WorkspaceContext } from "@/contexts/WorkspaceContext";
 import { PaneContext } from "@/contexts/PaneContext";
 import { EditorSettingsContext } from "@/contexts/EditorSettingsContext";
+import { EnvironmentContext } from "@/contexts/EnvironmentContext";
+import { useEnvironments } from "@/hooks/useEnvironments";
 
 export function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -118,10 +121,31 @@ export function AppShell() {
     [vimEnabled, vimMode, toggleVim],
   );
 
+  const envHook = useEnvironments();
+  const environmentValue = useMemo(
+    () => ({
+      environments: envHook.environments,
+      activeEnvironment: envHook.activeEnvironment,
+      managerOpen: envHook.managerOpen,
+      openManager: envHook.openManager,
+      closeManager: envHook.closeManager,
+      switchEnvironment: envHook.switchEnvironment,
+      createEnvironment: envHook.createEnvironment,
+      deleteEnvironment: envHook.deleteEnvironment,
+      duplicateEnvironment: envHook.duplicateEnvironment,
+      loadVariables: envHook.loadVariables,
+      setVariable: envHook.setVariable,
+      deleteVariable: envHook.deleteVariable,
+      getActiveVariables: envHook.getActiveVariables,
+    }),
+    [envHook],
+  );
+
   return (
     <WorkspaceContext.Provider value={workspaceValue}>
       <PaneContext.Provider value={paneValue}>
         <EditorSettingsContext.Provider value={editorSettingsValue}>
+        <EnvironmentContext.Provider value={environmentValue}>
           <Flex h="100vh" direction="column" bg="bg.subtle" overflow="hidden">
             <TopBar
               sidebarOpen={sidebarOpen}
@@ -156,7 +180,10 @@ export function AppShell() {
               open={searchPanelOpen}
               onClose={() => setSearchPanelOpen(false)}
             />
+
+            <EnvironmentManager />
           </Flex>
+        </EnvironmentContext.Provider>
         </EditorSettingsContext.Provider>
       </PaneContext.Provider>
     </WorkspaceContext.Provider>

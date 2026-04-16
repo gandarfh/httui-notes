@@ -1,9 +1,9 @@
 import { NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/core";
-import { Box, Flex, HStack, Badge, IconButton, Tabs } from "@chakra-ui/react";
+import { Box, Flex, HStack, Text, Badge, IconButton, Input, Tabs } from "@chakra-ui/react";
 import { NativeSelectRoot, NativeSelectField } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LuX, LuPlus, LuBraces } from "react-icons/lu";
+import { LuX, LuPlus, LuBraces, LuCopy, LuChevronDown, LuCheck, LuDownload, LuFile } from "react-icons/lu";
 import { common, createLowlight } from "lowlight";
 
 const lowlight = createLowlight(common);
@@ -24,6 +24,7 @@ import { resolveAndExecuteDependencies } from "@/lib/blocks/dependencies";
 import { referenceHighlight } from "@/lib/blocks/cm-references";
 import { createReferenceAutocomplete } from "@/lib/blocks/cm-autocomplete";
 import type { BlockContext } from "@/lib/blocks/references";
+import { useEnvironmentContext } from "@/contexts/EnvironmentContext";
 
 const cmTransparentBg = EditorView.theme({
   "&": { backgroundColor: "transparent !important" },
@@ -90,8 +91,18 @@ function InlineCM({
   );
 }
 
-const METHODS: HttpMethod[] = ["GET", "POST", "PUT", "PATCH", "DELETE"];
+const METHODS: HttpMethod[] = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 const METHODS_WITH_BODY: HttpMethod[] = ["POST", "PUT", "PATCH"];
+
+const METHOD_COLORS: Record<HttpMethod, string> = {
+  GET: "green",
+  POST: "blue",
+  PUT: "orange",
+  PATCH: "yellow",
+  DELETE: "red",
+  HEAD: "purple",
+  OPTIONS: "gray",
+};
 
 function parseBlockData(raw: string): HttpBlockData {
   if (!raw) return { ...DEFAULT_HTTP_DATA };
@@ -139,14 +150,29 @@ function formatBody(raw: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
-function blockResultToResponse(result: { status_code: number; status_text: string; headers: Record<string, string>; body: unknown }, elapsedMs: number): HttpResponse {
+function blockResultToResponse(result: { status_code: number; status_text: string; headers: Record<string, string>; body: unknown; size_bytes?: number }, elapsedMs: number): HttpResponse {
   return {
     status: result.status_code,
     statusText: result.status_text,
     headers: result.headers,
     body: typeof result.body === "string" ? result.body : JSON.stringify(result.body),
     elapsedMs,
+    sizeBytes: result.size_bytes ?? 0,
   };
+}
+
+function statusColorPalette(status: number): string {
+  if (status < 200) return "gray";
+  if (status < 300) return "green";
+  if (status < 400) return "blue";
+  if (status < 500) return "yellow";
+  return "red";
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 // --- Sub-components ---
@@ -269,17 +295,22 @@ function HttpInput({
   onChange,
   cmTheme,
   blocksRef,
+  envKeysRef,
 }: {
   data: HttpBlockData;
   onChange: (data: HttpBlockData) => void;
   cmTheme: "light" | "dark";
   blocksRef: React.RefObject<BlockContext[]>;
+  envKeysRef: React.RefObject<string[]>;
 }) {
   const showBody = METHODS_WITH_BODY.includes(data.method);
 
   const refAutocomplete = useMemo(
-    () => createReferenceAutocomplete(() => blocksRef.current ?? []),
-    [blocksRef],
+    () => createReferenceAutocomplete(
+      () => blocksRef.current ?? [],
+      () => envKeysRef.current ?? [],
+    ),
+    [blocksRef, envKeysRef],
   );
 
   const jsonError = useMemo(() => {
@@ -308,6 +339,7 @@ function HttpInput({
             fontSize="xs"
             fontWeight="bold"
             h="32px"
+            color={`${METHOD_COLORS[data.method]}.400`}
           >
             {METHODS.map((m) => (
               <option key={m} value={m}>
@@ -356,6 +388,9 @@ function HttpInput({
               )}
             </Tabs.Trigger>
           )}
+          <Tabs.Trigger value="settings" fontSize="xs">
+            Settings
+          </Tabs.Trigger>
         </Tabs.List>
 
         <Tabs.Content value="params" p={0} pt={2}>
@@ -437,12 +472,161 @@ function HttpInput({
             )}
           </Tabs.Content>
         )}
+
+        <Tabs.Content value="settings" p={0} pt={2}>
+          <Flex align="center" gap={2} px={2} pb={1}>
+            <Box fontSize="xs" color="fg.muted" flexShrink={0}>Timeout (ms)</Box>
+            <Input
+              size="xs"
+              type="number"
+              placeholder="30000"
+              value={data.timeout_ms ?? ""}
+              onChange={(e) => {
+                const val = e.target.value;
+                onChange({
+                  ...data,
+                  timeout_ms: val ? parseInt(val, 10) : undefined,
+                });
+              }}
+              fontFamily="mono"
+              fontSize="xs"
+              maxW="120px"
+            />
+          </Flex>
+        </Tabs.Content>
       </Tabs.Root>
     </Box>
   );
 }
 
+function highlightBody(body: string, contentType: string): string {
+  const ct = contentType.toLowerCase();
+  if (ct.includes("json")) {
+    return hastToHtml(lowlight.highlight("json", formatBody(body)).children);
+  }
+  if (ct.includes("html") || ct.includes("xml")) {
+    return hastToHtml(lowlight.highlight("xml", body).children);
+  }
+  return escapeHtml(body);
+}
+
+interface BinaryBody {
+  encoding: "base64";
+  data: string;
+}
+
+function parseBinaryBody(body: string): BinaryBody | null {
+  try {
+    const parsed = JSON.parse(body);
+    if (parsed && parsed.encoding === "base64" && typeof parsed.data === "string") {
+      return parsed as BinaryBody;
+    }
+  } catch {
+    // not binary
+  }
+  return null;
+}
+
+function downloadBase64(data: string, contentType: string, filename: string) {
+  const byteChars = atob(data);
+  const bytes = new Uint8Array(byteChars.length);
+  for (let i = 0; i < byteChars.length; i++) {
+    bytes[i] = byteChars.charCodeAt(i);
+  }
+  const blob = new Blob([bytes], { type: contentType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function BinaryPreview({
+  binary,
+  contentType,
+  sizeBytes,
+}: {
+  binary: BinaryBody;
+  contentType: string;
+  sizeBytes: number;
+}) {
+  const ct = contentType.toLowerCase();
+  const dataUrl = `data:${contentType};base64,${binary.data}`;
+
+  const ext = ct.split("/").pop()?.split(";")[0] ?? "bin";
+  const filename = `response.${ext}`;
+
+  return (
+    <Box display="flex" flexDirection="column" gap={2}>
+      {ct.startsWith("image/") ? (
+        <Box
+          border="1px solid"
+          borderColor="border"
+          rounded="md"
+          overflow="hidden"
+          bg="bg.subtle"
+          p={2}
+          textAlign="center"
+        >
+          <img
+            src={dataUrl}
+            alt="Response"
+            style={{ maxWidth: "100%", maxHeight: "400px", objectFit: "contain" }}
+          />
+        </Box>
+      ) : ct === "application/pdf" ? (
+        <Box
+          border="1px solid"
+          borderColor="border"
+          rounded="md"
+          overflow="hidden"
+        >
+          <iframe
+            src={dataUrl}
+            title="PDF Preview"
+            style={{ width: "100%", height: "400px", border: "none" }}
+          />
+        </Box>
+      ) : (
+        <Flex
+          border="1px solid"
+          borderColor="border"
+          rounded="md"
+          bg="bg.subtle"
+          p={4}
+          align="center"
+          gap={3}
+        >
+          <LuFile size={24} />
+          <Box>
+            <Text fontSize="sm" fontWeight="medium">
+              Binary response
+            </Text>
+            <Text fontSize="xs" color="fg.muted" fontFamily="mono">
+              {contentType} &middot; {formatBytes(sizeBytes)}
+            </Text>
+          </Box>
+        </Flex>
+      )}
+
+      <IconButton
+        aria-label="Download"
+        size="xs"
+        variant="outline"
+        alignSelf="flex-start"
+        onClick={() => downloadBase64(binary.data, contentType, filename)}
+      >
+        <LuDownload />
+      </IconButton>
+    </Box>
+  );
+}
+
 function HttpOutput({ response, error }: { response: HttpResponse | null; error: string | null }) {
+  const [copied, setCopied] = useState(false);
+  const [headersOpen, setHeadersOpen] = useState(false);
+
   if (error) {
     return (
       <Box p={3} color="red.500" fontSize="sm" fontFamily="mono">
@@ -452,11 +636,16 @@ function HttpOutput({ response, error }: { response: HttpResponse | null; error:
   }
   if (!response) return null;
 
+  const contentType = response.headers["content-type"] ?? "";
+  const headerEntries = Object.entries(response.headers);
+  const binary = parseBinaryBody(response.body);
+
   return (
     <Box p={2} display="flex" flexDirection="column" gap={1}>
+      {/* Status bar */}
       <HStack gap={2}>
         <Badge
-          colorPalette={response.status < 400 ? "green" : "red"}
+          colorPalette={statusColorPalette(response.status)}
           variant="subtle"
           fontFamily="mono"
           size="sm"
@@ -466,39 +655,119 @@ function HttpOutput({ response, error }: { response: HttpResponse | null; error:
         <Box color="fg.muted" fontSize="xs" fontFamily="mono">
           {response.elapsedMs}ms
         </Box>
+        {response.sizeBytes > 0 && (
+          <Box color="fg.muted" fontSize="xs" fontFamily="mono">
+            {formatBytes(response.sizeBytes)}
+          </Box>
+        )}
+        <IconButton
+          aria-label="Copy response body"
+          size="2xs"
+          variant="ghost"
+          colorPalette={copied ? "green" : "gray"}
+          ml="auto"
+          onClick={() => {
+            navigator.clipboard.writeText(formatBody(response.body));
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          }}
+        >
+          {copied ? <LuCheck /> : <LuCopy />}
+        </IconButton>
       </HStack>
-      <Box
-        as="pre"
-        border="1px solid"
-        borderColor="border"
-        rounded="md"
-        bg="bg.subtle"
-        p={3}
-        overflow="auto"
-        fontSize="12px"
-        fontFamily="mono"
-        whiteSpace="pre-wrap"
-        wordBreak="break-word"
-        lineHeight="1.5"
-        maxH="400px"
-        m={0}
-        userSelect="text"
-        cursor="text"
-        tabIndex={0}
-        onMouseDown={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
-        onCopy={(e) => e.stopPropagation()}
-        css={{
-          "& .hljs-attr": { color: "var(--chakra-colors-blue-400)" },
-          "& .hljs-string": { color: "var(--chakra-colors-green-400)" },
-          "& .hljs-number": { color: "var(--chakra-colors-orange-400)" },
-          "& .hljs-literal": { color: "var(--chakra-colors-purple-400)" },
-          "& .hljs-punctuation": { color: "var(--chakra-colors-fg-subtle)" },
-        }}
-        dangerouslySetInnerHTML={{
-          __html: hastToHtml(lowlight.highlight("json", formatBody(response.body)).children),
-        }}
-      />
+
+      {/* Response body */}
+      {binary ? (
+        <BinaryPreview
+          binary={binary}
+          contentType={contentType}
+          sizeBytes={response.sizeBytes}
+        />
+      ) : (
+        <Box
+          as="pre"
+          border="1px solid"
+          borderColor="border"
+          rounded="md"
+          bg="bg.subtle"
+          p={3}
+          overflow="auto"
+          fontSize="12px"
+          fontFamily="mono"
+          whiteSpace="pre-wrap"
+          wordBreak="break-word"
+          lineHeight="1.5"
+          maxH="400px"
+          m={0}
+          userSelect="text"
+          cursor="text"
+          tabIndex={0}
+          onMouseDown={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+          onCopy={(e) => e.stopPropagation()}
+          css={{
+            "& .hljs-attr": { color: "var(--chakra-colors-blue-400)" },
+            "& .hljs-string": { color: "var(--chakra-colors-green-400)" },
+            "& .hljs-number": { color: "var(--chakra-colors-orange-400)" },
+            "& .hljs-literal": { color: "var(--chakra-colors-purple-400)" },
+            "& .hljs-punctuation": { color: "var(--chakra-colors-fg-subtle)" },
+            "& .hljs-tag": { color: "var(--chakra-colors-blue-400)" },
+            "& .hljs-name": { color: "var(--chakra-colors-red-400)" },
+          }}
+          dangerouslySetInnerHTML={{
+            __html: highlightBody(formatBody(response.body), contentType),
+          }}
+        />
+      )}
+
+      {/* Response headers (collapsible) */}
+      {headerEntries.length > 0 && (
+        <Box>
+          <Flex
+            align="center"
+            gap={1}
+            cursor="pointer"
+            color="fg.muted"
+            fontSize="xs"
+            onClick={() => setHeadersOpen(!headersOpen)}
+            _hover={{ color: "fg" }}
+          >
+            <Box
+              transform={headersOpen ? "rotate(0deg)" : "rotate(-90deg)"}
+              transition="transform 0.15s"
+            >
+              <LuChevronDown size={12} />
+            </Box>
+            Response Headers ({headerEntries.length})
+          </Flex>
+          {headersOpen && (
+            <Box
+              mt={1}
+              border="1px solid"
+              borderColor="border"
+              rounded="md"
+              overflow="hidden"
+              fontSize="xs"
+              fontFamily="mono"
+            >
+              {headerEntries.map(([key, value], i) => (
+                <Flex
+                  key={key}
+                  borderBottom={i < headerEntries.length - 1 ? "1px solid" : undefined}
+                  borderColor="border"
+                >
+                  <Box px={2} py={1} fontWeight="bold" color="fg.muted" minW="140px" bg="bg.subtle">
+                    {key}
+                  </Box>
+                  <Box px={2} py={1} wordBreak="break-all" userSelect="text" cursor="text">
+                    {value}
+                  </Box>
+                </Flex>
+              ))}
+            </Box>
+          )}
+        </Box>
+      )}
     </Box>
   );
 }
@@ -508,6 +777,7 @@ function HttpOutput({ response, error }: { response: HttpResponse | null; error:
 export function HttpBlockView({ node, editor, getPos, updateAttributes, selected }: NodeViewProps) {
   const { colorMode } = useColorMode();
   const { filePath } = useBlockContext();
+  const { getActiveVariables } = useEnvironmentContext();
   const cmTheme = colorMode === "dark" ? "dark" : "light";
   const alias = (node.attrs.alias as string) ?? "";
   const displayMode = (node.attrs.displayMode as DisplayMode) ?? "input";
@@ -520,6 +790,16 @@ export function HttpBlockView({ node, editor, getPos, updateAttributes, selected
   const cancelRef = useRef<(() => void) | null>(null);
   const lastHashRef = useRef<string>("");
   const blocksRef = useRef<BlockContext[]>([]);
+  const envKeysRef = useRef<string[]>([]);
+
+  // Keep envKeysRef updated for autocomplete
+  useEffect(() => {
+    let cancelled = false;
+    getActiveVariables().then((vars) => {
+      if (!cancelled) envKeysRef.current = Object.keys(vars);
+    });
+    return () => { cancelled = true; };
+  }, [getActiveVariables]);
 
   // Keep blocksRef updated for autocomplete
   useEffect(() => {
@@ -611,22 +891,31 @@ export function HttpBlockView({ node, editor, getPos, updateAttributes, selected
 
       if (cancelled) return;
 
-      // Resolve {{...}} references
+      // Fetch active environment variables
+      const envVars = await getActiveVariables();
+
+      // Resolve {{...}} references (env variables + block references)
       const resolvedData = { ...data };
       const allErrors: string[] = [];
 
-      const urlResult = resolveAllReferences(data.url, blocks, currentPos);
+      const urlResult = resolveAllReferences(data.url, blocks, currentPos, envVars);
       resolvedData.url = urlResult.resolved;
       allErrors.push(...urlResult.errors.map((e) => `URL: ${e.message}`));
 
       resolvedData.headers = data.headers.map((h) => {
-        const r = resolveAllReferences(h.value, blocks, currentPos);
+        const r = resolveAllReferences(h.value, blocks, currentPos, envVars);
         allErrors.push(...r.errors.map((e) => `Header "${h.key}": ${e.message}`));
         return { ...h, value: r.resolved };
       });
 
+      resolvedData.params = data.params.map((p) => {
+        const r = resolveAllReferences(p.value, blocks, currentPos, envVars);
+        allErrors.push(...r.errors.map((e) => `Param "${p.key}": ${e.message}`));
+        return { ...p, value: r.resolved };
+      });
+
       if (data.body) {
-        const bodyResult = resolveAllReferences(data.body, blocks, currentPos);
+        const bodyResult = resolveAllReferences(data.body, blocks, currentPos, envVars);
         resolvedData.body = bodyResult.resolved;
         allErrors.push(...bodyResult.errors.map((e) => `Body: ${e.message}`));
       }
@@ -647,6 +936,7 @@ export function HttpBlockView({ node, editor, getPos, updateAttributes, selected
         status_text: string;
         headers: Record<string, string>;
         body: string;
+        size_bytes: number;
       };
       const res = blockResultToResponse(resultData, result.duration_ms);
       setResponse(res);
@@ -673,7 +963,7 @@ export function HttpBlockView({ node, editor, getPos, updateAttributes, selected
       setError(err instanceof Error ? err.message : String(err));
       updateAttributes({ executionState: "error" });
     }
-  }, [data, rawContent, filePath, editor, getPos, updateAttributes]);
+  }, [data, rawContent, filePath, editor, getPos, updateAttributes, getActiveVariables]);
 
   const handleCancel = useCallback(() => {
     cancelRef.current?.();
@@ -694,7 +984,7 @@ export function HttpBlockView({ node, editor, getPos, updateAttributes, selected
         onCancel={handleCancel}
         selected={selected}
         statusText={depStatus}
-        inputSlot={<HttpInput data={data} onChange={handleDataChange} cmTheme={cmTheme} blocksRef={blocksRef} />}
+        inputSlot={<HttpInput data={data} onChange={handleDataChange} cmTheme={cmTheme} blocksRef={blocksRef} envKeysRef={envKeysRef} />}
         outputSlot={<HttpOutput response={response} error={error} />}
       />
     </NodeViewWrapper>

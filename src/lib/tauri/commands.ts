@@ -168,6 +168,62 @@ export function updateSearchEntry(
   return invoke("update_search_entry", { filePath, content });
 }
 
+// --- Environments ---
+
+export interface Environment {
+  id: string;
+  name: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface EnvVariable {
+  id: string;
+  environment_id: string;
+  key: string;
+  value: string;
+  created_at: string;
+}
+
+export function listEnvironments(): Promise<Environment[]> {
+  return invoke("list_environments");
+}
+
+export function createEnvironment(name: string): Promise<Environment> {
+  return invoke("create_environment", { name });
+}
+
+export function deleteEnvironment(id: string): Promise<void> {
+  return invoke("delete_environment", { id });
+}
+
+export function duplicateEnvironment(
+  sourceId: string,
+  newName: string,
+): Promise<Environment> {
+  return invoke("duplicate_environment", { sourceId, newName });
+}
+
+export function setActiveEnvironment(id: string | null): Promise<void> {
+  return invoke("set_active_environment", { id });
+}
+
+export function listEnvVariables(environmentId: string): Promise<EnvVariable[]> {
+  return invoke("list_env_variables", { environmentId });
+}
+
+export function setEnvVariable(
+  environmentId: string,
+  key: string,
+  value: string,
+): Promise<EnvVariable> {
+  return invoke("set_env_variable", { environmentId, key, value });
+}
+
+export function deleteEnvVariable(id: string): Promise<void> {
+  return invoke("delete_env_variable", { id });
+}
+
 // --- Block execution ---
 
 export interface BlockResult {

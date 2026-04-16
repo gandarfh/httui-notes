@@ -1,4 +1,4 @@
-export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
 
 export interface KeyValue {
   key: string;
@@ -14,6 +14,7 @@ export interface HttpBlockData {
   params: HttpParam[];
   headers: HttpHeader[];
   body: string;
+  timeout_ms?: number;
 }
 
 export interface HttpResponse {
@@ -22,6 +23,7 @@ export interface HttpResponse {
   headers: Record<string, string>;
   body: string;
   elapsedMs: number;
+  sizeBytes: number;
 }
 
 export const DEFAULT_HTTP_DATA: HttpBlockData = {
