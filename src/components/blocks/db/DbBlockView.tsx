@@ -5,7 +5,8 @@ import { NativeSelectRoot, NativeSelectField } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useColorMode } from "@/components/ui/color-mode";
 import CodeMirror from "@uiw/react-codemirror";
-import { sql, type SQLConfig } from "@codemirror/lang-sql";
+import { sql, type SQLConfig, PostgreSQL, MySQL, SQLite as SQLiteDialect, schemaCompletionSource, keywordCompletionSource } from "@codemirror/lang-sql";
+import { autocompletion } from "@codemirror/autocomplete";
 import { EditorView } from "@codemirror/view";
 import { ExecutableBlockShell } from "../ExecutableBlockShell";
 import { useBlockContext } from "../BlockContext";
@@ -18,7 +19,7 @@ import { resolveAllReferences } from "@/lib/blocks/references";
 import { collectBlocksAbove } from "@/lib/blocks/document";
 import { resolveAndExecuteDependencies } from "@/lib/blocks/dependencies";
 import { referenceHighlight } from "@/lib/blocks/cm-references";
-import { createReferenceAutocomplete } from "@/lib/blocks/cm-autocomplete";
+import { createReferenceCompletionSource } from "@/lib/blocks/cm-autocomplete";
 import type { BlockContext } from "@/lib/blocks/references";
 import type { Connection, SchemaEntry } from "@/lib/tauri/connections";
 import { listConnections, getCachedSchema, introspectSchema } from "@/lib/tauri/connections";
@@ -115,8 +116,8 @@ function DbInput({
 }) {
   const [schema, setSchema] = useState<SchemaEntry[]>([]);
 
-  const refAutocomplete = useMemo(
-    () => createReferenceAutocomplete(() => blocksRef.current ?? []),
+  const refCompletionSource = useMemo(
+    () => createReferenceCompletionSource(() => blocksRef.current ?? []),
     [blocksRef],
   );
 
@@ -145,16 +146,36 @@ function DbInput({
     return () => { cancelled = true; };
   }, [data.connectionId]);
 
+  // Determine dialect from selected connection
+  const selectedConn = connections.find((c) => c.id === data.connectionId);
+  const dialect = useMemo(() => {
+    switch (selectedConn?.driver) {
+      case "postgres": return PostgreSQL;
+      case "mysql": return MySQL;
+      case "sqlite": return SQLiteDialect;
+      default: return undefined;
+    }
+  }, [selectedConn?.driver]);
+
   const sqlExtensions = useMemo(() => {
     const schemaObj = buildSqlSchema(schema);
+    const d = dialect ?? PostgreSQL;
+    const config: SQLConfig = { schema: schemaObj, dialect: d };
     return [
-      sql({ schema: schemaObj }),
+      sql(config),
+      autocompletion({
+        override: [
+          schemaCompletionSource(config),
+          keywordCompletionSource(d),
+          refCompletionSource,
+        ],
+        activateOnTyping: true,
+      }),
       EditorView.lineWrapping,
       cmTransparentBg,
       ...referenceHighlight,
-      refAutocomplete,
     ];
-  }, [schema, refAutocomplete]);
+  }, [schema, dialect, refCompletionSource]);
 
   return (
     <Box p={2} display="flex" flexDirection="column" gap={1.5}>
@@ -192,7 +213,7 @@ function DbInput({
           basicSetup={{
             lineNumbers: true,
             foldGutter: false,
-            autocompletion: true,
+            autocompletion: false,
           }}
           theme={cmTheme}
           height="80px"
