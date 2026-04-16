@@ -138,6 +138,7 @@ function summarizeValue(val: unknown): string {
  */
 export function createReferenceCompletionSource(
   getBlocks: () => BlockContext[],
+  getEnvKeys?: () => string[],
 ): (ctx: CompletionContext) => CompletionResult | null {
   return (ctx: CompletionContext) => {
     const line = ctx.state.doc.lineAt(ctx.pos);
@@ -158,6 +159,17 @@ export function createReferenceCompletionSource(
           type: "variable",
           detail: b.cachedResult ? "cached" : "no result",
         }));
+
+      if (getEnvKeys) {
+        for (const key of getEnvKeys()) {
+          options.push({
+            label: key,
+            type: "variable",
+            detail: "env",
+          });
+        }
+      }
+
       return { from, to: ctx.pos, options, filter: true };
     }
 
@@ -191,6 +203,7 @@ export function createReferenceCompletionSource(
 
 export function createReferenceAutocomplete(
   getBlocks: () => BlockContext[],
+  getEnvKeys?: () => string[],
 ) {
   function completionSource(ctx: CompletionContext): CompletionResult | null {
     const line = ctx.state.doc.lineAt(ctx.pos);
@@ -204,7 +217,7 @@ export function createReferenceAutocomplete(
 
     const blocks = getBlocks();
 
-    // No dot yet — complete alias names
+    // No dot yet — complete alias names + env variable keys
     if (!inner.includes(".")) {
       const options: Completion[] = blocks
         .filter((b) => b.alias)
@@ -213,6 +226,16 @@ export function createReferenceAutocomplete(
           type: "variable",
           detail: b.cachedResult ? "cached" : "no result",
         }));
+
+      if (getEnvKeys) {
+        for (const key of getEnvKeys()) {
+          options.push({
+            label: key,
+            type: "variable",
+            detail: "env",
+          });
+        }
+      }
 
       return {
         from,

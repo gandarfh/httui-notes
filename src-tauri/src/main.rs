@@ -273,6 +273,74 @@ async fn test_connection(
     conn_manager.test_connection(&id).await
 }
 
+// --- Environment commands ---
+
+#[tauri::command]
+async fn list_environments(
+    pool: tauri::State<'_, SqlitePool>,
+) -> Result<Vec<httui_notes::db::environments::Environment>, String> {
+    httui_notes::db::environments::list_environments(&pool).await
+}
+
+#[tauri::command]
+async fn create_environment(
+    pool: tauri::State<'_, SqlitePool>,
+    name: String,
+) -> Result<httui_notes::db::environments::Environment, String> {
+    httui_notes::db::environments::create_environment(&pool, name).await
+}
+
+#[tauri::command]
+async fn delete_environment(
+    pool: tauri::State<'_, SqlitePool>,
+    id: String,
+) -> Result<(), String> {
+    httui_notes::db::environments::delete_environment(&pool, &id).await
+}
+
+#[tauri::command]
+async fn duplicate_environment(
+    pool: tauri::State<'_, SqlitePool>,
+    source_id: String,
+    new_name: String,
+) -> Result<httui_notes::db::environments::Environment, String> {
+    httui_notes::db::environments::duplicate_environment(&pool, &source_id, new_name).await
+}
+
+#[tauri::command]
+async fn set_active_environment(
+    pool: tauri::State<'_, SqlitePool>,
+    id: Option<String>,
+) -> Result<(), String> {
+    httui_notes::db::environments::set_active_environment(&pool, id.as_deref()).await
+}
+
+#[tauri::command]
+async fn list_env_variables(
+    pool: tauri::State<'_, SqlitePool>,
+    environment_id: String,
+) -> Result<Vec<httui_notes::db::environments::EnvVariable>, String> {
+    httui_notes::db::environments::list_env_variables(&pool, &environment_id).await
+}
+
+#[tauri::command]
+async fn set_env_variable(
+    pool: tauri::State<'_, SqlitePool>,
+    environment_id: String,
+    key: String,
+    value: String,
+) -> Result<httui_notes::db::environments::EnvVariable, String> {
+    httui_notes::db::environments::set_env_variable(&pool, &environment_id, key, value).await
+}
+
+#[tauri::command]
+async fn delete_env_variable(
+    pool: tauri::State<'_, SqlitePool>,
+    id: String,
+) -> Result<(), String> {
+    httui_notes::db::environments::delete_env_variable(&pool, &id).await
+}
+
 // --- Session restore (single IPC call for startup) ---
 
 #[derive(serde::Serialize)]
@@ -479,6 +547,14 @@ fn main() {
             test_connection,
             introspect_schema,
             get_cached_schema,
+            list_environments,
+            create_environment,
+            delete_environment,
+            duplicate_environment,
+            set_active_environment,
+            list_env_variables,
+            set_env_variable,
+            delete_env_variable,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
