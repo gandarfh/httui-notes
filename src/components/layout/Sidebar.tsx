@@ -1,5 +1,6 @@
 import { Box, HStack, Text, IconButton, Menu, Portal } from "@chakra-ui/react";
 import { FileTree } from "./file-tree";
+import { ConnectionsList } from "./connections/ConnectionsList";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { LuPlus, LuFileText, LuFolder } from "react-icons/lu";
 
@@ -66,14 +67,7 @@ export function Sidebar({ width }: SidebarProps) {
 
       {/* Connections section */}
       <Box borderTopWidth="1px" borderColor="border">
-        <Box px={3} py={2}>
-          <Text fontSize="xs" fontWeight="semibold" color="fg.subtle" textTransform="uppercase" letterSpacing="wider">
-            Connections
-          </Text>
-        </Box>
-        <Box px={3} py={4} textAlign="center">
-          <Text fontSize="sm" color="fg.muted">No connections</Text>
-        </Box>
+        <ConnectionsList />
       </Box>
     </Box>
   );
