@@ -12,31 +12,14 @@ export interface DependencyResult {
 }
 
 /**
- * Extract all aliases referenced in block content (URL, headers, body fields).
+ * Extract all aliases referenced in block content.
+ * Scans the entire content string for {{alias...}} patterns,
+ * making it work for any block type (http, db, e2e, etc.).
  */
 export function extractReferencedAliases(content: string): string[] {
-  // Parse the block data to check all fields
-  let data: { url?: string; headers?: { value: string }[]; body?: string };
-  try {
-    data = JSON.parse(content);
-  } catch {
-    return [];
-  }
-
-  const texts: string[] = [];
-  if (data.url) texts.push(data.url);
-  if (data.headers) {
-    for (const h of data.headers) {
-      if (h.value) texts.push(h.value);
-    }
-  }
-  if (data.body) texts.push(data.body);
-
   const aliases = new Set<string>();
-  for (const text of texts) {
-    for (const ref of parseReferences(text)) {
-      aliases.add(ref.alias);
-    }
+  for (const ref of parseReferences(content)) {
+    aliases.add(ref.alias);
   }
   return [...aliases];
 }
