@@ -132,6 +132,63 @@ function summarizeValue(val: unknown): string {
  * Creates a CodeMirror autocompletion extension for `{{...}}` block references.
  * Pass a getter that returns the current block contexts (aliases + cached results).
  */
+/**
+ * Creates just the completion source function for `{{...}}` references.
+ * Use this when you need to combine with other completion sources (e.g., SQL).
+ */
+export function createReferenceCompletionSource(
+  getBlocks: () => BlockContext[],
+): (ctx: CompletionContext) => CompletionResult | null {
+  return (ctx: CompletionContext) => {
+    const line = ctx.state.doc.lineAt(ctx.pos);
+    const textBefore = line.text.slice(0, ctx.pos - line.from);
+    const ref = findRefStart(textBefore, textBefore.length);
+
+    if (!ref) return null;
+
+    const from = line.from + ref.from;
+    const inner = ref.inner;
+    const blocks = getBlocks();
+
+    if (!inner.includes(".")) {
+      const options: Completion[] = blocks
+        .filter((b) => b.alias)
+        .map((b) => ({
+          label: b.alias,
+          type: "variable",
+          detail: b.cachedResult ? "cached" : "no result",
+        }));
+      return { from, to: ctx.pos, options, filter: true };
+    }
+
+    const parts = inner.split(".");
+    const alias = parts[0];
+    const block = blocks.find((b) => b.alias === alias);
+    if (!block?.cachedResult) return null;
+
+    let responseData: unknown;
+    try {
+      responseData = JSON.parse(block.cachedResult.response);
+    } catch {
+      return null;
+    }
+
+    const context: Record<string, unknown> = {
+      response: responseData,
+      status: block.cachedResult.status,
+    };
+
+    const completedPath = parts.slice(1, -1);
+    const options = getKeysAtPath(context, completedPath);
+    if (options.length === 0) return null;
+
+    const lastDotIdx = inner.lastIndexOf(".");
+    const completionFrom = line.from + ref.from + lastDotIdx + 1;
+
+    return { from: completionFrom, to: ctx.pos, options, filter: true };
+  };
+}
+
 export function createReferenceAutocomplete(
   getBlocks: () => BlockContext[],
 ) {
