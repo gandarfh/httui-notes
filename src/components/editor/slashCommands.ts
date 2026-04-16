@@ -145,6 +145,27 @@ const COMMANDS: SlashMenuItem[] = [
     },
   },
   {
+    title: "Database Query",
+    icon: "⊕",
+    command: ({ editor, range }) => {
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .insertContent({
+          type: "dbBlock",
+          attrs: {
+            blockType: "db",
+            content: JSON.stringify({
+              connectionId: "",
+              query: "",
+            }),
+          },
+        })
+        .run();
+    },
+  },
+  {
     title: "HTTP Request",
     icon: "⚡",
     command: ({ editor, range }) => {

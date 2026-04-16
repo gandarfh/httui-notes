@@ -1,0 +1,443 @@
+import { NodeViewWrapper } from "@tiptap/react";
+import type { NodeViewProps } from "@tiptap/core";
+import { Box, Flex, HStack, Badge } from "@chakra-ui/react";
+import { NativeSelectRoot, NativeSelectField } from "@chakra-ui/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useColorMode } from "@/components/ui/color-mode";
+import CodeMirror from "@uiw/react-codemirror";
+import { sql } from "@codemirror/lang-sql";
+import { EditorView } from "@codemirror/view";
+import { ExecutableBlockShell } from "../ExecutableBlockShell";
+import { useBlockContext } from "../BlockContext";
+import type { DisplayMode, ExecutionState } from "../ExecutableBlock";
+import type { DbBlockData, DbResponse } from "./types";
+import { DEFAULT_DB_DATA, isSelectResponse } from "./types";
+import { executeBlock, getBlockResult, saveBlockResult } from "@/lib/tauri/commands";
+import { hashBlockContent } from "@/lib/blocks/hash";
+import { resolveAllReferences } from "@/lib/blocks/references";
+import { collectBlocksAbove } from "@/lib/blocks/document";
+import { resolveAndExecuteDependencies } from "@/lib/blocks/dependencies";
+import { referenceHighlight } from "@/lib/blocks/cm-references";
+import { createReferenceAutocomplete } from "@/lib/blocks/cm-autocomplete";
+import type { BlockContext } from "@/lib/blocks/references";
+import type { Connection } from "@/lib/tauri/connections";
+import { listConnections } from "@/lib/tauri/connections";
+import { ResultTable } from "./ResultTable";
+
+const cmTransparentBg = EditorView.theme({
+  "&": { backgroundColor: "transparent !important" },
+  "& .cm-gutters": {
+    backgroundColor: "transparent !important",
+    border: "none",
+  },
+  "& .cm-activeLineGutter, & .cm-activeLine": {
+    backgroundColor: "transparent !important",
+  },
+});
+
+function parseBlockData(raw: string): DbBlockData {
+  if (!raw) return { ...DEFAULT_DB_DATA };
+  try {
+    return { ...DEFAULT_DB_DATA, ...JSON.parse(raw) };
+  } catch {
+    return { ...DEFAULT_DB_DATA };
+  }
+}
+
+function serializeBlockData(data: DbBlockData): string {
+  return JSON.stringify(data);
+}
+
+/**
+ * Convert {{ref}} placeholders in SQL to `?` bind params.
+ * Returns the parameterized SQL and the resolved values array.
+ */
+function resolveRefsToBindParams(
+  query: string,
+  blocks: BlockContext[],
+  currentPos: number,
+): { sql: string; bindValues: unknown[]; errors: string[] } {
+  const refPattern = /\{\{([^}]+)\}\}/g;
+  const bindValues: unknown[] = [];
+  const errors: string[] = [];
+
+  const parameterizedSql = query.replace(refPattern, (match, refPath: string) => {
+    const result = resolveAllReferences(`{{${refPath}}}`, blocks, currentPos);
+    if (result.errors.length > 0) {
+      errors.push(...result.errors.map((e) => e.message));
+      return match; // keep original on error
+    }
+    // Try to parse as number/boolean
+    const resolved = result.resolved;
+    let value: unknown = resolved;
+    if (resolved === "true") value = true;
+    else if (resolved === "false") value = false;
+    else if (resolved === "null") value = null;
+    else {
+      const num = Number(resolved);
+      if (!isNaN(num) && resolved.trim() !== "") value = num;
+    }
+    bindValues.push(value);
+    return "?";
+  });
+
+  return { sql: parameterizedSql, bindValues, errors };
+}
+
+// --- Sub-components ---
+
+function DbInput({
+  data,
+  onChange,
+  cmTheme,
+  connections,
+  blocksRef,
+}: {
+  data: DbBlockData;
+  onChange: (data: DbBlockData) => void;
+  cmTheme: "light" | "dark";
+  connections: Connection[];
+  blocksRef: React.RefObject<BlockContext[]>;
+}) {
+  const refAutocomplete = useMemo(
+    () => createReferenceAutocomplete(() => blocksRef.current ?? []),
+    [blocksRef],
+  );
+
+  return (
+    <Box p={2} display="flex" flexDirection="column" gap={1.5}>
+      {/* Connection selector */}
+      <Flex gap={2} align="center">
+        <NativeSelectRoot size="xs" flex={1}>
+          <NativeSelectField
+            value={data.connectionId}
+            onChange={(e) => onChange({ ...data, connectionId: e.target.value })}
+            fontFamily="mono"
+            fontSize="xs"
+          >
+            <option value="">Select connection...</option>
+            {connections.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} ({c.driver})
+              </option>
+            ))}
+          </NativeSelectField>
+        </NativeSelectRoot>
+      </Flex>
+
+      {/* SQL editor */}
+      <Box
+        border="1px solid"
+        borderColor="border"
+        rounded="md"
+        overflow="hidden"
+        bg="bg.subtle"
+      >
+        <CodeMirror
+          value={data.query}
+          onChange={(val) => onChange({ ...data, query: val })}
+          extensions={[
+            sql(),
+            EditorView.lineWrapping,
+            cmTransparentBg,
+            ...referenceHighlight,
+            refAutocomplete,
+          ]}
+          basicSetup={{
+            lineNumbers: true,
+            foldGutter: false,
+            autocompletion: false,
+          }}
+          theme={cmTheme}
+          height="80px"
+          style={{ fontSize: "12px" }}
+        />
+      </Box>
+    </Box>
+  );
+}
+
+function DbOutput({
+  response,
+  error,
+  onPageChange,
+}: {
+  response: DbResponse | null;
+  error: string | null;
+  onPageChange: (page: number, pageSize: number) => void;
+}) {
+  if (error) {
+    return (
+      <Box p={3} color="red.500" fontSize="sm" fontFamily="mono">
+        {error}
+      </Box>
+    );
+  }
+  if (!response) return null;
+
+  if (isSelectResponse(response)) {
+    return (
+      <Box p={2} display="flex" flexDirection="column" gap={1}>
+        <HStack gap={2}>
+          <Badge colorPalette="green" variant="subtle" fontFamily="mono" size="sm">
+            {response.total_rows} rows
+          </Badge>
+        </HStack>
+        <ResultTable
+          columns={response.columns}
+          rows={response.rows}
+          totalRows={response.total_rows}
+          page={response.page}
+          pageSize={response.page_size}
+          onPageChange={onPageChange}
+        />
+      </Box>
+    );
+  }
+
+  // Mutation response
+  return (
+    <Box p={3}>
+      <Badge colorPalette="blue" variant="subtle" fontFamily="mono" size="sm">
+        {response.rows_affected} rows affected
+      </Badge>
+    </Box>
+  );
+}
+
+// --- Main view ---
+
+export function DbBlockView({
+  node,
+  editor,
+  getPos,
+  updateAttributes,
+  selected,
+}: NodeViewProps) {
+  const { colorMode } = useColorMode();
+  const { filePath } = useBlockContext();
+  const cmTheme = colorMode === "dark" ? "dark" : "light";
+  const alias = (node.attrs.alias as string) ?? "";
+  const displayMode = (node.attrs.displayMode as DisplayMode) ?? "input";
+  const executionState = (node.attrs.executionState as ExecutionState) ?? "idle";
+  const rawContent = (node.attrs.content as string) ?? "";
+
+  const [response, setResponse] = useState<DbResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [depStatus, setDepStatus] = useState<string | null>(null);
+  const [connections, setConnections] = useState<Connection[]>([]);
+  const cancelRef = useRef<(() => void) | null>(null);
+  const lastHashRef = useRef<string>("");
+  const blocksRef = useRef<BlockContext[]>([]);
+
+  // Load connections
+  useEffect(() => {
+    listConnections().then(setConnections).catch(() => {});
+  }, []);
+
+  // Keep blocksRef updated for autocomplete
+  useEffect(() => {
+    if (!filePath || !editor) return;
+    let cancelled = false;
+    const currentPos = (typeof getPos === "function" ? getPos() : 0) ?? 0;
+
+    collectBlocksAbove(editor, currentPos, filePath).then((blocks) => {
+      if (!cancelled) blocksRef.current = blocks;
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [filePath, editor, getPos]);
+
+  // Local state for responsive editing
+  const [data, setData] = useState(() => parseBlockData(rawContent));
+  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleDataChange = useCallback(
+    (updated: DbBlockData) => {
+      setData(updated);
+      if (syncTimer.current) clearTimeout(syncTimer.current);
+      syncTimer.current = setTimeout(() => {
+        updateAttributes({ content: serializeBlockData(updated) });
+      }, 300);
+    },
+    [updateAttributes],
+  );
+
+  // Load cached result on mount and when content changes
+  useEffect(() => {
+    if (!filePath || !rawContent) return;
+    let cancelled = false;
+
+    (async () => {
+      const hash = await hashBlockContent(rawContent);
+      lastHashRef.current = hash;
+
+      try {
+        const cached = await getBlockResult(filePath, hash);
+        if (cancelled) return;
+        if (cached) {
+          const parsed = JSON.parse(cached.response);
+          setResponse(parsed);
+          setError(null);
+          updateAttributes({ executionState: "cached", displayMode: "split" });
+        } else if (executionState === "cached") {
+          setResponse(null);
+          updateAttributes({ executionState: "idle" });
+        }
+      } catch {
+        // Cache lookup failed
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [filePath, rawContent]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const executeQuery = useCallback(
+    async (page = 1, pageSize = 100) => {
+      setError(null);
+      if (page === 1) {
+        setResponse(null);
+        setDepStatus(null);
+        updateAttributes({ executionState: "running" });
+      }
+
+      let cancelled = false;
+      cancelRef.current = () => {
+        cancelled = true;
+      };
+
+      try {
+        const currentPos =
+          (typeof getPos === "function" ? getPos() : 0) ?? 0;
+
+        // Resolve dependencies
+        let blocks: BlockContext[] = [];
+        if (filePath) {
+          const depResult = await resolveAndExecuteDependencies(
+            editor,
+            currentPos,
+            filePath,
+            rawContent,
+            (status) => setDepStatus(status),
+          );
+          blocks = depResult.blocks;
+          if (depResult.executed.length > 0) {
+            setDepStatus(null);
+          }
+        }
+
+        if (cancelled) return;
+
+        // Resolve refs to bind params
+        const { sql, bindValues, errors } = resolveRefsToBindParams(
+          data.query,
+          blocks,
+          currentPos,
+        );
+
+        if (errors.length > 0) {
+          setError(`Reference errors:\n${errors.join("\n")}`);
+          updateAttributes({ executionState: "error" });
+          return;
+        }
+
+        setDepStatus(null);
+        const result = await executeBlock("db", {
+          connection_id: data.connectionId,
+          query: sql,
+          bind_values: bindValues,
+          page,
+          page_size: pageSize,
+          ...(data.timeoutMs ? { timeout_ms: data.timeoutMs } : {}),
+        });
+
+        if (cancelled) return;
+
+        const resultData = result.data as unknown as DbResponse;
+        setResponse(resultData);
+        updateAttributes({
+          executionState:
+            result.status === "success" ? "success" : "error",
+          displayMode: "split",
+        });
+
+        // Save to cache (only first page)
+        if (filePath && page === 1) {
+          const hash = await hashBlockContent(rawContent);
+          lastHashRef.current = hash;
+          const totalRows = isSelectResponse(resultData)
+            ? resultData.total_rows
+            : null;
+          await saveBlockResult(
+            filePath,
+            hash,
+            result.status,
+            JSON.stringify(resultData),
+            result.duration_ms,
+            totalRows,
+          );
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setDepStatus(null);
+        setError(err instanceof Error ? err.message : String(err));
+        updateAttributes({ executionState: "error" });
+      }
+    },
+    [data, rawContent, filePath, editor, getPos, updateAttributes],
+  );
+
+  const handleRun = useCallback(() => {
+    executeQuery(1, 100);
+  }, [executeQuery]);
+
+  const handlePageChange = useCallback(
+    (page: number, pageSize: number) => {
+      executeQuery(page, pageSize);
+    },
+    [executeQuery],
+  );
+
+  const handleCancel = useCallback(() => {
+    cancelRef.current?.();
+    cancelRef.current = null;
+    updateAttributes({ executionState: "idle" });
+  }, [updateAttributes]);
+
+  return (
+    <NodeViewWrapper data-type="db-block">
+      <ExecutableBlockShell
+        blockType="db"
+        alias={alias}
+        displayMode={displayMode}
+        executionState={executionState}
+        onAliasChange={(a) => updateAttributes({ alias: a })}
+        onDisplayModeChange={(m) => updateAttributes({ displayMode: m })}
+        onRun={handleRun}
+        onCancel={handleCancel}
+        selected={selected}
+        statusText={depStatus}
+        inputSlot={
+          <DbInput
+            data={data}
+            onChange={handleDataChange}
+            cmTheme={cmTheme}
+            connections={connections}
+            blocksRef={blocksRef}
+          />
+        }
+        outputSlot={
+          <DbOutput
+            response={response}
+            error={error}
+            onPageChange={handlePageChange}
+          />
+        }
+      />
+    </NodeViewWrapper>
+  );
+}
