@@ -302,6 +302,9 @@ function StepCard({
   const [expanded, setExpanded] = useState(true);
   const showBody = METHODS_WITH_BODY.includes(step.method);
 
+  const expectCount =
+    (step.expect.status ? 1 : 0) + step.expect.json.length + step.expect.bodyContains.length;
+
   return (
     <Box
       border="1px solid"
@@ -310,7 +313,7 @@ function StepCard({
       overflow="hidden"
       mb={2}
     >
-      {/* Step header */}
+      {/* Step header — compact summary */}
       <Flex
         align="center"
         gap={1}
@@ -319,11 +322,9 @@ function StepCard({
         bg="bg.subtle"
         cursor="pointer"
         onClick={() => setExpanded(!expanded)}
+        minH="32px"
       >
         {expanded ? <LuChevronDown size={12} /> : <LuChevronRight size={12} />}
-        <Badge size="sm" colorPalette={METHOD_COLORS[step.method]} variant="solid" fontSize="2xs">
-          {step.method}
-        </Badge>
         <Input
           size="xs"
           variant="flushed"
@@ -333,13 +334,11 @@ function StepCard({
           onClick={(e) => e.stopPropagation()}
           fontFamily="mono"
           fontSize="xs"
-          maxW="200px"
+          flex={1}
+          minW="0"
           color="fg.muted"
         />
-        <Text fontSize="2xs" color="fg.muted" flex={1} textAlign="right" truncate>
-          {step.url || "/..."}
-        </Text>
-        <HStack gap={0} ml="auto">
+        <HStack gap={0} flexShrink={0}>
           <IconButton
             aria-label="Move up"
             size="2xs"
@@ -370,24 +369,28 @@ function StepCard({
         </HStack>
       </Flex>
 
-      {/* Step content (expanded) */}
+      {/* Step content — HTTP-block-style layout */}
       {expanded && (
-        <Box px={3} py={2}>
-          {/* Method + URL */}
-          <Flex gap={2} mb={2} align="center">
-            <NativeSelectRoot size="xs" width="auto">
+        <Box p={2} display="flex" flexDirection="column" gap={1.5}>
+          {/* Method + URL — matching HTTP block pattern */}
+          <Flex gap={1} align="center">
+            <NativeSelectRoot size="xs" width="auto" flexShrink={0} h="32px">
               <NativeSelectField
                 value={step.method}
                 onChange={(e) => onChange({ ...step, method: e.target.value as HttpMethod })}
                 fontFamily="mono"
                 fontSize="xs"
+                fontWeight="bold"
+                h="32px"
+                color={`${METHOD_COLORS[step.method]}.400`}
+                onClick={(e) => e.stopPropagation()}
               >
                 {METHODS.map((m) => (
                   <option key={m} value={m}>{m}</option>
                 ))}
               </NativeSelectField>
             </NativeSelectRoot>
-            <Box flex={1}>
+            <Box flex={1} minW="0" h="32px" border="1px solid" borderColor="border" rounded="sm" overflow="hidden">
               <InlineCM
                 value={step.url}
                 onChange={(v) => onChange({ ...step, url: v })}
@@ -439,10 +442,8 @@ function StepCard({
 
           {/* Expect */}
           <Section title="Expect" badge={
-            (step.expect.status || step.expect.json.length > 0 || step.expect.bodyContains.length > 0) ? (
-              <Badge size="sm" variant="subtle" colorPalette="blue">
-                {(step.expect.status ? 1 : 0) + step.expect.json.length + step.expect.bodyContains.length}
-              </Badge>
+            expectCount > 0 ? (
+              <Badge size="sm" variant="subtle" colorPalette="blue">{expectCount}</Badge>
             ) : undefined
           }>
             <Box mb={2}>
