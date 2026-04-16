@@ -51,14 +51,14 @@ Full details in `docs/ARCHITECTURE.md`. Key concepts:
 
 **SQL safety:** Block references in SQL (`{{alias.response.path}}`) are always converted to bind parameters (`$1`, `?`), never string-interpolated.
 
-**Block references:** `{{alias.response.path}}` — blocks can only reference blocks above them in the document (DAG by construction). Resolution is recursive with caching.
+**Block references:** `{{alias.response.path}}` — blocks can only reference blocks above them in the document (DAG by construction). Resolution is recursive with caching. Environment variables use the same syntax without dots: `{{ENV_KEY}}` resolves from the active environment.
 
 ## Key Conventions
 
 - UI components use Chakra UI v3 with Emotion. Use Chakra primitives (Box, Flex, HStack, Menu, Dialog, etc.) and semantic tokens (bg, fg, border). Snippets in `src/components/ui/`. Use `onSelect` (not `onClick`) for `Menu.Item`. Consult the Chakra MCP tools for component examples.
 - Do NOT use Chakra `Dialog.Root` for popups that need to return focus to the editor — use `Portal` + `Box` instead. The Dialog focus trap prevents ProseMirror from receiving keyboard input after closing.
 - Tauri IPC uses `invoke()` from `@tauri-apps/api/core`. Frontend wrappers live in `src/lib/tauri/`.
-- Passwords and env variable values are encrypted via OS keychain (Tauri keychain plugin), never stored in plaintext.
+- Passwords and env variable values are stored in SQLite (plaintext). Keychain encryption is planned but not yet implemented.
 - Markdown serialization preserves fenced code blocks for executable blocks (```http, ```db-*, ```e2e) — they must survive roundtrip through the TipTap parser/serializer.
 
 ## Frontend architecture (hooks + contexts)
@@ -74,15 +74,19 @@ Full details in `docs/ARCHITECTURE.md`. Key concepts:
 - `useSidebarResize` — drag-to-resize sidebar
 - `useSessionPersistence` — startup restore + save-on-change via single `restore_session` IPC call
 - `useFileSearch` / `useContentSearch` / `useEscapeClose` — search modal logic
+- `useEnvironments` — environment CRUD, active switching, variable management
 
 **Contexts** (`src/contexts/`):
 - `WorkspaceContext` — vault state + file operations + file select (consumed by Sidebar, FileTree, TopBar, QuickOpen, SearchPanel)
 - `PaneContext` — layout + actions + editor change (consumed by PaneContainer, PaneNode, StatusBar, FileTree)
 - `EditorSettingsContext` — vim mode (consumed by PaneNode, StatusBar)
+- `EnvironmentContext` — environments list, active environment, CRUD, variable resolution (consumed by TopBar, HttpBlockView, EnvironmentManager)
 
 **Component structure:**
 - `src/components/layout/file-tree/` — FileTree, FileTreeNode, InlineInput
 - `src/components/layout/pane/` — PaneContainer, PaneNode, SplitView
+- `src/components/layout/connections/` — ConnectionForm, ConnectionsList
+- `src/components/layout/environments/` — EnvironmentManager (drawer with env list + key-value editor)
 
 ## Multi-pane system
 
@@ -102,6 +106,34 @@ Full details in `docs/ARCHITECTURE.md`. Key concepts:
 - Quick-open (`Cmd+P`): fuzzy file name search via Rust `search_files` with subsequence scoring.
 - Full-text (`Cmd+Shift+F`): FTS5 index in SQLite, rebuilt on vault switch, `search_content` with snippet highlighting.
 - Both use Portal-based panels (not Dialog) to avoid focus trap issues.
+
+## HTTP block
+
+- Block type `http` in `src/components/blocks/http/`. Methods: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS.
+- Input: method selector (color-coded), URL field, tabs for Params/Headers/Body/Settings. All value fields use `InlineCM` (single-line CodeMirror) with `{{ref}}` autocomplete and highlighting.
+- Output: status badge (granular colors by status class), elapsed time, response size, syntax-highlighted body (JSON/HTML/XML/plain), collapsible response headers, copy button.
+- Binary responses: backend returns `{ encoding: "base64", data: "..." }` for image/video/audio/PDF/zip. Frontend renders images inline, PDFs in iframe, others as info + download button.
+- Execution flow: resolve dependencies (execute referenced blocks first) → fetch env variables → resolve `{{...}}` in URL/headers/params/body → execute via Tauri → cache result by content hash.
+- Timeout: 30s client default, per-request override via `timeout_ms` field in Settings tab.
+- Backend executor: `src-tauri/src/executor/http.rs` — uses reqwest, classifies errors (timeout, connection_failed, too_many_redirects, body_error).
+
+## Environments
+
+- Managed via `useEnvironments` hook + `EnvironmentContext`. Tables `environments` and `env_variables` in SQLite.
+- TopBar dropdown to select active environment. EnvironmentManager drawer (`src/components/layout/environments/`) for CRUD + key-value editing.
+- `{{KEY}}` (no dots) in any HTTP block field resolves to the active environment's variable value. Keys appear in `{{` autocomplete alongside block aliases.
+- Backend: 8 Tauri commands for full CRUD (list/create/delete/duplicate environments, set active, list/set/delete variables).
+- Variables are stored plaintext in SQLite (keychain encryption planned).
+
+## Block utilities
+
+Shared infrastructure in `src/lib/blocks/`:
+- `references.ts` — parse `{{...}}` syntax, resolve against block contexts + env variables, navigate JSON by dot-path.
+- `dependencies.ts` — extract referenced aliases, auto-execute dependencies before current block.
+- `cm-references.ts` — CodeMirror decoration plugin for `{{ref}}` syntax highlighting.
+- `cm-autocomplete.ts` — CodeMirror completion for `{{` — shows block aliases (with cached/no result detail) and env variable keys (with env detail).
+- `hash.ts` — SHA-256 content hash for block result cache invalidation.
+- `document.ts` — walk ProseMirror doc to collect blocks above current position.
 
 ## Docs
 
