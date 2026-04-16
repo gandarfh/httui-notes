@@ -121,10 +121,12 @@ Full details in `docs/ARCHITECTURE.md`. Key concepts:
 
 - Block type `e2e` in `src/components/blocks/e2e/`. Runs sequential HTTP steps with assertions and variable extraction between steps.
 - Input: base URL (InlineCM with `{{ref}}`), default headers (key-value, inherited by all steps), ordered step list (collapsible cards with up/down reorder).
-- Each step: name, method dropdown, relative URL, headers (override defaults), body (CodeMirror JSON for POST/PUT/PATCH), expect (status, JSON match, body contains), extract (variable_name → JSON path).
+- Each step mirrors the HTTP block layout: colored method selector + URL in bordered box, two tab groups:
+  - **Request tabs** (Params / Headers / Body) — HTTP request configuration, same pattern as HTTP block.
+  - **Assertions tabs** (Expect / Extract) — test validations, separated from request config. Expect has status, JSON match (key=path, value=expected), body contains. Extract maps variable names to JSON paths.
 - Output: summary bar ("2/3 passed" with progress bar), per-step result cards (pass/fail icon, status badge, elapsed time, expandable response body with syntax highlighting, assertion errors with expected vs received, extracted variables).
-- Execution flow: resolve dependencies → fetch env variables → resolve `{{...}}` in all fields → send to backend `E2eExecutor` → steps execute sequentially, extractions passed to subsequent steps → cache result.
-- Backend executor: `src-tauri/src/executor/e2e.rs` — uses reqwest, validates expectations (status, JSON path match, body contains), extracts variables by JSON path, continues on step failure.
+- Execution flow: resolve dependencies → fetch env variables → resolve `{{...}}` in all fields → send to backend `E2eExecutor` → steps execute sequentially, extractions passed to subsequent steps, query params appended to URL → cache result.
+- Backend executor: `src-tauri/src/executor/e2e.rs` — uses reqwest, appends query params, validates expectations (status, JSON path match, body contains), extracts variables by JSON path, continues on step failure.
 - Slash command: `/e2e` creates a new E2E block.
 
 ## Environments
