@@ -566,7 +566,7 @@ export function DbBlockView({
 
         if (errors.length > 0) {
           setError(`Reference errors:\n${errors.join("\n")}`);
-          updateAttributes({ executionState: "error" });
+          updateAttributes({ executionState: "error", displayMode: "split" });
           return;
         }
 
@@ -610,7 +610,7 @@ export function DbBlockView({
         if (cancelled) return;
         setDepStatus(null);
         setError(err instanceof Error ? err.message : String(err));
-        updateAttributes({ executionState: "error" });
+        updateAttributes({ executionState: "error", displayMode: "split" });
       }
     },
     [data, rawContent, filePath, editor, getPos, updateAttributes],
