@@ -10,7 +10,7 @@ import { useCallback, useState } from "react";
 
 interface ResultTableProps {
   columns: { name: string; type: string }[];
-  rows: (string | number | boolean | null)[][];
+  rows: Record<string, string | number | boolean | null>[];
   totalRows: number;
   page: number;
   pageSize: number;
@@ -104,7 +104,8 @@ export function ResultTable({
           <tbody>
             {rows.map((row, rowIdx) => (
               <tr key={rowIdx}>
-                {row.map((cell, colIdx) => {
+                {columns.map((col, colIdx) => {
+                  const cell = row[col.name] ?? null;
                   const { text, isNull } = formatCellValue(cell);
                   return (
                     <td

@@ -93,6 +93,8 @@ impl Executor for DbExecutor {
         let duration_ms = start.elapsed().as_millis() as u64;
 
         if result.is_select {
+            let col_names: Vec<&str> = result.columns.iter().map(|c| c.name.as_str()).collect();
+
             let columns: Vec<serde_json::Value> = result
                 .columns
                 .iter()
@@ -104,11 +106,25 @@ impl Executor for DbExecutor {
                 })
                 .collect();
 
+            // Convert rows from arrays to objects keyed by column name
+            let rows: Vec<serde_json::Value> = result
+                .rows
+                .iter()
+                .map(|row| {
+                    let obj: serde_json::Map<String, serde_json::Value> = col_names
+                        .iter()
+                        .zip(row.iter())
+                        .map(|(name, val)| (name.to_string(), val.clone()))
+                        .collect();
+                    serde_json::Value::Object(obj)
+                })
+                .collect();
+
             Ok(BlockResult {
                 status: "success".to_string(),
                 data: serde_json::json!({
                     "columns": columns,
-                    "rows": result.rows,
+                    "rows": rows,
                     "total_rows": result.total_rows,
                     "page": p.page,
                     "page_size": p.page_size,
