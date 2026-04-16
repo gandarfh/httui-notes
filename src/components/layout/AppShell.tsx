@@ -122,7 +122,7 @@ export function AppShell() {
     <WorkspaceContext.Provider value={workspaceValue}>
       <PaneContext.Provider value={paneValue}>
         <EditorSettingsContext.Provider value={editorSettingsValue}>
-          <Flex h="100vh" direction="column" bg="bg.subtle">
+          <Flex h="100vh" direction="column" bg="bg.subtle" overflow="hidden">
             <TopBar
               sidebarOpen={sidebarOpen}
               onToggleSidebar={toggleSidebar}
