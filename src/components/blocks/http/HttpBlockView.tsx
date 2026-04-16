@@ -1,9 +1,12 @@
 import { NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/core";
-import { Box, Flex, HStack, Input, Badge, IconButton, Tabs } from "@chakra-ui/react";
+import { Box, Flex, HStack, Badge, IconButton, Tabs } from "@chakra-ui/react";
 import { NativeSelectRoot, NativeSelectField } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LuX, LuPlus, LuBraces } from "react-icons/lu";
+import { common, createLowlight } from "lowlight";
+
+const lowlight = createLowlight(common);
 import { useColorMode } from "@/components/ui/color-mode";
 import CodeMirror from "@uiw/react-codemirror";
 import { json } from "@codemirror/lang-json";
@@ -17,12 +20,74 @@ import { executeBlock, getBlockResult, saveBlockResult } from "@/lib/tauri/comma
 import { hashBlockContent } from "@/lib/blocks/hash";
 import { resolveAllReferences } from "@/lib/blocks/references";
 import { collectBlocksAbove } from "@/lib/blocks/document";
+import { referenceHighlight } from "@/lib/blocks/cm-references";
+import { createReferenceAutocomplete } from "@/lib/blocks/cm-autocomplete";
+import type { BlockContext } from "@/lib/blocks/references";
 
 const cmTransparentBg = EditorView.theme({
-  "&": { backgroundColor: "transparent" },
-  "& .cm-gutters": { backgroundColor: "transparent", border: "none" },
-  "& .cm-activeLineGutter, & .cm-activeLine": { backgroundColor: "transparent" },
+  "&": { backgroundColor: "transparent !important" },
+  "& .cm-gutters": { backgroundColor: "transparent !important", border: "none" },
+  "& .cm-activeLineGutter, & .cm-activeLine": { backgroundColor: "transparent !important" },
 });
+
+const cmInlineTheme = EditorView.theme({
+  "&": { backgroundColor: "transparent !important", fontSize: "12px" },
+  "&.cm-focused": { outline: "none" },
+  "& .cm-gutters": { display: "none" },
+  "& .cm-activeLineGutter, & .cm-activeLine": { backgroundColor: "transparent !important" },
+  "& .cm-scroller": { overflow: "auto hidden", scrollbarWidth: "none", lineHeight: "30px" },
+  "& .cm-scroller::-webkit-scrollbar": { display: "none" },
+  "& .cm-content": { padding: "0 10px", minHeight: "auto" },
+  "& .cm-line": { padding: "0" },
+  "& .cm-placeholder": { color: "var(--chakra-colors-fg-muted)", opacity: "0.5" },
+  "& .cm-cursor": { borderLeftColor: "var(--chakra-colors-fg)" },
+});
+
+/**
+ * Inline single-line CodeMirror with reference autocomplete + highlight.
+ * Replaces <Input> for URL, header values, and param values.
+ */
+function InlineCM({
+  value,
+  onChange,
+  placeholder,
+  cmTheme,
+  extensions: extraExtensions,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  placeholder?: string;
+  cmTheme: "light" | "dark";
+  extensions?: import("@codemirror/state").Extension[];
+}) {
+  return (
+    <CodeMirror
+      value={value}
+      onChange={onChange}
+      extensions={[
+        cmInlineTheme,
+        cmTransparentBg,
+        ...referenceHighlight,
+        ...(extraExtensions ?? []),
+      ]}
+      basicSetup={{
+        lineNumbers: false,
+        foldGutter: false,
+        autocompletion: false,
+        highlightActiveLine: false,
+        highlightActiveLineGutter: false,
+        indentOnInput: false,
+        bracketMatching: false,
+        closeBrackets: false,
+        history: true,
+      }}
+      theme={cmTheme}
+      height="auto"
+      placeholder={placeholder}
+      style={{ fontFamily: "var(--chakra-fonts-mono)" }}
+    />
+  );
+}
 
 const METHODS: HttpMethod[] = ["GET", "POST", "PUT", "PATCH", "DELETE"];
 const METHODS_WITH_BODY: HttpMethod[] = ["POST", "PUT", "PATCH"];
@@ -40,12 +105,45 @@ function serializeBlockData(data: HttpBlockData): string {
   return JSON.stringify(data);
 }
 
-function blockResultToResponse(result: { status_code: number; status_text: string; headers: Record<string, string>; body: string }, elapsedMs: number): HttpResponse {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function hastToHtml(nodes: any[]): string {
+  return nodes.map((node) => {
+    if (node.type === "text") return escapeHtml(node.value);
+    if (node.type === "element") {
+      const cls = node.properties?.className?.join(" ") ?? "";
+      const inner = hastToHtml(node.children ?? []);
+      return cls ? `<span class="${cls}">${inner}</span>` : inner;
+    }
+    return "";
+  }).join("");
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function formatBody(raw: unknown): string {
+  // Unwrap nested JSON strings (e.g. double-encoded)
+  let value = raw;
+  for (let i = 0; i < 3; i++) {
+    if (typeof value !== "string") break;
+    try {
+      value = JSON.parse(value);
+    } catch {
+      break;
+    }
+  }
+  // Now value is either a parsed object or a plain string
+  if (typeof value === "string") return value;
+  return JSON.stringify(value, null, 2);
+}
+
+function blockResultToResponse(result: { status_code: number; status_text: string; headers: Record<string, string>; body: unknown }, elapsedMs: number): HttpResponse {
   return {
     status: result.status_code,
     statusText: result.status_text,
     headers: result.headers,
-    body: result.body,
+    body: typeof result.body === "string" ? result.body : JSON.stringify(result.body),
     elapsedMs,
   };
 }
@@ -58,53 +156,46 @@ function KeyValueRow({
   onChange,
   onRemove,
   isLast,
+  cmTheme,
+  cmExtensions,
 }: {
   item: KeyValue;
   keyPlaceholder: string;
   onChange: (kv: KeyValue) => void;
   onRemove: () => void;
   isLast: boolean;
+  cmTheme: "light" | "dark";
+  cmExtensions?: import("@codemirror/state").Extension[];
 }) {
   return (
     <Flex
       borderBottom={isLast ? undefined : "1px solid"}
       borderColor="border"
+      align="center"
     >
-      <Input
-        size="xs"
-        variant="flushed"
-        placeholder={keyPlaceholder}
-        value={item.key}
-        onChange={(e) => onChange({ ...item, key: e.target.value })}
-        fontFamily="mono"
-        fontSize="xs"
-        flex={1}
-        px={2}
-        py={1.5}
-        borderRadius={0}
-        color="fg"
-      />
-      <Box borderLeft="1px solid" borderColor="border" />
-      <Input
-        size="xs"
-        variant="flushed"
-        placeholder="Value"
-        value={item.value}
-        onChange={(e) => onChange({ ...item, value: e.target.value })}
-        fontFamily="mono"
-        fontSize="xs"
-        flex={1}
-        px={2}
-        py={1.5}
-        borderRadius={0}
-        color="fg.muted"
-      />
+      <Box flex={1} px={1}>
+        <InlineCM
+          value={item.key}
+          onChange={(val) => onChange({ ...item, key: val })}
+          placeholder={keyPlaceholder}
+          cmTheme={cmTheme}
+        />
+      </Box>
+      <Box borderLeft="1px solid" borderColor="border" alignSelf="stretch" />
+      <Box flex={1} px={1}>
+        <InlineCM
+          value={item.value}
+          onChange={(val) => onChange({ ...item, value: val })}
+          placeholder="Value"
+          cmTheme={cmTheme}
+          extensions={cmExtensions}
+        />
+      </Box>
       <IconButton
         aria-label="Remove"
         size="2xs"
         variant="ghost"
         colorPalette="red"
-        alignSelf="center"
         mx={1}
         onClick={onRemove}
       >
@@ -119,11 +210,15 @@ function KeyValueList({
   keyPlaceholder,
   items,
   onChange,
+  cmTheme,
+  cmExtensions,
 }: {
   addLabel: string;
   keyPlaceholder: string;
   items: KeyValue[];
   onChange: (items: KeyValue[]) => void;
+  cmTheme: "light" | "dark";
+  cmExtensions?: import("@codemirror/state").Extension[];
 }) {
   return (
     <Box
@@ -138,6 +233,8 @@ function KeyValueList({
           item={item}
           keyPlaceholder={keyPlaceholder}
           isLast={i === items.length - 1}
+          cmTheme={cmTheme}
+          cmExtensions={cmExtensions}
           onChange={(updated) => {
             const next = [...items];
             next[i] = updated;
@@ -170,12 +267,19 @@ function HttpInput({
   data,
   onChange,
   cmTheme,
+  blocksRef,
 }: {
   data: HttpBlockData;
   onChange: (data: HttpBlockData) => void;
   cmTheme: "light" | "dark";
+  blocksRef: React.RefObject<BlockContext[]>;
 }) {
   const showBody = METHODS_WITH_BODY.includes(data.method);
+
+  const refAutocomplete = useMemo(
+    () => createReferenceAutocomplete(() => blocksRef.current ?? []),
+    [blocksRef],
+  );
 
   const jsonError = useMemo(() => {
     if (!showBody || !data.body.trim()) return null;
@@ -188,10 +292,10 @@ function HttpInput({
   }, [showBody, data.body]);
 
   return (
-    <Box p={2} display="flex" flexDirection="column" gap={2}>
+    <Box p={2} display="flex" flexDirection="column" gap={1.5}>
       {/* Method + URL */}
-      <HStack gap={1}>
-        <NativeSelectRoot size="xs" width="auto">
+      <Flex gap={1} align="center">
+        <NativeSelectRoot size="xs" width="auto" flexShrink={0} h="32px">
           <NativeSelectField
             value={data.method}
             onChange={(e) =>
@@ -200,6 +304,7 @@ function HttpInput({
             fontFamily="mono"
             fontSize="xs"
             fontWeight="bold"
+            h="32px"
           >
             {METHODS.map((m) => (
               <option key={m} value={m}>
@@ -208,16 +313,16 @@ function HttpInput({
             ))}
           </NativeSelectField>
         </NativeSelectRoot>
-        <Input
-          size="xs"
-          placeholder="https://api.example.com/endpoint"
-          value={data.url}
-          onChange={(e) => onChange({ ...data, url: e.target.value })}
-          fontFamily="mono"
-          fontSize="xs"
-          flex={1}
-        />
-      </HStack>
+        <Box flex={1} minW="0" h="32px" border="1px solid" borderColor="border" rounded="sm" overflow="hidden">
+          <InlineCM
+            value={data.url}
+            onChange={(val) => onChange({ ...data, url: val })}
+            placeholder="https://api.example.com/endpoint"
+            cmTheme={cmTheme}
+            extensions={[refAutocomplete]}
+          />
+        </Box>
+      </Flex>
 
       {/* Tabs: Params / Headers / Body */}
       <Tabs.Root defaultValue="params" size="sm" variant="line">
@@ -256,6 +361,8 @@ function HttpInput({
             keyPlaceholder="Param name"
             items={data.params}
             onChange={(params) => onChange({ ...data, params })}
+            cmTheme={cmTheme}
+            cmExtensions={[refAutocomplete]}
           />
         </Tabs.Content>
 
@@ -265,6 +372,8 @@ function HttpInput({
             keyPlaceholder="Header name"
             items={data.headers}
             onChange={(headers) => onChange({ ...data, headers })}
+            cmTheme={cmTheme}
+            cmExtensions={[refAutocomplete]}
           />
         </Tabs.Content>
 
@@ -281,8 +390,8 @@ function HttpInput({
               <CodeMirror
                 value={data.body}
                 onChange={(val) => onChange({ ...data, body: val })}
-                extensions={[json(), EditorView.lineWrapping, cmTransparentBg]}
-                basicSetup={{ lineNumbers: false, foldGutter: false }}
+                extensions={[json(), EditorView.lineWrapping, cmTransparentBg, ...referenceHighlight, refAutocomplete]}
+                basicSetup={{ lineNumbers: false, foldGutter: false, autocompletion: false }}
                 theme={cmTheme}
                 height="80px"
                 style={{ fontSize: "12px" }}
@@ -330,7 +439,7 @@ function HttpInput({
   );
 }
 
-function HttpOutput({ response, error, cmTheme }: { response: HttpResponse | null; error: string | null; cmTheme: "light" | "dark" }) {
+function HttpOutput({ response, error }: { response: HttpResponse | null; error: string | null }) {
   if (error) {
     return (
       <Box p={3} color="red.500" fontSize="sm" fontFamily="mono">
@@ -356,23 +465,37 @@ function HttpOutput({ response, error, cmTheme }: { response: HttpResponse | nul
         </Box>
       </HStack>
       <Box
+        as="pre"
         border="1px solid"
         borderColor="border"
         rounded="md"
-        overflow="hidden"
         bg="bg.subtle"
-      >
-        <CodeMirror
-          value={response.body}
-          extensions={[json(), EditorView.lineWrapping, cmTransparentBg]}
-          basicSetup={{ lineNumbers: false, foldGutter: false }}
-          theme={cmTheme}
-          height="auto"
-          readOnly
-          editable={false}
-          style={{ fontSize: "12px" }}
-        />
-      </Box>
+        p={3}
+        overflow="auto"
+        fontSize="12px"
+        fontFamily="mono"
+        whiteSpace="pre-wrap"
+        wordBreak="break-word"
+        lineHeight="1.5"
+        maxH="400px"
+        m={0}
+        userSelect="text"
+        cursor="text"
+        tabIndex={0}
+        onMouseDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+        onCopy={(e) => e.stopPropagation()}
+        css={{
+          "& .hljs-attr": { color: "var(--chakra-colors-blue-400)" },
+          "& .hljs-string": { color: "var(--chakra-colors-green-400)" },
+          "& .hljs-number": { color: "var(--chakra-colors-orange-400)" },
+          "& .hljs-literal": { color: "var(--chakra-colors-purple-400)" },
+          "& .hljs-punctuation": { color: "var(--chakra-colors-fg-subtle)" },
+        }}
+        dangerouslySetInnerHTML={{
+          __html: hastToHtml(lowlight.highlight("json", formatBody(response.body)).children),
+        }}
+      />
     </Box>
   );
 }
@@ -392,8 +515,35 @@ export function HttpBlockView({ node, editor, getPos, updateAttributes, selected
   const [error, setError] = useState<string | null>(null);
   const cancelRef = useRef<(() => void) | null>(null);
   const lastHashRef = useRef<string>("");
+  const blocksRef = useRef<BlockContext[]>([]);
 
-  const data = parseBlockData(rawContent);
+  // Keep blocksRef updated for autocomplete
+  useEffect(() => {
+    if (!filePath || !editor) return;
+    let cancelled = false;
+    const currentPos = (typeof getPos === "function" ? getPos() : 0) ?? 0;
+
+    collectBlocksAbove(editor, currentPos, filePath).then((blocks) => {
+      if (!cancelled) blocksRef.current = blocks;
+    });
+
+    return () => { cancelled = true; };
+  }, [filePath, editor, getPos]);
+
+  // Local state for responsive editing — debounce sync to TipTap
+  const [data, setData] = useState(() => parseBlockData(rawContent));
+  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleDataChange = useCallback(
+    (updated: HttpBlockData) => {
+      setData(updated);
+      if (syncTimer.current) clearTimeout(syncTimer.current);
+      syncTimer.current = setTimeout(() => {
+        updateAttributes({ content: serializeBlockData(updated) });
+      }, 300);
+    },
+    [updateAttributes],
+  );
 
   // Load cached result on mount and when content changes
   useEffect(() => {
@@ -424,13 +574,6 @@ export function HttpBlockView({ node, editor, getPos, updateAttributes, selected
 
     return () => { cancelled = true; };
   }, [filePath, rawContent]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleDataChange = useCallback(
-    (updated: HttpBlockData) => {
-      updateAttributes({ content: serializeBlockData(updated) });
-    },
-    [updateAttributes],
-  );
 
   const handleRun = useCallback(async () => {
     setError(null);
@@ -530,8 +673,8 @@ export function HttpBlockView({ node, editor, getPos, updateAttributes, selected
         onRun={handleRun}
         onCancel={handleCancel}
         selected={selected}
-        inputSlot={<HttpInput data={data} onChange={handleDataChange} cmTheme={cmTheme} />}
-        outputSlot={<HttpOutput response={response} error={error} cmTheme={cmTheme} />}
+        inputSlot={<HttpInput data={data} onChange={handleDataChange} cmTheme={cmTheme} blocksRef={blocksRef} />}
+        outputSlot={<HttpOutput response={response} error={error} />}
       />
     </NodeViewWrapper>
   );

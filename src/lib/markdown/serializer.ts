@@ -16,7 +16,14 @@ const turndown = new TurndownService({
     // Custom blocks are empty divs/spans with data attributes.
     // Turndown treats them as blank — we must serialize them here.
     if (dataType === "http-block") {
-      return `\n\`\`\`http\n${dataContent}\n\`\`\`\n`;
+      const alias = el.getAttribute?.("data-alias") ?? "";
+      const displayMode = el.getAttribute?.("data-display-mode") ?? "";
+      const meta = [
+        alias ? `alias=${alias}` : "",
+        displayMode && displayMode !== "input" ? `displayMode=${displayMode}` : "",
+      ].filter(Boolean).join(" ");
+      const info = meta ? `http ${meta}` : "http";
+      return `\n\`\`\`${info}\n${dataContent}\n\`\`\`\n`;
     }
     if (dataType === "mermaid") {
       return `\n\`\`\`mermaid\n${dataContent}\n\`\`\`\n`;

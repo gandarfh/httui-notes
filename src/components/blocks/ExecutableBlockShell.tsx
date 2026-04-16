@@ -143,11 +143,17 @@ export function ExecutableBlockShell({
       </Flex>
 
       {/* Content area */}
-      <Flex direction={displayMode === "split" ? "row" : "column"} minH="60px">
+      <Flex
+        direction={displayMode === "split" ? { base: "column", md: "row" } : "column"}
+        minH="40px"
+      >
         {showInput && (
           <Box
             flex={1}
-            borderRight={displayMode === "split" ? "1px solid" : undefined}
+            minW={displayMode === "split" ? "0" : undefined}
+            borderRightWidth={displayMode === "split" ? { base: "0", md: "1px" } : undefined}
+            borderBottomWidth={displayMode === "split" ? { base: "1px", md: "0" } : undefined}
+            borderStyle="solid"
             borderColor="border"
             overflow="auto"
           >
@@ -156,13 +162,13 @@ export function ExecutableBlockShell({
         )}
 
         {showOutput && (
-          <Box flex={1} overflow="auto">
+          <Box flex={1} minW={displayMode === "split" ? "0" : undefined} overflow="auto">
             {executionState === "idle" ? (
               <Flex
                 align="center"
                 justify="center"
                 h="100%"
-                minH="60px"
+                minH="40px"
                 color="fg.muted"
                 fontSize="sm"
               >

@@ -40,6 +40,8 @@ export const HttpBlock = ExecutableBlock.extend({
   },
 
   addNodeView() {
-    return ReactNodeViewRenderer(HttpBlockView);
+    return ReactNodeViewRenderer(HttpBlockView, {
+      stopEvent: () => true,
+    });
   },
 });

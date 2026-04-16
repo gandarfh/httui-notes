@@ -8,17 +8,25 @@ export function markdownToHtml(markdown: string): string {
   // Preserve custom fenced blocks by temporarily replacing them
   const customBlocks: string[] = [];
   const preserved = markdown.replace(
-    /```(http|db-[\w:-]+|e2e|mermaid)\n([\s\S]*?)```/g,
-    (_match, lang: string, content: string) => {
+    /```((?:http|db-[\w:-]+|e2e|mermaid)[^\n]*)\n([\s\S]*?)```/g,
+    (_match, info: string, content: string) => {
       const index = customBlocks.length;
+      const lang = info.split(/\s+/)[0];
+
       if (lang === "mermaid") {
         customBlocks.push(
           `<div data-type="mermaid" data-content="${escapeAttr(content.trimEnd())}"></div>`,
         );
       } else if (lang === "http") {
-        customBlocks.push(
-          `<div data-type="http-block" data-content="${escapeAttr(content.trimEnd())}"></div>`,
-        );
+        // Parse meta from info string: alias=xxx displayMode=xxx
+        const meta = parseInfoMeta(info);
+        const attrs = [
+          `data-type="http-block"`,
+          `data-content="${escapeAttr(content.trimEnd())}"`,
+          meta.alias ? `data-alias="${escapeAttr(meta.alias)}"` : "",
+          meta.displayMode ? `data-display-mode="${escapeAttr(meta.displayMode)}"` : "",
+        ].filter(Boolean).join(" ");
+        customBlocks.push(`<div ${attrs}></div>`);
       } else {
         customBlocks.push(
           `<pre><code class="language-${lang}">${escapeHtml(content.trimEnd())}</code></pre>`,
@@ -75,4 +83,16 @@ function escapeAttr(text: string): string {
     .replace(/&/g, "&amp;")
     .replace(/"/g, "&quot;")
     .replace(/\n/g, "&#10;");
+}
+
+function parseInfoMeta(info: string): Record<string, string> {
+  const meta: Record<string, string> = {};
+  const parts = info.split(/\s+/).slice(1); // skip the language
+  for (const part of parts) {
+    const eq = part.indexOf("=");
+    if (eq > 0) {
+      meta[part.slice(0, eq)] = part.slice(eq + 1);
+    }
+  }
+  return meta;
 }
