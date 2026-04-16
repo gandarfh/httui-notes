@@ -3,7 +3,10 @@
 
 use sqlx::sqlite::SqlitePool;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tauri::Manager;
+
+use httui_notes::db::connections::{self, PoolManager};
 
 // --- Execute block command ---
 
@@ -203,6 +206,53 @@ fn stop_watching(
     Ok(())
 }
 
+// --- Connection commands ---
+
+#[tauri::command]
+async fn list_connections(
+    pool: tauri::State<'_, SqlitePool>,
+) -> Result<Vec<connections::Connection>, String> {
+    connections::list_connections(&pool).await
+}
+
+#[tauri::command]
+async fn create_connection(
+    pool: tauri::State<'_, SqlitePool>,
+    input: connections::CreateConnection,
+) -> Result<connections::Connection, String> {
+    connections::create_connection(&pool, input).await
+}
+
+#[tauri::command]
+async fn update_connection(
+    pool: tauri::State<'_, SqlitePool>,
+    conn_manager: tauri::State<'_, Arc<PoolManager>>,
+    id: String,
+    input: connections::UpdateConnection,
+) -> Result<connections::Connection, String> {
+    let result = connections::update_connection(&pool, &id, input).await?;
+    conn_manager.invalidate(&id).await;
+    Ok(result)
+}
+
+#[tauri::command]
+async fn delete_connection(
+    pool: tauri::State<'_, SqlitePool>,
+    conn_manager: tauri::State<'_, Arc<PoolManager>>,
+    id: String,
+) -> Result<(), String> {
+    conn_manager.invalidate(&id).await;
+    connections::delete_connection(&pool, &id).await
+}
+
+#[tauri::command]
+async fn test_connection(
+    conn_manager: tauri::State<'_, Arc<PoolManager>>,
+    id: String,
+) -> Result<(), String> {
+    conn_manager.test_connection(&id).await
+}
+
 // --- Session restore (single IPC call for startup) ---
 
 #[derive(serde::Serialize)]
@@ -349,7 +399,21 @@ fn main() {
                     .expect("failed to initialize database")
             });
 
-            app.manage(pool);
+            app.manage(pool.clone());
+
+            // Connection pool manager
+            let conn_manager = Arc::new(PoolManager::new(pool));
+            app.manage(conn_manager.clone());
+
+            // TTL cleanup task
+            let cm = conn_manager.clone();
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(Duration::from_secs(60));
+                loop {
+                    interval.tick().await;
+                    cm.cleanup_expired().await;
+                }
+            });
 
             // Executor registry
             let mut executor_registry = httui_notes::executor::ExecutorRegistry::new();
@@ -385,6 +449,11 @@ fn main() {
             rebuild_search_index,
             search_content,
             update_search_entry,
+            list_connections,
+            create_connection,
+            update_connection,
+            delete_connection,
+            test_connection,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
