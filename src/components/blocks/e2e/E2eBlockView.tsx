@@ -110,73 +110,117 @@ const METHOD_COLORS: Record<HttpMethod, string> = {
 };
 
 /* ------------------------------------------------------------------ */
-/*  Key-Value Editor (reusable for headers, json match, extractions)   */
+/*  Key-Value Row + List (matches HTTP block pattern)                   */
 /* ------------------------------------------------------------------ */
+function KeyValueRow({
+  item,
+  keyPlaceholder,
+  valuePlaceholder = "Value",
+  onChange,
+  onRemove,
+  isLast,
+  cmTheme,
+  cmExtensions,
+}: {
+  item: { key: string; value: string };
+  keyPlaceholder: string;
+  valuePlaceholder?: string;
+  onChange: (kv: { key: string; value: string }) => void;
+  onRemove: () => void;
+  isLast: boolean;
+  cmTheme: "light" | "dark";
+  cmExtensions?: import("@codemirror/state").Extension[];
+}) {
+  return (
+    <Flex
+      borderBottom={isLast ? undefined : "1px solid"}
+      borderColor="border"
+      align="center"
+    >
+      <Box flex={1} px={1}>
+        <InlineCM
+          value={item.key}
+          onChange={(val) => onChange({ ...item, key: val })}
+          placeholder={keyPlaceholder}
+          cmTheme={cmTheme}
+        />
+      </Box>
+      <Box borderLeft="1px solid" borderColor="border" alignSelf="stretch" />
+      <Box flex={1} px={1}>
+        <InlineCM
+          value={item.value}
+          onChange={(val) => onChange({ ...item, value: val })}
+          placeholder={valuePlaceholder}
+          cmTheme={cmTheme}
+          extensions={cmExtensions}
+        />
+      </Box>
+      <IconButton
+        aria-label="Remove"
+        size="2xs"
+        variant="ghost"
+        colorPalette="red"
+        mx={1}
+        onClick={onRemove}
+      >
+        <LuX />
+      </IconButton>
+    </Flex>
+  );
+}
+
 function KVEditor({
   items,
   onChange,
+  addLabel = "Add item",
   keyPlaceholder = "key",
-  valuePlaceholder = "value",
+  valuePlaceholder = "Value",
   cmTheme,
   autocompleteExt,
 }: {
   items: { key: string; value: string }[];
   onChange: (items: { key: string; value: string }[]) => void;
+  addLabel?: string;
   keyPlaceholder?: string;
   valuePlaceholder?: string;
   cmTheme: "light" | "dark";
   autocompleteExt?: import("@codemirror/state").Extension[];
 }) {
-  const update = (idx: number, field: "key" | "value", val: string) => {
-    const next = [...items];
-    next[idx] = { ...next[idx], [field]: val };
-    onChange(next);
-  };
-  const remove = (idx: number) => onChange(items.filter((_, i) => i !== idx));
-  const add = () => onChange([...items, { key: "", value: "" }]);
-
   return (
-    <Box>
-      {items.map((item, idx) => (
-        <Flex key={idx} gap={1} align="center" mb={1}>
-          <Box flex={1}>
-            <InlineCM
-              value={item.key}
-              onChange={(v) => update(idx, "key", v)}
-              placeholder={keyPlaceholder}
-              cmTheme={cmTheme}
-              extensions={autocompleteExt}
-            />
-          </Box>
-          <Box flex={1}>
-            <InlineCM
-              value={item.value}
-              onChange={(v) => update(idx, "value", v)}
-              placeholder={valuePlaceholder}
-              cmTheme={cmTheme}
-              extensions={autocompleteExt}
-            />
-          </Box>
-          <IconButton
-            aria-label="Remove"
-            size="2xs"
-            variant="ghost"
-            colorPalette="red"
-            onClick={() => remove(idx)}
-          >
-            <LuX />
-          </IconButton>
-        </Flex>
+    <Box border="1px solid" borderColor="border" rounded="md" overflow="hidden">
+      {items.map((item, i) => (
+        <KeyValueRow
+          key={i}
+          item={item}
+          keyPlaceholder={keyPlaceholder}
+          valuePlaceholder={valuePlaceholder}
+          isLast={i === items.length - 1}
+          cmTheme={cmTheme}
+          cmExtensions={autocompleteExt}
+          onChange={(updated) => {
+            const next = [...items];
+            next[i] = updated;
+            onChange(next);
+          }}
+          onRemove={() => onChange(items.filter((_, idx) => idx !== i))}
+        />
       ))}
-      <IconButton
-        aria-label="Add"
-        size="2xs"
-        variant="ghost"
-        colorPalette="gray"
-        onClick={add}
+      <Flex
+        align="center"
+        gap={1}
+        px={2}
+        py={1}
+        cursor="pointer"
+        color="fg.muted"
+        fontSize="xs"
+        _hover={{ bg: "bg.subtle" }}
+        borderTop={items.length > 0 ? "1px solid" : undefined}
+        borderColor="border"
+        onClick={() => onChange([...items, { key: "", value: "" }])}
       >
         <LuPlus />
-      </IconButton>
+        {addLabel}
+      </Flex>
     </Box>
   );
 }
@@ -187,11 +231,13 @@ function KVEditor({
 function StringListEditor({
   items,
   onChange,
+  addLabel = "Add item",
   placeholder = "value",
   cmTheme,
 }: {
   items: string[];
   onChange: (items: string[]) => void;
+  addLabel?: string;
   placeholder?: string;
   cmTheme: "light" | "dark";
 }) {
@@ -201,13 +247,17 @@ function StringListEditor({
     onChange(next);
   };
   const remove = (idx: number) => onChange(items.filter((_, i) => i !== idx));
-  const add = () => onChange([...items, ""]);
 
   return (
-    <Box>
+    <Box border="1px solid" borderColor="border" rounded="md" overflow="hidden">
       {items.map((item, idx) => (
-        <Flex key={idx} gap={1} align="center" mb={1}>
-          <Box flex={1}>
+        <Flex
+          key={idx}
+          borderBottom={idx === items.length - 1 ? undefined : "1px solid"}
+          borderColor="border"
+          align="center"
+        >
+          <Box flex={1} px={1}>
             <InlineCM
               value={item}
               onChange={(v) => update(idx, v)}
@@ -220,21 +270,29 @@ function StringListEditor({
             size="2xs"
             variant="ghost"
             colorPalette="red"
+            mx={1}
             onClick={() => remove(idx)}
           >
             <LuX />
           </IconButton>
         </Flex>
       ))}
-      <IconButton
-        aria-label="Add"
-        size="2xs"
-        variant="ghost"
-        colorPalette="gray"
-        onClick={add}
+      <Flex
+        align="center"
+        gap={1}
+        px={2}
+        py={1}
+        cursor="pointer"
+        color="fg.muted"
+        fontSize="xs"
+        _hover={{ bg: "bg.subtle" }}
+        borderTop={items.length > 0 ? "1px solid" : undefined}
+        borderColor="border"
+        onClick={() => onChange([...items, ""])}
       >
         <LuPlus />
-      </IconButton>
+        {addLabel}
+      </Flex>
     </Box>
   );
 }
@@ -431,6 +489,7 @@ function StepCard({
               <KVEditor
                 items={step.params}
                 onChange={(params) => onChange({ ...step, params })}
+                addLabel="Add param"
                 keyPlaceholder="Param name"
                 valuePlaceholder="Value"
                 cmTheme={cmTheme}
@@ -442,6 +501,7 @@ function StepCard({
               <KVEditor
                 items={step.headers}
                 onChange={(headers) => onChange({ ...step, headers })}
+                addLabel="Add header"
                 keyPlaceholder="Header name"
                 valuePlaceholder="Value"
                 cmTheme={cmTheme}
@@ -515,6 +575,7 @@ function StepCard({
                 <KVEditor
                   items={step.expect.json}
                   onChange={(j) => onChange({ ...step, expect: { ...step.expect, json: j } })}
+                  addLabel="Add match"
                   keyPlaceholder="JSON path"
                   valuePlaceholder="Expected value"
                   cmTheme={cmTheme}
@@ -525,6 +586,7 @@ function StepCard({
                 <StringListEditor
                   items={step.expect.bodyContains}
                   onChange={(bc) => onChange({ ...step, expect: { ...step.expect, bodyContains: bc } })}
+                  addLabel="Add string"
                   placeholder="String to find..."
                   cmTheme={cmTheme}
                 />
@@ -540,6 +602,7 @@ function StepCard({
                     extract: items.map((i) => ({ name: i.key, path: i.value })),
                   })
                 }
+                addLabel="Add extraction"
                 keyPlaceholder="Variable name"
                 valuePlaceholder="JSON path"
                 cmTheme={cmTheme}
@@ -964,7 +1027,8 @@ export function E2eBlockView({ node, editor, getPos, updateAttributes, selected 
         <KVEditor
           items={data.headers}
           onChange={(headers) => updateData((prev) => ({ ...prev, headers }))}
-          keyPlaceholder="Header"
+          addLabel="Add header"
+          keyPlaceholder="Header name"
           valuePlaceholder="Value"
           cmTheme={cmTheme}
           autocompleteExt={autocompleteExt}
