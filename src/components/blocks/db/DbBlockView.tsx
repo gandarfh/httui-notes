@@ -36,7 +36,7 @@ const cmTransparentBg = EditorView.theme({
   },
 });
 
-const autocompleteTheme = EditorView.baseTheme({
+const autocompleteTheme = EditorView.theme({
   ".cm-tooltip": {
     zIndex: "9999 !important",
   },
@@ -64,7 +64,12 @@ const autocompleteTheme = EditorView.baseTheme({
     color: "inherit !important",
   },
   ".cm-completionIcon": {
-    display: "none",
+    fontSize: "0 !important",
+    width: "0 !important",
+    padding: "0 !important",
+    marginRight: "0 !important",
+    display: "inline-block",
+    overflow: "hidden",
   },
   ".cm-completionLabel": {
     fontWeight: "600",
