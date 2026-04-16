@@ -20,6 +20,7 @@ import { executeBlock, getBlockResult, saveBlockResult } from "@/lib/tauri/comma
 import { hashBlockContent } from "@/lib/blocks/hash";
 import { resolveAllReferences } from "@/lib/blocks/references";
 import { collectBlocksAbove } from "@/lib/blocks/document";
+import { resolveAndExecuteDependencies } from "@/lib/blocks/dependencies";
 import { referenceHighlight } from "@/lib/blocks/cm-references";
 import { createReferenceAutocomplete } from "@/lib/blocks/cm-autocomplete";
 import type { BlockContext } from "@/lib/blocks/references";
@@ -513,6 +514,7 @@ export function HttpBlockView({ node, editor, getPos, updateAttributes, selected
 
   const [response, setResponse] = useState<HttpResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [depStatus, setDepStatus] = useState<string | null>(null);
   const cancelRef = useRef<(() => void) | null>(null);
   const lastHashRef = useRef<string>("");
   const blocksRef = useRef<BlockContext[]>([]);
@@ -578,6 +580,7 @@ export function HttpBlockView({ node, editor, getPos, updateAttributes, selected
   const handleRun = useCallback(async () => {
     setError(null);
     setResponse(null);
+    setDepStatus(null);
     updateAttributes({ executionState: "running" });
 
     let cancelled = false;
@@ -586,28 +589,40 @@ export function HttpBlockView({ node, editor, getPos, updateAttributes, selected
     };
 
     try {
-      // Resolve {{...}} references before execution
       const currentPos = (typeof getPos === "function" ? getPos() : 0) ?? 0;
-      const blocks = filePath
-        ? await collectBlocksAbove(editor, currentPos, filePath)
-        : [];
 
+      // Resolve and execute dependencies first
+      let blocks: BlockContext[] = [];
+      if (filePath) {
+        const depResult = await resolveAndExecuteDependencies(
+          editor,
+          currentPos,
+          filePath,
+          rawContent,
+          (status) => setDepStatus(status),
+        );
+        blocks = depResult.blocks;
+        if (depResult.executed.length > 0) {
+          setDepStatus(null);
+        }
+      }
+
+      if (cancelled) return;
+
+      // Resolve {{...}} references
       const resolvedData = { ...data };
       const allErrors: string[] = [];
 
-      // Resolve URL
       const urlResult = resolveAllReferences(data.url, blocks, currentPos);
       resolvedData.url = urlResult.resolved;
       allErrors.push(...urlResult.errors.map((e) => `URL: ${e.message}`));
 
-      // Resolve header values
       resolvedData.headers = data.headers.map((h) => {
         const r = resolveAllReferences(h.value, blocks, currentPos);
         allErrors.push(...r.errors.map((e) => `Header "${h.key}": ${e.message}`));
         return { ...h, value: r.resolved };
       });
 
-      // Resolve body
       if (data.body) {
         const bodyResult = resolveAllReferences(data.body, blocks, currentPos);
         resolvedData.body = bodyResult.resolved;
@@ -620,6 +635,8 @@ export function HttpBlockView({ node, editor, getPos, updateAttributes, selected
         return;
       }
 
+      // Execute this block
+      setDepStatus(null);
       const result = await executeBlock("http", resolvedData);
       if (cancelled) return;
 
@@ -650,6 +667,7 @@ export function HttpBlockView({ node, editor, getPos, updateAttributes, selected
       }
     } catch (err) {
       if (cancelled) return;
+      setDepStatus(null);
       setError(err instanceof Error ? err.message : String(err));
       updateAttributes({ executionState: "error" });
     }
@@ -673,6 +691,7 @@ export function HttpBlockView({ node, editor, getPos, updateAttributes, selected
         onRun={handleRun}
         onCancel={handleCancel}
         selected={selected}
+        statusText={depStatus}
         inputSlot={<HttpInput data={data} onChange={handleDataChange} cmTheme={cmTheme} blocksRef={blocksRef} />}
         outputSlot={<HttpOutput response={response} error={error} />}
       />

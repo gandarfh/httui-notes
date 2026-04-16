@@ -15,6 +15,7 @@ interface ExecutableBlockShellProps {
   inputSlot: ReactNode;
   outputSlot: ReactNode;
   selected?: boolean;
+  statusText?: string | null;
 }
 
 const STATE_COLORS: Record<ExecutionState, string> = {
@@ -57,6 +58,7 @@ export function ExecutableBlockShell({
   inputSlot,
   outputSlot,
   selected = false,
+  statusText,
 }: ExecutableBlockShellProps) {
   const isRunning = executionState === "running";
   const showInput = displayMode === "input" || displayMode === "split";
@@ -125,7 +127,7 @@ export function ExecutableBlockShell({
 
         <Badge size="sm" colorPalette={STATE_COLORS[executionState]} variant="subtle">
           {isRunning && <Spinner size="xs" mr={1} />}
-          {STATE_LABELS[executionState]}
+          {isRunning && statusText ? statusText : STATE_LABELS[executionState]}
         </Badge>
 
         <IconButton
