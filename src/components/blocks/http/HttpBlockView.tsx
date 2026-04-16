@@ -299,9 +299,11 @@ function HttpInput({
         <NativeSelectRoot size="xs" width="auto" flexShrink={0} h="32px">
           <NativeSelectField
             value={data.method}
-            onChange={(e) =>
-              onChange({ ...data, method: e.target.value as HttpMethod })
-            }
+            onChange={(e) => {
+              const method = e.target.value as HttpMethod;
+              const clearBody = !METHODS_WITH_BODY.includes(method);
+              onChange({ ...data, method, body: clearBody ? "" : data.body });
+            }}
             fontFamily="mono"
             fontSize="xs"
             fontWeight="bold"

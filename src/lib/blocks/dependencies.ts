@@ -1,5 +1,5 @@
 import type { Editor } from "@tiptap/core";
-import { parseReferences, type BlockContext } from "./references";
+import { parseReferences, resolveAllReferences, type BlockContext } from "./references";
 import { collectAllBlocks } from "./document";
 import { executeBlock, saveBlockResult } from "@/lib/tauri/commands";
 import { hashBlockContent } from "./hash";
@@ -138,15 +138,32 @@ export async function resolveAndExecuteDependencies(
       onProgress?.(`Executing "${alias}"...`);
 
       // Parse block data for execution
-      let blockData: unknown;
+      let blockData: { url?: string; headers?: { key: string; value: string }[]; body?: string; method?: string; params?: unknown[] };
       try {
         blockData = JSON.parse(block.content);
       } catch {
         throw new Error(`Failed to parse block data for "${alias}"`);
       }
 
-      // Resolve references in the dependency block itself (it may have its own refs)
-      // At this point, its deps should already be executed (topological order)
+      // Resolve references in the dependency block (its deps are already executed)
+      if (blockData.url) {
+        const r = resolveAllReferences(blockData.url, allBlocks, block.pos);
+        if (r.errors.length > 0) throw new Error(`"${alias}" URL: ${r.errors[0].message}`);
+        blockData.url = r.resolved;
+      }
+      if (blockData.headers) {
+        blockData.headers = blockData.headers.map((h) => {
+          const r = resolveAllReferences(h.value, allBlocks, block.pos);
+          if (r.errors.length > 0) throw new Error(`"${alias}" header "${h.key}": ${r.errors[0].message}`);
+          return { ...h, value: r.resolved };
+        });
+      }
+      if (blockData.body) {
+        const r = resolveAllReferences(blockData.body, allBlocks, block.pos);
+        if (r.errors.length > 0) throw new Error(`"${alias}" body: ${r.errors[0].message}`);
+        blockData.body = r.resolved;
+      }
+
       const result = await executeBlock("http", blockData);
 
       // Save to cache
