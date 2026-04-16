@@ -174,8 +174,16 @@ function createSchemaCompletionSource(entries: SchemaEntry[]) {
 
   const tableNames = Object.keys(tableMap);
 
-  // All columns (deduplicated) for top-level suggestions
-  const allColumns = [...new Set(entries.map((e) => e.column_name))];
+  // Build column -> tables map for detail display
+  const columnTables: Record<string, string[]> = {};
+  for (const entry of entries) {
+    if (!columnTables[entry.column_name]) {
+      columnTables[entry.column_name] = [];
+    }
+    if (!columnTables[entry.column_name].includes(entry.table_name)) {
+      columnTables[entry.column_name].push(entry.table_name);
+    }
+  }
 
   return (ctx: CompletionContext): CompletionResult | null => {
     const word = ctx.matchBefore(/[\w.]*/);
@@ -201,16 +209,17 @@ function createSchemaCompletionSource(entries: SchemaEntry[]) {
       };
     }
 
-    // Top-level: suggest tables + all columns
+    // Top-level: suggest tables + all columns (with table names as detail)
     const options = [
       ...tableNames.map((t) => ({
         label: t,
         type: "table",
         detail: `${tableMap[t].length} cols`,
       })),
-      ...allColumns.map((c) => ({
-        label: c,
+      ...Object.entries(columnTables).map(([col, tables]) => ({
+        label: col,
         type: "column",
+        detail: tables.join(", "),
       })),
     ];
 
