@@ -511,6 +511,9 @@ fn main() {
             executor_registry.register(Box::new(
                 httui_notes::executor::db::DbExecutor::new(conn_manager),
             ));
+            executor_registry.register(Box::new(
+                httui_notes::executor::e2e::E2eExecutor::new(),
+            ));
             app.manage(executor_registry);
 
             app.manage(Arc::new(Mutex::new(Vec::<String>::new()))); // ignore_paths

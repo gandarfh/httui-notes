@@ -117,6 +117,16 @@ Full details in `docs/ARCHITECTURE.md`. Key concepts:
 - Timeout: 30s client default, per-request override via `timeout_ms` field in Settings tab.
 - Backend executor: `src-tauri/src/executor/http.rs` — uses reqwest, classifies errors (timeout, connection_failed, too_many_redirects, body_error).
 
+## E2E block
+
+- Block type `e2e` in `src/components/blocks/e2e/`. Runs sequential HTTP steps with assertions and variable extraction between steps.
+- Input: base URL (InlineCM with `{{ref}}`), default headers (key-value, inherited by all steps), ordered step list (collapsible cards with up/down reorder).
+- Each step: name, method dropdown, relative URL, headers (override defaults), body (CodeMirror JSON for POST/PUT/PATCH), expect (status, JSON match, body contains), extract (variable_name → JSON path).
+- Output: summary bar ("2/3 passed" with progress bar), per-step result cards (pass/fail icon, status badge, elapsed time, expandable response body with syntax highlighting, assertion errors with expected vs received, extracted variables).
+- Execution flow: resolve dependencies → fetch env variables → resolve `{{...}}` in all fields → send to backend `E2eExecutor` → steps execute sequentially, extractions passed to subsequent steps → cache result.
+- Backend executor: `src-tauri/src/executor/e2e.rs` — uses reqwest, validates expectations (status, JSON path match, body contains), extracts variables by JSON path, continues on step failure.
+- Slash command: `/e2e` creates a new E2E block.
+
 ## Environments
 
 - Managed via `useEnvironments` hook + `EnvironmentContext`. Tables `environments` and `env_variables` in SQLite.

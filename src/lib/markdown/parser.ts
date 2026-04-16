@@ -36,6 +36,15 @@ export function markdownToHtml(markdown: string): string {
           meta.displayMode ? `data-display-mode="${escapeAttr(meta.displayMode)}"` : "",
         ].filter(Boolean).join(" ");
         customBlocks.push(`<div ${attrs}></div>`);
+      } else if (lang === "e2e") {
+        const meta = parseInfoMeta(info);
+        const attrs = [
+          `data-type="e2e-block"`,
+          `data-content="${escapeAttr(content.trimEnd())}"`,
+          meta.alias ? `data-alias="${escapeAttr(meta.alias)}"` : "",
+          meta.displayMode ? `data-display-mode="${escapeAttr(meta.displayMode)}"` : "",
+        ].filter(Boolean).join(" ");
+        customBlocks.push(`<div ${attrs}></div>`);
       } else {
         customBlocks.push(
           `<pre><code class="language-${lang}">${escapeHtml(content.trimEnd())}</code></pre>`,

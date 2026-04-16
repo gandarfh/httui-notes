@@ -25,6 +25,7 @@ export async function collectBlocksAbove(
       if (alias) {
         blocks.push({
           alias,
+          blockType: (node.attrs.blockType as string) ?? "",
           pos,
           content: (node.attrs.content as string) ?? "",
           cachedResult: null,
@@ -74,6 +75,7 @@ export async function collectAllBlocks(
       if (alias) {
         blocks.push({
           alias,
+          blockType: (node.attrs.blockType as string) ?? "",
           pos,
           content: (node.attrs.content as string) ?? "",
           cachedResult: null,

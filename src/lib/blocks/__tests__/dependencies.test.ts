@@ -61,6 +61,7 @@ describe("extractReferencedAliases", () => {
 describe("topologicalSort", () => {
   const makeBlock = (alias: string, refs: string[], pos: number): BlockContext => ({
     alias,
+    blockType: "http",
     pos,
     content: JSON.stringify({
       method: "GET",
