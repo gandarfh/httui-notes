@@ -401,9 +401,17 @@ function StepCard({
             </Box>
           </Flex>
 
-          {/* Tabs: Headers / Body / Expect / Extract */}
-          <Tabs.Root defaultValue="headers" size="sm" variant="line">
+          {/* Request tabs: Params / Headers / Body */}
+          <Tabs.Root defaultValue="params" size="sm" variant="line">
             <Tabs.List>
+              <Tabs.Trigger value="params" fontSize="xs">
+                Params
+                {step.params.length > 0 && (
+                  <Badge size="sm" variant="subtle" colorPalette="gray" fontFamily="mono" ml={1}>
+                    {step.params.length}
+                  </Badge>
+                )}
+              </Tabs.Trigger>
               <Tabs.Trigger value="headers" fontSize="xs">
                 Headers
                 {step.headers.length > 0 && (
@@ -417,23 +425,18 @@ function StepCard({
                   Body
                 </Tabs.Trigger>
               )}
-              <Tabs.Trigger value="expect" fontSize="xs">
-                Expect
-                {expectCount > 0 && (
-                  <Badge size="sm" variant="subtle" colorPalette="blue" fontFamily="mono" ml={1}>
-                    {expectCount}
-                  </Badge>
-                )}
-              </Tabs.Trigger>
-              <Tabs.Trigger value="extract" fontSize="xs">
-                Extract
-                {step.extract.length > 0 && (
-                  <Badge size="sm" variant="subtle" colorPalette="purple" fontFamily="mono" ml={1}>
-                    {step.extract.length}
-                  </Badge>
-                )}
-              </Tabs.Trigger>
             </Tabs.List>
+
+            <Tabs.Content value="params" p={0} pt={2}>
+              <KVEditor
+                items={step.params}
+                onChange={(params) => onChange({ ...step, params })}
+                keyPlaceholder="Param name"
+                valuePlaceholder="Value"
+                cmTheme={cmTheme}
+                autocompleteExt={autocompleteExt}
+              />
+            </Tabs.Content>
 
             <Tabs.Content value="headers" p={0} pt={2}>
               <KVEditor
@@ -467,6 +470,28 @@ function StepCard({
                 />
               </Tabs.Content>
             )}
+          </Tabs.Root>
+
+          {/* Assertions tabs: Expect / Extract */}
+          <Tabs.Root defaultValue="expect" size="sm" variant="line">
+            <Tabs.List>
+              <Tabs.Trigger value="expect" fontSize="xs">
+                Expect
+                {expectCount > 0 && (
+                  <Badge size="sm" variant="subtle" colorPalette="blue" fontFamily="mono" ml={1}>
+                    {expectCount}
+                  </Badge>
+                )}
+              </Tabs.Trigger>
+              <Tabs.Trigger value="extract" fontSize="xs">
+                Extract
+                {step.extract.length > 0 && (
+                  <Badge size="sm" variant="subtle" colorPalette="purple" fontFamily="mono" ml={1}>
+                    {step.extract.length}
+                  </Badge>
+                )}
+              </Tabs.Trigger>
+            </Tabs.List>
 
             <Tabs.Content value="expect" p={0} pt={2}>
               <Box mb={2}>
@@ -815,6 +840,10 @@ export function E2eBlockView({ node, editor, getPos, updateAttributes, selected 
           name: s.name,
           method: s.method,
           url: resolveField(s.url),
+          params: s.params.map((p) => ({
+            key: p.key,
+            value: resolveField(p.value),
+          })),
           headers: s.headers.map((h) => ({
             key: h.key,
             value: resolveField(h.value),

@@ -15,6 +15,7 @@ export interface E2eStep {
   name: string;
   method: HttpMethod;
   url: string;
+  params: KeyValue[];
   headers: KeyValue[];
   body: string;
   expect: E2eExpect;
@@ -53,6 +54,7 @@ export const DEFAULT_STEP: E2eStep = {
   name: "",
   method: "GET",
   url: "",
+  params: [],
   headers: [],
   body: "",
   expect: { json: [], bodyContains: [] },
