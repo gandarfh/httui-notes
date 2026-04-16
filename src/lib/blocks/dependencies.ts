@@ -13,13 +13,18 @@ export interface DependencyResult {
 
 /**
  * Extract all aliases referenced in block content.
- * Scans the entire content string for {{alias...}} patterns,
+ * Scans the entire content string for {{alias.path}} patterns,
  * making it work for any block type (http, db, e2e, etc.).
+ * References without a dot path (e.g. {{KEY}}) are env variables, not block refs.
  */
 export function extractReferencedAliases(content: string): string[] {
   const aliases = new Set<string>();
   for (const ref of parseReferences(content)) {
-    aliases.add(ref.alias);
+    // Only treat as block reference if it has a dot path (e.g. {{alias.response.body}})
+    // {{KEY}} without dots is an environment variable, not a block dependency
+    if (ref.path.length > 0) {
+      aliases.add(ref.alias);
+    }
   }
   return [...aliases];
 }
