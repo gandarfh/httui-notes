@@ -5,7 +5,7 @@ import { NativeSelectRoot, NativeSelectField } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useColorMode } from "@/components/ui/color-mode";
 import CodeMirror from "@uiw/react-codemirror";
-import { sql } from "@codemirror/lang-sql";
+import { sql, type SQLConfig } from "@codemirror/lang-sql";
 import { EditorView } from "@codemirror/view";
 import { ExecutableBlockShell } from "../ExecutableBlockShell";
 import { useBlockContext } from "../BlockContext";
@@ -20,8 +20,8 @@ import { resolveAndExecuteDependencies } from "@/lib/blocks/dependencies";
 import { referenceHighlight } from "@/lib/blocks/cm-references";
 import { createReferenceAutocomplete } from "@/lib/blocks/cm-autocomplete";
 import type { BlockContext } from "@/lib/blocks/references";
-import type { Connection } from "@/lib/tauri/connections";
-import { listConnections } from "@/lib/tauri/connections";
+import type { Connection, SchemaEntry } from "@/lib/tauri/connections";
+import { listConnections, getCachedSchema, introspectSchema } from "@/lib/tauri/connections";
 import { ResultTable } from "./ResultTable";
 
 const cmTransparentBg = EditorView.theme({
@@ -86,6 +86,20 @@ function resolveRefsToBindParams(
 
 // --- Sub-components ---
 
+/**
+ * Build a SQLConfig schema object from SchemaEntry[] for CodeMirror SQL autocomplete.
+ */
+function buildSqlSchema(entries: SchemaEntry[]): SQLConfig["schema"] {
+  const tableMap: Record<string, string[]> = {};
+  for (const entry of entries) {
+    if (!tableMap[entry.table_name]) {
+      tableMap[entry.table_name] = [];
+    }
+    tableMap[entry.table_name].push(entry.column_name);
+  }
+  return tableMap;
+}
+
 function DbInput({
   data,
   onChange,
@@ -99,10 +113,42 @@ function DbInput({
   connections: Connection[];
   blocksRef: React.RefObject<BlockContext[]>;
 }) {
+  const [schema, setSchema] = useState<SchemaEntry[]>([]);
+
   const refAutocomplete = useMemo(
     () => createReferenceAutocomplete(() => blocksRef.current ?? []),
     [blocksRef],
   );
+
+  // Load schema when connection changes
+  useEffect(() => {
+    if (!data.connectionId) {
+      setSchema([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      // Try cache first
+      const cached = await getCachedSchema(data.connectionId).catch(() => null);
+      if (cancelled) return;
+      if (cached) {
+        setSchema(cached);
+        return;
+      }
+      // Introspect fresh
+      const fresh = await introspectSchema(data.connectionId).catch(() => []);
+      if (!cancelled) setSchema(fresh);
+    })();
+
+    return () => { cancelled = true; };
+  }, [data.connectionId]);
+
+  const sqlConfig = useMemo<SQLConfig>(() => {
+    const schemaObj = buildSqlSchema(schema);
+    return { schema: schemaObj };
+  }, [schema]);
 
   return (
     <Box p={2} display="flex" flexDirection="column" gap={1.5}>
@@ -137,7 +183,7 @@ function DbInput({
           value={data.query}
           onChange={(val) => onChange({ ...data, query: val })}
           extensions={[
-            sql(),
+            sql(sqlConfig),
             EditorView.lineWrapping,
             cmTransparentBg,
             ...referenceHighlight,
