@@ -84,13 +84,15 @@ Execucao recursiva de dependencias ao rodar um bloco.
 
 ### Tasks
 
-- [ ] Ao clicar Run: escanear referencias do bloco
-- [ ] Para cada referencia de bloco: verificar se tem cache valido
-- [ ] Se nao tem cache: executar o bloco dependencia primeiro (recursivo)
-- [ ] Construir DAG de execucao e executar em ordem topologica
+- [x] Ao clicar Run: escanear referencias do bloco
+- [x] Para cada referencia de bloco: verificar se tem cache valido
+- [x] Se nao tem cache: executar o bloco dependencia primeiro (recursivo)
+- [x] Construir DAG de execucao e executar em ordem topologica
+- [x] Resolver referencias dentro dos blocos dependentes antes de executar
 - [ ] Se dois blocos executam simultaneamente e compartilham dependencia: lock por block_id, executar uma vez, ambos esperam
-- [ ] Mostrar indicador visual no bloco: "Resolving dependencies..." com lista dos blocos sendo executados
-- [ ] Timeout global para resolucao de dependencias (prevenir loops infinitos em caso de bug)
+- [x] Mostrar indicador visual no bloco: "Executing alias..." durante resolucao
+- [x] Timeout global para resolucao de dependencias (10s, previne loops infinitos)
+- [x] Deteccao de ciclos com erro claro
 
 ## Story 07: Pipeline de interpolacao
 
@@ -98,12 +100,12 @@ Dois modos de interpolacao: string (HTTP) e bind parameters (SQL).
 
 ### Tasks
 
-- [ ] Implementar interpolacao string: substituir `{{...}}` pelo valor resolvido como texto
-- [ ] Usar interpolacao string para: HTTP url, headers, body
-- [ ] Implementar interpolacao bind: converter `{{...}}` para placeholder do driver ($1, ?, etc.) e coletar valores
-- [ ] Usar interpolacao bind para: SQL queries (nunca string interpolation)
-- [ ] Resolver environment variables: buscar no environment ativo (tabela env_variables)
-- [ ] Resolver block references: buscar no cache de resultados (block_results)
+- [x] Implementar interpolacao string: substituir `{{...}}` pelo valor resolvido como texto
+- [x] Usar interpolacao string para: HTTP url, headers, body
+- [ ] Implementar interpolacao bind: converter `{{...}}` para placeholder do driver ($1, ?, etc.) e coletar valores (depende de Epic 06 - DB Blocks)
+- [ ] Usar interpolacao bind para: SQL queries (nunca string interpolation) (depende de Epic 06)
+- [ ] Resolver environment variables: buscar no environment ativo (tabela env_variables) (depende de environments UI)
+- [x] Resolver block references: buscar no cache de resultados (block_results)
 - [ ] Prioridade: block reference > environment variable (se alias colide com env var, bloco ganha)
 
 ## Story 08: Autocomplete no CodeMirror
@@ -112,10 +114,10 @@ Provider de autocomplete para campos dos blocos.
 
 ### Tasks
 
-- [ ] Criar CodeMirror extension de autocomplete customizada
-- [ ] Trigger ao digitar `{{`: listar environment variables do environment ativo
-- [ ] Trigger ao digitar `{{`: listar blocos anteriores no documento que tem alias (mostrar alias + tipo do bloco)
-- [ ] Apos selecionar um alias: navegar a arvore JSON do resultado cacheado com dot notation (mostrar keys disponiveis a cada `.`)
-- [ ] Para SQL blocks: autocomplete de tabelas e colunas da conexao selecionada (via schema_cache)
-- [ ] SQL autocomplete triggered apos keywords: FROM, JOIN, WHERE, SELECT, INSERT INTO, UPDATE, etc.
-- [ ] Estilizar popup de autocomplete consistente com theme daisyUI
+- [x] Criar CodeMirror extension de autocomplete customizada
+- [ ] Trigger ao digitar `{{`: listar environment variables do environment ativo (depende de environments)
+- [x] Trigger ao digitar `{{`: listar blocos anteriores no documento que tem alias (mostrar alias + tipo do bloco)
+- [x] Apos selecionar um alias: navegar a arvore JSON do resultado cacheado com dot notation (mostrar keys disponiveis a cada `.`)
+- [ ] Para SQL blocks: autocomplete de tabelas e colunas da conexao selecionada (via schema_cache) (depende de Epic 06)
+- [ ] SQL autocomplete triggered apos keywords: FROM, JOIN, WHERE, SELECT, INSERT INTO, UPDATE, etc. (depende de Epic 06)
+- [x] Estilizar popup de autocomplete com tema consistente (z-index, shadow, cores, fonte mono)
