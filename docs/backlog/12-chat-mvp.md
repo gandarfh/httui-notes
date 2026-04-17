@@ -4,34 +4,34 @@ Interface de chat conversacional com streaming, input multimodal, markdown rende
 
 **Depende de:** Epic 11 (Chat Sidecar & Protocolo)
 **Desbloqueia:** Epic 13 (Chat Agente)
-**Status:** backlog
+**Status:** em progresso
 
 ---
 
-## Story 01: Layout do chat
+## Story 01: Layout do chat ✅
 
 Estrutura visual do painel de chat no app.
 
 ### Tasks
 
-- [ ] Criar componente `Chat` com layout: sidebar de sessoes (esquerda) + area de conversa (direita)
-- [ ] Sidebar: lista de sessoes com titulo, data, botao "nova conversa"
-- [ ] Area de conversa: header (titulo da sessao) + lista de mensagens + input area (bottom)
-- [ ] Integrar chat como panel no sistema de panes existente (ou como drawer/sidebar dedicado)
-- [ ] Definir rota de acesso ao chat (icone na sidebar principal ou atalho de teclado)
+- [x] Criar componente `ChatPanel` com layout: session list (topo) + area de conversa + input (bottom)
+- [x] Integrar chat como painel lateral direito no AppShell
+- [x] Botao toggle no TopBar (icone LuMessageSquare, indicador ativo em azul)
+- [x] Atalho de teclado `Cmd+L` para toggle chat
+- [x] Resize handle entre editor e chat (largura fixa 380px no MVP)
 
-## Story 02: Input de texto
+## Story 02: Input de texto ✅
 
 Campo de entrada para mensagens do usuario.
 
 ### Tasks
 
-- [ ] Criar componente `ChatInput` com textarea auto-expansivel (min 1 linha, max 10 linhas)
-- [ ] Enviar mensagem com `Cmd+Enter` (nao Enter sozinho — Enter insere newline)
-- [ ] Desabilitar envio durante streaming (mostrar estado "gerando...")
-- [ ] Botao de enviar (icone seta) ao lado do textarea
-- [ ] Limpar input apos envio bem-sucedido
-- [ ] Focar textarea automaticamente ao abrir sessao
+- [x] Criar componente `ChatInput` com textarea auto-expansivel (min 40px, max 200px)
+- [x] Enviar mensagem com `Cmd+Enter` (Enter insere newline)
+- [x] Desabilitar envio durante streaming (mostrar botao "stop" em vermelho)
+- [x] Botao de enviar (icone LuSend) ao lado do textarea
+- [x] Limpar input apos envio bem-sucedido
+- [x] stopPropagation em onKeyDown/onMouseDown/onFocus para evitar captura pelo ProseMirror
 
 ## Story 03: Input multimodal (imagens)
 
@@ -48,68 +48,68 @@ Suporte a anexar imagens via file picker, drag-drop e clipboard paste.
 - [ ] Limitar: max 20 imagens por mensagem, max 5MB por imagem
 - [ ] Converter attachments para content blocks base64 no Rust antes de enviar ao sidecar
 
-## Story 04: Streaming de respostas
+## Story 04: Streaming de respostas ✅
 
 Exibicao em tempo real dos tokens recebidos do Claude.
 
 ### Tasks
 
-- [ ] Criar hook `useChat(sessionId)` que gerencia estado da conversa
-- [ ] Escutar eventos Tauri: `chat:delta`, `chat:done`, `chat:error`
-- [ ] Acumular `text_delta` em estado local durante streaming
-- [ ] No `chat:done`, recarregar mensagens do SQLite (fonte de verdade)
-- [ ] Implementar indicador visual de "gerando..." (animacao de typing)
-- [ ] Tratar `chat:error` com mensagens por categoria (auth, rate_limit, network, invalid_input, internal)
+- [x] Criar hook `useChat(sessionId)` que gerencia estado da conversa
+- [x] Escutar eventos Tauri: `chat:delta`, `chat:done`, `chat:error`
+- [x] Acumular `text_delta` em estado local durante streaming (via contentRef + requestAnimationFrame)
+- [x] No `chat:done`, recarregar mensagens do SQLite (fonte de verdade)
+- [x] Implementar indicador visual de "gerando..." (animacao de dots pulsing)
+- [x] Tratar `chat:error` com mensagens por categoria (auth, rate_limit, network, invalid_input, internal)
 
-## Story 05: Renderizacao de markdown
+## Story 05: Renderizacao de markdown ✅
 
 Renderizar respostas do Claude como markdown rico.
 
 ### Tasks
 
-- [ ] Instalar e configurar `react-markdown` com `remark-gfm` e `rehype-sanitize`
-- [ ] Implementar code blocks com deteccao de linguagem (fence info), scroll horizontal e botao copiar
-- [ ] Memoizar code blocks para evitar re-highlight a cada delta
-- [ ] Durante streaming: re-parse com debounce de 50ms para evitar travamento
-- [ ] Sanitizar HTML com schema customizado (bloquear script, iframe, object, embed)
-- [ ] Links externos: abrir via `tauri-plugin-shell` `open()` com `rel="noopener noreferrer"`
-- [ ] Suportar tabelas GFM com scroll horizontal
-- [ ] Suportar listas de tarefas (`- [ ]` / `- [x]`) como checkboxes disabled
+- [x] Instalar e configurar `react-markdown` com `remark-gfm` e `rehype-sanitize`
+- [x] Implementar code blocks com deteccao de linguagem (fence info), scroll horizontal e botao copiar
+- [x] Memoizar ChatMarkdown com React.memo
+- [x] Sanitizar HTML via rehype-sanitize (bloqueia script, iframe, object, embed)
+- [x] Links externos: abrir via `tauri-plugin-shell` `open()` com `rel="noopener noreferrer"`
+- [x] Suportar tabelas GFM com scroll horizontal
+- [x] Suportar listas de tarefas (`- [ ]` / `- [x]`) como checkboxes disabled
+- [x] Syntax highlighting via lowlight (highlight.js) em code blocks
 
-## Story 06: Scroll behavior
+## Story 06: Scroll behavior ✅
 
 Scroll automatico durante streaming sem interromper leitura do usuario.
 
 ### Tasks
 
-- [ ] Implementar hook `useStickyBottomScroll` que detecta se usuario esta no bottom (threshold 50px)
-- [ ] Auto-scroll em cada `chat:delta` somente se usuario esta no bottom
-- [ ] Se usuario scrollou para cima, nao forcar scroll para baixo
-- [ ] Mostrar botao "scroll to bottom" flutuante quando nao esta no bottom e ha conteudo novo
+- [x] Implementar hook `useStickyScroll` que detecta se usuario esta no bottom (threshold 50px)
+- [x] Auto-scroll em cada delta somente se usuario esta no bottom
+- [x] Se usuario scrollou para cima, nao forcar scroll para baixo
+- [x] Mostrar botao "scroll to bottom" flutuante (LuArrowDown) quando nao esta no bottom
 
-## Story 07: Gerenciamento de sessoes
+## Story 07: Gerenciamento de sessoes ✅
 
 CRUD de sessoes persistentes.
 
 ### Tasks
 
-- [ ] Listar sessoes na sidebar com titulo e data relativa (ex: "2h atras")
-- [ ] Criar nova sessao ao clicar botao "+" (estado draft ate primeira mensagem)
-- [ ] Arquivar sessao (swipe ou botao context menu)
+- [x] Listar sessoes na sidebar com titulo e data relativa (ex: "2h atras")
+- [x] Criar nova sessao ao clicar botao "+" (estado draft ate primeira mensagem)
+- [x] Arquivar sessao (botao trash no hover)
 - [ ] Titulo automatico: apos primeiro turno, disparar chat extra pedindo resumo em 5 palavras
-- [ ] Selecionar sessao na sidebar carrega historico do SQLite
-- [ ] Retomar sessao apos restart: usar `claude_session_id` persistido para `--resume`
+- [x] Selecionar sessao na sidebar carrega historico do SQLite
+- [x] Retomar sessao apos restart: usar `claude_session_id` persistido para `--resume`
 - [ ] Tratar falha de resume: oferecer "continuar como conversa nova" com resumo do historico
 
-## Story 08: Bolha de mensagem e UI de conversa
+## Story 08: Bolha de mensagem e UI de conversa ✅
 
 Componentes visuais para exibir mensagens.
 
 ### Tasks
 
-- [ ] Criar componente `MessageBubble` com variantes por role (user: alinhado direita, assistant: alinhado esquerda)
-- [ ] Mensagens do user: texto simples + thumbnails de imagens anexadas
-- [ ] Mensagens do assistant: markdown renderizado com streaming
-- [ ] Mostrar timestamp e token count (discreto, hover ou footer)
-- [ ] Estilizar com tokens semanticos do Chakra UI (bg, fg, border) para dark/light mode
-- [ ] Tratar mensagem parcial (interrompida): mostrar aviso e botao "Regerar"
+- [x] Criar componente `ChatMessageBubble` com variantes por role (user: alinhado direita, assistant: alinhado esquerda)
+- [x] Mensagens do user: texto simples com bg azul sutil
+- [x] Mensagens do assistant: markdown renderizado com streaming via ChatMarkdown
+- [x] Mostrar timestamp e token count (discreto no footer)
+- [x] Estilizar com tokens semanticos do Chakra UI (bg, fg, border) para dark/light mode
+- [x] Tratar mensagem parcial (interrompida): mostrar aviso "Response was interrupted"
