@@ -33,20 +33,20 @@ Campo de entrada para mensagens do usuario.
 - [x] Limpar input apos envio bem-sucedido
 - [x] stopPropagation em onKeyDown/onMouseDown/onFocus para evitar captura pelo ProseMirror
 
-## Story 03: Input multimodal (imagens)
+## Story 03: Input multimodal (imagens) ✅
 
 Suporte a anexar imagens via file picker, drag-drop e clipboard paste.
 
 ### Tasks
 
-- [ ] Implementar file picker com `@tauri-apps/plugin-dialog` (filtro: png, jpg, jpeg, gif, webp)
+- [x] Implementar file picker com `@tauri-apps/plugin-dialog` (filtro: png, jpg, jpeg, gif, webp)
 - [ ] Implementar drag-drop via `getCurrentWebview().onDragDropEvent()`
-- [ ] Implementar clipboard paste no textarea (`onPaste` handler para items image/*)
-- [ ] Implementar `save_attachment_tmp` no Rust: salva bytes em `app_data_dir/tmp/<uuid>.<ext>`, retorna path
-- [ ] Criar area de preview de anexos abaixo do textarea (thumbnails com botao de remover)
+- [x] Implementar clipboard paste no textarea (`onPaste` handler para items image/*)
+- [x] Implementar `save_attachment_tmp` no Rust: salva bytes em `app_data_dir/tmp/<uuid>.<ext>`, retorna path
+- [x] Criar area de preview de anexos abaixo do textarea (thumbnails 48px com botao de remover)
 - [ ] Normalizar imagens antes de enviar: redimensionar se lado maior > 2048px, reencodar JPEG Q85
-- [ ] Limitar: max 20 imagens por mensagem, max 5MB por imagem
-- [ ] Converter attachments para content blocks base64 no Rust antes de enviar ao sidecar
+- [x] Limitar: max 20 imagens por mensagem, max 5MB por imagem
+- [x] Converter attachments para content blocks base64 no Rust antes de enviar ao sidecar
 
 ## Story 04: Streaming de respostas ✅
 
@@ -96,7 +96,7 @@ CRUD de sessoes persistentes.
 - [x] Listar sessoes na sidebar com titulo e data relativa (ex: "2h atras")
 - [x] Criar nova sessao ao clicar botao "+" (estado draft ate primeira mensagem)
 - [x] Arquivar sessao (botao trash no hover)
-- [ ] Titulo automatico: apos primeiro turno, disparar chat extra pedindo resumo em 5 palavras
+- [x] Titulo automatico: extrair primeiras 50 chars da primeira mensagem do user como titulo
 - [x] Selecionar sessao na sidebar carrega historico do SQLite
 - [x] Retomar sessao apos restart: usar `claude_session_id` persistido para `--resume`
 - [ ] Tratar falha de resume: oferecer "continuar como conversa nova" com resumo do historico

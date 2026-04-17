@@ -74,6 +74,13 @@ export function abortChat(requestId: string): Promise<void> {
   return invoke("abort_chat", { requestId });
 }
 
+export function saveAttachmentTmp(
+  bytes: number[],
+  mediaType: string,
+): Promise<string> {
+  return invoke("save_attachment_tmp", { bytes, mediaType });
+}
+
 export function respondChatPermission(
   permissionId: string,
   behavior: "allow" | "deny",

@@ -607,6 +607,7 @@ fn main() {
             send_chat_message,
             abort_chat,
             respond_chat_permission,
+            save_attachment_tmp,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {

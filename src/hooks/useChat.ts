@@ -117,9 +117,11 @@ export function useChat(sessionId: number | null) {
     };
   }, [sessionId]);
 
-  const sendMessage = useCallback(
-    async (text: string) => {
-      if (sessionId === null || !text.trim()) return;
+  const sendMsg = useCallback(
+    async (text: string, attachments?: import("@/lib/tauri/chat").AttachmentInput[]) => {
+      if (sessionId === null) return;
+      const hasContent = text.trim() || (attachments && attachments.length > 0);
+      if (!hasContent) return;
       setError(null);
 
       // Optimistically add user message to local state
@@ -142,8 +144,8 @@ export function useChat(sessionId: number | null) {
       setIsStreaming(true);
 
       try {
-        console.log("[useChat] Sending message to session", sessionId, ":", text);
-        await sendChatMessage(sessionId, text);
+        console.log("[useChat] Sending message to session", sessionId, ":", text, "attachments:", attachments?.length ?? 0);
+        await sendChatMessage(sessionId, text, attachments ?? []);
         console.log("[useChat] sendChatMessage returned (command dispatched)");
       } catch (e) {
         console.error("[useChat] sendChatMessage error:", e);
@@ -165,7 +167,7 @@ export function useChat(sessionId: number | null) {
     streamingContent,
     isStreaming,
     error,
-    sendMessage,
+    sendMessage: sendMsg,
     abort,
   };
 }
