@@ -275,10 +275,6 @@ fn build_connection_string(conn: &Connection) -> Result<String, String> {
         "mysql" => {
             let host = conn.host.as_deref().unwrap_or("localhost");
             let port = conn.port.unwrap_or(3306);
-            let db = conn
-                .database_name
-                .as_deref()
-                .ok_or("database_name is required for mysql")?;
             let user = conn.username.as_deref().unwrap_or("root");
             let db_password = conn.password.as_deref().unwrap_or("");
             let password = if db_password == KEYCHAIN_SENTINEL {
@@ -292,7 +288,7 @@ fn build_connection_string(conn: &Connection) -> Result<String, String> {
                 _ => "disabled",
             };
             Ok(format!(
-                "mysql://{user}:{password}@{host}:{port}/{db}?ssl-mode={ssl}"
+                "mysql://{user}:{password}@{host}:{port}?ssl-mode={ssl}"
             ))
         }
         "sqlite" => {
@@ -322,9 +318,22 @@ async fn create_pool(conn: &Connection) -> Result<DatabasePool, String> {
             Ok(DatabasePool::Postgres(pool))
         }
         "mysql" => {
-            let pool = sqlx::mysql::MySqlPoolOptions::new()
+            let db_name = conn.database_name.clone().unwrap_or_default();
+            let mut opts = sqlx::mysql::MySqlPoolOptions::new()
                 .max_connections(max_conns)
-                .acquire_timeout(timeout)
+                .acquire_timeout(timeout);
+            if !db_name.is_empty() {
+                opts = opts.after_connect(move |conn, _meta| {
+                    let db = db_name.clone();
+                    Box::pin(async move {
+                        sqlx::query(&format!("USE `{}`", db))
+                            .execute(&mut *conn)
+                            .await?;
+                        Ok(())
+                    })
+                });
+            }
+            let pool = opts
                 .connect(&url)
                 .await
                 .map_err(|e| format!("Failed to connect to mysql: {e}"))?;
