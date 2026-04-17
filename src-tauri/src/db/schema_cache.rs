@@ -150,6 +150,19 @@ async fn introspect_postgres(pool: &sqlx::PgPool) -> Result<Vec<SchemaEntry>, St
         .collect())
 }
 
+/// Decode a MySQL column as UTF-8 String, tolerating VARBINARY/BLOB columns.
+/// Some MySQL proxies (notably ProxySQL) return information_schema text columns
+/// as VARBINARY, which fails String decoding. Fall back to raw bytes.
+fn mysql_str(row: &sqlx::mysql::MySqlRow, col: &str) -> Option<String> {
+    if let Ok(s) = row.try_get::<String, _>(col) {
+        return Some(s);
+    }
+    if let Ok(b) = row.try_get::<Vec<u8>, _>(col) {
+        return Some(String::from_utf8_lossy(&b).into_owned());
+    }
+    None
+}
+
 async fn introspect_mysql(pool: &sqlx::MySqlPool) -> Result<Vec<SchemaEntry>, String> {
     let rows = sqlx::query(
         r#"SELECT table_name, column_name, data_type
@@ -163,10 +176,15 @@ async fn introspect_mysql(pool: &sqlx::MySqlPool) -> Result<Vec<SchemaEntry>, St
 
     Ok(rows
         .iter()
-        .map(|row| SchemaEntry {
-            table_name: row.get("TABLE_NAME"),
-            column_name: row.get("COLUMN_NAME"),
-            data_type: row.try_get("DATA_TYPE").ok(),
+        .filter_map(|row| {
+            let table_name = mysql_str(row, "TABLE_NAME")?;
+            let column_name = mysql_str(row, "COLUMN_NAME")?;
+            let data_type = mysql_str(row, "DATA_TYPE");
+            Some(SchemaEntry {
+                table_name,
+                column_name,
+                data_type,
+            })
         })
         .collect())
 }

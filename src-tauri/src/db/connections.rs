@@ -273,23 +273,9 @@ fn build_connection_string(conn: &Connection) -> Result<String, String> {
             ))
         }
         "mysql" => {
-            let host = conn.host.as_deref().unwrap_or("localhost");
-            let port = conn.port.unwrap_or(3306);
-            let user = conn.username.as_deref().unwrap_or("root");
-            let db_password = conn.password.as_deref().unwrap_or("");
-            let password = if db_password == KEYCHAIN_SENTINEL {
-                resolve_value(db_password, &conn_password_key(&conn.id)).unwrap_or_default()
-            } else {
-                db_password.to_string()
-            };
-            let ssl = match conn.ssl_mode.as_deref().unwrap_or("disable") {
-                "require" => "required",
-                "verify-ca" | "verify-full" => "required",
-                _ => "disabled",
-            };
-            Ok(format!(
-                "mysql://{user}:{password}@{host}:{port}?ssl-mode={ssl}"
-            ))
+            // MySQL uses the typed MySqlConnectOptions builder in create_pool;
+            // build_connection_string should not be called for mysql.
+            Err("build_connection_string does not support mysql; use build_mysql_connect_options".to_string())
         }
         "sqlite" => {
             let path = conn
@@ -302,13 +288,45 @@ fn build_connection_string(conn: &Connection) -> Result<String, String> {
     }
 }
 
+fn build_mysql_connect_options(
+    conn: &Connection,
+) -> Result<sqlx::mysql::MySqlConnectOptions, String> {
+    use super::keychain::{conn_password_key, resolve_value, KEYCHAIN_SENTINEL};
+    use sqlx::mysql::{MySqlConnectOptions, MySqlSslMode};
+
+    let host = conn.host.as_deref().unwrap_or("localhost");
+    let port = conn.port.unwrap_or(3306) as u16;
+    let user = conn.username.as_deref().unwrap_or("root");
+    let db_password_raw = conn.password.as_deref().unwrap_or("");
+    let password = if db_password_raw == KEYCHAIN_SENTINEL {
+        resolve_value(db_password_raw, &conn_password_key(&conn.id)).unwrap_or_default()
+    } else {
+        db_password_raw.to_string()
+    };
+    let ssl_mode = match conn.ssl_mode.as_deref().unwrap_or("disable") {
+        "require" | "verify-ca" | "verify-full" => MySqlSslMode::Required,
+        _ => MySqlSslMode::Disabled,
+    };
+
+    // NOTE: intentionally DO NOT call opts.database(db) here. Passing the schema
+    // via CLIENT_CONNECT_WITH_DB in the handshake breaks routing in ProxySQL
+    // deployments that apply schema-based hostgroup rules on USE/queries only.
+    // We select the database via `USE` in after_connect instead.
+    Ok(MySqlConnectOptions::new()
+        .host(host)
+        .port(port)
+        .username(user)
+        .password(&password)
+        .ssl_mode(ssl_mode))
+}
+
 async fn create_pool(conn: &Connection) -> Result<DatabasePool, String> {
-    let url = build_connection_string(conn)?;
     let max_conns = conn.max_pool_size as u32;
     let timeout = Duration::from_millis(conn.timeout_ms as u64);
 
     match conn.driver.as_str() {
         "postgres" => {
+            let url = build_connection_string(conn)?;
             let pool = sqlx::postgres::PgPoolOptions::new()
                 .max_connections(max_conns)
                 .acquire_timeout(timeout)
@@ -318,28 +336,33 @@ async fn create_pool(conn: &Connection) -> Result<DatabasePool, String> {
             Ok(DatabasePool::Postgres(pool))
         }
         "mysql" => {
+            let opts = build_mysql_connect_options(conn)?;
             let db_name = conn.database_name.clone().unwrap_or_default();
-            let mut opts = sqlx::mysql::MySqlPoolOptions::new()
+            let mut pool_opts = sqlx::mysql::MySqlPoolOptions::new()
                 .max_connections(max_conns)
                 .acquire_timeout(timeout);
             if !db_name.is_empty() {
-                opts = opts.after_connect(move |conn, _meta| {
+                pool_opts = pool_opts.after_connect(move |conn, _meta| {
                     let db = db_name.clone();
                     Box::pin(async move {
-                        sqlx::query(&format!("USE `{}`", db))
-                            .execute(&mut *conn)
-                            .await?;
+                        use sqlx::Executor;
+                        // Pass the SQL as a plain `&str` so sqlx uses the text
+                        // protocol (COM_QUERY). Prepared-statement `USE` is
+                        // rejected by ProxySQL with error 1295.
+                        let sql = format!("USE `{}`", db);
+                        conn.execute(sql.as_str()).await?;
                         Ok(())
                     })
                 });
             }
-            let pool = opts
-                .connect(&url)
+            let pool = pool_opts
+                .connect_with(opts)
                 .await
                 .map_err(|e| format!("Failed to connect to mysql: {e}"))?;
             Ok(DatabasePool::MySql(pool))
         }
         "sqlite" => {
+            let url = build_connection_string(conn)?;
             let pool = sqlx::sqlite::SqlitePoolOptions::new()
                 .max_connections(max_conns)
                 .acquire_timeout(timeout)
@@ -1057,6 +1080,11 @@ fn mysql_row_to_json(row: &sqlx::mysql::MySqlRow) -> JsonRow {
                 serde_json::Value::Bool(v)
             } else if let Ok(v) = row.try_get::<String, _>(idx) {
                 serde_json::Value::String(v)
+            } else if let Ok(v) = row.try_get::<Vec<u8>, _>(idx) {
+                // Fallback for VARBINARY/BLOB (e.g. ProxySQL returns VARCHAR
+                // columns as VARBINARY). Lossy UTF-8 conversion preserves text
+                // content; genuine binary blobs will show replacement chars.
+                serde_json::Value::String(String::from_utf8_lossy(&v).into_owned())
             } else {
                 serde_json::Value::Null
             }
