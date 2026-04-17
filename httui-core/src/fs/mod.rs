@@ -1,5 +1,3 @@
-pub mod watcher;
-
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 

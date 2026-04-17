@@ -4,9 +4,15 @@ use sqlx::{Column, Row, TypeInfo};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter};
 use tokio::sync::RwLock;
 use uuid::Uuid;
+
+/// Trait for emitting connection status events.
+/// The Tauri app provides an AppHandle-based implementation;
+/// the MCP binary (and tests) use None.
+pub trait StatusEmitter: Send + Sync {
+    fn emit_connection_status(&self, connection_id: &str, name: &str, status: &str);
+}
 
 // --- DatabasePool enum ---
 
@@ -98,17 +104,10 @@ pub struct UpdateConnection {
 
 // --- ConnectionManager ---
 
-#[derive(Clone, Serialize)]
-struct ConnectionStatusEvent {
-    connection_id: String,
-    name: String,
-    status: String, // "connected" | "disconnected"
-}
-
 pub struct PoolManager {
     app_pool: SqlitePool,
     pools: RwLock<HashMap<String, PoolEntry>>,
-    app_handle: Option<AppHandle>,
+    emitter: Option<Arc<dyn StatusEmitter>>,
 }
 
 struct PoolEntry {
@@ -119,21 +118,20 @@ struct PoolEntry {
 }
 
 impl PoolManager {
-    pub fn new(app_pool: SqlitePool, app_handle: AppHandle) -> Self {
+    pub fn new_with_emitter(app_pool: SqlitePool, emitter: Arc<dyn StatusEmitter>) -> Self {
         Self {
             app_pool,
             pools: RwLock::new(HashMap::new()),
-            app_handle: Some(app_handle),
+            emitter: Some(emitter),
         }
     }
 
-    /// Create without AppHandle (for tests only)
-    #[cfg(test)]
-    pub fn new_without_handle(app_pool: SqlitePool) -> Self {
+    /// Create without event emitter (for MCP server and tests).
+    pub fn new_standalone(app_pool: SqlitePool) -> Self {
         Self {
             app_pool,
             pools: RwLock::new(HashMap::new()),
-            app_handle: None,
+            emitter: None,
         }
     }
 
@@ -171,12 +169,8 @@ impl PoolManager {
             );
         }
 
-        if let Some(ref handle) = self.app_handle {
-            let _ = handle.emit("connection-status", ConnectionStatusEvent {
-                connection_id: connection_id.to_string(),
-                name: conn_name,
-                status: "connected".to_string(),
-            });
+        if let Some(ref emitter) = self.emitter {
+            emitter.emit_connection_status(connection_id, &conn_name, "connected");
         }
 
         Ok(pool)
@@ -187,12 +181,8 @@ impl PoolManager {
             let mut pools = self.pools.write().await;
             pools.remove(connection_id).map(|e| e.name)
         };
-        if let (Some(name), Some(ref handle)) = (entry_name, &self.app_handle) {
-            let _ = handle.emit("connection-status", ConnectionStatusEvent {
-                connection_id: connection_id.to_string(),
-                name,
-                status: "disconnected".to_string(),
-            });
+        if let (Some(name), Some(ref emitter)) = (entry_name, &self.emitter) {
+            emitter.emit_connection_status(connection_id, &name, "disconnected");
         }
     }
 
@@ -216,12 +206,8 @@ impl PoolManager {
             let mut pools = self.pools.write().await;
             for id in &to_remove {
                 if let Some(entry) = pools.remove(id) {
-                    if let Some(ref handle) = self.app_handle {
-                        let _ = handle.emit("connection-status", ConnectionStatusEvent {
-                            connection_id: id.clone(),
-                            name: entry.name,
-                            status: "disconnected".to_string(),
-                        });
+                    if let Some(ref emitter) = self.emitter {
+                        emitter.emit_connection_status(id, &entry.name, "disconnected");
                     }
                 }
             }
