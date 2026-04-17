@@ -306,7 +306,7 @@ function HttpInput({
   blocksRef: React.RefObject<BlockContext[]>;
   envKeysRef: React.RefObject<string[]>;
   envVarsRef: React.RefObject<Record<string, string>>;
-  getPos: (() => number) | boolean;
+  getPos: (() => number | undefined) | boolean;
 }) {
   const showBody = METHODS_WITH_BODY.includes(data.method);
 

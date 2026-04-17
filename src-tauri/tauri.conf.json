@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-config-schema/schema.json",
-  "productName": "Notes",
+  "productName": "httui notes",
   "version": "0.1.0",
   "identifier": "com.notes.app",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Notes",
+        "title": "httui notes",
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
         "width": 1200,

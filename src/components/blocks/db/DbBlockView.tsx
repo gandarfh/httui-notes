@@ -266,7 +266,7 @@ function DbInput({
   cmTheme: "light" | "dark";
   connections: Connection[];
   blocksRef: React.RefObject<BlockContext[]>;
-  getPos: (() => number) | boolean;
+  getPos: (() => number | undefined) | boolean;
 }) {
   const [schema, setSchema] = useState<SchemaEntry[]>([]);
 
