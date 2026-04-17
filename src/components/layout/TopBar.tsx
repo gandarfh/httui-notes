@@ -24,8 +24,10 @@ export function TopBar({ sidebarOpen, onToggleSidebar }: TopBarProps) {
 
   return (
     <HStack
+      data-tauri-drag-region
       h="48px"
-      px={2}
+      pl="80px"
+      pr={2}
       bg="bg"
       borderBottomWidth="1px"
       borderColor="border"
