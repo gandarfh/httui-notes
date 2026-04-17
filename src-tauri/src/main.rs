@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 
+use httui_notes::chat::commands::*;
 use httui_notes::db::connections::{self, PoolManager, StatusEmitter};
 
 // --- Tauri StatusEmitter implementation ---
@@ -550,6 +551,11 @@ fn main() {
             ));
             app.manage(executor_registry);
 
+            // Chat sidecar (lazy — spawned on first use, not at startup)
+            app.manage(std::sync::Arc::new(tokio::sync::Mutex::new(
+                None::<httui_notes::chat::sidecar::SidecarManager>,
+            )));
+
             app.manage(Arc::new(Mutex::new(Vec::<String>::new()))); // ignore_paths
             app.manage(Mutex::new(
                 None::<httui_notes::fs::watcher::VaultWatcher>,
@@ -592,7 +598,30 @@ fn main() {
             list_env_variables,
             set_env_variable,
             delete_env_variable,
+            // Chat
+            create_chat_session,
+            list_chat_sessions,
+            get_chat_session,
+            archive_chat_session,
+            list_chat_messages,
+            send_chat_message,
+            abort_chat,
+            respond_chat_permission,
         ])
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                let app = window.app_handle().clone();
+                let sidecar_state = app
+                    .state::<std::sync::Arc<tokio::sync::Mutex<Option<httui_notes::chat::sidecar::SidecarManager>>>>();
+                let sidecar = sidecar_state.inner().clone();
+                tauri::async_runtime::spawn(async move {
+                    let guard = sidecar.lock().await;
+                    if let Some(mgr) = guard.as_ref() {
+                        mgr.shutdown().await;
+                    }
+                });
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

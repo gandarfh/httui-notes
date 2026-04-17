@@ -10,3 +10,6 @@ pub mod fs {
     pub use httui_core::fs::*;
     pub mod watcher;
 }
+
+// Chat sidecar integration
+pub mod chat;

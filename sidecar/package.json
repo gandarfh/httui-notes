@@ -1,0 +1,17 @@
+{
+  "name": "claude-sidecar",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build --compile --target=bun-darwin-arm64 src/index.ts --outfile claude-sidecar && node scripts/rename.js",
+    "dev": "bun run src/index.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}

@@ -16,6 +16,12 @@ Epic 00 (Project Setup)
 │   └── Epic 04 (Search)
 ├── [shared] Epic 01 → Epic 03
 └── Epic 10 (Polish & Pending) ← consolida pendencias de 01-09
+
+Epic 00 (Project Setup)
+└── Epic 11 (Chat Sidecar & Protocolo)
+    └── Epic 12 (Chat MVP)
+        └── Epic 13 (Chat Agente)
+            └── Epic 14 (Chat QoL)
 ```
 
 ## Epics
@@ -33,6 +39,10 @@ Epic 00 (Project Setup)
 | 07  | [HTTP Client](07-http-client.md)                 | 6       | 05          | done    |
 | 08  | [E2E Test Runner](08-e2e-runner.md)              | 4       | 05, 07      | done    |
 | 10  | [Polish & Pending](10-polish-pending.md)         | 10      | 05, 06, 07  | done    |
+| 11  | [Chat Sidecar & Protocolo](11-chat-sidecar.md)  | 6       | 00          | done    |
+| 12  | [Chat MVP](12-chat-mvp.md)                      | 8       | 11          | backlog |
+| 13  | [Chat Agente](13-chat-agente.md)                | 6       | 12          | backlog |
+| 14  | [Chat QoL](14-chat-qol.md)                      | 5       | 13          | backlog |
 
 ## Ordem sugerida de implementacao
 
@@ -68,8 +78,24 @@ Epic 00 (Project Setup)
 
 11. Epic 10 — Polish & Pending (seguranca → pipeline → visual → QoL)
 
+**Fase 8 — Chat infrastructure**
+
+12. Epic 11 — Chat Sidecar & Protocolo (sidecar Node, protocolo NDJSON, SQLite, Tauri commands)
+
+**Fase 9 — Chat UI**
+
+13. Epic 12 — Chat MVP (layout, input texto + imagens, streaming, markdown, sessoes)
+
+**Fase 10 — Chat agent capabilities**
+
+14. Epic 13 — Chat Agente (tools, permissoes, cwd, modal, tool use rendering)
+
+**Fase 11 — Chat polish**
+
+15. Epic 14 — Chat QoL (editar, regerar, abort, busca, integracao notes)
+
 ## Metricas
 
-- **Total epics:** 11
-- **Total stories:** 64
-- **Total tasks:** ~200
+- **Total epics:** 15
+- **Total stories:** 89
+- **Total tasks:** ~310

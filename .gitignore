@@ -19,3 +19,7 @@ Thumbs.db
 .env
 .env.local
 target/
+
+# Sidecar binaries (built, not committed)
+src-tauri/binaries/
+sidecar/package-lock.json

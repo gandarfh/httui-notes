@@ -26,5 +26,8 @@
       "csp": null
     }
   },
-  "plugins": {}
+  "plugins": {},
+  "bundle": {
+    "externalBin": ["binaries/claude-sidecar"]
+  }
 }

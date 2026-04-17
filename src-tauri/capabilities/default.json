@@ -14,6 +14,7 @@
     "fs:allow-rename",
     "fs:allow-read-dir",
     "shell:allow-open",
+    "shell:allow-spawn",
     "notification:default",
     "sql:default",
     "sql:allow-execute",
