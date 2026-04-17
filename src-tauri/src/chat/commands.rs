@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use serde::Deserialize;
 use sqlx::sqlite::SqlitePool;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -94,6 +94,17 @@ pub async fn send_chat_message(
 
     chat::insert_message(&pool, session_id, "user", &content_json, None, None, false)
         .await?;
+
+    // Auto-title: if session still has default title, set it from the first user message
+    let session_for_title = chat::get_session(&pool, session_id).await?;
+    if session_for_title.title == "Nova conversa" {
+        let title: String = text.chars().take(50).collect();
+        let title = title.split('\n').next().unwrap_or(&title).trim().to_string();
+        if !title.is_empty() {
+            let _ = chat::update_session_title(&pool, session_id, &title).await;
+            let _ = app.emit("chat:session-updated", session_id);
+        }
+    }
 
     // 3. Get session for claude_session_id
     let session = chat::get_session(&pool, session_id).await?;
@@ -319,6 +330,40 @@ pub async fn respond_chat_permission(
         },
     })
     .await
+}
+
+#[tauri::command]
+pub async fn save_attachment_tmp(
+    app: AppHandle,
+    bytes: Vec<u8>,
+    media_type: String,
+) -> Result<String, String> {
+    let ext = match media_type.as_str() {
+        "image/png" => "png",
+        "image/jpeg" => "jpg",
+        "image/gif" => "gif",
+        "image/webp" => "webp",
+        _ => "bin",
+    };
+
+    let tmp_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {e}"))?
+        .join("tmp");
+
+    tokio::fs::create_dir_all(&tmp_dir)
+        .await
+        .map_err(|e| format!("Failed to create tmp dir: {e}"))?;
+
+    let filename = format!("{}.{}", Uuid::new_v4(), ext);
+    let path = tmp_dir.join(&filename);
+
+    tokio::fs::write(&path, &bytes)
+        .await
+        .map_err(|e| format!("Failed to write tmp file: {e}"))?;
+
+    Ok(path.to_string_lossy().to_string())
 }
 
 fn base64_encode(bytes: &[u8]) -> String {

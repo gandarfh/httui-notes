@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
+import { listen } from "@tauri-apps/api/event";
 import {
   listChatSessions,
   createChatSession,
@@ -21,6 +22,16 @@ export function useChatSessions() {
 
   useEffect(() => {
     refresh();
+  }, [refresh]);
+
+  // Refresh when session title changes (auto-title)
+  useEffect(() => {
+    const unlisten = listen("chat:session-updated", () => {
+      refresh();
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
   }, [refresh]);
 
   const selectSession = useCallback((id: number) => {
