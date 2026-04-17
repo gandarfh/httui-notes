@@ -6,7 +6,6 @@ import {
   LuArrowLeft,
   LuArrowRight,
   LuTrash2,
-  LuGrid2X2,
 } from "react-icons/lu";
 import type { Editor } from "@tiptap/core";
 

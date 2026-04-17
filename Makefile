@@ -1,4 +1,4 @@
-.PHONY: dev build install lint check clean test test-rust test-front front icons
+.PHONY: dev build install install-deps install-app uninstall lint check clean test test-rust test-front front icons
 
 # Development — frontend (Vite HMR) + backend (Rust rebuild on change)
 dev:
@@ -8,14 +8,33 @@ dev:
 front:
 	npm run dev
 
-# Build de producao
+# Build de producao (com bundle .app para macOS)
 build:
-	npm run tauri build
+	npm run tauri build -- --bundles app
 
-# Instalar todas as dependencias
-install:
+# Instalar dependencias
+install-deps:
 	npm install
 	cd src-tauri && cargo fetch
+
+# Build + instalar app em /Applications (macOS)
+APP_NAME = httui notes
+APP_BUNDLE = target/release/bundle/macos/$(APP_NAME).app
+install: build
+	@if [ ! -d "$(APP_BUNDLE)" ]; then \
+		echo "Error: build failed — $(APP_BUNDLE) not found"; \
+		exit 1; \
+	fi
+	@echo "Installing $(APP_NAME) to /Applications..."
+	@rm -rf "/Applications/$(APP_NAME).app"
+	@cp -R "$(APP_BUNDLE)" "/Applications/$(APP_NAME).app"
+	@echo "Done. Open with: open '/Applications/$(APP_NAME).app'"
+
+# Remover app de /Applications
+uninstall:
+	@echo "Removing $(APP_NAME) from /Applications..."
+	@rm -rf "/Applications/$(APP_NAME).app"
+	@echo "Done."
 
 # Type check + clippy
 check:
