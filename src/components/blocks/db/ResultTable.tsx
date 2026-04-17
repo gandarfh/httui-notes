@@ -6,7 +6,7 @@ import {
   LuChevronRight,
   LuChevronsRight,
 } from "react-icons/lu";
-import { useCallback, useState } from "react";
+import { Fragment, useCallback, useState } from "react";
 
 interface ResultTableProps {
   columns: { name: string; type: string }[];
@@ -19,13 +19,55 @@ interface ResultTableProps {
 
 const PAGE_SIZES = [25, 50, 100, 500];
 
-function formatCellValue(value: string | number | boolean | null): {
+type CellValue = string | number | boolean | null;
+
+function formatCellValue(value: CellValue): {
   text: string;
   isNull: boolean;
 } {
   if (value === null) return { text: "NULL", isNull: true };
   if (typeof value === "boolean") return { text: value.toString(), isNull: false };
   return { text: String(value), isNull: false };
+}
+
+function tryParseJson(value: CellValue): { parsed: unknown; isJson: boolean } {
+  if (typeof value !== "string") return { parsed: value, isJson: false };
+  const trimmed = value.trim();
+  if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+    try {
+      return { parsed: JSON.parse(trimmed), isJson: true };
+    } catch {
+      return { parsed: value, isJson: false };
+    }
+  }
+  return { parsed: value, isJson: false };
+}
+
+function DetailValue({ value }: { value: CellValue }) {
+  if (value === null) {
+    return <Text as="span" fontStyle="italic" color="fg.muted" opacity={0.6}>NULL</Text>;
+  }
+  const { parsed, isJson } = tryParseJson(value);
+  if (isJson) {
+    return (
+      <Box
+        as="pre"
+        m={0}
+        p={2}
+        bg="bg.subtle"
+        rounded="sm"
+        fontSize="xs"
+        fontFamily="mono"
+        whiteSpace="pre-wrap"
+        wordBreak="break-all"
+        maxH="200px"
+        overflowY="auto"
+      >
+        {JSON.stringify(parsed, null, 2)}
+      </Box>
+    );
+  }
+  return <Text as="span" wordBreak="break-all">{String(value)}</Text>;
 }
 
 export function ResultTable({
@@ -40,6 +82,7 @@ export function ResultTable({
   const startRow = (page - 1) * pageSize + 1;
   const endRow = Math.min(page * pageSize, totalRows);
   const [goToPage, setGoToPage] = useState("");
+  const [expandedRow, setExpandedRow] = useState<number | null>(null);
 
   const handleGoToPage = useCallback(() => {
     const p = parseInt(goToPage);
@@ -68,30 +111,42 @@ export function ResultTable({
         maxH="300px"
         overflowY="auto"
       >
-        <Box as="table" w="100%" fontSize="xs" fontFamily="mono" css={{
-          borderCollapse: "collapse",
-          "& th, & td": {
-            px: "8px",
-            py: "4px",
-            borderBottom: "1px solid var(--chakra-colors-border)",
-            borderRight: "1px solid var(--chakra-colors-border)",
-            textAlign: "left",
-            whiteSpace: "nowrap",
-            maxWidth: "300px",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          },
-          "& th": {
-            bg: "var(--chakra-colors-bg-subtle)",
-            fontWeight: "semibold",
-            position: "sticky",
-            top: 0,
-            zIndex: 1,
-          },
-          "& tr:hover td": {
-            bg: "var(--chakra-colors-bg-subtle)",
-          },
-        }}>
+        <Box
+          as="table"
+          w="100%"
+          fontSize="xs"
+          fontFamily="mono"
+          tabIndex={0}
+          onMouseDown={(e: React.MouseEvent) => e.stopPropagation()}
+          onKeyDown={(e: React.KeyboardEvent) => e.stopPropagation()}
+          onCopy={(e: React.ClipboardEvent) => e.stopPropagation()}
+          css={{
+            borderCollapse: "collapse",
+            userSelect: "text",
+            cursor: "text",
+            "& th, & td": {
+              px: "8px",
+              py: "4px",
+              borderBottom: "1px solid var(--chakra-colors-border)",
+              borderRight: "1px solid var(--chakra-colors-border)",
+              textAlign: "left",
+              whiteSpace: "nowrap",
+              maxWidth: "300px",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            },
+            "& th": {
+              bg: "var(--chakra-colors-bg-subtle)",
+              fontWeight: "semibold",
+              position: "sticky",
+              top: 0,
+              zIndex: 1,
+            },
+            "& tr:hover td": {
+              bg: "var(--chakra-colors-bg-subtle)",
+            },
+          }}
+        >
           <thead>
             <tr>
               {columns.map((col, i) => (
@@ -102,31 +157,88 @@ export function ResultTable({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, rowIdx) => (
-              <tr key={rowIdx}>
-                {columns.map((col, colIdx) => {
-                  const cell = row[col.name] ?? null;
-                  const { text, isNull } = formatCellValue(cell);
-                  return (
-                    <td
-                      key={colIdx}
-                      title={text}
-                      style={
-                        isNull
-                          ? {
-                              fontStyle: "italic",
-                              color: "var(--chakra-colors-fg-muted)",
-                              opacity: 0.6,
-                            }
-                          : undefined
-                      }
-                    >
-                      {text}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
+            {rows.map((row, rowIdx) => {
+              const isExpanded = expandedRow === rowIdx;
+              return (
+                <Fragment key={rowIdx}>
+                  <tr
+                    onClick={() => {
+                      const sel = window.getSelection();
+                      if (sel && sel.toString().length > 0) return;
+                      setExpandedRow(isExpanded ? null : rowIdx);
+                    }}
+                  >
+                    {columns.map((col, colIdx) => {
+                      const cell = row[col.name] ?? null;
+                      const { text, isNull } = formatCellValue(cell);
+                      return (
+                        <td
+                          key={colIdx}
+                          title={text}
+                          style={
+                            isNull
+                              ? {
+                                  fontStyle: "italic",
+                                  color: "var(--chakra-colors-fg-muted)",
+                                  opacity: 0.6,
+                                }
+                              : undefined
+                          }
+                        >
+                          {text}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                  {isExpanded && (
+                    <tr key={`${rowIdx}-detail`}>
+                      <td
+                        colSpan={columns.length}
+                        style={{ padding: 0, background: "var(--chakra-colors-bg-subtle)" }}
+                      >
+                        <Box
+                          display="grid"
+                          gridTemplateColumns="auto 1fr"
+                          gap={0}
+                          px={3}
+                          py={2}
+                          fontSize="xs"
+                          fontFamily="mono"
+                          css={{
+                            "& > *": {
+                              py: "4px",
+                              borderBottom: "1px solid var(--chakra-colors-border)",
+                            },
+                          }}
+                        >
+                          {columns.map((col) => {
+                            const value = row[col.name] ?? null;
+                            return (
+                              <Fragment key={col.name}>
+                                <Box
+                                  fontWeight="semibold"
+                                  color="fg.muted"
+                                  pr={4}
+                                  whiteSpace="nowrap"
+                                >
+                                  {col.name}
+                                  <Text as="span" ml={1} fontSize="2xs" opacity={0.5}>
+                                    {col.type}
+                                  </Text>
+                                </Box>
+                                <Box>
+                                  <DetailValue value={value} />
+                                </Box>
+                              </Fragment>
+                            );
+                          })}
+                        </Box>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
             {rows.length === 0 && (
               <tr>
                 <td
