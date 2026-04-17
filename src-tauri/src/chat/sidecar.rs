@@ -33,7 +33,7 @@ pub struct SidecarManager {
 
 impl SidecarManager {
     /// Spawn the sidecar process and start reading stdout/stderr.
-    pub fn spawn(app: &AppHandle) -> Result<Self, String> {
+    pub async fn spawn(app: &AppHandle) -> Result<Self, String> {
         let requests: Arc<Mutex<HashMap<String, mpsc::UnboundedSender<IncomingMessage>>>> =
             Arc::new(Mutex::new(HashMap::new()));
         let child = Arc::new(Mutex::new(None::<CommandChild>));
@@ -49,7 +49,7 @@ impl SidecarManager {
         };
 
         // Initial spawn
-        Self::spawn_process(app, &child, &requests, &pong_notify)?;
+        Self::spawn_process(app, &child, &requests, &pong_notify).await?;
 
         // Supervisor task: respawn on termination with backoff
         let app_respawn = app.clone();
@@ -84,7 +84,7 @@ impl SidecarManager {
                     &child_respawn,
                     &requests_respawn,
                     &pong_respawn,
-                ) {
+                ).await {
                     Ok(_) => {
                         eprintln!("[sidecar] Respawned successfully");
                         let _ = app_respawn.emit("chat:sidecar-status", "connected");
@@ -142,16 +142,21 @@ impl SidecarManager {
     }
 
     /// Internal: spawn the sidecar process and wire up the event reader.
-    fn spawn_process(
+    async fn spawn_process(
         app: &AppHandle,
         child: &Arc<Mutex<Option<CommandChild>>>,
         requests: &Arc<Mutex<HashMap<String, mpsc::UnboundedSender<IncomingMessage>>>>,
         pong_notify: &Arc<Notify>,
     ) -> Result<(), String> {
+        // Use bun to run the sidecar TypeScript directly (avoids compiled binary signing issues on macOS)
+        let sidecar_script = std::env::current_dir()
+            .map_err(|e| format!("Failed to get cwd: {e}"))?
+            .join("../sidecar/src/index.ts");
+
         let sidecar_cmd = app
             .shell()
-            .sidecar("claude-sidecar")
-            .map_err(|e| format!("Failed to create sidecar command: {e}"))?
+            .command("bun")
+            .args(["run", &sidecar_script.to_string_lossy()])
             .env("ANTHROPIC_API_KEY", "")
             .env("ANTHROPIC_AUTH_TOKEN", "");
 
@@ -159,7 +164,7 @@ impl SidecarManager {
             .spawn()
             .map_err(|e| format!("Failed to spawn sidecar: {e}"))?;
 
-        *tauri::async_runtime::block_on(child.lock()) = Some(new_child);
+        *child.lock().await = Some(new_child);
 
         // Spawn reader task
         let requests_clone = requests.clone();

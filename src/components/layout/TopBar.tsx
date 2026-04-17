@@ -10,14 +10,17 @@ import {
   LuChevronDown,
   LuGlobe,
   LuSettings,
+  LuMessageSquare,
 } from "react-icons/lu";
 
 interface TopBarProps {
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
+  chatOpen: boolean;
+  onToggleChat: () => void;
 }
 
-export function TopBar({ sidebarOpen, onToggleSidebar }: TopBarProps) {
+export function TopBar({ sidebarOpen, onToggleSidebar, chatOpen, onToggleChat }: TopBarProps) {
   const { vaultPath, vaults, switchVault, openVault } = useWorkspace();
   const { environments, activeEnvironment, switchEnvironment, openManager } = useEnvironmentContext();
   const vaultName = vaultPath ? vaultPath.split("/").pop() || vaultPath : null;
@@ -163,6 +166,15 @@ export function TopBar({ sidebarOpen, onToggleSidebar }: TopBarProps) {
           disabled
         >
           <LuSearch />
+        </IconButton>
+        <IconButton
+          aria-label={chatOpen ? "Close chat" : "Open chat"}
+          variant="ghost"
+          size="sm"
+          onClick={onToggleChat}
+          color={chatOpen ? "blue.400" : undefined}
+        >
+          <LuMessageSquare />
         </IconButton>
         <ColorModeButton />
       </HStack>

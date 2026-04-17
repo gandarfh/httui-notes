@@ -14,13 +14,17 @@ import { useEditorSession } from "@/hooks/useEditorSession";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useSidebarResize } from "@/hooks/useSidebarResize";
 import { useSessionPersistence } from "@/hooks/useSessionPersistence";
+import { useChatSessions } from "@/hooks/useChatSessions";
+import { useChat } from "@/hooks/useChat";
 import { WorkspaceContext } from "@/contexts/WorkspaceContext";
 import { PaneContext } from "@/contexts/PaneContext";
 import { EditorSettingsContext } from "@/contexts/EditorSettingsContext";
 import { EnvironmentContext } from "@/contexts/EnvironmentContext";
 import { ConflictContext } from "@/contexts/ConflictContext";
+import { ChatContext } from "@/contexts/ChatContext";
 import { useEnvironments } from "@/hooks/useEnvironments";
 import { useFileConflicts } from "@/hooks/useFileConflicts";
+import { ChatPanel } from "@/components/chat/ChatPanel";
 
 export function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -29,7 +33,11 @@ export function AppShell() {
   const [vimEnabled, setVimEnabled] = useState(false);
   const [vimMode, setVimMode] = useState("normal");
 
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatWidth] = useState(380);
+
   const toggleSidebar = useCallback(() => setSidebarOpen((prev) => !prev), []);
+  const toggleChat = useCallback(() => setChatOpen((prev) => !prev), []);
   const toggleVim = useCallback(() => setVimEnabled((v) => !v), []);
 
   // Hooks
@@ -88,8 +96,9 @@ export function AppShell() {
       openQuickOpen: () => setQuickOpenOpen(true),
       openSearchPanel: () => setSearchPanelOpen(true),
       forceSave: editorSession.forceSave,
+      toggleChat,
     }),
-    [toggleSidebar, actions, getActiveLeaf, editorSession.forceSave],
+    [toggleSidebar, toggleChat, actions, getActiveLeaf, editorSession.forceSave],
   );
   useKeyboardShortcuts(shortcutActions);
 
@@ -145,6 +154,17 @@ export function AppShell() {
     [fileConflicts.hasConflict, fileConflicts.resolveConflict],
   );
 
+  // Chat hooks
+  const chatSessions = useChatSessions();
+  const chatHook = useChat(chatSessions.activeSessionId);
+  const chatValue = useMemo(
+    () => ({
+      ...chatSessions,
+      ...chatHook,
+    }),
+    [chatSessions, chatHook],
+  );
+
   const envHook = useEnvironments();
   const environmentValue = useMemo(
     () => ({
@@ -172,10 +192,13 @@ export function AppShell() {
         <EditorSettingsContext.Provider value={editorSettingsValue}>
         <EnvironmentContext.Provider value={environmentValue}>
         <ConflictContext.Provider value={conflictValue}>
+        <ChatContext.Provider value={chatValue}>
           <Flex h="100vh" direction="column" bg="bg.subtle" overflow="hidden">
             <TopBar
               sidebarOpen={sidebarOpen}
               onToggleSidebar={toggleSidebar}
+              chatOpen={chatOpen}
+              onToggleChat={toggleChat}
             />
 
             <Flex flex={1} overflow="hidden">
@@ -193,6 +216,7 @@ export function AppShell() {
                 </>
               )}
               <PaneContainer />
+              {chatOpen && <ChatPanel width={chatWidth} />}
             </Flex>
 
             <StatusBar />
@@ -209,6 +233,7 @@ export function AppShell() {
 
             <EnvironmentManager />
           </Flex>
+        </ChatContext.Provider>
         </ConflictContext.Provider>
         </EnvironmentContext.Provider>
         </EditorSettingsContext.Provider>

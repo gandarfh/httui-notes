@@ -9,6 +9,7 @@ interface KeyboardShortcutActions {
   openQuickOpen: () => void;
   openSearchPanel: () => void;
   forceSave: () => void;
+  toggleChat: () => void;
 }
 
 export function useKeyboardShortcuts(actions: KeyboardShortcutActions): void {
@@ -45,6 +46,10 @@ export function useKeyboardShortcuts(actions: KeyboardShortcutActions): void {
       if (e.key === "s") {
         e.preventDefault();
         actions.forceSave();
+      }
+      if (e.key === "l") {
+        e.preventDefault();
+        actions.toggleChat();
       }
     };
     window.addEventListener("keydown", handler);

@@ -23,3 +23,9 @@ target/
 # Sidecar binaries (built, not committed)
 src-tauri/binaries/
 sidecar/package-lock.json
+
+# Sidecar build artifacts and lock files
+sidecar/.*.bun-build
+sidecar/bun.lock
+sidecar/bun.lockb
+sidecar/node_modules/
