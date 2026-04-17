@@ -40,7 +40,7 @@ Epic 00 (Project Setup)
 | 08  | [E2E Test Runner](08-e2e-runner.md)              | 4       | 05, 07      | done    |
 | 10  | [Polish & Pending](10-polish-pending.md)         | 10      | 05, 06, 07  | done    |
 | 11  | [Chat Sidecar & Protocolo](11-chat-sidecar.md)  | 6       | 00          | done    |
-| 12  | [Chat MVP](12-chat-mvp.md)                      | 8       | 11          | wip     |
+| 12  | [Chat MVP](12-chat-mvp.md)                      | 8       | 11          | done    |
 | 13  | [Chat Agente](13-chat-agente.md)                | 6       | 12          | backlog |
 | 14  | [Chat QoL](14-chat-qol.md)                      | 5       | 13          | backlog |
 

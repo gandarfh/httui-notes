@@ -1,23 +1,38 @@
 import { memo } from "react";
-import { Box, HStack, Text } from "@chakra-ui/react";
-import { LuBot, LuUser } from "react-icons/lu";
+import { Box, Flex, HStack, Image, Text } from "@chakra-ui/react";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { LuBot } from "react-icons/lu";
 import type { ChatMessage } from "@/lib/tauri/chat";
 import { ChatMarkdown } from "./ChatMarkdown";
 
-function parseMessageContent(contentJson: string): string {
+interface ContentBlock {
+  type: string;
+  text?: string;
+  path?: string;
+  media_type?: string;
+}
+
+function parseMessageContent(contentJson: string): {
+  text: string;
+  images: { path: string; mediaType: string }[];
+} {
   try {
-    const blocks = JSON.parse(contentJson);
+    const blocks: ContentBlock[] = JSON.parse(contentJson);
     if (Array.isArray(blocks)) {
-      return blocks
-        .filter((b: { type: string }) => b.type === "text")
-        .map((b: { text: string }) => b.text)
+      const text = blocks
+        .filter((b) => b.type === "text")
+        .map((b) => b.text ?? "")
         .join("\n");
+      const images = blocks
+        .filter((b) => b.type === "image" && b.path)
+        .map((b) => ({ path: b.path!, mediaType: b.media_type ?? "image/png" }));
+      return { text, images };
     }
-    if (typeof blocks === "string") return blocks;
+    if (typeof blocks === "string") return { text: blocks, images: [] };
   } catch {
-    return contentJson;
+    return { text: contentJson, images: [] };
   }
-  return "";
+  return { text: "", images: [] };
 }
 
 function formatTime(unixSeconds: number): string {
@@ -35,7 +50,8 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
   streamingContent,
 }: ChatMessageBubbleProps) {
   const isUser = message.role === "user";
-  const content = streamingContent ?? parseMessageContent(message.content_json);
+  const parsed = parseMessageContent(message.content_json);
+  const content = streamingContent ?? parsed.text;
 
   if (isUser) {
     return (
@@ -50,9 +66,26 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
           px={3}
           py={2}
         >
-          <Text fontSize="sm" whiteSpace="pre-wrap">
-            {content}
-          </Text>
+          {parsed.images.length > 0 && (
+            <Flex gap={1} mb={content ? 1.5 : 0} flexWrap="wrap">
+              {parsed.images.map((img, i) => (
+                <Image
+                  key={i}
+                  src={convertFileSrc(img.path)}
+                  alt="attachment"
+                  maxH="120px"
+                  maxW="200px"
+                  rounded="md"
+                  objectFit="cover"
+                />
+              ))}
+            </Flex>
+          )}
+          {content && (
+            <Text fontSize="sm" whiteSpace="pre-wrap">
+              {content}
+            </Text>
+          )}
           <Text fontSize="2xs" color="fg.muted" textAlign="right" mt={1}>
             {formatTime(message.created_at)}
           </Text>

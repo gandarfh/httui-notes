@@ -1,5 +1,6 @@
 import { useRef, useCallback, useState } from "react";
 import { Box, IconButton, HStack, Flex, Text, Image } from "@chakra-ui/react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { LuSend, LuSquare, LuPaperclip, LuX } from "react-icons/lu";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useChatContext } from "@/contexts/ChatContext";
@@ -49,7 +50,7 @@ export function ChatInput() {
         {
           path: filePath,
           mediaType,
-          previewUrl: `asset://localhost/${filePath}`,
+          previewUrl: convertFileSrc(filePath),
           name,
         },
       ];

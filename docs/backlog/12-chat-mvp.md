@@ -4,7 +4,7 @@ Interface de chat conversacional com streaming, input multimodal, markdown rende
 
 **Depende de:** Epic 11 (Chat Sidecar & Protocolo)
 **Desbloqueia:** Epic 13 (Chat Agente)
-**Status:** em progresso
+**Status:** concluido
 
 ---
 

@@ -69,17 +69,29 @@ pub async fn send_chat_message(
     eprintln!("[chat cmd] send_chat_message session_id={session_id} text={text:?}");
 
     // 1. Persist user message
-    let mut content_blocks: Vec<serde_json::Value> = vec![
+    // 2. Build content blocks for DB (paths) and sidecar (base64) separately
+    let mut db_blocks: Vec<serde_json::Value> = vec![
+        serde_json::json!({"type": "text", "text": text}),
+    ];
+    let mut sidecar_blocks: Vec<serde_json::Value> = vec![
         serde_json::json!({"type": "text", "text": text}),
     ];
 
-    // 2. Process attachments (read files → base64)
     for att in &attachments {
         let bytes = tokio::fs::read(&att.path)
             .await
             .map_err(|e| format!("Failed to read attachment {}: {e}", att.path))?;
         let b64 = base64_encode(&bytes);
-        content_blocks.push(serde_json::json!({
+
+        // DB stores path (for UI display)
+        db_blocks.push(serde_json::json!({
+            "type": "image",
+            "path": att.path,
+            "media_type": att.media_type,
+        }));
+
+        // Sidecar gets base64 (for API)
+        sidecar_blocks.push(serde_json::json!({
             "type": "image",
             "source": {
                 "type": "base64",
@@ -89,7 +101,7 @@ pub async fn send_chat_message(
         }));
     }
 
-    let content_json = serde_json::to_string(&content_blocks)
+    let content_json = serde_json::to_string(&db_blocks)
         .map_err(|e| format!("Failed to serialize content: {e}"))?;
 
     chat::insert_message(&pool, session_id, "user", &content_json, None, None, false)
@@ -137,7 +149,7 @@ pub async fn send_chat_message(
                 "Glob".to_string(),
                 "Grep".to_string(),
             ],
-            content: content_blocks,
+            content: sidecar_blocks,
         })
         .await?;
         eprintln!("[chat cmd] Chat message sent to sidecar, waiting for events...");
