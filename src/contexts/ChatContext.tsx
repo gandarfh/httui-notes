@@ -20,6 +20,9 @@ export interface ChatContextValue {
   toolActivity: Map<string, ToolActivity>;
   pendingPermission: PendingPermission | null;
   respondPermission: (permissionId: string, behavior: "allow" | "deny") => Promise<void>;
+  // Edit & regenerate
+  editAndResend: (turnIndex: number, newText: string) => Promise<void>;
+  regenerate: () => Promise<void>;
 }
 
 export const ChatContext = createContext<ChatContextValue | null>(null);

@@ -66,7 +66,7 @@ export function sendChatMessage(
   sessionId: number,
   text: string,
   attachments: AttachmentInput[] = [],
-): Promise<void> {
+): Promise<string> {
   return invoke("send_chat_message", { sessionId, text, attachments });
 }
 
@@ -91,6 +91,13 @@ export function respondChatPermission(
     behavior,
     message: message ?? null,
   });
+}
+
+export function deleteMessagesAfter(
+  sessionId: number,
+  turnIndex: number,
+): Promise<void> {
+  return invoke("delete_messages_after", { sessionId, turnIndex });
 }
 
 export function updateChatSessionCwd(

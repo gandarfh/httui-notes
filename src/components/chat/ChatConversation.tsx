@@ -5,7 +5,7 @@ import { useStickyScroll } from "@/hooks/useStickyScroll";
 import { ChatMessageBubble } from "./ChatMessageBubble";
 
 export function ChatConversation() {
-  const { messages, streamingContent, isStreaming, error, toolActivity } = useChatContext();
+  const { messages, streamingContent, isStreaming, error, toolActivity, editAndResend, regenerate } = useChatContext();
   const { scrollRef, showJumpButton, scrollToBottom } = useStickyScroll([
     messages,
     streamingContent,
@@ -34,9 +34,19 @@ export function ChatConversation() {
           </Box>
         )}
 
-        {messages.map((msg) => (
-          <ChatMessageBubble key={msg.id} message={msg} />
-        ))}
+        {messages.map((msg, idx) => {
+          const lastAssistantIdx = [...messages].reverse().findIndex((m) => m.role === "assistant");
+          const isLastAssistant = lastAssistantIdx >= 0 && idx === messages.length - 1 - lastAssistantIdx;
+          return (
+            <ChatMessageBubble
+              key={msg.id}
+              message={msg}
+              isLastAssistant={isLastAssistant}
+              onEdit={!isStreaming ? editAndResend : undefined}
+              onRegenerate={!isStreaming ? regenerate : undefined}
+            />
+          );
+        })}
 
         {/* Streaming assistant message (not yet persisted) */}
         {isStreaming && (streamingContent || toolActivity.size > 0) && (

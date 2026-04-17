@@ -5,6 +5,7 @@ import {
   sendChatMessage,
   abortChat,
   respondChatPermission,
+  deleteMessagesAfter,
   type ChatMessage,
   type AttachmentInput,
 } from "@/lib/tauri/chat";
@@ -229,7 +230,8 @@ export function useChat(sessionId: number | null) {
       setIsStreaming(true);
 
       try {
-        await sendChatMessage(sessionId, text, attachments ?? []);
+        const requestId = await sendChatMessage(sessionId, text, attachments ?? []);
+        activeRequestId.current = requestId;
       } catch (e) {
         setIsStreaming(false);
         setError(e instanceof Error ? e.message : String(e));
@@ -256,6 +258,42 @@ export function useChat(sessionId: number | null) {
     []
   );
 
+  const editAndResend = useCallback(
+    async (turnIndex: number, newText: string) => {
+      if (sessionId === null) return;
+      // Delete this message and all after it
+      await deleteMessagesAfter(sessionId, turnIndex);
+      // Reload to get clean state
+      const msgs = await listChatMessages(sessionId);
+      setMessages(msgs);
+      // Send the edited message
+      await sendMsg(newText);
+    },
+    [sessionId, sendMsg]
+  );
+
+  const regenerate = useCallback(async () => {
+    if (sessionId === null || messages.length < 2) return;
+    // Find last user message
+    const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
+    if (!lastUserMsg) return;
+    // Delete the assistant response (and anything after the user msg)
+    await deleteMessagesAfter(sessionId, lastUserMsg.turn_index + 1);
+    const msgs = await listChatMessages(sessionId);
+    setMessages(msgs);
+    // Parse original user text
+    try {
+      const blocks = JSON.parse(lastUserMsg.content_json);
+      const text = Array.isArray(blocks)
+        ? blocks.filter((b: { type: string }) => b.type === "text").map((b: { text: string }) => b.text).join("\n")
+        : String(blocks);
+      await sendMsg(text);
+    } catch {
+      // Fallback
+      await sendMsg(lastUserMsg.content_json);
+    }
+  }, [sessionId, messages, sendMsg]);
+
   return {
     messages,
     streamingContent,
@@ -266,5 +304,7 @@ export function useChat(sessionId: number | null) {
     sendMessage: sendMsg,
     abort,
     respondPermission,
+    editAndResend,
+    regenerate,
   };
 }

@@ -1,5 +1,6 @@
-import { Box, HStack, Text, IconButton } from "@chakra-ui/react";
-import { LuPlus, LuTrash2 } from "react-icons/lu";
+import { useState } from "react";
+import { Box, HStack, Text, IconButton, Input } from "@chakra-ui/react";
+import { LuPlus, LuTrash2, LuSearch } from "react-icons/lu";
 import { useChatContext } from "@/contexts/ChatContext";
 
 function timeAgo(unixSeconds: number): string {
@@ -14,6 +15,14 @@ function timeAgo(unixSeconds: number): string {
 export function ChatSessionList() {
   const { sessions, activeSessionId, selectSession, createSession, archiveSession } =
     useChatContext();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showSearch, setShowSearch] = useState(false);
+
+  const filtered = searchQuery.trim()
+    ? sessions.filter((s) =>
+        s.title.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : sessions;
 
   return (
     <Box borderBottom="1px solid" borderColor="border" bg="bg">
@@ -21,19 +30,44 @@ export function ChatSessionList() {
         <Text fontSize="xs" fontWeight="semibold" color="fg.muted">
           Sessions
         </Text>
-        <IconButton
-          aria-label="New session"
-          size="2xs"
-          variant="ghost"
-          onClick={() => createSession()}
-        >
-          <LuPlus />
-        </IconButton>
+        <HStack gap={0}>
+          <IconButton
+            aria-label="Search sessions"
+            size="2xs"
+            variant="ghost"
+            onClick={() => setShowSearch((v) => !v)}
+            color={showSearch ? "blue.400" : undefined}
+          >
+            <LuSearch />
+          </IconButton>
+          <IconButton
+            aria-label="New session"
+            size="2xs"
+            variant="ghost"
+            onClick={() => createSession()}
+          >
+            <LuPlus />
+          </IconButton>
+        </HStack>
       </HStack>
 
-      {sessions.length > 0 && (
+      {showSearch && (
+        <Box px={2} pb={1}>
+          <Input
+            size="xs"
+            placeholder="Search sessions..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => e.stopPropagation()}
+            onMouseDown={(e: React.MouseEvent) => e.stopPropagation()}
+            autoFocus
+          />
+        </Box>
+      )}
+
+      {filtered.length > 0 && (
         <Box maxH="160px" overflowY="auto" px={1} pb={1}>
-          {sessions.map((s) => (
+          {filtered.map((s) => (
             <HStack
               key={s.id}
               px={2}
@@ -71,6 +105,12 @@ export function ChatSessionList() {
               </IconButton>
             </HStack>
           ))}
+        </Box>
+      )}
+
+      {searchQuery && filtered.length === 0 && (
+        <Box px={3} pb={2}>
+          <Text fontSize="2xs" color="fg.muted">No sessions found</Text>
         </Box>
       )}
     </Box>

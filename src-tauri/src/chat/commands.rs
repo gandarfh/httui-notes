@@ -65,7 +65,7 @@ pub async fn send_chat_message(
     session_id: i64,
     text: String,
     attachments: Vec<AttachmentInput>,
-) -> Result<(), String> {
+) -> Result<String, String> {
     eprintln!("[chat cmd] send_chat_message session_id={session_id} text={text:?}");
 
     // 1. Persist user message
@@ -342,7 +342,7 @@ pub async fn send_chat_message(
         }
     });
 
-    Ok(())
+    Ok(request_id)
 }
 
 #[tauri::command]
@@ -412,6 +412,21 @@ pub async fn save_attachment_tmp(
         .map_err(|e| format!("Failed to write tmp file: {e}"))?;
 
     Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub async fn delete_messages_after(
+    pool: tauri::State<'_, SqlitePool>,
+    session_id: i64,
+    turn_index: i64,
+) -> Result<(), String> {
+    sqlx::query("DELETE FROM messages WHERE session_id = ? AND turn_index >= ?")
+        .bind(session_id)
+        .bind(turn_index)
+        .execute(pool.inner())
+        .await
+        .map_err(|e| format!("Failed to delete messages: {e}"))?;
+    Ok(())
 }
 
 #[tauri::command]
