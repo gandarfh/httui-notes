@@ -2026,6 +2026,7 @@ dependencies = [
 name = "httui-notes"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "httui-core",
  "notify",
  "serde",
@@ -2040,6 +2041,7 @@ dependencies = [
  "tauri-plugin-sql",
  "tempfile",
  "tokio",
+ "uuid",
 ]
 
 [[package]]

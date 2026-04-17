@@ -1,0 +1,87 @@
+import { invoke } from "@tauri-apps/api/core";
+
+// --- Types ---
+
+export interface ChatSession {
+  id: number;
+  claude_session_id: string | null;
+  title: string;
+  cwd: string | null;
+  created_at: number;
+  updated_at: number;
+  archived_at: number | null;
+}
+
+export interface ChatToolCall {
+  id: number;
+  tool_use_id: string;
+  tool_name: string;
+  input_json: string;
+  result_json: string | null;
+  is_error: boolean;
+  created_at: number;
+}
+
+export interface ChatMessage {
+  id: number;
+  session_id: number;
+  role: "user" | "assistant";
+  turn_index: number;
+  content_json: string;
+  tokens_in: number | null;
+  tokens_out: number | null;
+  is_partial: boolean;
+  created_at: number;
+  tool_calls: ChatToolCall[];
+}
+
+export interface AttachmentInput {
+  media_type: string;
+  path: string;
+}
+
+// --- Commands ---
+
+export function createChatSession(cwd?: string): Promise<ChatSession> {
+  return invoke("create_chat_session", { cwd: cwd ?? null });
+}
+
+export function listChatSessions(): Promise<ChatSession[]> {
+  return invoke("list_chat_sessions");
+}
+
+export function getChatSession(sessionId: number): Promise<ChatSession> {
+  return invoke("get_chat_session", { sessionId });
+}
+
+export function archiveChatSession(sessionId: number): Promise<void> {
+  return invoke("archive_chat_session", { sessionId });
+}
+
+export function listChatMessages(sessionId: number): Promise<ChatMessage[]> {
+  return invoke("list_chat_messages", { sessionId });
+}
+
+export function sendChatMessage(
+  sessionId: number,
+  text: string,
+  attachments: AttachmentInput[] = [],
+): Promise<void> {
+  return invoke("send_chat_message", { sessionId, text, attachments });
+}
+
+export function abortChat(requestId: string): Promise<void> {
+  return invoke("abort_chat", { requestId });
+}
+
+export function respondChatPermission(
+  permissionId: string,
+  behavior: "allow" | "deny",
+  message?: string,
+): Promise<void> {
+  return invoke("respond_chat_permission", {
+    permissionId,
+    behavior,
+    message: message ?? null,
+  });
+}

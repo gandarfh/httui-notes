@@ -19,6 +19,8 @@ serde_json = "1"
 sqlx = { version = "0.8", features = ["sqlite"] }
 tokio = { version = "1", features = ["full"] }
 notify = "8"
+uuid = { version = "1", features = ["v4"] }
+base64 = "0.22"
 
 [dev-dependencies]
 tempfile = "3"
