@@ -4,7 +4,9 @@ import {
   listChatMessages,
   sendChatMessage,
   abortChat,
+  respondChatPermission,
   type ChatMessage,
+  type AttachmentInput,
 } from "@/lib/tauri/chat";
 
 interface ChatDeltaPayload {
@@ -24,11 +26,48 @@ interface ChatErrorPayload {
   message: string;
 }
 
+interface ChatToolUsePayload {
+  session_id: number;
+  tool_use_id: string;
+  name: string;
+  input: Record<string, unknown>;
+}
+
+interface ChatToolResultPayload {
+  session_id: number;
+  tool_use_id: string;
+  content: unknown[];
+  is_error: boolean;
+}
+
+interface ChatPermissionRequestPayload {
+  session_id: number;
+  permission_id: string;
+  tool_name: string;
+  tool_input: Record<string, unknown>;
+}
+
+export interface ToolActivity {
+  name: string;
+  input: Record<string, unknown>;
+  result?: string;
+  isError?: boolean;
+  pending: boolean;
+}
+
+export interface PendingPermission {
+  permissionId: string;
+  toolName: string;
+  toolInput: Record<string, unknown>;
+}
+
 export function useChat(sessionId: number | null) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [streamingContent, setStreamingContent] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [toolActivity, setToolActivity] = useState<Map<string, ToolActivity>>(new Map());
+  const [pendingPermission, setPendingPermission] = useState<PendingPermission | null>(null);
 
   const contentRef = useRef("");
   const rafId = useRef(0);
@@ -41,6 +80,8 @@ export function useChat(sessionId: number | null) {
       setStreamingContent("");
       setIsStreaming(false);
       setError(null);
+      setToolActivity(new Map());
+      setPendingPermission(null);
       return;
     }
 
@@ -60,11 +101,8 @@ export function useChat(sessionId: number | null) {
 
     const unlistens: Promise<() => void>[] = [];
 
-    console.log("[useChat] Setting up event listeners for session", sessionId);
-
     unlistens.push(
       listen<ChatDeltaPayload>("chat:delta", (event) => {
-        console.log("[useChat] chat:delta", event.payload);
         if (event.payload.session_id !== sessionId) return;
         contentRef.current += event.payload.text;
         cancelAnimationFrame(rafId.current);
@@ -75,25 +113,73 @@ export function useChat(sessionId: number | null) {
     );
 
     unlistens.push(
+      listen<ChatToolUsePayload>("chat:tool_use", (event) => {
+        if (event.payload.session_id !== sessionId) return;
+        const { tool_use_id, name, input } = event.payload;
+        setToolActivity((prev) => {
+          const next = new Map(prev);
+          next.set(tool_use_id, { name, input, pending: true });
+          return next;
+        });
+      })
+    );
+
+    unlistens.push(
+      listen<ChatToolResultPayload>("chat:tool_result", (event) => {
+        if (event.payload.session_id !== sessionId) return;
+        const { tool_use_id, content, is_error } = event.payload;
+        const resultText = content
+          .map((c: unknown) => {
+            if (typeof c === "object" && c !== null && "text" in c) {
+              return (c as { text: string }).text;
+            }
+            return JSON.stringify(c);
+          })
+          .join("\n");
+        setToolActivity((prev) => {
+          const next = new Map(prev);
+          const existing = next.get(tool_use_id);
+          if (existing) {
+            next.set(tool_use_id, { ...existing, result: resultText, isError: is_error, pending: false });
+          }
+          return next;
+        });
+      })
+    );
+
+    unlistens.push(
+      listen<ChatPermissionRequestPayload>("chat:permission_request", (event) => {
+        if (event.payload.session_id !== sessionId) return;
+        const { permission_id, tool_name, tool_input } = event.payload;
+        setPendingPermission({
+          permissionId: permission_id,
+          toolName: tool_name,
+          toolInput: tool_input,
+        });
+      })
+    );
+
+    unlistens.push(
       listen<ChatDonePayload>("chat:done", (event) => {
-        console.log("[useChat] chat:done", event.payload);
         if (event.payload.session_id !== sessionId) return;
         contentRef.current = "";
         setStreamingContent("");
         setIsStreaming(false);
+        setToolActivity(new Map());
+        setPendingPermission(null);
         activeRequestId.current = null;
-        // Reload messages from DB (source of truth)
         listChatMessages(sessionId).then(setMessages).catch(console.error);
       })
     );
 
     unlistens.push(
       listen<ChatErrorPayload>("chat:error", (event) => {
-        console.log("[useChat] chat:error", event.payload);
         if (event.payload.session_id !== sessionId) return;
         contentRef.current = "";
         setStreamingContent("");
         setIsStreaming(false);
+        setToolActivity(new Map());
+        setPendingPermission(null);
         activeRequestId.current = null;
 
         const { category, message } = event.payload;
@@ -104,7 +190,6 @@ export function useChat(sessionId: number | null) {
         } else {
           setError(message);
         }
-        // Reload messages (partial message may have been saved)
         listChatMessages(sessionId).then(setMessages).catch(console.error);
       })
     );
@@ -118,13 +203,13 @@ export function useChat(sessionId: number | null) {
   }, [sessionId]);
 
   const sendMsg = useCallback(
-    async (text: string, attachments?: import("@/lib/tauri/chat").AttachmentInput[]) => {
+    async (text: string, attachments?: AttachmentInput[]) => {
       if (sessionId === null) return;
       const hasContent = text.trim() || (attachments && attachments.length > 0);
       if (!hasContent) return;
       setError(null);
+      setToolActivity(new Map());
 
-      // Optimistically add user message to local state
       const optimisticMsg: ChatMessage = {
         id: -Date.now(),
         session_id: sessionId,
@@ -144,11 +229,8 @@ export function useChat(sessionId: number | null) {
       setIsStreaming(true);
 
       try {
-        console.log("[useChat] Sending message to session", sessionId, ":", text, "attachments:", attachments?.length ?? 0);
         await sendChatMessage(sessionId, text, attachments ?? []);
-        console.log("[useChat] sendChatMessage returned (command dispatched)");
       } catch (e) {
-        console.error("[useChat] sendChatMessage error:", e);
         setIsStreaming(false);
         setError(e instanceof Error ? e.message : String(e));
       }
@@ -162,12 +244,27 @@ export function useChat(sessionId: number | null) {
     }
   }, []);
 
+  const respondPermission = useCallback(
+    async (permissionId: string, behavior: "allow" | "deny") => {
+      try {
+        await respondChatPermission(permissionId, behavior);
+        setPendingPermission(null);
+      } catch (e) {
+        console.error("Failed to respond to permission:", e);
+      }
+    },
+    []
+  );
+
   return {
     messages,
     streamingContent,
     isStreaming,
     error,
+    toolActivity,
+    pendingPermission,
     sendMessage: sendMsg,
     abort,
+    respondPermission,
   };
 }

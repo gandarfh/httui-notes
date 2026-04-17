@@ -148,6 +148,9 @@ pub async fn send_chat_message(
                 "Read".to_string(),
                 "Glob".to_string(),
                 "Grep".to_string(),
+                "Bash".to_string(),
+                "Edit".to_string(),
+                "Write".to_string(),
             ],
             content: sidecar_blocks,
         })
@@ -163,15 +166,13 @@ pub async fn send_chat_message(
 
     tauri::async_runtime::spawn(async move {
         let mut accumulated_text = String::new();
-        eprintln!("[chat evt] Event loop started for request {request_id_clone}");
+        let mut assistant_msg_id: Option<i64> = None;
 
         while let Some(msg) = rx.recv().await {
-            eprintln!("[chat evt] Received: {:?}", std::mem::discriminant(&msg));
             match msg {
                 IncomingMessage::Session {
                     claude_session_id, ..
                 } => {
-                    eprintln!("[chat evt] Session: {claude_session_id}");
                     let _ = chat::update_session_claude_id(
                         &pool_clone,
                         session_id,
@@ -195,6 +196,23 @@ pub async fn send_chat_message(
                     input,
                     ..
                 } => {
+                    // Persist partial assistant message if not yet created
+                    if assistant_msg_id.is_none() {
+                        let content = serde_json::json!([{"type": "text", "text": accumulated_text}]);
+                        if let Ok(msg) = chat::insert_message(
+                            &pool_clone, session_id, "assistant",
+                            &content.to_string(), None, None, true,
+                        ).await {
+                            assistant_msg_id = Some(msg.id);
+                        }
+                    }
+                    // Persist tool call
+                    if let Some(msg_id) = assistant_msg_id {
+                        let input_str = serde_json::to_string(&input).unwrap_or_default();
+                        let _ = chat::insert_tool_call(
+                            &pool_clone, msg_id, &tool_use_id, &name, &input_str,
+                        ).await;
+                    }
                     let _ = app.emit(
                         "chat:tool_use",
                         ChatToolUseEvent {
@@ -211,6 +229,11 @@ pub async fn send_chat_message(
                     is_error,
                     ..
                 } => {
+                    // Persist tool result
+                    let result_str = serde_json::to_string(&content).unwrap_or_default();
+                    let _ = chat::update_tool_call_result(
+                        &pool_clone, &tool_use_id, &result_str, is_error,
+                    ).await;
                     let _ = app.emit(
                         "chat:tool_result",
                         ChatToolResultEvent {
@@ -238,23 +261,36 @@ pub async fn send_chat_message(
                     );
                 }
                 IncomingMessage::Done { usage, stop_reason, .. } => {
-                    eprintln!("[chat evt] Done. accumulated_text={:?} ({} chars)", &accumulated_text[..accumulated_text.len().min(100)], accumulated_text.len());
-                    // Persist assistant message
+                    // Persist or update assistant message
                     let content = serde_json::json!([
                         {"type": "text", "text": accumulated_text}
                     ]);
                     let tokens_in = usage.as_ref().map(|u| u.input_tokens as i64);
                     let tokens_out = usage.as_ref().map(|u| u.output_tokens as i64);
-                    let _ = chat::insert_message(
-                        &pool_clone,
-                        session_id,
-                        "assistant",
-                        &content.to_string(),
-                        tokens_in,
-                        tokens_out,
-                        false,
-                    )
-                    .await;
+
+                    if let Some(msg_id) = assistant_msg_id {
+                        // Update partial message to final
+                        let _ = sqlx::query(
+                            "UPDATE messages SET content_json = ?, tokens_in = ?, tokens_out = ?, is_partial = 0 WHERE id = ?"
+                        )
+                        .bind(content.to_string())
+                        .bind(tokens_in)
+                        .bind(tokens_out)
+                        .bind(msg_id)
+                        .execute(&pool_clone)
+                        .await;
+                    } else {
+                        let _ = chat::insert_message(
+                            &pool_clone,
+                            session_id,
+                            "assistant",
+                            &content.to_string(),
+                            tokens_in,
+                            tokens_out,
+                            false,
+                        )
+                        .await;
+                    }
 
                     let _ = app.emit(
                         "chat:done",
@@ -376,6 +412,21 @@ pub async fn save_attachment_tmp(
         .map_err(|e| format!("Failed to write tmp file: {e}"))?;
 
     Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub async fn update_chat_session_cwd(
+    pool: tauri::State<'_, SqlitePool>,
+    session_id: i64,
+    cwd: Option<String>,
+) -> Result<(), String> {
+    sqlx::query("UPDATE sessions SET cwd = ?, updated_at = unixepoch() WHERE id = ?")
+        .bind(&cwd)
+        .bind(session_id)
+        .execute(pool.inner())
+        .await
+        .map_err(|e| format!("Failed to update session cwd: {e}"))?;
+    Ok(())
 }
 
 fn base64_encode(bytes: &[u8]) -> String {
