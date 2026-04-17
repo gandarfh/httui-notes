@@ -286,8 +286,13 @@ fn build_connection_string(conn: &Connection) -> Result<String, String> {
             } else {
                 db_password.to_string()
             };
+            let ssl = match conn.ssl_mode.as_deref().unwrap_or("disable") {
+                "require" => "required",
+                "verify-ca" | "verify-full" => "required",
+                _ => "disabled",
+            };
             Ok(format!(
-                "mysql://{user}:{password}@{host}:{port}/{db}"
+                "mysql://{user}:{password}@{host}:{port}/{db}?ssl-mode={ssl}"
             ))
         }
         "sqlite" => {
