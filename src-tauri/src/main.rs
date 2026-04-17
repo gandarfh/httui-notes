@@ -4,9 +4,35 @@
 use sqlx::sqlite::SqlitePool;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tauri::Manager;
+use tauri::{AppHandle, Emitter, Manager};
 
-use httui_notes::db::connections::{self, PoolManager};
+use httui_notes::db::connections::{self, PoolManager, StatusEmitter};
+
+// --- Tauri StatusEmitter implementation ---
+
+#[derive(Clone, serde::Serialize)]
+struct ConnectionStatusEvent {
+    connection_id: String,
+    name: String,
+    status: String,
+}
+
+struct TauriStatusEmitter {
+    app_handle: AppHandle,
+}
+
+impl StatusEmitter for TauriStatusEmitter {
+    fn emit_connection_status(&self, connection_id: &str, name: &str, status: &str) {
+        let _ = self.app_handle.emit(
+            "connection-status",
+            ConnectionStatusEvent {
+                connection_id: connection_id.to_string(),
+                name: name.to_string(),
+                status: status.to_string(),
+            },
+        );
+    }
+}
 
 // --- Execute block command ---
 
@@ -495,7 +521,10 @@ fn main() {
             app.manage(pool.clone());
 
             // Connection pool manager
-            let conn_manager = Arc::new(PoolManager::new(pool, app.handle().clone()));
+            let emitter = Arc::new(TauriStatusEmitter {
+                app_handle: app.handle().clone(),
+            });
+            let conn_manager = Arc::new(PoolManager::new_with_emitter(pool, emitter));
             app.manage(conn_manager.clone());
 
             // TTL cleanup task
