@@ -19,13 +19,13 @@ export async function handleChat(cmd: ChatCommand): Promise<void> {
   const { request_id, claude_session_id, cwd, allowed_tools, content } = cmd;
 
   try {
-    // Build prompt from content blocks
+    const hasImages = content.some((b) => b.type === "image");
     const textParts = content
       .filter((b): b is { type: "text"; text: string } => b.type === "text")
       .map((b) => b.text);
-    const prompt = textParts.join("\n");
+    const textPrompt = textParts.join("\n");
 
-    if (!prompt.trim() && content.length === 0) {
+    if (!textPrompt.trim() && content.length === 0) {
       send({
         type: "error",
         request_id,
@@ -33,6 +33,36 @@ export async function handleChat(cmd: ChatCommand): Promise<void> {
         message: "Empty message content",
       });
       return;
+    }
+
+    // When images are present, use SDKUserMessage format via async iterable
+    // so the API receives the image content blocks
+    let prompt: string | AsyncIterable<import("@anthropic-ai/claude-agent-sdk").SDKUserMessage>;
+    if (hasImages) {
+      const messageContent = content.map((block) => {
+        if (block.type === "text") {
+          return { type: "text" as const, text: block.text };
+        }
+        return {
+          type: "image" as const,
+          source: block.source,
+        };
+      });
+
+      async function* singleMessage() {
+        yield {
+          type: "user" as const,
+          message: {
+            role: "user" as const,
+            content: messageContent,
+          },
+          parent_tool_use_id: null,
+          session_id: "",
+        };
+      }
+      prompt = singleMessage();
+    } else {
+      prompt = textPrompt;
     }
 
     const q = query({
