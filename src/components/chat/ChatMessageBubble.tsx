@@ -1,7 +1,9 @@
-import { memo } from "react";
-import { Box, Flex, HStack, Image, Text } from "@chakra-ui/react";
+import { memo, useState, useCallback, useRef } from "react";
+import { Box, Flex, HStack, IconButton, Image, Text } from "@chakra-ui/react";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { LuBot } from "react-icons/lu";
+import { LuBot, LuPencil, LuRefreshCw, LuFileDown } from "react-icons/lu";
+import { save } from "@tauri-apps/plugin-dialog";
+import { writeFile } from "@tauri-apps/plugin-fs";
 import type { ChatMessage } from "@/lib/tauri/chat";
 import type { ToolActivity } from "@/hooks/useChat";
 import { ChatMarkdown } from "./ChatMarkdown";
@@ -46,20 +48,111 @@ interface ChatMessageBubbleProps {
   message: ChatMessage;
   streamingContent?: string;
   toolActivity?: Map<string, ToolActivity>;
+  isLastAssistant?: boolean;
+  onEdit?: (turnIndex: number, newText: string) => void;
+  onRegenerate?: () => void;
 }
 
 export const ChatMessageBubble = memo(function ChatMessageBubble({
   message,
   streamingContent,
   toolActivity,
+  isLastAssistant,
+  onEdit,
+  onRegenerate,
 }: ChatMessageBubbleProps) {
   const isUser = message.role === "user";
   const parsed = parseMessageContent(message.content_json);
   const content = streamingContent ?? parsed.text;
 
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState("");
+  const editRef = useRef<HTMLTextAreaElement>(null);
+
+  const startEdit = useCallback(() => {
+    setEditText(parsed.text);
+    setEditing(true);
+    setTimeout(() => editRef.current?.focus(), 0);
+  }, [parsed.text]);
+
+  const confirmEdit = useCallback(() => {
+    if (editText.trim() && onEdit) {
+      onEdit(message.turn_index, editText.trim());
+    }
+    setEditing(false);
+  }, [editText, onEdit, message.turn_index]);
+
   if (isUser) {
+    if (editing) {
+      return (
+        <Box display="flex" justifyContent="flex-end" px={3} py={1.5}>
+          <Box maxW="85%" w="100%">
+            <Box
+              as="textarea"
+              ref={editRef}
+              value={editText}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setEditText(e.target.value)}
+              onKeyDown={(e: React.KeyboardEvent) => {
+                e.stopPropagation();
+                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                  e.preventDefault();
+                  confirmEdit();
+                }
+                if (e.key === "Escape") setEditing(false);
+              }}
+              onMouseDown={(e: React.MouseEvent) => e.stopPropagation()}
+              w="100%"
+              bg="bg.subtle"
+              border="1px solid"
+              borderColor="blue.500"
+              rounded="md"
+              px={3}
+              py={2}
+              fontSize="sm"
+              fontFamily="body"
+              resize="none"
+              minH="60px"
+              _focus={{ outline: "none" }}
+            />
+            <HStack justify="flex-end" mt={1} gap={1}>
+              <Text fontSize="2xs" color="fg.muted">Esc cancel · Cmd+Enter send</Text>
+              <Box
+                as="button"
+                px={2} py={0.5} rounded="sm" fontSize="xs" bg="bg.subtle"
+                border="1px solid" borderColor="border" cursor="pointer"
+                onClick={() => setEditing(false)}
+              >
+                Cancel
+              </Box>
+              <Box
+                as="button"
+                px={2} py={0.5} rounded="sm" fontSize="xs" bg="blue.500" color="white" cursor="pointer"
+                onClick={confirmEdit}
+              >
+                Send
+              </Box>
+            </HStack>
+          </Box>
+        </Box>
+      );
+    }
+
     return (
-      <Box display="flex" justifyContent="flex-end" px={3} py={1.5}>
+      <Box display="flex" justifyContent="flex-end" px={3} py={1.5} role="group">
+        {onEdit && message.id > 0 && (
+          <IconButton
+            aria-label="Edit message"
+            size="2xs"
+            variant="ghost"
+            opacity={0}
+            _groupHover={{ opacity: 0.5 }}
+            onClick={startEdit}
+            alignSelf="center"
+            mr={1}
+          >
+            <LuPencil />
+          </IconButton>
+        )}
         <Box
           maxW="85%"
           bg="blue.500/10"
@@ -135,10 +228,40 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
               Response was interrupted
             </Text>
           )}
-          <Text fontSize="2xs" color="fg.muted" mt={1}>
-            {formatTime(message.created_at)}
-            {message.tokens_out != null && ` · ${message.tokens_out} tokens`}
-          </Text>
+          <HStack mt={1} gap={1}>
+            <Text fontSize="2xs" color="fg.muted">
+              {formatTime(message.created_at)}
+              {message.tokens_out != null && ` · ${message.tokens_out} tokens`}
+            </Text>
+            {message.id > 0 && (
+              <IconButton
+                aria-label="Save as note"
+                size="2xs"
+                variant="ghost"
+                onClick={async () => {
+                  const path = await save({
+                    filters: [{ name: "Markdown", extensions: ["md"] }],
+                    defaultPath: "chat-response.md",
+                  });
+                  if (path) {
+                    await writeFile(path, new TextEncoder().encode(content));
+                  }
+                }}
+              >
+                <LuFileDown size={10} />
+              </IconButton>
+            )}
+            {isLastAssistant && onRegenerate && message.id > 0 && (
+              <IconButton
+                aria-label="Regenerate"
+                size="2xs"
+                variant="ghost"
+                onClick={onRegenerate}
+              >
+                <LuRefreshCw size={10} />
+              </IconButton>
+            )}
+          </HStack>
         </Box>
       </HStack>
     </Box>

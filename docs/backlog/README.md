@@ -42,7 +42,7 @@ Epic 00 (Project Setup)
 | 11  | [Chat Sidecar & Protocolo](11-chat-sidecar.md)  | 6       | 00          | done    |
 | 12  | [Chat MVP](12-chat-mvp.md)                      | 8       | 11          | done    |
 | 13  | [Chat Agente](13-chat-agente.md)                | 6       | 12          | done    |
-| 14  | [Chat QoL](14-chat-qol.md)                      | 5       | 13          | backlog |
+| 14  | [Chat QoL](14-chat-qol.md)                      | 5       | 13          | done    |
 
 ## Ordem sugerida de implementacao
 
