@@ -445,7 +445,9 @@ function HttpInput({
                 extensions={[json(), EditorView.lineWrapping, cmTransparentBg, ...referenceHighlight, refAutocomplete, refTooltip]}
                 basicSetup={{ lineNumbers: false, foldGutter: false, autocompletion: false }}
                 theme={cmTheme}
-                height="80px"
+                height="auto"
+                minHeight="80px"
+                maxHeight="400px"
                 style={{ fontSize: "12px" }}
               />
               <IconButton

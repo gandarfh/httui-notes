@@ -1,20 +1,30 @@
-.PHONY: dev build install install-deps install-app uninstall lint check clean test test-rust test-front front icons
+.PHONY: dev build install install-deps install-app uninstall lint check clean test test-rust test-front front icons sidecar
 
 # Development — frontend (Vite HMR) + backend (Rust rebuild on change)
-dev:
+dev: sidecar
 	npm run tauri dev
 
 # Frontend only (sem janela desktop)
 front:
 	npm run dev
 
+# Build do sidecar (claude-sidecar-<target-triple>) exigido por tauri.conf.json externalBin
+sidecar:
+	@command -v bun >/dev/null 2>&1 || { \
+		echo "Error: bun is required to build the sidecar."; \
+		echo "Install with: curl -fsSL https://bun.sh/install | bash"; \
+		exit 1; \
+	}
+	cd sidecar && bun install && bun run build
+
 # Build de producao (com bundle .app para macOS)
-build:
+build: sidecar
 	npm run tauri build -- --bundles app
 
 # Instalar dependencias
 install-deps:
 	npm install
+	cd sidecar && (command -v bun >/dev/null 2>&1 && bun install || echo "skip: bun not installed")
 	cd src-tauri && cargo fetch
 
 # Build + instalar app em /Applications (macOS)
