@@ -3,7 +3,9 @@ import { Box, Flex, HStack, Image, Text } from "@chakra-ui/react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { LuBot } from "react-icons/lu";
 import type { ChatMessage } from "@/lib/tauri/chat";
+import type { ToolActivity } from "@/hooks/useChat";
 import { ChatMarkdown } from "./ChatMarkdown";
+import { ToolUseBlock } from "./ToolUseBlock";
 
 interface ContentBlock {
   type: string;
@@ -43,11 +45,13 @@ function formatTime(unixSeconds: number): string {
 interface ChatMessageBubbleProps {
   message: ChatMessage;
   streamingContent?: string;
+  toolActivity?: Map<string, ToolActivity>;
 }
 
 export const ChatMessageBubble = memo(function ChatMessageBubble({
   message,
   streamingContent,
+  toolActivity,
 }: ChatMessageBubbleProps) {
   const isUser = message.role === "user";
   const parsed = parseMessageContent(message.content_json);
@@ -113,6 +117,19 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
         </Box>
         <Box flex={1} minW={0}>
           <ChatMarkdown content={content} />
+
+          {/* Persisted tool calls (from DB) */}
+          {message.tool_calls.length > 0 &&
+            message.tool_calls.map((tc) => (
+              <ToolUseBlock key={tc.tool_use_id} toolCall={tc} />
+            ))}
+
+          {/* Live tool activity (during streaming) */}
+          {toolActivity &&
+            Array.from(toolActivity.entries()).map(([id, act]) => (
+              <ToolUseBlock key={id} activity={act} />
+            ))}
+
           {message.is_partial && (
             <Text fontSize="2xs" color="orange.400" mt={1}>
               Response was interrupted

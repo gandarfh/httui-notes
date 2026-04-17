@@ -92,3 +92,10 @@ export function respondChatPermission(
     message: message ?? null,
   });
 }
+
+export function updateChatSessionCwd(
+  sessionId: number,
+  cwd: string | null,
+): Promise<void> {
+  return invoke("update_chat_session_cwd", { sessionId, cwd });
+}

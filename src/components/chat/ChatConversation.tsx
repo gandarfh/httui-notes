@@ -5,7 +5,7 @@ import { useStickyScroll } from "@/hooks/useStickyScroll";
 import { ChatMessageBubble } from "./ChatMessageBubble";
 
 export function ChatConversation() {
-  const { messages, streamingContent, isStreaming, error } = useChatContext();
+  const { messages, streamingContent, isStreaming, error, toolActivity } = useChatContext();
   const { scrollRef, showJumpButton, scrollToBottom } = useStickyScroll([
     messages,
     streamingContent,
@@ -39,7 +39,7 @@ export function ChatConversation() {
         ))}
 
         {/* Streaming assistant message (not yet persisted) */}
-        {isStreaming && streamingContent && (
+        {isStreaming && (streamingContent || toolActivity.size > 0) && (
           <ChatMessageBubble
             message={{
               id: -1,
@@ -54,6 +54,7 @@ export function ChatConversation() {
               tool_calls: [],
             }}
             streamingContent={streamingContent}
+            toolActivity={toolActivity}
           />
         )}
 
