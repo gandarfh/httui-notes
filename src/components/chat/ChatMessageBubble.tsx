@@ -87,12 +87,11 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
       return (
         <Box display="flex" justifyContent="flex-end" px={3} py={1.5}>
           <Box maxW="85%" w="100%">
-            <Box
-              as="textarea"
+            <textarea
               ref={editRef}
               value={editText}
-              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setEditText(e.target.value)}
-              onKeyDown={(e: React.KeyboardEvent) => {
+              onChange={(e) => setEditText(e.target.value)}
+              onKeyDown={(e) => {
                 e.stopPropagation();
                 if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
                   e.preventDefault();
@@ -100,19 +99,20 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
                 }
                 if (e.key === "Escape") setEditing(false);
               }}
-              onMouseDown={(e: React.MouseEvent) => e.stopPropagation()}
-              w="100%"
-              bg="bg.subtle"
-              border="1px solid"
-              borderColor="blue.500"
-              rounded="md"
-              px={3}
-              py={2}
-              fontSize="sm"
-              fontFamily="body"
-              resize="none"
-              minH="60px"
-              _focus={{ outline: "none" }}
+              onMouseDown={(e) => e.stopPropagation()}
+              style={{
+                width: "100%",
+                background: "var(--chakra-colors-bg-subtle)",
+                border: "1px solid var(--chakra-colors-blue-500)",
+                borderRadius: "var(--chakra-radii-md)",
+                padding: "8px 12px",
+                fontSize: "14px",
+                fontFamily: "var(--chakra-fonts-body)",
+                resize: "none",
+                minHeight: "60px",
+                outline: "none",
+                color: "var(--chakra-colors-fg)",
+              }}
             />
             <HStack justify="flex-end" mt={1} gap={1}>
               <Text fontSize="2xs" color="fg.muted">Esc cancel · Cmd+Enter send</Text>

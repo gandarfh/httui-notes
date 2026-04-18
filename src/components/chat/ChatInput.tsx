@@ -201,42 +201,37 @@ export function ChatInput() {
           <LuPaperclip />
         </IconButton>
 
-        <Box
-          as="textarea"
+        <textarea
           ref={textareaRef}
           value={text}
-          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => {
+          onChange={(e) => {
             setText(e.target.value);
             adjustHeight();
           }}
-          onKeyDown={handleKeyDown}
-          onMouseDown={(e: React.MouseEvent) => e.stopPropagation()}
-          onFocus={(e: React.FocusEvent) => e.stopPropagation()}
-          onPaste={handlePaste}
+          onKeyDown={handleKeyDown as unknown as React.KeyboardEventHandler<HTMLTextAreaElement>}
+          onMouseDown={(e) => e.stopPropagation()}
+          onFocus={(e) => e.stopPropagation()}
+          onPaste={handlePaste as unknown as React.ClipboardEventHandler<HTMLTextAreaElement>}
           placeholder={
             activeSessionId ? "Message... (Cmd+Enter to send)" : "Create a session first"
           }
           disabled={activeSessionId === null}
           rows={1}
-          flex={1}
-          bg="bg.subtle"
-          border="1px solid"
-          borderColor="border"
-          rounded="md"
-          px={3}
-          py={2}
-          fontSize="sm"
-          fontFamily="body"
-          resize="none"
-          minH="40px"
-          maxH="200px"
-          overflowY="auto"
-          _focus={{
+          style={{
+            flex: 1,
+            background: "var(--chakra-colors-bg-subtle)",
+            border: "1px solid var(--chakra-colors-border)",
+            borderRadius: "var(--chakra-radii-md)",
+            padding: "8px 12px",
+            fontSize: "14px",
+            fontFamily: "var(--chakra-fonts-body)",
+            resize: "none",
+            minHeight: "40px",
+            maxHeight: "200px",
+            overflowY: "auto",
             outline: "none",
-            borderColor: "blue.500",
-            boxShadow: "0 0 0 1px var(--chakra-colors-blue-500)",
+            color: "var(--chakra-colors-fg)",
           }}
-          _placeholder={{ color: "fg.muted" }}
         />
 
         {isStreaming ? (

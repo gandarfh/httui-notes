@@ -12,7 +12,9 @@ O app combina ideias do Notion (block editor), Obsidian (vault de markdown), DBe
 
 -   **Storage:** Arquivos `.md` no filesystem + SQLite interno do app
     
--   **Backend:** Rust via Tauri v2 (desktop framew**Frontend:** React + TypeScript + daisyUI (Tailwind)
+-   **Backend:** Rust via Tauri v2 (desktop frame
+    
+-   **Frontend:** React + TypeScript + daisyUI (Tailwind)
     
 -   **Editor framework:** TipTap (ProseMirror) com custom extensions para blocos executáveis
     

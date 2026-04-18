@@ -1,5 +1,5 @@
 import { memo, useState } from "react";
-import { Box, HStack, Text, IconButton } from "@chakra-ui/react";
+import { Box, HStack, Text } from "@chakra-ui/react";
 import { LuChevronDown, LuChevronRight, LuWrench, LuLoader, LuCheck, LuX } from "react-icons/lu";
 import type { ChatToolCall } from "@/lib/tauri/chat";
 import type { ToolActivity } from "@/hooks/useChat";

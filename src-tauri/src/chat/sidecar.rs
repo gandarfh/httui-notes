@@ -149,9 +149,10 @@ impl SidecarManager {
         pong_notify: &Arc<Notify>,
     ) -> Result<(), String> {
         // Use bun to run the sidecar TypeScript directly (avoids compiled binary signing issues on macOS)
-        let sidecar_script = std::env::current_dir()
-            .map_err(|e| format!("Failed to get cwd: {e}"))?
-            .join("../sidecar/src/index.ts");
+        let cwd = std::env::current_dir()
+            .map_err(|e| format!("Failed to get cwd: {e}"))?;
+        let sidecar_script = cwd.join("../sidecar/src/index.ts");
+        eprintln!("[sidecar] cwd={}, script={}", cwd.display(), sidecar_script.display());
 
         let sidecar_cmd = app
             .shell()

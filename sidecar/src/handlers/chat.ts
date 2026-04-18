@@ -65,6 +65,35 @@ export async function handleChat(cmd: ChatCommand): Promise<void> {
       prompt = textPrompt;
     }
 
+    // Build MCP server config for httui-mcp
+    const mcpServers: Record<string, { command: string; args: string[] }> = {};
+    const effectiveCwd = cwd || process.cwd();
+    log("cwd:", cwd, "effectiveCwd:", effectiveCwd);
+    {
+      const path = await import("path");
+      // Try multiple locations for the httui-mcp binary
+      const candidates = [
+        path.resolve(process.cwd(), "target/debug/httui-mcp"),
+        path.resolve(process.cwd(), "../target/debug/httui-mcp"),
+        path.resolve(import.meta.dirname ?? ".", "../../target/debug/httui-mcp"),
+      ];
+      const fs = await import("fs");
+      const mcpBinary = candidates.find((p) => fs.existsSync(p));
+      if (mcpBinary) {
+        // Resolve the app database path (matches Tauri's app_data_dir for identifier "com.notes.app")
+        const os = await import("os");
+        const home = os.homedir();
+        const dbDir = path.join(home, "Library/Application Support/com.notes.app");
+        log("Using MCP binary:", mcpBinary, "db:", dbDir);
+        mcpServers["httui_notes"] = {
+          command: mcpBinary,
+          args: ["--vault", effectiveCwd, "--db", dbDir],
+        };
+      } else {
+        log("MCP binary not found, tried:", candidates.join(", "));
+      }
+    }
+
     const q = query({
       prompt,
       options: {
@@ -73,6 +102,30 @@ export async function handleChat(cmd: ChatCommand): Promise<void> {
         allowedTools: allowed_tools,
         permissionMode: "default",
         includePartialMessages: true,
+        systemPrompt: {
+          type: "preset" as const,
+          preset: "claude_code" as const,
+          append: `
+You are inside the httui_notes desktop app — a markdown editor with executable blocks (HTTP requests, DB queries, E2E tests).
+
+IMPORTANT: You have access to an MCP server called "httui_notes" with these tools:
+- list_connections: List all database connections
+- list_environments / get_env_variables / set_active_environment: Manage environments
+- list_notes / read_note / create_note / update_note / search_notes: Manage vault notes
+- list_blocks / execute_block: List and run executable blocks in notes
+- get_schema: Get database schema for a connection
+- test_connection: Test database connectivity
+
+ALWAYS prefer these MCP tools over generic file system tools (Read, Grep, Bash) when the user asks about:
+- Database connections, schemas, or queries → use list_connections, get_schema, test_connection
+- Environment variables → use list_environments, get_env_variables
+- Notes content → use list_notes, read_note, search_notes
+- Running blocks → use execute_block
+
+Only fall back to file system tools if the MCP tools cannot accomplish the task.
+`.trim(),
+        },
+        ...(Object.keys(mcpServers).length > 0 ? { mcpServers } : {}),
         canUseTool: async (toolName, toolInput, { signal }) => {
           const permissionId = `perm_${++permissionCounter}`;
 
