@@ -12,6 +12,7 @@ function createActions() {
     openQuickOpen: vi.fn(),
     openSearchPanel: vi.fn(),
     forceSave: vi.fn(),
+    toggleChat: vi.fn(),
   };
 }
 

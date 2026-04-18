@@ -118,8 +118,23 @@ pub async fn send_chat_message(
         }
     }
 
-    // 3. Get session for claude_session_id
+    // 3. Get session for claude_session_id + resolve cwd
     let session = chat::get_session(&pool, session_id).await?;
+
+    // Use session cwd, or fall back to active vault path
+    let effective_cwd = if session.cwd.is_some() {
+        session.cwd.clone()
+    } else {
+        // Read active vault from app_config
+        let row: Option<(String,)> = sqlx::query_as(
+            "SELECT value FROM app_config WHERE key = 'active_vault'"
+        )
+        .fetch_optional(pool.inner())
+        .await
+        .ok()
+        .flatten();
+        row.map(|r| r.0)
+    };
 
     // 4. Send to sidecar (lazy spawn on first use)
     let request_id = Uuid::new_v4().to_string();
@@ -143,7 +158,7 @@ pub async fn send_chat_message(
         mgr.send(OutgoingMessage::Chat {
             request_id: request_id.clone(),
             claude_session_id: session.claude_session_id,
-            cwd: session.cwd,
+            cwd: effective_cwd,
             allowed_tools: vec![
                 "Read".to_string(),
                 "Glob".to_string(),
