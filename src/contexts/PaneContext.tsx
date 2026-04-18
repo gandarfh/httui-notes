@@ -5,7 +5,6 @@ import type { PaneActions } from "@/hooks/usePaneState";
 export interface PaneContextValue {
   layout: PaneLayout;
   activePaneId: string;
-  contentVersion: number;
   editorContents: Map<string, string>;
   unsavedFiles: Set<string>;
   getActiveLeaf: () => LeafPane | null;

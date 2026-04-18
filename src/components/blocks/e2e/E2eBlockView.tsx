@@ -784,6 +784,30 @@ function E2eBlockViewInner({ node, editor, getPos, updateAttributes, selected }:
   const displayMode = (node.attrs.displayMode as DisplayMode) || "input";
   const executionState = (node.attrs.executionState as ExecutionState) || "idle";
 
+  // Re-sync local data when rawContent changes externally (e.g. MCP update via setContent)
+  const rawContent = (node.attrs.content as string) ?? "";
+  const lastRawContentRef = useRef(rawContent);
+  if (rawContent !== lastRawContentRef.current) {
+    lastRawContentRef.current = rawContent;
+    const currentSerialized = JSON.stringify(data);
+    if (rawContent !== currentSerialized) {
+      try {
+        const parsed = JSON.parse(rawContent || "{}");
+        setData({
+          baseUrl: parsed.baseUrl ?? "",
+          headers: parsed.headers ?? [],
+          steps: (parsed.steps ?? []).map((s: Partial<E2eStep>) => ({
+            ...DEFAULT_STEP,
+            ...s,
+            expect: { ...DEFAULT_STEP.expect, ...s.expect },
+          })),
+        });
+      } catch {
+        setData({ ...DEFAULT_E2E_DATA });
+      }
+    }
+  }
+
   // Debounced content sync
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dataRef = useRef(data);
