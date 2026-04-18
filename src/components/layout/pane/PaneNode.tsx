@@ -22,7 +22,7 @@ export function bumpContentVersion(filePath: string): number {
 }
 
 export function PaneNode({ layout, path }: { layout: PaneLayout; path: number[] }) {
-  const { activePaneId, editorContents, unsavedFiles, actions, handleEditorChange } = usePaneContext();
+  const { activePaneId, contentVersion, editorContents, unsavedFiles, actions, handleEditorChange } = usePaneContext();
   const { vimEnabled, setVimMode } = useEditorSettings();
   const conflictCtx = useConflictContext();
 
@@ -65,6 +65,7 @@ export function PaneNode({ layout, path }: { layout: PaneLayout; path: number[] 
                 content={content}
                 onChange={(c) => handleEditorChange(layout.id, activeTab.filePath, c, activeTab.vaultPath)}
                 filePath={activeTab.filePath}
+                contentVersion={contentVersion}
                 vimEnabled={vimEnabled}
                 onVimModeChange={setVimMode}
               />

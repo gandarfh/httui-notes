@@ -33,10 +33,15 @@ export function useFileConflicts({
   useEffect(() => {
     const unlisten = listen<FileEvent>("fs-event", async (event) => {
       const { kind, path } = event.payload;
+      console.log("[fileConflicts] fs-event:", kind, path);
+
       if (kind !== "Modified") return;
 
       const openFiles = openFilesRef.current();
+      console.log("[fileConflicts] openFiles:", openFiles, "match:", openFiles.includes(path));
       if (!openFiles.includes(path)) return;
+
+      console.log("[fileConflicts] unsaved:", unsavedFiles.has(path));
 
       // If file has unsaved edits, show conflict banner
       if (unsavedFiles.has(path)) {

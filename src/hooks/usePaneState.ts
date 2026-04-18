@@ -13,6 +13,7 @@ export interface PaneActions {
   splitHorizontal: () => void;
   nextTab: () => void;
   updateContent: (filePath: string, content: string) => void;
+  reloadContent: (filePath: string, content: string) => void;
   markUnsaved: (paneId: string, filePath: string, unsaved: boolean) => void;
   resizeSplit: (path: number[], ratio: number) => void;
   restoreLayout: (layout: PaneLayout, activePaneId: string, contents?: Map<string, string>) => void;
@@ -96,6 +97,7 @@ export function usePaneState() {
   const [activePaneId, setActivePaneId] = useState(
     (layout as LeafPane).id,
   );
+  const [contentVersion, setContentVersion] = useState(0);
 
   const getActiveLeaf = useCallback(
     (): LeafPane | null => findLeaf(layout, activePaneId),
@@ -207,6 +209,14 @@ export function usePaneState() {
     [],
   );
 
+  const reloadContent = useCallback(
+    (filePath: string, content: string) => {
+      editorContentsStore.set(filePath, content);
+      setContentVersion((v) => v + 1);
+    },
+    [],
+  );
+
   const markUnsaved = useCallback((_paneId: string, filePath: string, unsaved: boolean) => {
     if (unsaved) {
       unsavedFilesStore.add(filePath);
@@ -235,6 +245,7 @@ export function usePaneState() {
   return {
     layout,
     activePaneId,
+    contentVersion,
     editorContents: editorContentsStore,
     unsavedFiles: unsavedFilesStore,
     scrollPositions: scrollPositionsStore,
@@ -250,6 +261,7 @@ export function usePaneState() {
       splitHorizontal,
       nextTab,
       updateContent,
+      reloadContent,
       markUnsaved,
       resizeSplit,
       restoreLayout,
