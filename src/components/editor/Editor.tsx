@@ -96,6 +96,7 @@ interface EditorProps {
   content: string;
   onChange: (content: string) => void;
   filePath: string;
+  contentVersion?: number;
   vimEnabled?: boolean;
   onVimModeChange?: (mode: VimMode) => void;
 }
@@ -104,6 +105,7 @@ export function Editor({
   content,
   onChange,
   filePath,
+  contentVersion = 0,
   vimEnabled = false,
   onVimModeChange,
 }: EditorProps) {
@@ -181,11 +183,13 @@ export function Editor({
     [vimEnabled],
   );
 
-  // Only set content when switching files (filePath changes)
+  // Set content when switching files OR when content is reloaded externally
   const prevFilePathRef = useRef(filePath);
+  const prevVersionRef = useRef(contentVersion);
 
-  if (editor && filePath !== prevFilePathRef.current) {
+  if (editor && (filePath !== prevFilePathRef.current || contentVersion !== prevVersionRef.current)) {
     prevFilePathRef.current = filePath;
+    prevVersionRef.current = contentVersion;
     isExternalUpdate.current = true;
     editor.commands.setContent(content);
     isExternalUpdate.current = false;
