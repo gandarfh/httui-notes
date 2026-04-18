@@ -32,6 +32,13 @@ export function readNote(
   return invoke("read_note", { vaultPath, filePath });
 }
 
+export function forceReloadFile(
+  vaultPath: string,
+  filePath: string,
+): Promise<void> {
+  return invoke("force_reload_file", { vaultPath, filePath });
+}
+
 export function writeNote(
   vaultPath: string,
   filePath: string,

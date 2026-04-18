@@ -42,19 +42,14 @@ export function AppShell() {
 
   // Hooks
   const { sidebarWidth, startResize } = useSidebarResize();
-  const { layout, activePaneId, contentVersion, editorContents, unsavedFiles, getActiveLeaf, actions } =
+  const { layout, activePaneId, editorContents, unsavedFiles, getActiveLeaf, actions } =
     usePaneState();
   const vault = useVault();
 
   const fileConflicts = useFileConflicts({
     vaultPath: vault.vaultPath,
-    editorContents,
     unsavedFiles,
     getOpenFiles: useCallback(() => [...editorContents.keys()], [editorContents]),
-    updateEditorContent: useCallback((filePath: string, content: string) => {
-      editorContents.set(filePath, content);
-      actions.reloadContent(filePath, content);
-    }, [editorContents, actions]),
   });
 
   const editorSession = useEditorSession({
@@ -128,14 +123,13 @@ export function AppShell() {
     () => ({
       layout,
       activePaneId,
-      contentVersion,
       editorContents,
       unsavedFiles,
       getActiveLeaf,
       actions,
       handleEditorChange: editorSession.handleEditorChange,
     }),
-    [layout, activePaneId, contentVersion, editorContents, unsavedFiles, getActiveLeaf, actions, editorSession.handleEditorChange],
+    [layout, activePaneId, editorContents, unsavedFiles, getActiveLeaf, actions, editorSession.handleEditorChange],
   );
 
   const editorSettingsValue = useMemo(

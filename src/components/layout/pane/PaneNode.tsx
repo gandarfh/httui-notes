@@ -8,21 +8,8 @@ import { useConflictContext } from "@/contexts/ConflictContext";
 import { SplitView } from "./SplitView";
 import type { PaneLayout } from "@/types/pane";
 
-// Track content version per file — only incremented on external reload, not keystrokes
-const contentVersions = new Map<string, number>();
-
-export function getContentVersion(filePath: string): number {
-  return contentVersions.get(filePath) ?? 0;
-}
-
-export function bumpContentVersion(filePath: string): number {
-  const next = (contentVersions.get(filePath) ?? 0) + 1;
-  contentVersions.set(filePath, next);
-  return next;
-}
-
 export function PaneNode({ layout, path }: { layout: PaneLayout; path: number[] }) {
-  const { activePaneId, contentVersion, editorContents, unsavedFiles, actions, handleEditorChange } = usePaneContext();
+  const { activePaneId, editorContents, unsavedFiles, actions, handleEditorChange } = usePaneContext();
   const { vimEnabled, setVimMode } = useEditorSettings();
   const conflictCtx = useConflictContext();
 
@@ -65,7 +52,6 @@ export function PaneNode({ layout, path }: { layout: PaneLayout; path: number[] 
                 content={content}
                 onChange={(c) => handleEditorChange(layout.id, activeTab.filePath, c, activeTab.vaultPath)}
                 filePath={activeTab.filePath}
-                contentVersion={contentVersion}
                 vimEnabled={vimEnabled}
                 onVimModeChange={setVimMode}
               />

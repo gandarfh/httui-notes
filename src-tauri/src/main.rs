@@ -198,6 +198,24 @@ fn create_folder(vault_path: String, folder_path: String) -> Result<(), String> 
 }
 
 #[tauri::command]
+fn force_reload_file(
+    vault_path: String,
+    file_path: String,
+    app_handle: AppHandle,
+) -> Result<(), String> {
+    let markdown = httui_notes::fs::read_note(&vault_path, &file_path)?;
+    app_handle
+        .emit(
+            "file-reloaded",
+            httui_notes::fs::watcher::FileReloaded {
+                path: file_path,
+                markdown,
+            },
+        )
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn start_watching(
     vault_path: String,
     app_handle: tauri::AppHandle,
@@ -610,6 +628,7 @@ fn main() {
             save_attachment_tmp,
             update_chat_session_cwd,
             delete_messages_after,
+            force_reload_file,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {

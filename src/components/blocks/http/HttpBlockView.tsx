@@ -905,7 +905,18 @@ function HttpBlockViewInner({ node, editor, getPos, updateAttributes, selected }
 
   // Local state for responsive editing — debounce sync to TipTap
   const [data, setData] = useState(() => parseBlockData(rawContent));
+  const lastRawContentRef = useRef(rawContent);
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Re-sync local data when rawContent changes externally (e.g. MCP update via setContent)
+  if (rawContent !== lastRawContentRef.current) {
+    lastRawContentRef.current = rawContent;
+    // Only reset if the change is external (not from our own debounced sync)
+    const currentSerialized = serializeBlockData(data);
+    if (rawContent !== currentSerialized) {
+      setData(parseBlockData(rawContent));
+    }
+  }
 
   const handleDataChange = useCallback(
     (updated: HttpBlockData) => {

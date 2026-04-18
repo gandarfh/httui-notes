@@ -1,5 +1,6 @@
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
@@ -12,6 +13,13 @@ pub enum FileEvent {
     Created { path: String },
     Modified { path: String },
     Removed { path: String },
+}
+
+/// Emitted when an externally modified .md file is read back from disk.
+#[derive(Debug, Clone, Serialize)]
+pub struct FileReloaded {
+    pub path: String,
+    pub markdown: String,
 }
 
 pub struct VaultWatcher {
@@ -37,26 +45,25 @@ pub fn watch_vault(
         .watch(Path::new(vault_path), RecursiveMode::Recursive)
         .map_err(|e| e.to_string())?;
 
-    // Debounce thread
     let handle = app_handle.clone();
+    let vault_for_thread = vault.clone();
     std::thread::spawn(move || {
-        let debounce = Duration::from_millis(300);
-        let mut last_emit = Instant::now() - debounce;
+        let debounce = Duration::from_millis(500);
+        // Per-file debounce tracking
+        let mut last_emit_per_file: HashMap<String, Instant> = HashMap::new();
 
         for event in rx {
-            // Skip non-file events
             let paths: Vec<String> = event
                 .paths
                 .iter()
                 .filter(|p| {
                     let s = p.to_string_lossy().to_string();
-                    // Only .md files, skip hidden
                     (s.ends_with(".md") || p.is_dir())
                         && !s.contains("/.")
                         && !s.contains("\\.")
                 })
                 .map(|p| {
-                    p.strip_prefix(&vault)
+                    p.strip_prefix(&vault_for_thread)
                         .unwrap_or(p)
                         .to_string_lossy()
                         .trim_start_matches('/')
@@ -76,21 +83,45 @@ pub fn watch_vault(
                 }
             }
 
-            // Debounce
-            if last_emit.elapsed() < debounce {
-                continue;
-            }
-            last_emit = Instant::now();
-
             for path in paths {
-                let file_event = match event.kind {
-                    EventKind::Create(_) => FileEvent::Created { path },
-                    EventKind::Modify(_) => FileEvent::Modified { path },
-                    EventKind::Remove(_) => FileEvent::Removed { path },
-                    _ => continue,
-                };
+                // Per-file debounce
+                if let Some(last) = last_emit_per_file.get(&path) {
+                    if last.elapsed() < debounce {
+                        continue;
+                    }
+                }
+                last_emit_per_file.insert(path.clone(), Instant::now());
 
-                let _ = handle.emit("fs-event", &file_event);
+                match event.kind {
+                    EventKind::Modify(_) => {
+                        // Read file content and emit file-reloaded with markdown
+                        match crate::fs::read_note(&vault_for_thread, &path) {
+                            Ok(markdown) => {
+                                let _ = handle.emit(
+                                    "file-reloaded",
+                                    FileReloaded {
+                                        path: path.clone(),
+                                        markdown,
+                                    },
+                                );
+                            }
+                            Err(_) => {
+                                // File might be mid-write, emit plain event
+                                let _ = handle.emit(
+                                    "fs-event",
+                                    FileEvent::Modified { path },
+                                );
+                            }
+                        }
+                    }
+                    EventKind::Create(_) => {
+                        let _ = handle.emit("fs-event", FileEvent::Created { path });
+                    }
+                    EventKind::Remove(_) => {
+                        let _ = handle.emit("fs-event", FileEvent::Removed { path });
+                    }
+                    _ => {}
+                }
             }
         }
     });

@@ -12,6 +12,8 @@ import { TableHeader } from "@tiptap/extension-table-header";
 import { TableCell } from "@tiptap/extension-table-cell";
 import { common, createLowlight } from "lowlight";
 import { useRef, useMemo, useCallback, useEffect } from "react";
+import { listen } from "@tauri-apps/api/event";
+import { markdownToHtml } from "@/lib/markdown/parser";
 import { createSlashCommands } from "./slashCommands";
 import { VimExtension, VimMode } from "./vim";
 import { MermaidBlock } from "./extensions/MermaidBlock";
@@ -21,7 +23,7 @@ import { Wikilink } from "./extensions/Wikilink";
 import { EditorDragDrop } from "./extensions/EditorDragDrop";
 import { TableToolbar } from "./extensions/TableToolbar";
 import { registry } from "@/components/blocks/registry";
-import { scrollPositionsStore } from "@/hooks/usePaneState";
+import { editorContentsStore, scrollPositionsStore } from "@/hooks/usePaneState";
 import { BlockContextProvider } from "@/components/blocks/BlockContext";
 import "@/components/blocks/http";
 import "@/components/blocks/db";
@@ -96,7 +98,6 @@ interface EditorProps {
   content: string;
   onChange: (content: string) => void;
   filePath: string;
-  contentVersion?: number;
   vimEnabled?: boolean;
   onVimModeChange?: (mode: VimMode) => void;
 }
@@ -105,7 +106,6 @@ export function Editor({
   content,
   onChange,
   filePath,
-  contentVersion = 0,
   vimEnabled = false,
   onVimModeChange,
 }: EditorProps) {
@@ -183,13 +183,11 @@ export function Editor({
     [vimEnabled],
   );
 
-  // Set content when switching files OR when content is reloaded externally
+  // Set content when switching files (tab change)
   const prevFilePathRef = useRef(filePath);
-  const prevVersionRef = useRef(contentVersion);
 
-  if (editor && (filePath !== prevFilePathRef.current || contentVersion !== prevVersionRef.current)) {
+  if (editor && filePath !== prevFilePathRef.current) {
     prevFilePathRef.current = filePath;
-    prevVersionRef.current = contentVersion;
     isExternalUpdate.current = true;
     editor.commands.setContent(content);
     isExternalUpdate.current = false;
@@ -200,6 +198,28 @@ export function Editor({
         vimStorage?.mode === "insert" ? "" : "transparent";
     }
   }
+
+  // Listen for external file reloads directly from Rust watcher
+  useEffect(() => {
+    if (!editor) return;
+
+    const unlisten = listen<{ path: string; markdown: string }>(
+      "file-reloaded",
+      (event) => {
+        if (event.payload.path !== filePath) return;
+
+        const html = markdownToHtml(event.payload.markdown);
+        editorContentsStore.set(filePath, html);
+        isExternalUpdate.current = true;
+        editor.commands.setContent(html);
+        isExternalUpdate.current = false;
+      },
+    );
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [filePath, editor]);
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 

@@ -537,7 +537,17 @@ function DbBlockViewInner({
 
   // Local state for responsive editing
   const [data, setData] = useState(() => parseBlockData(rawContent));
+  const lastRawContentRef = useRef(rawContent);
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Re-sync local data when rawContent changes externally (e.g. MCP update via setContent)
+  if (rawContent !== lastRawContentRef.current) {
+    lastRawContentRef.current = rawContent;
+    const currentSerialized = serializeBlockData(data);
+    if (rawContent !== currentSerialized) {
+      setData(parseBlockData(rawContent));
+    }
+  }
 
   const handleDataChange = useCallback(
     (updated: DbBlockData) => {
