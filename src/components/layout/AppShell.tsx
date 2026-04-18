@@ -49,6 +49,7 @@ export function AppShell() {
   const fileConflicts = useFileConflicts({
     vaultPath: vault.vaultPath,
     editorContents,
+    unsavedFiles,
     getOpenFiles: useCallback(() => [...editorContents.keys()], [editorContents]),
     updateEditorContent: useCallback((filePath: string, content: string) => {
       editorContents.set(filePath, content);

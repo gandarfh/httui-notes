@@ -12,6 +12,7 @@ interface FileEvent {
 interface UseFileConflictsOpts {
   vaultPath: string | null;
   editorContents: Map<string, string>;
+  unsavedFiles: Set<string>;
   getOpenFiles: () => string[];
   updateEditorContent: (filePath: string, content: string) => void;
 }
@@ -19,20 +20,41 @@ interface UseFileConflictsOpts {
 export function useFileConflicts({
   vaultPath,
   editorContents,
+  unsavedFiles,
   getOpenFiles,
   updateEditorContent,
 }: UseFileConflictsOpts) {
   const [conflictFiles, setConflictFiles] = useState<Set<string>>(new Set());
   const openFilesRef = useRef(getOpenFiles);
   openFilesRef.current = getOpenFiles;
+  const vaultPathRef = useRef(vaultPath);
+  vaultPathRef.current = vaultPath;
 
   useEffect(() => {
-    const unlisten = listen<FileEvent>("fs-event", (event) => {
+    const unlisten = listen<FileEvent>("fs-event", async (event) => {
       const { kind, path } = event.payload;
       if (kind !== "Modified") return;
 
       const openFiles = openFilesRef.current();
-      if (openFiles.includes(path)) {
+      if (!openFiles.includes(path)) return;
+
+      // If file has unsaved edits, show conflict banner
+      if (unsavedFiles.has(path)) {
+        setConflictFiles((prev) => new Set(prev).add(path));
+        return;
+      }
+
+      // No unsaved edits — auto-reload silently
+      const vault = vaultPathRef.current;
+      if (!vault) return;
+      try {
+        const markdown = await readNote(vault, path);
+        const html = markdownToHtml(markdown);
+        editorContents.set(path, html);
+        bumpContentVersion(path);
+        updateEditorContent(path, html);
+      } catch {
+        // If reload fails, show conflict banner as fallback
         setConflictFiles((prev) => new Set(prev).add(path));
       }
     });
@@ -40,7 +62,7 @@ export function useFileConflicts({
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, []);
+  }, [editorContents, unsavedFiles, updateEditorContent]);
 
   const hasConflict = useCallback(
     (filePath: string) => conflictFiles.has(filePath),
