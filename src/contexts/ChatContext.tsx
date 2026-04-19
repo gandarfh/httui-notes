@@ -23,6 +23,9 @@ export interface ChatContextValue {
   // Edit & regenerate
   editAndResend: (turnIndex: number, newText: string) => Promise<void>;
   regenerate: () => Promise<void>;
+  // Resume failure
+  resumeFailed: boolean;
+  resetAndContinue: () => Promise<void>;
 }
 
 export const ChatContext = createContext<ChatContextValue | null>(null);

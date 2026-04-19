@@ -104,6 +104,10 @@ export function deleteMessagesAfter(
   return invoke("delete_messages_after", { sessionId, turnIndex });
 }
 
+export function clearSessionClaudeId(sessionId: number): Promise<void> {
+  return invoke("clear_session_claude_id", { sessionId });
+}
+
 export function updateChatSessionCwd(
   sessionId: number,
   cwd: string | null,
