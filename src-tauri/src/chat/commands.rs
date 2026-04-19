@@ -455,6 +455,8 @@ pub async fn respond_chat_permission(
     tool_name: Option<String>,
     message: Option<String>,
 ) -> Result<(), String> {
+    eprintln!("[chat cmd] respond_chat_permission id={permission_id} behavior={behavior} scope={scope:?} tool_name={tool_name:?}");
+
     let decision_behavior = match behavior.as_str() {
         "allow" => PermissionBehavior::Allow,
         "deny" => PermissionBehavior::Deny,

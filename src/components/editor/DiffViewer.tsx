@@ -6,6 +6,8 @@ import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { useChatContext } from "@/contexts/ChatContext";
 import { usePaneContext } from "@/contexts/PaneContext";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { forceReloadFile } from "@/lib/tauri/commands";
 import { createBlockWidgetPlugin } from "@/lib/codemirror/cm-block-widgets.tsx";
 import type { TabState } from "@/types/pane";
 
@@ -50,6 +52,7 @@ export function DiffViewer({ tab }: DiffViewerProps) {
   const mergeViewRef = useRef<MergeView | null>(null);
   const { pendingPermission, respondPermission } = useChatContext();
   const { actions } = usePaneContext();
+  const { vaultPath } = useWorkspace();
   const [scope, setScope] = useState<PermissionScope>("once");
 
   const original = tab.originalContent ?? "";
@@ -99,10 +102,18 @@ export function DiffViewer({ tab }: DiffViewerProps) {
 
   const handleAllow = useCallback(async () => {
     if (!tab.permissionId) return;
-    // Send response first, THEN close the tab
+    // Send response first, wait for MCP tool to execute, then reload + close
     await respondPermission(tab.permissionId, "allow", scope);
+    // Give MCP tool time to write the file, then force reload in editor
+    if (vaultPath && tab.filePath) {
+      setTimeout(async () => {
+        try {
+          await forceReloadFile(vaultPath, tab.filePath);
+        } catch { /* file might not be open */ }
+      }, 500);
+    }
     actions.closeDiffTab(tab.permissionId);
-  }, [tab.permissionId, respondPermission, scope, actions]);
+  }, [tab.permissionId, respondPermission, scope, actions, vaultPath, tab.filePath]);
 
   const handleDeny = useCallback(async () => {
     if (!tab.permissionId) return;

@@ -303,10 +303,12 @@ export function handleAbort(requestId: string): void {
 export function handlePermissionResponse(
   cmd: PermissionResponseCommand
 ): void {
+  log(`handlePermissionResponse id=${cmd.permission_id} behavior=${cmd.decision?.behavior} pending=${pendingPermissions.has(cmd.permission_id)}`);
   const pending = pendingPermissions.get(cmd.permission_id);
   if (pending) {
     pending.resolve(cmd.decision);
     pendingPermissions.delete(cmd.permission_id);
+    log(`Permission ${cmd.permission_id} resolved`);
   } else {
     log(`No pending permission for ${cmd.permission_id}`);
   }
