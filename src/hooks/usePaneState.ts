@@ -2,8 +2,18 @@ import { useState, useCallback } from "react";
 import type { PaneLayout, LeafPane } from "@/types/pane";
 import { createLeafPane } from "@/types/pane";
 
+export interface DiffTabParams {
+  filePath: string;
+  vaultPath: string;
+  permissionId: string;
+  originalContent: string;
+  proposedContent: string;
+}
+
 export interface PaneActions {
   openFile: (filePath: string, content: string, vaultPath: string) => void;
+  openDiffTab: (params: DiffTabParams) => void;
+  closeDiffTab: (permissionId: string) => void;
   selectTab: (paneId: string, index: number) => void;
   closeTab: (paneId: string, index: number) => void;
   closeOthers: (paneId: string, index: number) => void;
@@ -218,6 +228,61 @@ export function usePaneState() {
     setLayout((prev) => updateSplitRatio(prev, path, ratio));
   }, []);
 
+  const openDiffTab = useCallback(
+    (params: DiffTabParams) => {
+      const diffId = `diff-${params.permissionId}`;
+      setLayout((prev) => {
+        const leaf = findLeaf(prev, activePaneId);
+        if (!leaf) return prev;
+        // If diff tab already exists, switch to it
+        const existing = leaf.tabs.findIndex((t) => t.diffId === diffId);
+        if (existing >= 0) {
+          return updateLeaf(prev, activePaneId, (l) => ({ ...l, activeTab: existing }));
+        }
+        const tab: import("@/types/pane").TabState = {
+          filePath: params.filePath,
+          vaultPath: params.vaultPath,
+          unsaved: false,
+          kind: "diff",
+          diffId,
+          permissionId: params.permissionId,
+          originalContent: params.originalContent,
+          proposedContent: params.proposedContent,
+        };
+        return updateLeaf(prev, activePaneId, (l) => ({
+          ...l,
+          tabs: [...l.tabs, tab],
+          activeTab: l.tabs.length,
+        }));
+      });
+    },
+    [activePaneId],
+  );
+
+  const closeDiffTab = useCallback((permissionId: string) => {
+    const diffId = `diff-${permissionId}`;
+    setLayout((prev) => {
+      // Find the leaf containing this diff tab
+      const leaves = allLeafIds(prev);
+      for (const leafId of leaves) {
+        const leaf = findLeaf(prev, leafId);
+        if (!leaf) continue;
+        const idx = leaf.tabs.findIndex((t) => t.diffId === diffId);
+        if (idx >= 0) {
+          const newTabs = leaf.tabs.filter((_, i) => i !== idx);
+          if (newTabs.length === 0) {
+            const result = removeLeaf(prev, leafId);
+            if (result) return result;
+            return updateLeaf(prev, leafId, (l) => ({ ...l, tabs: [], activeTab: 0 }));
+          }
+          const newActive = Math.min(leaf.activeTab, newTabs.length - 1);
+          return updateLeaf(prev, leafId, (l) => ({ ...l, tabs: newTabs, activeTab: newActive }));
+        }
+      }
+      return prev;
+    });
+  }, []);
+
   const restoreLayout = useCallback(
     (savedLayout: PaneLayout, savedActivePaneId: string, contents?: Map<string, string>) => {
       if (contents) {
@@ -240,6 +305,8 @@ export function usePaneState() {
     getActiveLeaf,
     actions: {
       openFile,
+      openDiffTab,
+      closeDiffTab,
       selectTab,
       closeTab,
       closeOthers,

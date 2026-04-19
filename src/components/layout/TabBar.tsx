@@ -1,6 +1,7 @@
 import { HStack, Text, Circle, IconButton, Menu, Portal } from "@chakra-ui/react";
-import { LuX } from "react-icons/lu";
+import { LuX, LuGitCompareArrows } from "react-icons/lu";
 import type { TabState } from "@/types/pane";
+import { getTabId } from "@/types/pane";
 
 interface TabBarProps {
   tabs: TabState[];
@@ -36,10 +37,12 @@ export function TabBar({
     >
       {tabs.map((tab, index) => {
         const isActive = index === activeTab;
-        const fileName = tab.filePath.split("/").pop()?.replace(".md", "") ?? tab.filePath;
+        const rawName = tab.filePath.split("/").pop()?.replace(".md", "") ?? tab.filePath;
+        const isDiff = tab.kind === "diff";
+        const fileName = isDiff ? `Diff: ${rawName}` : rawName;
 
         return (
-          <Menu.Root key={tab.filePath}>
+          <Menu.Root key={getTabId(tab)}>
             <Menu.ContextTrigger asChild>
               <HStack
                 px={3}
@@ -61,10 +64,11 @@ export function TabBar({
                   }
                 }}
               >
+                {isDiff && <LuGitCompareArrows size={11} style={{ flexShrink: 0 }} />}
                 <Text fontSize="xs" color={isActive ? "fg" : "fg.subtle"} whiteSpace="nowrap">
                   {fileName}
                 </Text>
-                {unsavedFiles.has(tab.filePath) && <Circle size="6px" bg="orange.400" />}
+                {!isDiff && unsavedFiles.has(tab.filePath) && <Circle size="6px" bg="orange.400" />}
                 <IconButton
                   aria-label="Close tab"
                   variant="ghost"

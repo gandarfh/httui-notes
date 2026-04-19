@@ -22,7 +22,8 @@ function filterDeletedTabs(
   existingFiles: Set<string>,
 ): PaneLayout {
   if (node.type === "leaf") {
-    const validTabs = node.tabs.filter((t) => existingFiles.has(t.filePath));
+    // Filter out diff tabs (transient) and tabs for deleted files
+    const validTabs = node.tabs.filter((t) => t.kind !== "diff" && existingFiles.has(t.filePath));
     return {
       ...node,
       tabs: validTabs,

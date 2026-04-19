@@ -2,6 +2,16 @@ export interface TabState {
   filePath: string;
   vaultPath: string;
   unsaved: boolean;
+  kind?: "file" | "diff";
+  // Diff tab fields
+  diffId?: string;
+  permissionId?: string;
+  originalContent?: string;
+  proposedContent?: string;
+}
+
+export function getTabId(tab: TabState): string {
+  return tab.diffId ?? tab.filePath;
 }
 
 export interface LeafPane {
