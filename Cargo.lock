@@ -2058,6 +2058,7 @@ dependencies = [
  "httui-core",
  "image",
  "notify",
+ "regex",
  "serde",
  "serde_json",
  "sqlx",
