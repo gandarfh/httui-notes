@@ -91,6 +91,8 @@ class BlockWidget extends WidgetType {
     const container = document.createElement("div");
     container.className = "cm-block-widget";
     container.style.padding = "2px 0";
+    container.style.overflow = "hidden";
+    container.style.maxWidth = "100%";
 
     this.root = createRoot(container);
     this.root.render(
