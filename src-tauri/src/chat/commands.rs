@@ -9,8 +9,11 @@ pub type SidecarState = Arc<Mutex<Option<SidecarManager>>>;
 
 use httui_core::db::chat::{self, Message, Session};
 
+use super::permissions::{PermissionBroker, PermissionVerdict};
 use super::protocol::*;
 use super::sidecar::SidecarManager;
+
+pub type PermissionBrokerState = Arc<PermissionBroker>;
 
 #[derive(Debug, Deserialize)]
 pub struct AttachmentInput {
@@ -62,6 +65,7 @@ pub async fn send_chat_message(
     app: AppHandle,
     pool: tauri::State<'_, SqlitePool>,
     sidecar: tauri::State<'_, SidecarState>,
+    broker: tauri::State<'_, PermissionBrokerState>,
     session_id: i64,
     text: String,
     attachments: Vec<AttachmentInput>,
@@ -141,6 +145,7 @@ pub async fn send_chat_message(
     };
 
     // 4. Send to sidecar (lazy spawn on first use)
+    let effective_cwd_for_broker = effective_cwd.clone();
     let request_id = Uuid::new_v4().to_string();
     eprintln!("[chat cmd] request_id={request_id}");
     {
@@ -182,6 +187,8 @@ pub async fn send_chat_message(
     let pool_clone = pool.inner().clone();
     let request_id_clone = request_id.clone();
     let sidecar_clone = sidecar.inner().clone();
+    let broker_clone = broker.inner().clone();
+    let effective_cwd_clone = effective_cwd_for_broker;
 
     tauri::async_runtime::spawn(async move {
         let mut accumulated_text = String::new();
@@ -269,15 +276,52 @@ pub async fn send_chat_message(
                     tool_input,
                     ..
                 } => {
-                    let _ = app.emit(
-                        "chat:permission_request",
-                        ChatPermissionRequestEvent {
-                            session_id,
-                            permission_id,
-                            tool_name,
-                            tool_input,
-                        },
-                    );
+                    // Check broker before prompting the user
+                    let verdict = broker_clone.check(
+                        &tool_name,
+                        &tool_input,
+                        session_id,
+                        effective_cwd_clone.as_deref(),
+                    ).await;
+
+                    match verdict {
+                        PermissionVerdict::Allow => {
+                            // Auto-respond allow to sidecar
+                            if let Some(mgr) = sidecar_clone.lock().await.as_ref() {
+                                let _ = mgr.send(OutgoingMessage::PermissionResponse {
+                                    permission_id,
+                                    decision: PermissionDecision {
+                                        behavior: PermissionBehavior::Allow,
+                                        message: None,
+                                    },
+                                }).await;
+                            }
+                        }
+                        PermissionVerdict::Deny(reason) => {
+                            // Auto-respond deny to sidecar
+                            if let Some(mgr) = sidecar_clone.lock().await.as_ref() {
+                                let _ = mgr.send(OutgoingMessage::PermissionResponse {
+                                    permission_id,
+                                    decision: PermissionDecision {
+                                        behavior: PermissionBehavior::Deny,
+                                        message: Some(reason),
+                                    },
+                                }).await;
+                            }
+                        }
+                        PermissionVerdict::AskUser => {
+                            // Emit to frontend for user decision
+                            let _ = app.emit(
+                                "chat:permission_request",
+                                ChatPermissionRequestEvent {
+                                    session_id,
+                                    permission_id,
+                                    tool_name,
+                                    tool_input,
+                                },
+                            );
+                        }
+                    }
                 }
                 IncomingMessage::Done { usage, stop_reason, .. } => {
                     // Persist or update assistant message

@@ -574,6 +574,12 @@ fn main() {
                 None::<httui_notes::chat::sidecar::SidecarManager>,
             )));
 
+            // Permission broker
+            let pool_for_broker: SqlitePool = app.state::<SqlitePool>().inner().clone();
+            app.manage(Arc::new(httui_notes::chat::permissions::PermissionBroker::new(
+                pool_for_broker,
+            )));
+
             app.manage(Arc::new(Mutex::new(Vec::<String>::new()))); // ignore_paths
             app.manage(Mutex::new(
                 None::<httui_notes::fs::watcher::VaultWatcher>,
