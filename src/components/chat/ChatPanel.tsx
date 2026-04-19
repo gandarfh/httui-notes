@@ -2,7 +2,7 @@ import { Flex } from "@chakra-ui/react";
 import { ChatSessionList } from "./ChatSessionList";
 import { ChatConversation } from "./ChatConversation";
 import { ChatInput } from "./ChatInput";
-import { PermissionModal } from "./PermissionModal";
+import { PermissionBanner } from "./PermissionBanner";
 
 interface ChatPanelProps {
   width: number;
@@ -22,8 +22,8 @@ export function ChatPanel({ width }: ChatPanelProps) {
     >
       <ChatSessionList />
       <ChatConversation />
+      <PermissionBanner />
       <ChatInput />
-      <PermissionModal />
     </Flex>
   );
 }
