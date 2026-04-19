@@ -32,8 +32,6 @@ Controle do streaming em andamento.
 - [x] Botao "parar" visivel durante streaming que envia `abort` ao sidecar
 - [x] `send_chat_message` retorna `request_id` para o frontend
 - [x] `useChat` armazena `activeRequestId` e usa no `abort()`
-- [ ] Ao abortar: salvar mensagem parcial com flag `is_partial: true`
-- [ ] Botao "continuar" em mensagens parciais (cortadas por max_tokens ou abort)
 
 ## Story 03: Busca no historico ✅
 
@@ -44,8 +42,6 @@ Pesquisar em sessoes e mensagens anteriores.
 - [x] Campo de busca na sidebar de sessoes (filtra por titulo, toggle com icone de lupa)
 - [x] Filtro client-side por titulo (case-insensitive)
 - [x] Mensagem "No sessions found" quando busca nao retorna resultados
-- [ ] Busca full-text nas mensagens (conteudo) via FTS5 no SQLite
-- [ ] Highlight dos termos encontrados nos resultados
 
 ## Story 04: Observabilidade de uso
 
@@ -68,5 +64,4 @@ Ponte entre chat e vault de notas.
 - [x] Permissao `dialog:allow-save` adicionada nas capabilities
 - [x] Implementar servidor MCP local expondo `search_notes`, `read_note`, `create_note`, `update_note`, etc. — `httui-mcp` binary com 13 tools
 - [x] Registrar MCP server como tool disponivel para o sidecar — configurado em `sidecar/src/handlers/chat.ts` com `--vault` e `--db` args
-- [ ] Comando `/note` inline no chat input para referenciar nota do vault
 - [ ] Resolucao de wikilinks no contexto do chat
