@@ -19,7 +19,7 @@ export interface ChatContextValue {
   // Tool use
   toolActivity: Map<string, ToolActivity>;
   pendingPermission: PendingPermission | null;
-  respondPermission: (permissionId: string, behavior: "allow" | "deny") => Promise<void>;
+  respondPermission: (permissionId: string, behavior: "allow" | "deny", scope?: "once" | "session" | "always") => Promise<void>;
   // Edit & regenerate
   editAndResend: (turnIndex: number, newText: string) => Promise<void>;
   regenerate: () => Promise<void>;

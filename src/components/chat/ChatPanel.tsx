@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Box, Flex, HStack, Text } from "@chakra-ui/react";
-import { LuMessageSquare, LuHistory } from "react-icons/lu";
+import { Box, Flex, HStack, Text, IconButton } from "@chakra-ui/react";
+import { LuMessageSquare, LuHistory, LuSettings } from "react-icons/lu";
 import { ChatSessionList } from "./ChatSessionList";
 import { ChatConversation } from "./ChatConversation";
 import { ChatInput } from "./ChatInput";
 import { PermissionBanner } from "./PermissionBanner";
+import { PermissionManager } from "./PermissionManager";
 
 interface ChatPanelProps {
   width: number;
@@ -14,6 +15,7 @@ type Tab = "chat" | "sessions";
 
 export function ChatPanel({ width }: ChatPanelProps) {
   const [activeTab, setActiveTab] = useState<Tab>("chat");
+  const [permManagerOpen, setPermManagerOpen] = useState(false);
 
   return (
     <Flex
@@ -40,6 +42,17 @@ export function ChatPanel({ width }: ChatPanelProps) {
           icon={<LuHistory size={13} />}
           label="Sessions"
         />
+        <IconButton
+          aria-label="Permission settings"
+          size="xs"
+          variant="ghost"
+          color="fg.muted"
+          _hover={{ color: "fg" }}
+          onClick={() => setPermManagerOpen(true)}
+          mx={1}
+        >
+          <LuSettings size={13} />
+        </IconButton>
       </HStack>
 
       {/* Content */}
@@ -52,6 +65,8 @@ export function ChatPanel({ width }: ChatPanelProps) {
       ) : (
         <ChatSessionList onSelectSession={() => setActiveTab("chat")} />
       )}
+
+      <PermissionManager open={permManagerOpen} onClose={() => setPermManagerOpen(false)} />
     </Flex>
   );
 }

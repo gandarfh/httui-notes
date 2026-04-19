@@ -420,9 +420,12 @@ pub async fn abort_chat(
 
 #[tauri::command]
 pub async fn respond_chat_permission(
+    pool: tauri::State<'_, SqlitePool>,
     sidecar: tauri::State<'_, SidecarState>,
     permission_id: String,
     behavior: String,
+    scope: Option<String>,
+    tool_name: Option<String>,
     message: Option<String>,
 ) -> Result<(), String> {
     let decision_behavior = match behavior.as_str() {
@@ -430,6 +433,21 @@ pub async fn respond_chat_permission(
         "deny" => PermissionBehavior::Deny,
         _ => return Err(format!("Invalid behavior: {behavior}")),
     };
+
+    // Persist rule if scope is "session" or "always" and we have a tool_name
+    let scope_str = scope.as_deref().unwrap_or("once");
+    if (scope_str == "session" || scope_str == "always") && tool_name.is_some() {
+        let tn = tool_name.as_deref().unwrap();
+        let _ = chat::insert_permission(
+            &pool,
+            tn,
+            None, // path_pattern — generic rule
+            None, // workspace — global
+            scope_str,
+            &behavior,
+            None, // session_id — not needed for 'always', and for 'session' we match by tool_name
+        ).await;
+    }
 
     let guard = sidecar.lock().await;
     let mgr = guard.as_ref().ok_or("Sidecar not initialized")?;
@@ -441,6 +459,22 @@ pub async fn respond_chat_permission(
         },
     })
     .await
+}
+
+#[tauri::command]
+pub async fn list_tool_permissions(
+    pool: tauri::State<'_, SqlitePool>,
+    workspace: Option<String>,
+) -> Result<Vec<chat::PermissionRule>, String> {
+    chat::list_permissions(&pool, workspace.as_deref()).await
+}
+
+#[tauri::command]
+pub async fn delete_tool_permission(
+    pool: tauri::State<'_, SqlitePool>,
+    id: i64,
+) -> Result<(), String> {
+    chat::delete_permission(&pool, id).await
 }
 
 #[tauri::command]

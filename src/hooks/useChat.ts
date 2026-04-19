@@ -247,15 +247,16 @@ export function useChat(sessionId: number | null) {
   }, []);
 
   const respondPermission = useCallback(
-    async (permissionId: string, behavior: "allow" | "deny") => {
+    async (permissionId: string, behavior: "allow" | "deny", scope: "once" | "session" | "always" = "once") => {
       try {
-        await respondChatPermission(permissionId, behavior);
+        const toolName = pendingPermission?.toolName;
+        await respondChatPermission(permissionId, behavior, scope, toolName);
         setPendingPermission(null);
       } catch (e) {
         console.error("Failed to respond to permission:", e);
       }
     },
-    []
+    [pendingPermission]
   );
 
   const editAndResend = useCallback(

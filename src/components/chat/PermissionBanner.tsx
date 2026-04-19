@@ -1,7 +1,9 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Box, HStack, Text } from "@chakra-ui/react";
 import { LuShield, LuCheck, LuX } from "react-icons/lu";
 import { useChatContext } from "@/contexts/ChatContext";
+
+type PermissionScope = "once" | "session" | "always";
 
 function formatToolInput(input: Record<string, unknown>): string {
   if ("command" in input) return String(input.command);
@@ -10,21 +12,33 @@ function formatToolInput(input: Record<string, unknown>): string {
   return JSON.stringify(input, null, 2);
 }
 
+const scopeLabels: Record<PermissionScope, string> = {
+  once: "Once",
+  session: "Session",
+  always: "Always",
+};
+
 export function PermissionBanner() {
   const { pendingPermission, respondPermission } = useChatContext();
+  const [scope, setScope] = useState<PermissionScope>("once");
+
+  // Reset scope when a new permission request comes in
+  useEffect(() => {
+    if (pendingPermission) setScope("once");
+  }, [pendingPermission?.permissionId]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (!pendingPermission) return;
       if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        respondPermission(pendingPermission.permissionId, "allow");
+        respondPermission(pendingPermission.permissionId, "allow", scope);
       } else if (e.key === "Enter" && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
         respondPermission(pendingPermission.permissionId, "deny");
       }
     },
-    [pendingPermission, respondPermission],
+    [pendingPermission, respondPermission, scope],
   );
 
   useEffect(() => {
@@ -87,7 +101,7 @@ export function PermissionBanner() {
             color="white"
             cursor="pointer"
             _hover={{ bg: "green.700" }}
-            onClick={() => respondPermission(permissionId, "allow")}
+            onClick={() => respondPermission(permissionId, "allow", scope)}
           >
             <LuCheck size={12} />
             Allow
@@ -111,8 +125,32 @@ export function PermissionBanner() {
         </Text>
       </Box>
 
-      <Text fontSize="2xs" color="fg.muted" mt={1}>
-        Enter = Deny · Cmd+Enter = Allow
+      {/* Scope selector */}
+      <HStack gap={0} mt={1.5} mb={0.5}>
+        {(["once", "session", "always"] as PermissionScope[]).map((s) => (
+          <Box
+            key={s}
+            as="button"
+            px={2}
+            py={0.5}
+            fontSize="2xs"
+            fontWeight={scope === s ? "semibold" : "normal"}
+            color={scope === s ? "fg" : "fg.muted"}
+            bg={scope === s ? "bg.emphasized" : "transparent"}
+            border="1px solid"
+            borderColor={scope === s ? "border" : "transparent"}
+            rounded="sm"
+            cursor="pointer"
+            _hover={{ bg: "bg.subtle" }}
+            onClick={() => setScope(s)}
+          >
+            {scopeLabels[s]}
+          </Box>
+        ))}
+      </HStack>
+
+      <Text fontSize="2xs" color="fg.muted">
+        Enter = Deny · Cmd+Enter = Allow ({scopeLabels[scope]})
       </Text>
     </Box>
   );
