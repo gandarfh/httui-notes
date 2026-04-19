@@ -63,11 +63,11 @@ export function DiffViewer({ tab }: DiffViewerProps) {
     const view = new MergeView({
       a: {
         doc: original,
-        extensions: [readOnlyExtension, themeExtension, createBlockWidgetPlugin(proposed)],
+        extensions: [readOnlyExtension, themeExtension, createBlockWidgetPlugin(proposed, "a")],
       },
       b: {
         doc: proposed,
-        extensions: [readOnlyExtension, themeExtension, createBlockWidgetPlugin(original)],
+        extensions: [readOnlyExtension, themeExtension, createBlockWidgetPlugin(original, "b")],
       },
       parent: containerRef.current,
       highlightChanges: true,

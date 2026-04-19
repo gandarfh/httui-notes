@@ -1,8 +1,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef, memo } from "react";
 import { Box, Text, Badge, HStack } from "@chakra-ui/react";
-import { MergeView } from "@codemirror/merge";
-import { EditorState, type Extension } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
+import { EditorState, RangeSetBuilder, StateField, type Extension } from "@codemirror/state";
+import { Decoration, type DecorationSet, EditorView } from "@codemirror/view";
 import { sql } from "@codemirror/lang-sql";
 import { json } from "@codemirror/lang-json";
 import { ExecutableBlockShell } from "../ExecutableBlockShell";
@@ -13,6 +12,8 @@ interface StandaloneBlockProps {
   blockType: string;
   content: string;
   counterpartContent?: string;
+  /** "a" = left/current side, "b" = right/proposed side */
+  side?: "a" | "b";
   alias?: string;
 }
 
@@ -23,7 +24,6 @@ interface ParsedBlock {
   url?: string;
 }
 
-/** Parse the JSON-serialized block content into human-readable form */
 function parseBlockContent(blockType: string, raw: string): ParsedBlock {
   try {
     const data = JSON.parse(raw);
@@ -47,46 +47,99 @@ function parseBlockContent(blockType: string, raw: string): ParsedBlock {
   }
 }
 
-const readOnlyExt = EditorState.readOnly.of(true);
-const cmTheme = EditorView.theme({
-  "&": { fontSize: "12px", maxHeight: "250px" },
-  ".cm-content": { fontFamily: "var(--chakra-fonts-mono)", padding: "8px" },
-  ".cm-gutters": { display: "none" },
-  ".cm-scroller": { overflow: "auto" },
-  ".cm-mergeView": { overflow: "hidden", borderRadius: "6px" },
-  ".cm-mergeViewEditors": { overflow: "hidden" },
-  ".cm-mergeViewEditor": { overflow: "auto" },
-  /* Side A (original/deleted) — red background */
-  ".cm-mergeView .cm-mergeViewEditor:first-child .cm-changedLine": { backgroundColor: "rgba(248, 81, 73, 0.1) !important" },
-  ".cm-mergeView .cm-mergeViewEditor:first-child .cm-changedText": { backgroundColor: "rgba(248, 81, 73, 0.3) !important" },
-  ".cm-deletedChunk": { backgroundColor: "rgba(248, 81, 73, 0.08) !important" },
-  /* Side B (proposed/added) — green background */
-  ".cm-mergeView .cm-mergeViewEditor:last-child .cm-changedLine": { backgroundColor: "rgba(63, 185, 80, 0.1) !important" },
-  ".cm-mergeView .cm-mergeViewEditor:last-child .cm-changedText": { backgroundColor: "rgba(63, 185, 80, 0.3) !important" },
-});
-
 function langExtension(blockType: string): Extension[] {
   if (blockType === "db") return [sql()];
   if (blockType === "http") return [json()];
   return [];
 }
 
-/** Inline MergeView for showing diff within a block */
-function BlockDiffInput({ thisContent, otherContent, blockType }: { thisContent: string; otherContent: string; blockType: string }) {
+/** Compute which lines differ between two texts. Returns set of 1-based line numbers. */
+function computeChangedLines(thisText: string, otherText: string): Set<number> {
+  const thisLines = thisText.split("\n");
+  const otherLines = otherText.split("\n");
+  const changed = new Set<number>();
+
+  const maxLen = Math.max(thisLines.length, otherLines.length);
+  for (let i = 0; i < maxLen; i++) {
+    if (thisLines[i] !== otherLines[i]) {
+      if (i < thisLines.length) changed.add(i + 1);
+    }
+  }
+  return changed;
+}
+
+/** Create a StateField that applies line decorations for changed lines */
+function createDiffHighlightField(changedLines: Set<number>, side: "a" | "b") {
+  const lineClass = side === "a"
+    ? Decoration.line({ class: "cm-diff-deleted" })
+    : Decoration.line({ class: "cm-diff-added" });
+
+  return StateField.define<DecorationSet>({
+    create(state) {
+      const builder = new RangeSetBuilder<Decoration>();
+      for (let i = 1; i <= state.doc.lines; i++) {
+        if (changedLines.has(i)) {
+          builder.add(state.doc.line(i).from, state.doc.line(i).from, lineClass);
+        }
+      }
+      return builder.finish();
+    },
+    update(decos) {
+      return decos; // read-only doc, decorations don't change
+    },
+    provide: (f) => EditorView.decorations.from(f),
+  });
+}
+
+const readOnlyExt = EditorState.readOnly.of(true);
+const cmTheme = EditorView.theme({
+  "&": { fontSize: "12px", maxHeight: "250px" },
+  ".cm-content": { fontFamily: "var(--chakra-fonts-mono)", padding: "8px" },
+  ".cm-gutters": { display: "none" },
+  ".cm-scroller": { overflow: "auto" },
+  ".cm-activeLine": { backgroundColor: "transparent" },
+  ".cm-diff-deleted": { backgroundColor: "rgba(248, 81, 73, 0.15)" },
+  ".cm-diff-added": { backgroundColor: "rgba(63, 185, 80, 0.15)" },
+});
+
+/** Single CodeMirror editor with diff line highlights */
+function BlockCodeEditor({
+  content,
+  counterpartContent,
+  blockType,
+  side,
+}: {
+  content: string;
+  counterpartContent?: string;
+  blockType: string;
+  side: "a" | "b";
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const langExt = useMemo(() => langExtension(blockType), [blockType]);
+  const viewRef = useRef<EditorView | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
-    const view = new MergeView({
-      a: { doc: otherContent, extensions: [readOnlyExt, cmTheme, ...langExt] },
-      b: { doc: thisContent, extensions: [readOnlyExt, cmTheme, ...langExt] },
+
+    const extensions: Extension[] = [readOnlyExt, cmTheme, ...langExtension(blockType)];
+
+    if (counterpartContent !== undefined && counterpartContent !== content) {
+      const changedLines = computeChangedLines(content, counterpartContent);
+      if (changedLines.size > 0) {
+        extensions.push(createDiffHighlightField(changedLines, side));
+      }
+    }
+
+    const view = new EditorView({
+      state: EditorState.create({ doc: content, extensions }),
       parent: containerRef.current,
-      highlightChanges: true,
-      gutter: false,
     });
-    return () => view.destroy();
-  }, [thisContent, otherContent]);
+    viewRef.current = view;
+
+    return () => {
+      view.destroy();
+      viewRef.current = null;
+    };
+  }, [content, counterpartContent, blockType, side]);
 
   return (
     <Box
@@ -101,35 +154,11 @@ function BlockDiffInput({ thisContent, otherContent, blockType }: { thisContent:
   );
 }
 
-/** Simple read-only code display (when no diff) */
-function BlockCodeInput({ content }: { content: string }) {
-  return (
-    <Box
-      mx={3}
-      my={2}
-      bg="bg.subtle"
-      border="1px solid"
-      borderColor="border"
-      rounded="md"
-      px={3}
-      py={2}
-      fontFamily="mono"
-      fontSize="xs"
-      whiteSpace="pre-wrap"
-      overflowX="auto"
-      maxH="200px"
-      overflowY="auto"
-      lineHeight="1.6"
-    >
-      {content}
-    </Box>
-  );
-}
-
 export const StandaloneBlock = memo(function StandaloneBlock({
   blockType,
   content,
   counterpartContent,
+  side = "b",
   alias,
 }: StandaloneBlockProps) {
   const [displayMode, setDisplayMode] = useState<DisplayMode>("input");
@@ -138,7 +167,6 @@ export const StandaloneBlock = memo(function StandaloneBlock({
   const [error, setError] = useState<string | null>(null);
 
   const parsed = useMemo(() => parseBlockContent(blockType, content), [blockType, content]);
-  const hasDiff = counterpartContent !== undefined && counterpartContent !== parsed.displayContent;
 
   const handleRun = useCallback(async () => {
     setExecutionState("running");
@@ -179,11 +207,12 @@ export const StandaloneBlock = memo(function StandaloneBlock({
                 <Text fontSize="xs" fontFamily="mono" color="fg.muted" truncate>{parsed.url}</Text>
               </HStack>
             )}
-            {hasDiff ? (
-              <BlockDiffInput thisContent={parsed.displayContent} otherContent={counterpartContent!} blockType={blockType} />
-            ) : (
-              <BlockCodeInput content={parsed.displayContent} />
-            )}
+            <BlockCodeEditor
+              content={parsed.displayContent}
+              counterpartContent={counterpartContent}
+              blockType={blockType}
+              side={side}
+            />
           </Box>
         }
         outputSlot={
@@ -217,7 +246,6 @@ export const StandaloneBlock = memo(function StandaloneBlock({
   );
 });
 
-/** Build execution params based on block type */
 function buildParams(blockType: string, content: string): Record<string, unknown> {
   try {
     const data = JSON.parse(content);

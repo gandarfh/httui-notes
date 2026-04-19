@@ -101,6 +101,7 @@ class BlockWidget extends WidgetType {
     readonly info: string,
     readonly content: string,
     readonly counterpartContent: string | null,
+    readonly side: "a" | "b",
   ) {
     super();
   }
@@ -119,6 +120,7 @@ class BlockWidget extends WidgetType {
           blockType={langToBlockType(this.lang)}
           content={this.content}
           counterpartContent={this.counterpartContent ?? undefined}
+          side={this.side}
           alias={extractAlias(this.info)}
         />
       </Provider>,
@@ -153,17 +155,16 @@ class BlockWidget extends WidgetType {
   }
 }
 
-function buildDecorations(doc: CMText, counterpartBlocks: FencedBlock[]): DecorationSet {
+function buildDecorations(doc: CMText, counterpartBlocks: FencedBlock[], side: "a" | "b"): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   const blocks = findFencedBlocks(doc);
 
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i];
-    // Match counterpart by index (same block position in the other side)
     const counterpart = counterpartBlocks[i];
     const blockType = langToBlockType(block.lang);
 
-    // Extract the actual display content for comparison
+    const thisDisplay = extractDisplayContent(blockType, block.content);
     const counterpartDisplay = counterpart
       ? extractDisplayContent(langToBlockType(counterpart.lang), counterpart.content)
       : null;
@@ -172,7 +173,11 @@ function buildDecorations(doc: CMText, counterpartBlocks: FencedBlock[]): Decora
       block.from,
       block.to,
       Decoration.replace({
-        widget: new BlockWidget(block.lang, block.info, block.content, counterpartDisplay !== extractDisplayContent(blockType, block.content) ? counterpartDisplay : null),
+        widget: new BlockWidget(
+          block.lang, block.info, block.content,
+          counterpartDisplay !== thisDisplay ? counterpartDisplay : null,
+          side,
+        ),
         block: true,
       }),
     );
@@ -185,18 +190,18 @@ function buildDecorations(doc: CMText, counterpartBlocks: FencedBlock[]): Decora
  * Create a CodeMirror extension that replaces fenced executable blocks with React widget decorations.
  * Accepts the counterpart markdown (other side of the diff) to enable inline diff within blocks.
  */
-export function createBlockWidgetPlugin(counterpartMarkdown?: string) {
+export function createBlockWidgetPlugin(counterpartMarkdown: string | undefined, side: "a" | "b") {
   const counterpartBlocks = counterpartMarkdown
     ? findFencedBlocksFromString(counterpartMarkdown)
     : [];
 
   return StateField.define<DecorationSet>({
     create(state) {
-      return buildDecorations(state.doc, counterpartBlocks);
+      return buildDecorations(state.doc, counterpartBlocks, side);
     },
     update(decos, tr) {
       if (tr.docChanged) {
-        return buildDecorations(tr.state.doc, counterpartBlocks);
+        return buildDecorations(tr.state.doc, counterpartBlocks, side);
       }
       return decos;
     },
