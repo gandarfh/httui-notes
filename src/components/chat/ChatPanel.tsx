@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Box, Flex, HStack, Text, IconButton } from "@chakra-ui/react";
-import { LuMessageSquare, LuHistory, LuSettings } from "react-icons/lu";
+import { LuMessageSquare, LuHistory, LuSettings, LuFolderOpen } from "react-icons/lu";
+import { open } from "@tauri-apps/plugin-dialog";
+import { useChatContext } from "@/contexts/ChatContext";
 import { ChatSessionList } from "./ChatSessionList";
 import { ChatConversation } from "./ChatConversation";
 import { ChatInput } from "./ChatInput";
@@ -13,9 +15,23 @@ interface ChatPanelProps {
 
 type Tab = "chat" | "sessions";
 
+function truncatePath(path: string, segments = 2): string {
+  const parts = path.split("/").filter(Boolean);
+  if (parts.length <= segments) return path;
+  return ".../" + parts.slice(-segments).join("/");
+}
+
 export function ChatPanel({ width }: ChatPanelProps) {
   const [activeTab, setActiveTab] = useState<Tab>("chat");
   const [permManagerOpen, setPermManagerOpen] = useState(false);
+  const { activeSession, updateCwd } = useChatContext();
+
+  const handleChangeCwd = useCallback(async () => {
+    const selected = await open({ directory: true, multiple: false });
+    if (selected) {
+      await updateCwd(selected as string);
+    }
+  }, [updateCwd]);
 
   return (
     <Flex
@@ -54,6 +70,33 @@ export function ChatPanel({ width }: ChatPanelProps) {
           <LuSettings size={13} />
         </IconButton>
       </HStack>
+
+      {/* Session header with CWD */}
+      {activeTab === "chat" && activeSession && (
+        <HStack
+          px={2}
+          py={1}
+          borderBottom="1px solid"
+          borderColor="border"
+          bg="bg.subtle"
+          flexShrink={0}
+          gap={1}
+        >
+          <LuFolderOpen size={11} style={{ flexShrink: 0, opacity: 0.5 }} />
+          <Text
+            fontSize="2xs"
+            color="fg.muted"
+            flex={1}
+            truncate
+            cursor="pointer"
+            _hover={{ color: "fg" }}
+            onClick={handleChangeCwd}
+            title={activeSession.cwd ?? "Click to set working directory"}
+          >
+            {activeSession.cwd ? truncatePath(activeSession.cwd) : "No working directory"}
+          </Text>
+        </HStack>
+      )}
 
       {/* Content */}
       {activeTab === "chat" ? (

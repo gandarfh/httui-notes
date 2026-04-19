@@ -1,9 +1,10 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { listen } from "@tauri-apps/api/event";
 import {
   listChatSessions,
   createChatSession,
   archiveChatSession,
+  updateChatSessionCwd,
   type ChatSession,
 } from "@/lib/tauri/chat";
 
@@ -84,12 +85,28 @@ export function useChatSessions() {
     [activeSessionId, refresh],
   );
 
+  const activeSession = useMemo(
+    () => sessions.find((s) => s.id === activeSessionId) ?? null,
+    [sessions, activeSessionId],
+  );
+
+  const updateCwd = useCallback(
+    async (cwd: string | null) => {
+      if (activeSessionId === null) return;
+      await updateChatSessionCwd(activeSessionId, cwd);
+      await refresh();
+    },
+    [activeSessionId, refresh],
+  );
+
   return {
     sessions,
     activeSessionId,
+    activeSession,
     selectSession,
     createSession: create,
     archiveSession: archive,
     refreshSessions: refresh,
+    updateCwd,
   };
 }
