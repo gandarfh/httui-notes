@@ -23,6 +23,7 @@ export function useEditorSession({
   hasConflict,
 }: UseEditorSessionOpts) {
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suppressedFiles = useRef<Set<string>>(new Set());
 
   const handleFileSelect = useCallback(
     async (filePath: string) => {
@@ -50,6 +51,7 @@ export function useEditorSession({
 
       autoSaveTimer.current = setTimeout(async () => {
         if (hasConflict?.(filePath)) return;
+        if (suppressedFiles.current.has(filePath)) return;
         try {
           await writeNote(tabVaultPath, filePath, htmlToMarkdown(content));
           actions.markUnsaved(activePaneId, filePath, false);
@@ -74,9 +76,25 @@ export function useEditorSession({
     }
   }, [editorContents, actions, getActiveLeaf]);
 
+  const suppressAutoSave = useCallback((filePath: string) => {
+    // Cancel any pending auto-save timer
+    if (autoSaveTimer.current) {
+      clearTimeout(autoSaveTimer.current);
+      autoSaveTimer.current = null;
+    }
+    // Suppress future auto-saves for this file until it's reloaded
+    suppressedFiles.current.add(filePath);
+  }, []);
+
+  const unsuppressAutoSave = useCallback((filePath: string) => {
+    suppressedFiles.current.delete(filePath);
+  }, []);
+
   return {
     handleFileSelect,
     handleEditorChange,
     forceSave,
+    suppressAutoSave,
+    unsuppressAutoSave,
   };
 }

@@ -10,6 +10,8 @@ export interface PaneContextValue {
   getActiveLeaf: () => LeafPane | null;
   actions: PaneActions;
   handleEditorChange: (paneId: string, filePath: string, content: string, vaultPath: string) => void;
+  suppressAutoSave: (filePath: string) => void;
+  unsuppressAutoSave: (filePath: string) => void;
 }
 
 export const PaneContext = createContext<PaneContextValue | null>(null);

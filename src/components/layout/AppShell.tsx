@@ -128,8 +128,10 @@ export function AppShell() {
       getActiveLeaf,
       actions,
       handleEditorChange: editorSession.handleEditorChange,
+      suppressAutoSave: editorSession.suppressAutoSave,
+      unsuppressAutoSave: editorSession.unsuppressAutoSave,
     }),
-    [layout, activePaneId, editorContents, unsavedFiles, getActiveLeaf, actions, editorSession.handleEditorChange],
+    [layout, activePaneId, editorContents, unsavedFiles, getActiveLeaf, actions, editorSession.handleEditorChange, editorSession.suppressAutoSave, editorSession.unsuppressAutoSave],
   );
 
   const editorSettingsValue = useMemo(
