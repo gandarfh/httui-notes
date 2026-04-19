@@ -6,7 +6,7 @@ import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { useChatContext } from "@/contexts/ChatContext";
 import { usePaneContext } from "@/contexts/PaneContext";
-import { blockWidgetPlugin } from "@/lib/codemirror/cm-block-widgets.tsx";
+import { createBlockWidgetPlugin } from "@/lib/codemirror/cm-block-widgets.tsx";
 import type { TabState } from "@/types/pane";
 
 interface DiffViewerProps {
@@ -63,11 +63,11 @@ export function DiffViewer({ tab }: DiffViewerProps) {
     const view = new MergeView({
       a: {
         doc: original,
-        extensions: [readOnlyExtension, themeExtension, blockWidgetPlugin],
+        extensions: [readOnlyExtension, themeExtension, createBlockWidgetPlugin(proposed)],
       },
       b: {
         doc: proposed,
-        extensions: [readOnlyExtension, themeExtension, blockWidgetPlugin],
+        extensions: [readOnlyExtension, themeExtension, createBlockWidgetPlugin(original)],
       },
       parent: containerRef.current,
       highlightChanges: true,

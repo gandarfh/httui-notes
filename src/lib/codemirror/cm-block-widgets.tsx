@@ -1,11 +1,10 @@
-import { RangeSetBuilder, StateField } from "@codemirror/state";
+import { RangeSetBuilder, StateField, Text as CMText } from "@codemirror/state";
 import {
   Decoration,
   WidgetType,
   type DecorationSet,
   EditorView,
 } from "@codemirror/view";
-import type { Text } from "@codemirror/state";
 import { createRoot, type Root } from "react-dom/client";
 import { Provider } from "@/components/ui/provider";
 import { StandaloneBlock } from "@/components/blocks/standalone/StandaloneBlock";
@@ -22,7 +21,7 @@ interface FencedBlock {
 }
 
 /** Scan a CodeMirror document for fenced executable blocks. */
-export function findFencedBlocks(doc: Text): FencedBlock[] {
+export function findFencedBlocks(doc: CMText): FencedBlock[] {
   const blocks: FencedBlock[] = [];
   let inBlock = false;
   let blockStart = 0;
@@ -62,7 +61,13 @@ export function findFencedBlocks(doc: Text): FencedBlock[] {
   return blocks;
 }
 
-/** Extract alias from info string (e.g., "alias=foo displayMode=split") */
+/** Parse fenced blocks from raw markdown string */
+function findFencedBlocksFromString(markdown: string): FencedBlock[] {
+  const doc = CMText.of(markdown.split("\n"));
+  return findFencedBlocks(doc);
+}
+
+/** Extract alias from info string */
 function extractAlias(info: string): string | undefined {
   const match = info.match(/alias=(\S+)/);
   return match?.[1];
@@ -76,6 +81,18 @@ function langToBlockType(lang: string): string {
   return lang;
 }
 
+/** Extract display content (e.g. query) from JSON-serialized block content */
+function extractDisplayContent(blockType: string, raw: string): string {
+  try {
+    const data = JSON.parse(raw);
+    if (blockType === "db") return data.query ?? raw;
+    if (blockType === "http") return data.body ?? data.url ?? raw;
+    return JSON.stringify(data, null, 2);
+  } catch {
+    return raw;
+  }
+}
+
 class BlockWidget extends WidgetType {
   private root: Root | null = null;
 
@@ -83,6 +100,7 @@ class BlockWidget extends WidgetType {
     readonly lang: string,
     readonly info: string,
     readonly content: string,
+    readonly counterpartContent: string | null,
   ) {
     super();
   }
@@ -99,8 +117,8 @@ class BlockWidget extends WidgetType {
       <Provider>
         <StandaloneBlock
           blockType={langToBlockType(this.lang)}
-          lang={this.lang}
           content={this.content}
+          counterpartContent={this.counterpartContent ?? undefined}
           alias={extractAlias(this.info)}
         />
       </Provider>,
@@ -118,11 +136,16 @@ class BlockWidget extends WidgetType {
   }
 
   eq(other: BlockWidget): boolean {
-    return this.lang === other.lang && this.content === other.content && this.info === other.info;
+    return (
+      this.lang === other.lang &&
+      this.content === other.content &&
+      this.info === other.info &&
+      this.counterpartContent === other.counterpartContent
+    );
   }
 
   get estimatedHeight(): number {
-    return 120;
+    return 150;
   }
 
   ignoreEvent(): boolean {
@@ -130,16 +153,26 @@ class BlockWidget extends WidgetType {
   }
 }
 
-function buildDecorations(doc: Text): DecorationSet {
+function buildDecorations(doc: CMText, counterpartBlocks: FencedBlock[]): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   const blocks = findFencedBlocks(doc);
 
-  for (const block of blocks) {
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i];
+    // Match counterpart by index (same block position in the other side)
+    const counterpart = counterpartBlocks[i];
+    const blockType = langToBlockType(block.lang);
+
+    // Extract the actual display content for comparison
+    const counterpartDisplay = counterpart
+      ? extractDisplayContent(langToBlockType(counterpart.lang), counterpart.content)
+      : null;
+
     builder.add(
       block.from,
       block.to,
       Decoration.replace({
-        widget: new BlockWidget(block.lang, block.info, block.content),
+        widget: new BlockWidget(block.lang, block.info, block.content, counterpartDisplay !== extractDisplayContent(blockType, block.content) ? counterpartDisplay : null),
         block: true,
       }),
     );
@@ -149,18 +182,24 @@ function buildDecorations(doc: Text): DecorationSet {
 }
 
 /**
- * CodeMirror extension that replaces fenced executable blocks with React widget decorations.
- * Uses StateField (not ViewPlugin) because block-level replace decorations require it.
+ * Create a CodeMirror extension that replaces fenced executable blocks with React widget decorations.
+ * Accepts the counterpart markdown (other side of the diff) to enable inline diff within blocks.
  */
-export const blockWidgetPlugin = StateField.define<DecorationSet>({
-  create(state) {
-    return buildDecorations(state.doc);
-  },
-  update(decos, tr) {
-    if (tr.docChanged) {
-      return buildDecorations(tr.state.doc);
-    }
-    return decos;
-  },
-  provide: (f) => EditorView.decorations.from(f),
-});
+export function createBlockWidgetPlugin(counterpartMarkdown?: string) {
+  const counterpartBlocks = counterpartMarkdown
+    ? findFencedBlocksFromString(counterpartMarkdown)
+    : [];
+
+  return StateField.define<DecorationSet>({
+    create(state) {
+      return buildDecorations(state.doc, counterpartBlocks);
+    },
+    update(decos, tr) {
+      if (tr.docChanged) {
+        return buildDecorations(tr.state.doc, counterpartBlocks);
+      }
+      return decos;
+    },
+    provide: (f) => EditorView.decorations.from(f),
+  });
+}
