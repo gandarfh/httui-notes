@@ -78,6 +78,7 @@
     "react-markdown": "^10.1.0",
     "rehype-sanitize": "^6.0.0",
     "remark-gfm": "^4.0.1",
+    "sql-formatter": "^15.7.3",
     "turndown": "^7.2.4"
   }
 }
