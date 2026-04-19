@@ -58,11 +58,13 @@ Detectar mudancas externas no vault e reagir.
 ### Tasks
 
 - [x] Implementar `watch_vault` no Rust usando notify crate
-- [x] Emitir eventos Tauri para o frontend: file_created, file_modified, file_deleted
+- [x] Emitir eventos Tauri para o frontend: `fs-event` (Created/Removed) e `file-reloaded` (Modified com conteudo markdown)
 - [x] No frontend: atualizar file tree automaticamente ao receber eventos
 - [x] Se um arquivo aberto no editor for modificado externamente: banner de conflito (Reload / Keep Mine) — `ConflictBanner.tsx` + `useFileConflicts.ts`
-- [x] Debounce de eventos (300ms)
+- [x] Para arquivos sem edits pendentes: auto-reload direto no Editor via evento Tauri `file-reloaded` (sem intermediarios React)
+- [x] Debounce per-file (500ms) no watcher Rust — `HashMap<String, Instant>`
 - [x] Ignorar eventos causados pelo proprio app (ao salvar)
+- [x] Command `force_reload_file` para re-emitir `file-reloaded` (usado pelo resolveConflict)
 
 ## Story 05: Auto-save
 
