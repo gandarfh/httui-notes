@@ -637,6 +637,7 @@ fn main() {
             delete_messages_after,
             list_tool_permissions,
             delete_tool_permission,
+            get_usage_stats,
             force_reload_file,
         ])
         .on_window_event(|window, event| {

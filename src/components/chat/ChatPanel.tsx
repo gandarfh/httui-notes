@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { Box, Flex, HStack, Text, IconButton } from "@chakra-ui/react";
-import { LuMessageSquare, LuHistory, LuSettings, LuFolderOpen } from "react-icons/lu";
+import { LuMessageSquare, LuHistory, LuSettings, LuFolderOpen, LuChartColumn } from "react-icons/lu";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useChatContext } from "@/contexts/ChatContext";
 import { ChatSessionList } from "./ChatSessionList";
@@ -8,12 +8,13 @@ import { ChatConversation } from "./ChatConversation";
 import { ChatInput } from "./ChatInput";
 import { PermissionBanner } from "./PermissionBanner";
 import { PermissionManager } from "./PermissionManager";
+import { UsagePanel } from "./UsagePanel";
 
 interface ChatPanelProps {
   width: number;
 }
 
-type Tab = "chat" | "sessions";
+type Tab = "chat" | "sessions" | "usage";
 
 function truncatePath(path: string, segments = 2): string {
   const parts = path.split("/").filter(Boolean);
@@ -57,6 +58,12 @@ export function ChatPanel({ width }: ChatPanelProps) {
           onClick={() => setActiveTab("sessions")}
           icon={<LuHistory size={13} />}
           label="Sessions"
+        />
+        <TabButton
+          active={activeTab === "usage"}
+          onClick={() => setActiveTab("usage")}
+          icon={<LuChartColumn size={13} />}
+          label="Usage"
         />
         <IconButton
           aria-label="Permission settings"
@@ -105,8 +112,10 @@ export function ChatPanel({ width }: ChatPanelProps) {
           <PermissionBanner />
           <ChatInput />
         </>
-      ) : (
+      ) : activeTab === "sessions" ? (
         <ChatSessionList onSelectSession={() => setActiveTab("chat")} />
+      ) : (
+        <UsagePanel />
       )}
 
       <PermissionManager open={permManagerOpen} onClose={() => setPermManagerOpen(false)} />

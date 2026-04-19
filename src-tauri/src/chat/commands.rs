@@ -330,15 +330,17 @@ pub async fn send_chat_message(
                     ]);
                     let tokens_in = usage.as_ref().map(|u| u.input_tokens as i64);
                     let tokens_out = usage.as_ref().map(|u| u.output_tokens as i64);
+                    let cache_read = usage.as_ref().map(|u| u.cache_read_tokens as i64);
 
                     if let Some(msg_id) = assistant_msg_id {
-                        // Update partial message to final
+                        // Update partial message to final (including cache_read_tokens)
                         let _ = sqlx::query(
-                            "UPDATE messages SET content_json = ?, tokens_in = ?, tokens_out = ?, is_partial = 0 WHERE id = ?"
+                            "UPDATE messages SET content_json = ?, tokens_in = ?, tokens_out = ?, cache_read_tokens = ?, is_partial = 0 WHERE id = ?"
                         )
                         .bind(content.to_string())
                         .bind(tokens_in)
                         .bind(tokens_out)
+                        .bind(cache_read)
                         .bind(msg_id)
                         .execute(&pool_clone)
                         .await;
@@ -353,6 +355,17 @@ pub async fn send_chat_message(
                             false,
                         )
                         .await;
+                    }
+
+                    // Aggregate usage stats
+                    if let Some(ref u) = usage {
+                        let _ = chat::upsert_usage(
+                            &pool_clone,
+                            session_id,
+                            u.input_tokens as i64,
+                            u.output_tokens as i64,
+                            u.cache_read_tokens as i64,
+                        ).await;
                     }
 
                     let _ = app.emit(
@@ -552,6 +565,15 @@ pub async fn update_chat_session_cwd(
         .await
         .map_err(|e| format!("Failed to update session cwd: {e}"))?;
     Ok(())
+}
+
+#[tauri::command]
+pub async fn get_usage_stats(
+    pool: tauri::State<'_, SqlitePool>,
+    from: String,
+    to: String,
+) -> Result<Vec<chat::DailyUsage>, String> {
+    chat::get_usage_by_date_range(&pool, &from, &to).await
 }
 
 fn base64_encode(bytes: &[u8]) -> String {
