@@ -7,6 +7,8 @@ import { oneDarkHighlightStyle } from "@codemirror/theme-one-dark";
 import { sql } from "@codemirror/lang-sql";
 import { json } from "@codemirror/lang-json";
 import { ExecutableBlockShell } from "../ExecutableBlockShell";
+import { ResultTable } from "../db/ResultTable";
+import { isSelectResponse, type DbResponse } from "../db/types";
 import { executeBlock } from "@/lib/tauri/commands";
 import type { DisplayMode, ExecutionState } from "../ExecutableBlock";
 
@@ -165,7 +167,8 @@ export const StandaloneBlock = memo(function StandaloneBlock({
 }: StandaloneBlockProps) {
   const [displayMode, setDisplayMode] = useState<DisplayMode>("input");
   const [executionState, setExecutionState] = useState<ExecutionState>("idle");
-  const [response, setResponse] = useState<string | null>(null);
+  const [dbResponse, setDbResponse] = useState<DbResponse | null>(null);
+  const [rawResponse, setRawResponse] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const parsed = useMemo(() => parseBlockContent(blockType, content), [blockType, content]);
@@ -176,7 +179,11 @@ export const StandaloneBlock = memo(function StandaloneBlock({
     try {
       const params = buildParams(blockType, content);
       const result = await executeBlock(blockType, params);
-      setResponse(JSON.stringify(result.data, null, 2));
+      if (blockType === "db" && result.data) {
+        setDbResponse(result.data as unknown as DbResponse);
+      } else {
+        setRawResponse(JSON.stringify(result.data, null, 2));
+      }
       setExecutionState(result.status === "error" ? "error" : "success");
       setDisplayMode("split");
     } catch (e) {
@@ -201,6 +208,7 @@ export const StandaloneBlock = memo(function StandaloneBlock({
         onDisplayModeChange={setDisplayMode}
         onRun={handleRun}
         onCancel={handleCancel}
+        splitDirection="column"
         inputSlot={
           <Box>
             {parsed.method && (
@@ -219,10 +227,32 @@ export const StandaloneBlock = memo(function StandaloneBlock({
         }
         outputSlot={
           error ? (
-            <Box px={3} py={2}>
-              <Text fontSize="xs" color="red.400">{error}</Text>
+            <Box p={3} color="red.500" fontSize="sm" fontFamily="mono">
+              {error}
             </Box>
-          ) : response ? (
+          ) : dbResponse && isSelectResponse(dbResponse) ? (
+            <Box p={2} display="flex" flexDirection="column" gap={1}>
+              <HStack gap={2}>
+                <Badge colorPalette="green" variant="subtle" fontFamily="mono" size="sm">
+                  {dbResponse.total_rows} rows
+                </Badge>
+              </HStack>
+              <ResultTable
+                columns={dbResponse.columns}
+                rows={dbResponse.rows}
+                totalRows={dbResponse.total_rows}
+                page={dbResponse.page}
+                pageSize={dbResponse.page_size}
+                onPageChange={() => {}}
+              />
+            </Box>
+          ) : dbResponse ? (
+            <Box p={3}>
+              <Badge colorPalette="blue" variant="subtle" fontFamily="mono" size="sm">
+                {(dbResponse as { rows_affected: number }).rows_affected} rows affected
+              </Badge>
+            </Box>
+          ) : rawResponse ? (
             <Box px={3} py={2}>
               <Box
                 bg="bg.subtle"
@@ -238,7 +268,7 @@ export const StandaloneBlock = memo(function StandaloneBlock({
                 maxH="200px"
                 overflowY="auto"
               >
-                {response}
+                {rawResponse}
               </Box>
             </Box>
           ) : null
