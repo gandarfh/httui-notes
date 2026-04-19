@@ -56,9 +56,13 @@ const cmTheme = EditorView.theme({
   ".cm-mergeView": { overflow: "hidden", borderRadius: "6px" },
   ".cm-mergeViewEditors": { overflow: "hidden" },
   ".cm-mergeViewEditor": { overflow: "auto" },
-  ".cm-changedLine": { backgroundColor: "rgba(234, 179, 8, 0.1) !important" },
-  ".cm-changedText": { backgroundColor: "rgba(234, 179, 8, 0.25) !important" },
-  ".cm-deletedChunk": { backgroundColor: "rgba(239, 68, 68, 0.1) !important" },
+  /* Side A (original/deleted) — red background */
+  ".cm-mergeView .cm-mergeViewEditor:first-child .cm-changedLine": { backgroundColor: "rgba(248, 81, 73, 0.1) !important" },
+  ".cm-mergeView .cm-mergeViewEditor:first-child .cm-changedText": { backgroundColor: "rgba(248, 81, 73, 0.3) !important" },
+  ".cm-deletedChunk": { backgroundColor: "rgba(248, 81, 73, 0.08) !important" },
+  /* Side B (proposed/added) — green background */
+  ".cm-mergeView .cm-mergeViewEditor:last-child .cm-changedLine": { backgroundColor: "rgba(63, 185, 80, 0.1) !important" },
+  ".cm-mergeView .cm-mergeViewEditor:last-child .cm-changedText": { backgroundColor: "rgba(63, 185, 80, 0.3) !important" },
 });
 
 function langExtension(blockType: string): Extension[] {

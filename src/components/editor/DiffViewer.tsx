@@ -212,13 +212,15 @@ export function DiffViewer({ tab }: DiffViewerProps) {
           "& .cm-editor": { height: "100%", overflow: "auto" },
           "& .cm-content": { minWidth: 0 },
           "& .cm-block-widget": { maxWidth: "100%", overflow: "hidden" },
-          /* Diff highlight — changed lines */
-          "& .cm-changedLine": { backgroundColor: "rgba(234, 179, 8, 0.08) !important" },
-          "& .cm-changedText": { backgroundColor: "rgba(234, 179, 8, 0.2) !important" },
-          /* Diff highlight — deleted chunks (left side) */
-          "& .cm-deletedChunk": { backgroundColor: "rgba(239, 68, 68, 0.1) !important" },
+          /* Side A (current/deleted) — red background like GitHub */
+          "& .cm-mergeViewEditor:first-child .cm-changedLine": { backgroundColor: "rgba(248, 81, 73, 0.1) !important" },
+          "& .cm-mergeViewEditor:first-child .cm-changedText": { backgroundColor: "rgba(248, 81, 73, 0.3) !important" },
+          "& .cm-deletedChunk": { backgroundColor: "rgba(248, 81, 73, 0.08) !important" },
+          /* Side B (proposed/added) — green background like GitHub */
+          "& .cm-mergeViewEditor:last-child .cm-changedLine": { backgroundColor: "rgba(63, 185, 80, 0.1) !important" },
+          "& .cm-mergeViewEditor:last-child .cm-changedText": { backgroundColor: "rgba(63, 185, 80, 0.3) !important" },
           /* Gutter markers */
-          "& .cm-changeGutter .cm-gutterElement": { color: "rgba(234, 179, 8, 0.7)" },
+          "& .cm-changeGutter .cm-gutterElement": { color: "rgba(63, 185, 80, 0.7)" },
         }}
       />
     </Box>
