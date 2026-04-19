@@ -1,6 +1,7 @@
 import { Box, Flex, Text } from "@chakra-ui/react";
 import { TabBar } from "../TabBar";
 import { Editor } from "@/components/editor";
+import { DiffViewer } from "@/components/editor/DiffViewer";
 import { ConflictBanner } from "../ConflictBanner";
 import { usePaneContext } from "@/contexts/PaneContext";
 import { useEditorSettings } from "@/contexts/EditorSettingsContext";
@@ -39,6 +40,11 @@ export function PaneNode({ layout, path }: { layout: PaneLayout; path: number[] 
           onCloseAll={() => actions.closeAll(layout.id)}
         />
         {activeTab ? (
+          activeTab.kind === "diff" ? (
+            <Box flex={1} overflow="hidden">
+              <DiffViewer tab={activeTab} />
+            </Box>
+          ) : (
           <Box flex={1} overflow="hidden" display="flex" flexDirection="column">
             {conflictCtx?.hasConflict(activeTab.filePath) && (
               <ConflictBanner
@@ -57,6 +63,7 @@ export function PaneNode({ layout, path }: { layout: PaneLayout; path: number[] 
               />
             </Box>
           </Box>
+          )
         ) : (
           <Flex flex={1} align="center" justify="center">
             <Text fontSize="sm" color="fg.muted">
