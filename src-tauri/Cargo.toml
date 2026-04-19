@@ -21,6 +21,7 @@ tokio = { version = "1", features = ["full"] }
 notify = "8"
 uuid = { version = "1", features = ["v4"] }
 base64 = "0.22"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
 
 [dev-dependencies]
 tempfile = "3"
