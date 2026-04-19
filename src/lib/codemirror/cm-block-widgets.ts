@@ -1,11 +1,9 @@
-import { RangeSetBuilder } from "@codemirror/state";
+import { RangeSetBuilder, StateField } from "@codemirror/state";
 import {
   Decoration,
-  ViewPlugin,
   WidgetType,
   type DecorationSet,
-  type EditorView,
-  type ViewUpdate,
+  EditorView,
 } from "@codemirror/view";
 import type { Text } from "@codemirror/state";
 import { createRoot, type Root } from "react-dom/client";
@@ -128,9 +126,9 @@ class BlockWidget extends WidgetType {
   }
 }
 
-function buildDecorations(view: EditorView): DecorationSet {
+function buildDecorations(doc: Text): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
-  const blocks = findFencedBlocks(view.state.doc);
+  const blocks = findFencedBlocks(doc);
 
   for (const block of blocks) {
     builder.add(
@@ -146,22 +144,19 @@ function buildDecorations(view: EditorView): DecorationSet {
   return builder.finish();
 }
 
-/** CodeMirror extension that replaces fenced executable blocks with React widget decorations. */
-export const blockWidgetPlugin = ViewPlugin.fromClass(
-  class {
-    decorations: DecorationSet;
-
-    constructor(view: EditorView) {
-      this.decorations = buildDecorations(view);
-    }
-
-    update(update: ViewUpdate) {
-      if (update.docChanged || update.viewportChanged) {
-        this.decorations = buildDecorations(update.view);
-      }
-    }
+/**
+ * CodeMirror extension that replaces fenced executable blocks with React widget decorations.
+ * Uses StateField (not ViewPlugin) because block-level replace decorations require it.
+ */
+export const blockWidgetPlugin = StateField.define<DecorationSet>({
+  create(state) {
+    return buildDecorations(state.doc);
   },
-  {
-    decorations: (v) => v.decorations,
+  update(decos, tr) {
+    if (tr.docChanged) {
+      return buildDecorations(tr.state.doc);
+    }
+    return decos;
   },
-);
+  provide: (f) => EditorView.decorations.from(f),
+});
