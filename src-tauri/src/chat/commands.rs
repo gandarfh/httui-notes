@@ -527,6 +527,19 @@ pub async fn delete_messages_after(
 }
 
 #[tauri::command]
+pub async fn clear_session_claude_id(
+    pool: tauri::State<'_, SqlitePool>,
+    session_id: i64,
+) -> Result<(), String> {
+    sqlx::query("UPDATE sessions SET claude_session_id = NULL, updated_at = unixepoch() WHERE id = ?")
+        .bind(session_id)
+        .execute(pool.inner())
+        .await
+        .map_err(|e| format!("Failed to clear claude_session_id: {e}"))?;
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn update_chat_session_cwd(
     pool: tauri::State<'_, SqlitePool>,
     session_id: i64,

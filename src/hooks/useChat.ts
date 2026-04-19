@@ -6,6 +6,7 @@ import {
   abortChat,
   respondChatPermission,
   deleteMessagesAfter,
+  clearSessionClaudeId,
   type ChatMessage,
   type AttachmentInput,
 } from "@/lib/tauri/chat";
@@ -69,6 +70,7 @@ export function useChat(sessionId: number | null) {
   const [error, setError] = useState<string | null>(null);
   const [toolActivity, setToolActivity] = useState<Map<string, ToolActivity>>(new Map());
   const [pendingPermission, setPendingPermission] = useState<PendingPermission | null>(null);
+  const [resumeFailed, setResumeFailed] = useState(false);
 
   const contentRef = useRef("");
   const rafId = useRef(0);
@@ -188,6 +190,9 @@ export function useChat(sessionId: number | null) {
           setError("Authentication required. Run `claude login` in your terminal.");
         } else if (category === "rate_limit") {
           setError("Rate limit reached. Please wait a moment.");
+        } else if (category === "resume_failed") {
+          setResumeFailed(true);
+          setError("Session could not be resumed.");
         } else {
           setError(message);
         }
@@ -273,6 +278,28 @@ export function useChat(sessionId: number | null) {
     [sessionId, sendMsg]
   );
 
+  const resetAndContinue = useCallback(async () => {
+    if (sessionId === null) return;
+    // Clear the claude_session_id so next message starts fresh
+    await clearSessionClaudeId(sessionId);
+    setResumeFailed(false);
+    setError(null);
+
+    // Find the last user message and re-send it
+    const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
+    if (lastUserMsg) {
+      try {
+        const blocks = JSON.parse(lastUserMsg.content_json);
+        const text = Array.isArray(blocks)
+          ? blocks.filter((b: { type: string }) => b.type === "text").map((b: { text: string }) => b.text).join("\n")
+          : String(blocks);
+        await sendMsg(text);
+      } catch {
+        // fallback
+      }
+    }
+  }, [sessionId, messages, sendMsg]);
+
   const regenerate = useCallback(async () => {
     if (sessionId === null || messages.length < 2) return;
     // Find last user message
@@ -302,10 +329,12 @@ export function useChat(sessionId: number | null) {
     error,
     toolActivity,
     pendingPermission,
+    resumeFailed,
     sendMessage: sendMsg,
     abort,
     respondPermission,
     editAndResend,
     regenerate,
+    resetAndContinue,
   };
 }

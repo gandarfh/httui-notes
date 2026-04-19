@@ -268,7 +268,7 @@ Only fall back to file system tools if the MCP tools cannot accomplish the task.
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
 
-    let category: "auth" | "rate_limit" | "network" | "internal" = "internal";
+    let category: "auth" | "rate_limit" | "network" | "resume_failed" | "internal" = "internal";
     if (message.includes("auth") || message.includes("login")) {
       category = "auth";
     } else if (message.includes("rate") || message.includes("429")) {
@@ -278,6 +278,11 @@ Only fall back to file system tools if the MCP tools cannot accomplish the task.
       message.includes("ECONNREFUSED")
     ) {
       category = "network";
+    } else if (
+      message.includes("session") &&
+      (message.includes("not found") || message.includes("expired") || message.includes("invalid"))
+    ) {
+      category = "resume_failed";
     }
 
     send({ type: "error", request_id, category, message });

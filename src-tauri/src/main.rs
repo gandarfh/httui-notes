@@ -632,6 +632,7 @@ fn main() {
             abort_chat,
             respond_chat_permission,
             save_attachment_tmp,
+            clear_session_claude_id,
             update_chat_session_cwd,
             delete_messages_after,
             list_tool_permissions,

@@ -5,7 +5,7 @@ import { useStickyScroll } from "@/hooks/useStickyScroll";
 import { ChatMessageBubble } from "./ChatMessageBubble";
 
 export function ChatConversation() {
-  const { messages, streamingContent, isStreaming, error, toolActivity, editAndResend, regenerate } = useChatContext();
+  const { messages, streamingContent, isStreaming, error, toolActivity, editAndResend, regenerate, resumeFailed, resetAndContinue } = useChatContext();
   const { scrollRef, showJumpButton, scrollToBottom } = useStickyScroll([
     messages,
     streamingContent,
@@ -112,6 +112,25 @@ export function ChatConversation() {
               color="red.400"
             >
               {error}
+              {resumeFailed && (
+                <Box
+                  as="button"
+                  display="block"
+                  mt={2}
+                  px={3}
+                  py={1}
+                  rounded="md"
+                  fontSize="xs"
+                  fontWeight="medium"
+                  bg="blue.600"
+                  color="white"
+                  cursor="pointer"
+                  _hover={{ bg: "blue.700" }}
+                  onClick={resetAndContinue}
+                >
+                  Continue as new conversation
+                </Box>
+              )}
             </Box>
           </Box>
         )}
