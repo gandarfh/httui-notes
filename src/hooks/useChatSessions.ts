@@ -20,9 +20,22 @@ export function useChatSessions() {
     }
   }, []);
 
+  // Start with a fresh session, or reuse the latest if it has no messages
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    refresh().then(async () => {
+      const list = await listChatSessions();
+      if (list.length > 0 && list[0].title === "Nova conversa") {
+        // Latest session is empty, reuse it
+        setActiveSessionId(list[0].id);
+      } else {
+        // Create a new session
+        const session = await createChatSession();
+        await refresh();
+        setActiveSessionId(session.id);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Refresh when session title changes (auto-title)
   useEffect(() => {
@@ -54,15 +67,21 @@ export function useChatSessions() {
     async (id: number) => {
       try {
         await archiveChatSession(id);
-        if (activeSessionId === id) {
-          setActiveSessionId(null);
-        }
         await refresh();
+        const remaining = await listChatSessions();
+        if (remaining.length === 0) {
+          // Auto-create a new session when the last one is archived
+          const session = await createChatSession();
+          setSessions([session]);
+          setActiveSessionId(session.id);
+        } else if (activeSessionId === id) {
+          setActiveSessionId(remaining[0].id);
+        }
       } catch (e) {
         console.error("Failed to archive chat session:", e);
       }
     },
-    [activeSessionId, refresh]
+    [activeSessionId, refresh],
   );
 
   return {

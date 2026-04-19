@@ -12,7 +12,11 @@ function timeAgo(unixSeconds: number): string {
   return `${Math.floor(diff / 86400)}d`;
 }
 
-export function ChatSessionList() {
+interface ChatSessionListProps {
+  onSelectSession: () => void;
+}
+
+export function ChatSessionList({ onSelectSession }: ChatSessionListProps) {
   const { sessions, activeSessionId, selectSession, createSession, archiveSession } =
     useChatContext();
   const [searchQuery, setSearchQuery] = useState("");
@@ -20,15 +24,15 @@ export function ChatSessionList() {
 
   const filtered = searchQuery.trim()
     ? sessions.filter((s) =>
-        s.title.toLowerCase().includes(searchQuery.toLowerCase())
+        s.title.toLowerCase().includes(searchQuery.toLowerCase()),
       )
     : sessions;
 
   return (
-    <Box borderBottom="1px solid" borderColor="border" bg="bg">
-      <HStack px={2} py={1.5} justify="space-between">
+    <Box flex={1} overflow="hidden" display="flex" flexDirection="column">
+      <HStack px={2} py={1.5} justify="space-between" flexShrink={0}>
         <Text fontSize="xs" fontWeight="semibold" color="fg.muted">
-          Sessions
+          {filtered.length} session{filtered.length !== 1 ? "s" : ""}
         </Text>
         <HStack gap={0}>
           <IconButton
@@ -44,7 +48,10 @@ export function ChatSessionList() {
             aria-label="New session"
             size="2xs"
             variant="ghost"
-            onClick={() => createSession()}
+            onClick={() => {
+              createSession();
+              onSelectSession();
+            }}
           >
             <LuPlus />
           </IconButton>
@@ -52,67 +59,77 @@ export function ChatSessionList() {
       </HStack>
 
       {showSearch && (
-        <Box px={2} pb={1}>
+        <Box px={2} pb={1} flexShrink={0}>
           <Input
             size="xs"
             placeholder="Search sessions..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === "Escape") {
+                setShowSearch(false);
+                setSearchQuery("");
+              }
+            }}
             onMouseDown={(e: React.MouseEvent) => e.stopPropagation()}
             autoFocus
           />
         </Box>
       )}
 
-      {filtered.length > 0 && (
-        <Box maxH="160px" overflowY="auto" px={1} pb={1}>
-          {filtered.map((s) => (
-            <HStack
-              key={s.id}
-              px={2}
-              py={1}
-              rounded="sm"
-              cursor="pointer"
-              bg={s.id === activeSessionId ? "bg.emphasized" : "transparent"}
-              _hover={{ bg: s.id === activeSessionId ? "bg.emphasized" : "bg.subtle" }}
-              onClick={() => selectSession(s.id)}
-              role="group"
-            >
+      <Box flex={1} overflowY="auto" px={1} pb={1}>
+        {filtered.map((s) => (
+          <HStack
+            key={s.id}
+            px={2}
+            py={1.5}
+            rounded="md"
+            cursor="pointer"
+            bg={s.id === activeSessionId ? "blue.500/10" : "transparent"}
+            borderLeft="2px solid"
+            borderColor={s.id === activeSessionId ? "blue.500" : "transparent"}
+            _hover={{ bg: s.id === activeSessionId ? "blue.500/10" : "bg.subtle" }}
+            onClick={() => {
+              selectSession(s.id);
+              onSelectSession();
+            }}
+            role="group"
+          >
+            <Box flex={1} minW={0}>
               <Text
-                flex={1}
                 fontSize="xs"
                 truncate
                 fontWeight={s.id === activeSessionId ? "semibold" : "normal"}
               >
                 {s.title}
               </Text>
-              <Text fontSize="2xs" color="fg.muted" flexShrink={0}>
+              <Text fontSize="2xs" color="fg.muted">
                 {timeAgo(s.updated_at)}
               </Text>
-              <IconButton
-                aria-label="Archive session"
-                size="2xs"
-                variant="ghost"
-                opacity={0}
-                _groupHover={{ opacity: 0.6 }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  archiveSession(s.id);
-                }}
-              >
-                <LuTrash2 />
-              </IconButton>
-            </HStack>
-          ))}
-        </Box>
-      )}
+            </Box>
+            <IconButton
+              aria-label="Archive session"
+              size="2xs"
+              variant="ghost"
+              opacity={0}
+              _groupHover={{ opacity: 0.6 }}
+              onClick={(e) => {
+                e.stopPropagation();
+                archiveSession(s.id);
+              }}
+            >
+              <LuTrash2 />
+            </IconButton>
+          </HStack>
+        ))}
 
-      {searchQuery && filtered.length === 0 && (
-        <Box px={3} pb={2}>
-          <Text fontSize="2xs" color="fg.muted">No sessions found</Text>
-        </Box>
-      )}
+        {searchQuery && filtered.length === 0 && (
+          <Box px={2} py={4} textAlign="center">
+            <Text fontSize="2xs" color="fg.muted">No sessions found</Text>
+          </Box>
+        )}
+      </Box>
     </Box>
   );
 }

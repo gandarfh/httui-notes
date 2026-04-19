@@ -46,13 +46,13 @@ export function PermissionBanner() {
       py={2}
     >
       <HStack gap={2} mb={1.5}>
-        <Box color="orange.400">
+        <Box color="orange.400" flexShrink={0}>
           <LuShield size={14} />
         </Box>
-        <Text fontWeight="medium" fontSize="xs" flex={1}>
+        <Text fontWeight="medium" fontSize="xs" flex={1} truncate>
           {toolName}
         </Text>
-        <HStack gap={1}>
+        <HStack gap={1} flexShrink={0}>
           <Box
             as="button"
             display="flex"
