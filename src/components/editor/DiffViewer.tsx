@@ -206,12 +206,19 @@ export function DiffViewer({ tab }: DiffViewerProps) {
         flex={1}
         overflow="auto"
         css={{
-          "& .cm-mergeView": { height: "100%" },
+          "& .cm-mergeView": { height: "100%", overflow: "hidden" },
+          "& .cm-mergeViewEditors": { height: "100%", overflow: "hidden" },
           "& .cm-mergeViewEditor": { overflow: "auto" },
-          "& .cm-changedLine": { backgroundColor: "var(--chakra-colors-yellow-500-10, rgba(234, 179, 8, 0.1))" },
-          "& .cm-changedText": { backgroundColor: "var(--chakra-colors-yellow-500-20, rgba(234, 179, 8, 0.2))" },
-          "& .cm-deletedChunk": { backgroundColor: "var(--chakra-colors-red-500-10, rgba(239, 68, 68, 0.1))" },
-          "& .cm-insertedLine": { backgroundColor: "var(--chakra-colors-green-500-10, rgba(34, 197, 94, 0.1))" },
+          "& .cm-editor": { height: "100%", overflow: "auto" },
+          "& .cm-content": { minWidth: 0 },
+          "& .cm-block-widget": { maxWidth: "100%", overflow: "hidden" },
+          /* Diff highlight — changed lines */
+          "& .cm-changedLine": { backgroundColor: "rgba(234, 179, 8, 0.08) !important" },
+          "& .cm-changedText": { backgroundColor: "rgba(234, 179, 8, 0.2) !important" },
+          /* Diff highlight — deleted chunks (left side) */
+          "& .cm-deletedChunk": { backgroundColor: "rgba(239, 68, 68, 0.1) !important" },
+          /* Gutter markers */
+          "& .cm-changeGutter .cm-gutterElement": { color: "rgba(234, 179, 8, 0.7)" },
         }}
       />
     </Box>
