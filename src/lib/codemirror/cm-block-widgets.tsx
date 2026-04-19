@@ -7,7 +7,7 @@ import {
 } from "@codemirror/view";
 import type { Text } from "@codemirror/state";
 import { createRoot, type Root } from "react-dom/client";
-import { createElement } from "react";
+import { Provider } from "@/components/ui/provider";
 import { StandaloneBlock } from "@/components/blocks/standalone/StandaloneBlock";
 
 const BLOCK_OPEN_RE = /^```(http|db(?:-[\w:-]+)?|e2e)(.*)$/;
@@ -94,12 +94,14 @@ class BlockWidget extends WidgetType {
 
     this.root = createRoot(container);
     this.root.render(
-      createElement(StandaloneBlock, {
-        blockType: langToBlockType(this.lang),
-        lang: this.lang,
-        content: this.content,
-        alias: extractAlias(this.info),
-      }),
+      <Provider>
+        <StandaloneBlock
+          blockType={langToBlockType(this.lang)}
+          lang={this.lang}
+          content={this.content}
+          alias={extractAlias(this.info)}
+        />
+      </Provider>,
     );
 
     return container;
