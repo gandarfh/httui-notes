@@ -43,16 +43,16 @@ Pesquisar em sessoes e mensagens anteriores.
 - [x] Filtro client-side por titulo (case-insensitive)
 - [x] Mensagem "No sessions found" quando busca nao retorna resultados
 
-## Story 04: Observabilidade de uso
+## Story 04: Observabilidade de uso ✅
 
 Metricas de consumo de tokens.
 
 ### Tasks
 
 - [x] Exibir contagem de tokens por mensagem (discreto no footer da bolha) — ja implementado no Epic 12
-- [ ] Agregar tokens por dia/sessao na tabela `usage_stats` (atualizar no `chat:done`)
-- [ ] Criar tela "Uso" no settings com grafico de tokens/dia
-- [ ] Exibir cache_read_tokens para visualizar eficiencia do cache
+- [x] Agregar tokens por dia/sessao na tabela `usage_stats` (atualizar no `chat:done`)
+- [x] Criar tela "Uso" no settings com grafico de tokens/dia
+- [x] Exibir cache_read_tokens para visualizar eficiencia do cache
 
 ## Story 05: Integracao com notes ✅
 
@@ -64,4 +64,4 @@ Ponte entre chat e vault de notas.
 - [x] Permissao `dialog:allow-save` adicionada nas capabilities
 - [x] Implementar servidor MCP local expondo `search_notes`, `read_note`, `create_note`, `update_note`, etc. — `httui-mcp` binary com 13 tools
 - [x] Registrar MCP server como tool disponivel para o sidecar — configurado em `sidecar/src/handlers/chat.ts` com `--vault` e `--db` args
-- [ ] Resolucao de wikilinks no contexto do chat
+- [x] Resolucao de wikilinks no contexto do chat
