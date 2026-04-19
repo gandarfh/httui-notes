@@ -2,6 +2,8 @@ import { useState, useCallback, useMemo, useEffect, useRef, memo } from "react";
 import { Box, Text, Badge, HStack } from "@chakra-ui/react";
 import { EditorState, RangeSetBuilder, StateField, type Extension } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView } from "@codemirror/view";
+import { syntaxHighlighting } from "@codemirror/language";
+import { oneDarkHighlightStyle } from "@codemirror/theme-one-dark";
 import { sql } from "@codemirror/lang-sql";
 import { json } from "@codemirror/lang-json";
 import { ExecutableBlockShell } from "../ExecutableBlockShell";
@@ -120,7 +122,7 @@ function BlockCodeEditor({
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const extensions: Extension[] = [readOnlyExt, cmTheme, ...langExtension(blockType)];
+    const extensions: Extension[] = [readOnlyExt, cmTheme, syntaxHighlighting(oneDarkHighlightStyle), ...langExtension(blockType)];
 
     if (counterpartContent !== undefined && counterpartContent !== content) {
       const changedLines = computeChangedLines(content, counterpartContent);
