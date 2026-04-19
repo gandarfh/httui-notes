@@ -11,7 +11,7 @@ import {
   Portal,
 } from "@chakra-ui/react";
 import { NativeSelectRoot, NativeSelectField } from "@chakra-ui/react";
-import { LuX, LuPlugZap, LuChevronDown, LuChevronRight, LuFolderOpen } from "react-icons/lu";
+import { LuX, LuPlugZap, LuChevronDown, LuChevronRight, LuFolderOpen, LuDatabase, LuLock } from "react-icons/lu";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Connection, CreateConnectionInput } from "@/lib/tauri/connections";
@@ -28,13 +28,22 @@ interface ConnectionFormProps {
 
 type Driver = "postgres" | "mysql" | "sqlite";
 
-const DRIVERS: { value: Driver; label: string }[] = [
-  { value: "postgres", label: "PostgreSQL" },
-  { value: "mysql", label: "MySQL" },
-  { value: "sqlite", label: "SQLite" },
-];
+const DRIVER_CONFIG: Record<Driver, { label: string; color: string; defaultPort: string }> = {
+  postgres: { label: "PostgreSQL", color: "blue", defaultPort: "5432" },
+  mysql: { label: "MySQL", color: "orange", defaultPort: "3306" },
+  sqlite: { label: "SQLite", color: "green", defaultPort: "" },
+};
 
 const SSL_MODES = ["disable", "require", "verify-ca", "verify-full"];
+
+function buildConnectionPreview(driver: Driver, host: string, port: string, dbName: string, username: string): string {
+  if (driver === "sqlite") return dbName || "path/to/database.db";
+  const user = username || "user";
+  const h = host || "localhost";
+  const p = port || DRIVER_CONFIG[driver].defaultPort;
+  const db = dbName || "database";
+  return `${driver}://${user}@${h}:${p}/${db}`;
+}
 
 export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
   const isEdit = connection !== null;
@@ -77,9 +86,7 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
   // Update default port when driver changes
   useEffect(() => {
     if (!isEdit) {
-      if (driver === "postgres") setPort("5432");
-      else if (driver === "mysql") setPort("3306");
-      else setPort("");
+      setPort(DRIVER_CONFIG[driver].defaultPort);
     }
   }, [driver, isEdit]);
 
@@ -157,6 +164,7 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
   }, [onClose]);
 
   const isSqlite = driver === "sqlite";
+  const driverColor = DRIVER_CONFIG[driver].color;
 
   return (
     <Portal>
@@ -175,18 +183,23 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
           bg="bg"
           border="1px solid"
           borderColor="border"
-          rounded="lg"
-          shadow="lg"
-          w="420px"
-          maxH="80vh"
+          rounded="xl"
+          shadow="2xl"
+          w="440px"
+          maxH="85vh"
           overflowY="auto"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <Flex align="center" px={4} py={3} borderBottom="1px solid" borderColor="border">
-            <Text fontWeight="semibold" fontSize="sm" flex={1}>
-              {isEdit ? "Edit Connection" : "New Connection"}
-            </Text>
+          <Flex align="center" px={5} py={3} borderBottom="1px solid" borderColor="border">
+            <HStack gap={2} flex={1}>
+              <Box color={`${driverColor}.400`}>
+                <LuDatabase size={16} />
+              </Box>
+              <Text fontWeight="semibold" fontSize="sm">
+                {isEdit ? "Edit Connection" : "New Connection"}
+              </Text>
+            </HStack>
             <IconButton
               aria-label="Close"
               variant="ghost"
@@ -198,154 +211,191 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
           </Flex>
 
           {/* Body */}
-          <VStack gap={3} p={4} align="stretch">
-            {/* Name */}
-            <Box>
-              <Text fontSize="xs" fontWeight="medium" mb={1} color="fg.muted">
-                Name
-              </Text>
+          <VStack gap={0} align="stretch">
+            {/* Name + Driver section */}
+            <VStack gap={3} p={4} pb={3} align="stretch">
               <Input
                 size="sm"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="My Database"
+                placeholder="Connection name"
+                fontWeight="medium"
               />
-            </Box>
 
-            {/* Driver */}
-            <Box>
-              <Text fontSize="xs" fontWeight="medium" mb={1} color="fg.muted">
-                Driver
-              </Text>
-              <NativeSelectRoot size="sm">
-                <NativeSelectField
-                  value={driver}
-                  onChange={(e) => setDriver(e.target.value as Driver)}
-                >
-                  {DRIVERS.map((d) => (
-                    <option key={d.value} value={d.value}>
-                      {d.label}
-                    </option>
-                  ))}
-                </NativeSelectField>
-              </NativeSelectRoot>
-            </Box>
-
-            {/* Host + Port (not for SQLite) */}
-            {!isSqlite && (
-              <HStack gap={2}>
-                <Box flex={1}>
-                  <Text fontSize="xs" fontWeight="medium" mb={1} color="fg.muted">
-                    Host
-                  </Text>
-                  <Input
-                    size="sm"
-                    value={host}
-                    onChange={(e) => setHost(e.target.value)}
-                    placeholder="localhost"
-                  />
-                </Box>
-                <Box w="80px">
-                  <Text fontSize="xs" fontWeight="medium" mb={1} color="fg.muted">
-                    Port
-                  </Text>
-                  <Input
-                    size="sm"
-                    value={port}
-                    onChange={(e) => setPort(e.target.value)}
-                    placeholder="5432"
-                  />
-                </Box>
-              </HStack>
-            )}
-
-            {/* Database / File path */}
-            <Box>
-              <Text fontSize="xs" fontWeight="medium" mb={1} color="fg.muted">
-                {isSqlite ? "File Path" : "Database"}
-              </Text>
-              <Flex gap={1}>
-                <Input
-                  size="sm"
-                  flex={1}
-                  value={dbName}
-                  onChange={(e) => setDbName(e.target.value)}
-                  placeholder={isSqlite ? "/path/to/database.db" : "mydb"}
-                />
-                {isSqlite && (
-                  <IconButton
-                    aria-label="Browse"
-                    size="sm"
-                    variant="outline"
-                    onClick={async () => {
-                      const selected = await open({
-                        multiple: false,
-                        filters: [
-                          { name: "SQLite", extensions: ["db", "sqlite", "sqlite3"] },
-                          { name: "All", extensions: ["*"] },
-                        ],
-                      });
-                      if (selected) setDbName(selected);
-                    }}
-                  >
-                    <LuFolderOpen />
-                  </IconButton>
+              {/* Driver selector */}
+              <HStack gap={1} p={0.5} bg="bg.subtle" rounded="md">
+                {(Object.entries(DRIVER_CONFIG) as [Driver, typeof DRIVER_CONFIG.postgres][]).map(
+                  ([key, cfg]) => (
+                    <Box
+                      key={key}
+                      as="button"
+                      flex={1}
+                      py={1.5}
+                      rounded="sm"
+                      fontSize="xs"
+                      fontWeight="medium"
+                      textAlign="center"
+                      bg={driver === key ? "bg" : "transparent"}
+                      color={driver === key ? `${cfg.color}.400` : "fg.muted"}
+                      shadow={driver === key ? "xs" : "none"}
+                      cursor="pointer"
+                      _hover={{ color: driver === key ? undefined : "fg" }}
+                      onClick={() => setDriver(key)}
+                    >
+                      {cfg.label}
+                    </Box>
+                  ),
                 )}
-              </Flex>
+              </HStack>
+            </VStack>
+
+            {/* Connection details section */}
+            <Box bg="bg.subtle" mx={4} rounded="lg" p={3} mb={3}>
+              <VStack gap={2.5} align="stretch">
+                {isSqlite ? (
+                  /* SQLite: file path */
+                  <Box>
+                    <Text fontSize="2xs" color="fg.muted" mb={1}>FILE PATH</Text>
+                    <Flex gap={1}>
+                      <Input
+                        size="sm"
+                        flex={1}
+                        value={dbName}
+                        onChange={(e) => setDbName(e.target.value)}
+                        placeholder="/path/to/database.db"
+                        fontFamily="mono"
+                        fontSize="xs"
+                      />
+                      <IconButton
+                        aria-label="Browse"
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          const selected = await open({
+                            multiple: false,
+                            filters: [
+                              { name: "SQLite", extensions: ["db", "sqlite", "sqlite3"] },
+                              { name: "All", extensions: ["*"] },
+                            ],
+                          });
+                          if (selected) setDbName(selected);
+                        }}
+                      >
+                        <LuFolderOpen />
+                      </IconButton>
+                    </Flex>
+                  </Box>
+                ) : (
+                  <>
+                    {/* Host + Port */}
+                    <HStack gap={2}>
+                      <Box flex={1}>
+                        <Text fontSize="2xs" color="fg.muted" mb={1}>HOST</Text>
+                        <Input
+                          size="sm"
+                          value={host}
+                          onChange={(e) => setHost(e.target.value)}
+                          placeholder="localhost"
+                        />
+                      </Box>
+                      <Box w="80px">
+                        <Text fontSize="2xs" color="fg.muted" mb={1}>PORT</Text>
+                        <Input
+                          size="sm"
+                          value={port}
+                          onChange={(e) => setPort(e.target.value)}
+                          placeholder={DRIVER_CONFIG[driver].defaultPort}
+                        />
+                      </Box>
+                    </HStack>
+
+                    {/* Database */}
+                    <Box>
+                      <Text fontSize="2xs" color="fg.muted" mb={1}>DATABASE</Text>
+                      <Input
+                        size="sm"
+                        value={dbName}
+                        onChange={(e) => setDbName(e.target.value)}
+                        placeholder="mydb"
+                      />
+                    </Box>
+
+                    {/* Username + Password */}
+                    <HStack gap={2}>
+                      <Box flex={1}>
+                        <Text fontSize="2xs" color="fg.muted" mb={1}>USERNAME</Text>
+                        <Input
+                          size="sm"
+                          value={username}
+                          onChange={(e) => setUsername(e.target.value)}
+                          placeholder={driver === "mysql" ? "root" : "postgres"}
+                        />
+                      </Box>
+                      <Box flex={1}>
+                        <Text fontSize="2xs" color="fg.muted" mb={1}>PASSWORD</Text>
+                        <HStack gap={0}>
+                          <Input
+                            size="sm"
+                            type="password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            placeholder="••••••••"
+                            borderRight="none"
+                            roundedRight={0}
+                          />
+                          <Flex
+                            align="center"
+                            px={2}
+                            border="1px solid"
+                            borderColor="border"
+                            borderLeft="none"
+                            roundedRight="md"
+                            h="32px"
+                            color="fg.muted"
+                          >
+                            <LuLock size={12} />
+                          </Flex>
+                        </HStack>
+                      </Box>
+                    </HStack>
+
+                    {/* SSL Mode */}
+                    <Box>
+                      <Text fontSize="2xs" color="fg.muted" mb={1}>SSL</Text>
+                      <NativeSelectRoot size="sm">
+                        <NativeSelectField
+                          value={sslMode}
+                          onChange={(e) => setSslMode(e.target.value)}
+                        >
+                          {SSL_MODES.map((m) => (
+                            <option key={m} value={m}>{m}</option>
+                          ))}
+                        </NativeSelectField>
+                      </NativeSelectRoot>
+                    </Box>
+                  </>
+                )}
+              </VStack>
             </Box>
 
-            {/* Username + Password (not for SQLite) */}
-            {!isSqlite && (
-              <HStack gap={2}>
-                <Box flex={1}>
-                  <Text fontSize="xs" fontWeight="medium" mb={1} color="fg.muted">
-                    Username
-                  </Text>
-                  <Input
-                    size="sm"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder="postgres"
-                  />
-                </Box>
-                <Box flex={1}>
-                  <Text fontSize="xs" fontWeight="medium" mb={1} color="fg.muted">
-                    Password
-                  </Text>
-                  <Input
-                    size="sm"
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="password"
-                  />
-                </Box>
-              </HStack>
-            )}
-
-            {/* SSL Mode (not for SQLite) */}
-            {!isSqlite && (
-              <Box>
-                <Text fontSize="xs" fontWeight="medium" mb={1} color="fg.muted">
-                  SSL Mode
-                </Text>
-                <NativeSelectRoot size="sm">
-                  <NativeSelectField
-                    value={sslMode}
-                    onChange={(e) => setSslMode(e.target.value)}
-                  >
-                    {SSL_MODES.map((m) => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
-                    ))}
-                  </NativeSelectField>
-                </NativeSelectRoot>
-              </Box>
-            )}
+            {/* Connection string preview */}
+            <Box mx={4} mb={3}>
+              <Text
+                fontSize="2xs"
+                fontFamily="mono"
+                color="fg.muted"
+                bg="bg.subtle"
+                px={3}
+                py={1.5}
+                rounded="md"
+                truncate
+              >
+                {buildConnectionPreview(driver, host, port, dbName, username)}
+              </Text>
+            </Box>
 
             {/* Advanced settings */}
-            <Box>
+            <Box mx={4} mb={3}>
               <Flex
                 align="center"
                 gap={1}
@@ -355,80 +405,83 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
                 onClick={() => setShowAdvanced(!showAdvanced)}
                 _hover={{ color: "fg" }}
               >
-                {showAdvanced ? <LuChevronDown size={14} /> : <LuChevronRight size={14} />}
-                Advanced
+                {showAdvanced ? <LuChevronDown size={12} /> : <LuChevronRight size={12} />}
+                <Text fontSize="2xs">Advanced</Text>
               </Flex>
 
               {showAdvanced && (
-                <VStack gap={2} mt={2} pl={4} align="stretch">
-                  <HStack gap={2}>
-                    <Box flex={1}>
-                      <Text fontSize="xs" color="fg.muted" mb={1}>
-                        Connect timeout (ms)
-                      </Text>
-                      <Input
-                        size="sm"
-                        value={timeoutMs}
-                        onChange={(e) => setTimeoutMs(e.target.value)}
-                      />
-                    </Box>
-                    <Box flex={1}>
-                      <Text fontSize="xs" color="fg.muted" mb={1}>
-                        Query timeout (ms)
-                      </Text>
-                      <Input
-                        size="sm"
-                        value={queryTimeoutMs}
-                        onChange={(e) => setQueryTimeoutMs(e.target.value)}
-                      />
-                    </Box>
-                  </HStack>
-                  <HStack gap={2}>
-                    <Box flex={1}>
-                      <Text fontSize="xs" color="fg.muted" mb={1}>
-                        TTL (seconds)
-                      </Text>
-                      <Input
-                        size="sm"
-                        value={ttlSeconds}
-                        onChange={(e) => setTtlSeconds(e.target.value)}
-                      />
-                    </Box>
-                    <Box flex={1}>
-                      <Text fontSize="xs" color="fg.muted" mb={1}>
-                        Max pool size
-                      </Text>
-                      <Input
-                        size="sm"
-                        value={maxPoolSize}
-                        onChange={(e) => setMaxPoolSize(e.target.value)}
-                      />
-                    </Box>
-                  </HStack>
-                </VStack>
+                <Box bg="bg.subtle" rounded="lg" p={3} mt={2}>
+                  <VStack gap={2} align="stretch">
+                    <HStack gap={2}>
+                      <Box flex={1}>
+                        <Text fontSize="2xs" color="fg.muted" mb={1}>CONNECT TIMEOUT</Text>
+                        <Input
+                          size="sm"
+                          value={timeoutMs}
+                          onChange={(e) => setTimeoutMs(e.target.value)}
+                          placeholder="10000"
+                        />
+                      </Box>
+                      <Box flex={1}>
+                        <Text fontSize="2xs" color="fg.muted" mb={1}>QUERY TIMEOUT</Text>
+                        <Input
+                          size="sm"
+                          value={queryTimeoutMs}
+                          onChange={(e) => setQueryTimeoutMs(e.target.value)}
+                          placeholder="30000"
+                        />
+                      </Box>
+                    </HStack>
+                    <HStack gap={2}>
+                      <Box flex={1}>
+                        <Text fontSize="2xs" color="fg.muted" mb={1}>TTL (SECONDS)</Text>
+                        <Input
+                          size="sm"
+                          value={ttlSeconds}
+                          onChange={(e) => setTtlSeconds(e.target.value)}
+                          placeholder="300"
+                        />
+                      </Box>
+                      <Box flex={1}>
+                        <Text fontSize="2xs" color="fg.muted" mb={1}>MAX POOL SIZE</Text>
+                        <Input
+                          size="sm"
+                          value={maxPoolSize}
+                          onChange={(e) => setMaxPoolSize(e.target.value)}
+                          placeholder="5"
+                        />
+                      </Box>
+                    </HStack>
+                  </VStack>
+                </Box>
               )}
             </Box>
 
             {/* Test result */}
             {testResult && (
-              <Badge
-                colorPalette={testResult === "success" ? "green" : "red"}
-                variant="subtle"
-                px={2}
-                py={1}
-                fontSize="xs"
-              >
-                {testResult === "success"
-                  ? "Connection successful"
-                  : `Connection failed${testError ? `: ${testError}` : ""}`}
-              </Badge>
+              <Box mx={4} mb={3}>
+                <Badge
+                  colorPalette={testResult === "success" ? "green" : "red"}
+                  variant="subtle"
+                  px={2}
+                  py={1}
+                  fontSize="xs"
+                  w="100%"
+                >
+                  {testResult === "success"
+                    ? "Connection successful"
+                    : `Connection failed${testError ? `: ${testError}` : ""}`}
+                </Badge>
+              </Box>
             )}
 
             {/* Error */}
             {error && (
-              <Badge colorPalette="red" variant="subtle" px={2} py={1} fontSize="xs">
-                {error}
-              </Badge>
+              <Box mx={4} mb={3}>
+                <Badge colorPalette="red" variant="subtle" px={2} py={1} fontSize="xs" w="100%">
+                  {error}
+                </Badge>
+              </Box>
             )}
           </VStack>
 
@@ -444,6 +497,9 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
             {isEdit && (
               <Box
                 as="button"
+                display="flex"
+                alignItems="center"
+                gap={1}
                 px={3}
                 py={1.5}
                 rounded="md"
@@ -453,11 +509,10 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
                 onClick={handleTest}
                 opacity={testing ? 0.5 : 1}
                 pointerEvents={testing ? "none" : "auto"}
+                mr="auto"
               >
-                <HStack gap={1}>
-                  {testing ? <Spinner size="xs" /> : <LuPlugZap size={14} />}
-                  <Text>Test</Text>
-                </HStack>
+                {testing ? <Spinner size="xs" /> : <LuPlugZap size={14} />}
+                <Text fontSize="xs">Test</Text>
               </Box>
             )}
             <Box
@@ -474,14 +529,14 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
             </Box>
             <Box
               as="button"
-              px={3}
+              px={4}
               py={1.5}
               rounded="md"
               fontSize="sm"
               fontWeight="medium"
-              bg="blue.500"
+              bg={`${driverColor}.500`}
               color="white"
-              _hover={{ bg: "blue.600" }}
+              _hover={{ bg: `${driverColor}.600` }}
               onClick={handleSave}
               opacity={saving || !name.trim() ? 0.5 : 1}
               pointerEvents={saving || !name.trim() ? "none" : "auto"}

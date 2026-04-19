@@ -748,6 +748,7 @@ function DbBlockViewInner({
         onCancel={handleCancel}
         selected={selected}
         statusText={depStatus}
+        splitDirection="column"
         inputSlot={
           <DbInput
             data={data}

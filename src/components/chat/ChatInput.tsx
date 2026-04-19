@@ -212,9 +212,7 @@ export function ChatInput() {
           onMouseDown={(e) => e.stopPropagation()}
           onFocus={(e) => e.stopPropagation()}
           onPaste={handlePaste as unknown as React.ClipboardEventHandler<HTMLTextAreaElement>}
-          placeholder={
-            activeSessionId ? "Message... (Cmd+Enter to send)" : "Create a session first"
-          }
+          placeholder="Message... (Cmd+Enter to send)"
           disabled={activeSessionId === null}
           rows={1}
           style={{

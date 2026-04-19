@@ -16,6 +16,7 @@ interface ExecutableBlockShellProps {
   outputSlot: ReactNode;
   selected?: boolean;
   statusText?: string | null;
+  splitDirection?: "row" | "column";
 }
 
 const STATE_COLORS: Record<ExecutionState, string> = {
@@ -59,6 +60,7 @@ export function ExecutableBlockShell({
   outputSlot,
   selected = false,
   statusText,
+  splitDirection,
 }: ExecutableBlockShellProps) {
   const isRunning = executionState === "running";
   const showInput = displayMode === "input" || displayMode === "split";
@@ -146,14 +148,14 @@ export function ExecutableBlockShell({
 
       {/* Content area */}
       <Flex
-        direction={displayMode === "split" ? { base: "column", md: "row" } : "column"}
+        direction={displayMode === "split" ? (splitDirection === "column" ? "column" : { base: "column", md: "row" }) : "column"}
         minH="40px"
       >
         <Box
           flex={showInput ? 1 : undefined}
           minW={displayMode === "split" ? "0" : undefined}
-          borderRightWidth={displayMode === "split" ? { base: "0", md: "1px" } : undefined}
-          borderBottomWidth={displayMode === "split" ? { base: "1px", md: "0" } : undefined}
+          borderRightWidth={displayMode === "split" && splitDirection !== "column" ? { base: "0", md: "1px" } : undefined}
+          borderBottomWidth={displayMode === "split" ? (splitDirection === "column" ? "1px" : { base: "1px", md: "0" }) : undefined}
           borderStyle="solid"
           borderColor="border"
           overflow="hidden"

@@ -1,12 +1,43 @@
 import { memo, useState } from "react";
 import { Box, HStack, Text } from "@chakra-ui/react";
-import { LuChevronDown, LuChevronRight, LuWrench, LuLoader, LuCheck, LuX } from "react-icons/lu";
+import {
+  LuChevronDown,
+  LuChevronRight,
+  LuLoader,
+  LuCheck,
+  LuX,
+  LuFileText,
+  LuSearch,
+  LuTerminal,
+  LuPencil,
+  LuFolderSearch,
+  LuGlobe,
+  LuWrench,
+} from "react-icons/lu";
 import type { ChatToolCall } from "@/lib/tauri/chat";
 import type { ToolActivity } from "@/hooks/useChat";
 
 interface ToolUseBlockProps {
   toolCall?: ChatToolCall;
   activity?: ToolActivity;
+}
+
+/** Strip MCP prefix: "mcp__httui_notes__list_connections" → "list_connections" */
+function shortName(name: string): string {
+  const parts = name.split("__");
+  return parts.length > 2 ? parts.slice(2).join("__") : name;
+}
+
+/** Pick an icon based on tool name */
+function toolIcon(name: string) {
+  const n = name.toLowerCase();
+  if (n.includes("read") || n.includes("cat")) return LuFileText;
+  if (n.includes("write") || n.includes("edit") || n.includes("create") || n.includes("update") || n.includes("delete")) return LuPencil;
+  if (n.includes("grep") || n.includes("search")) return LuSearch;
+  if (n.includes("glob") || n.includes("list")) return LuFolderSearch;
+  if (n.includes("bash") || n.includes("exec")) return LuTerminal;
+  if (n.includes("fetch") || n.includes("web")) return LuGlobe;
+  return LuWrench;
 }
 
 function formatInput(input: unknown): string {
@@ -20,13 +51,27 @@ function formatInput(input: unknown): string {
   return JSON.stringify(input, null, 2);
 }
 
+/** Show the most relevant field inline */
+function inlineSummary(input: unknown): string | null {
+  if (!input || typeof input !== "object") return null;
+  const obj = input as Record<string, unknown>;
+  if ("command" in obj) return String(obj.command);
+  if ("file_path" in obj) return String(obj.file_path);
+  if ("path" in obj && "pattern" in obj) return `${obj.pattern} in ${obj.path}`;
+  if ("pattern" in obj) return String(obj.pattern);
+  if ("path" in obj) return String(obj.path);
+  if ("note_path" in obj) return String(obj.note_path);
+  return null;
+}
+
 export const ToolUseBlock = memo(function ToolUseBlock({
   toolCall,
   activity,
 }: ToolUseBlockProps) {
   const [expanded, setExpanded] = useState(false);
 
-  const name = toolCall?.tool_name ?? activity?.name ?? "Unknown";
+  const rawName = toolCall?.tool_name ?? activity?.name ?? "Unknown";
+  const name = shortName(rawName);
   const input = toolCall ? toolCall.input_json : activity ? activity.input : {};
   const result = toolCall?.result_json ?? activity?.result;
   const isError = toolCall?.is_error ?? activity?.isError ?? false;
@@ -39,39 +84,48 @@ export const ToolUseBlock = memo(function ToolUseBlock({
       : "green.400";
 
   const StatusIcon = isPending ? LuLoader : isError ? LuX : LuCheck;
+  const ToolIcon = toolIcon(rawName);
+  const summary = inlineSummary(input);
 
   return (
     <Box
-      border="1px solid"
-      borderColor="border"
       rounded="md"
       overflow="hidden"
-      my={1.5}
+      my={0.5}
       fontSize="xs"
     >
       {/* Header */}
       <HStack
-        px={2}
-        py={1.5}
-        bg="bg.subtle"
+        px={1.5}
+        py={1}
+        rounded="md"
         cursor="pointer"
         onClick={() => setExpanded((prev) => !prev)}
-        gap={1.5}
-        _hover={{ bg: "bg.emphasized" }}
+        gap={1}
+        _hover={{ bg: "bg.subtle" }}
       >
         <Box color={statusColor} flexShrink={0}>
-          <StatusIcon size={12} className={isPending ? "animate-spin" : undefined} />
+          <StatusIcon size={11} className={isPending ? "animate-spin" : undefined} />
         </Box>
-        <LuWrench size={12} />
-        <Text fontWeight="semibold" fontFamily="mono" flex={1}>
+        <Box color="fg.muted" flexShrink={0}>
+          <ToolIcon size={11} />
+        </Box>
+        <Text fontWeight="medium" fontSize="2xs" flexShrink={0}>
           {name}
         </Text>
-        {expanded ? <LuChevronDown size={12} /> : <LuChevronRight size={12} />}
+        {summary && (
+          <Text fontSize="2xs" color="fg.muted" truncate flex={1}>
+            {summary}
+          </Text>
+        )}
+        <Box color="fg.muted" flexShrink={0}>
+          {expanded ? <LuChevronDown size={10} /> : <LuChevronRight size={10} />}
+        </Box>
       </HStack>
 
       {/* Body */}
       {expanded && (
-        <Box px={2} py={1.5} borderTop="1px solid" borderColor="border">
+        <Box px={2} py={1.5} ml={2} borderLeft="2px solid" borderColor="border">
           {/* Input */}
           <Text fontSize="2xs" color="fg.muted" fontWeight="semibold" mb={0.5}>
             Input
@@ -82,7 +136,7 @@ export const ToolUseBlock = memo(function ToolUseBlock({
             rounded="sm"
             px={2}
             py={1}
-            fontSize="xs"
+            fontSize="2xs"
             fontFamily="mono"
             whiteSpace="pre-wrap"
             wordBreak="break-all"
@@ -107,7 +161,7 @@ export const ToolUseBlock = memo(function ToolUseBlock({
                 rounded="sm"
                 px={2}
                 py={1}
-                fontSize="xs"
+                fontSize="2xs"
                 fontFamily="mono"
                 whiteSpace="pre-wrap"
                 wordBreak="break-all"
