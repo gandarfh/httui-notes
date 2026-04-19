@@ -43,7 +43,7 @@ function computeLineStats(original: string, proposed: string): { added: number; 
 
 export function PermissionBanner() {
   const { pendingPermission, respondPermission } = useChatContext();
-  const { actions, suppressAutoSave, unsuppressAutoSave } = usePaneContext();
+  const { actions } = usePaneContext();
   const { vaultPath } = useWorkspace();
   const [scope, setScope] = useState<PermissionScope>("once");
   const [originalContent, setOriginalContent] = useState<string | null>(null);
@@ -187,9 +187,7 @@ export function PermissionBanner() {
             cursor="pointer"
             _hover={{ bg: "green.700" }}
             onClick={async () => {
-              if (notePath) suppressAutoSave(notePath);
               await respondPermission(permissionId, "allow", scope);
-              if (notePath) unsuppressAutoSave(notePath);
               actions.closeDiffTab(permissionId);
             }}
           >

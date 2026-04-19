@@ -63,7 +63,18 @@ export interface PendingPermission {
   toolInput: Record<string, unknown>;
 }
 
-export function useChat(sessionId: number | null) {
+/** Tracks files being updated via MCP update_note — used to suppress auto-save during write */
+interface PendingFileUpdate {
+  filePath: string;
+  toolUseId: string;
+}
+
+export interface ChatFileCallbacks {
+  onFileWriteStart?: (filePath: string) => void;
+  onFileWriteComplete?: (filePath: string) => void;
+}
+
+export function useChat(sessionId: number | null, fileCallbacks?: ChatFileCallbacks) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [streamingContent, setStreamingContent] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -71,6 +82,7 @@ export function useChat(sessionId: number | null) {
   const [toolActivity, setToolActivity] = useState<Map<string, ToolActivity>>(new Map());
   const [pendingPermission, setPendingPermission] = useState<PendingPermission | null>(null);
   const [resumeFailed, setResumeFailed] = useState(false);
+  const pendingFileUpdates = useRef<PendingFileUpdate[]>([]);
 
   const contentRef = useRef("");
   const rafId = useRef(0);
@@ -124,6 +136,12 @@ export function useChat(sessionId: number | null) {
           next.set(tool_use_id, { name, input, pending: true });
           return next;
         });
+        // Track update_note calls to manage auto-save suppression
+        if (name.includes("update_note") && input.path) {
+          const filePath = String(input.path);
+          pendingFileUpdates.current.push({ filePath, toolUseId: tool_use_id });
+          fileCallbacks?.onFileWriteStart?.(filePath);
+        }
       })
     );
 
@@ -147,6 +165,15 @@ export function useChat(sessionId: number | null) {
           }
           return next;
         });
+        // Check if this is a completed update_note — signal file write complete
+        const idx = pendingFileUpdates.current.findIndex((p) => p.toolUseId === tool_use_id);
+        if (idx >= 0) {
+          const { filePath } = pendingFileUpdates.current[idx];
+          pendingFileUpdates.current.splice(idx, 1);
+          if (!is_error) {
+            fileCallbacks?.onFileWriteComplete?.(filePath);
+          }
+        }
       })
     );
 
