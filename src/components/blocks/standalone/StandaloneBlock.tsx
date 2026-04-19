@@ -1,8 +1,10 @@
 import { useState, useCallback, useMemo, useEffect, useRef, memo } from "react";
 import { Box, Text, Badge, HStack } from "@chakra-ui/react";
 import { MergeView } from "@codemirror/merge";
-import { EditorState } from "@codemirror/state";
+import { EditorState, type Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
+import { sql } from "@codemirror/lang-sql";
+import { json } from "@codemirror/lang-json";
 import { ExecutableBlockShell } from "../ExecutableBlockShell";
 import { executeBlock } from "@/lib/tauri/commands";
 import type { DisplayMode, ExecutionState } from "../ExecutableBlock";
@@ -59,15 +61,22 @@ const cmTheme = EditorView.theme({
   ".cm-deletedChunk": { backgroundColor: "rgba(239, 68, 68, 0.1) !important" },
 });
 
+function langExtension(blockType: string): Extension[] {
+  if (blockType === "db") return [sql()];
+  if (blockType === "http") return [json()];
+  return [];
+}
+
 /** Inline MergeView for showing diff within a block */
-function BlockDiffInput({ thisContent, otherContent }: { thisContent: string; otherContent: string }) {
+function BlockDiffInput({ thisContent, otherContent, blockType }: { thisContent: string; otherContent: string; blockType: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const langExt = useMemo(() => langExtension(blockType), [blockType]);
 
   useEffect(() => {
     if (!containerRef.current) return;
     const view = new MergeView({
-      a: { doc: otherContent, extensions: [readOnlyExt, cmTheme] },
-      b: { doc: thisContent, extensions: [readOnlyExt, cmTheme] },
+      a: { doc: otherContent, extensions: [readOnlyExt, cmTheme, ...langExt] },
+      b: { doc: thisContent, extensions: [readOnlyExt, cmTheme, ...langExt] },
       parent: containerRef.current,
       highlightChanges: true,
       gutter: false,
@@ -167,7 +176,7 @@ export const StandaloneBlock = memo(function StandaloneBlock({
               </HStack>
             )}
             {hasDiff ? (
-              <BlockDiffInput thisContent={parsed.displayContent} otherContent={counterpartContent!} />
+              <BlockDiffInput thisContent={parsed.displayContent} otherContent={counterpartContent!} blockType={blockType} />
             ) : (
               <BlockCodeInput content={parsed.displayContent} />
             )}
