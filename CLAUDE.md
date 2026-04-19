@@ -76,10 +76,12 @@ Full details in `docs/ARCHITECTURE.md`. Key concepts:
 **AppShell** is a thin composition layer (~100 lines) that wires hooks and context providers:
 
 **Hooks** (`src/hooks/`):
-- `usePaneState` — pane layout tree, tab management, editor content store (module-level Map), unsaved files (module-level Set)
+- `usePaneState` — pane layout tree, tab management (file + diff tabs), editor content store (module-level Map), unsaved files (module-level Set)
 - `useVault` — vault path, file tree, switchVault, openVault
 - `useFileOperations` — CRUD (create/rename/delete/move notes and folders)
-- `useEditorSession` — file open, auto-save (1s debounce), markdown conversion
+- `useEditorSession` — file open, auto-save (1s debounce), markdown conversion, suppressAutoSave/unsuppressAutoSave for MCP writes
+- `useChat` — chat state machine (messages, streaming, tool activity, permissions, pending file updates). Accepts `ChatFileCallbacks` for event-driven auto-save suppression
+- `useChatSessions` — session CRUD, active session tracking, CWD management
 - `useKeyboardShortcuts` — global Cmd+B/P/S/W/Tab/\ shortcuts
 - `useSidebarResize` — drag-to-resize sidebar
 - `useSessionPersistence` — startup restore + save-on-change via single `restore_session` IPC call
@@ -94,6 +96,7 @@ Full details in `docs/ARCHITECTURE.md`. Key concepts:
 - `EditorSettingsContext` — vim mode (consumed by PaneNode, StatusBar)
 - `EnvironmentContext` — environments list, active environment, CRUD, variable resolution (consumed by TopBar, HttpBlockView, EnvironmentManager)
 - `ConflictContext` — file conflict state (consumed by PaneNode for ConflictBanner)
+- `ChatContext` — sessions, messages, streaming, permissions, tool activity, resume failure (consumed by ChatPanel, ChatConversation, ChatInput, PermissionBanner, DiffViewer)
 
 **Component structure:**
 - `src/components/layout/file-tree/` — FileTree (with @dnd-kit drag-drop), FileTreeNode, InlineInput
@@ -101,6 +104,9 @@ Full details in `docs/ARCHITECTURE.md`. Key concepts:
 - `src/components/layout/connections/` — ConnectionForm, ConnectionsList
 - `src/components/layout/environments/` — EnvironmentManager (drawer with env list + key-value editor + secret toggle)
 - `src/components/layout/ConflictBanner.tsx` — banner for externally modified files
+- `src/components/chat/` — ChatPanel, ChatConversation, ChatInput, ChatMessageBubble, ChatSessionList, ChatMarkdown, ToolUseBlock, PermissionBanner, PermissionManager, UsagePanel
+- `src/components/editor/DiffViewer.tsx` — side-by-side diff view with executable block widgets
+- `src/components/blocks/standalone/StandaloneBlock.tsx` — executable block for diff context (outside TipTap)
 
 ## Multi-pane system
 
@@ -176,8 +182,45 @@ Shared infrastructure in `src/lib/blocks/`:
 - **Display mode animation** (`ExecutableBlockShell.tsx`): CSS transitions between input/split/output modes.
 - **Mermaid theme sync**: re-initializes with dark/default theme on colorMode change.
 
+## Chat system
+
+- Full design in `docs/chat-design.md`. Chat panel in `src/components/chat/`, hooks in `src/hooks/useChat.ts` and `useChatSessions.ts`.
+- Architecture: React frontend → Tauri Rust backend → Node.js sidecar (`sidecar/src/`) → Claude Agent SDK. Communication via NDJSON protocol over stdin/stdout.
+- Sidecar spawned lazily on first chat message. Health-checked via ping/pong. Auto-respawn with exponential backoff.
+- MCP server: `httui-mcp` binary with 14 tools (list/read/create/update notes, search, connections, environments). Registered as MCP tool for the sidecar.
+
+**Sessions:** SQLite-backed (`sessions` table). `claude_session_id` for resume across restarts. On resume failure, offers "Continue as new conversation" (clears `claude_session_id`, re-sends last message).
+
+**Permission system:** `PermissionBroker` (`src-tauri/src/chat/permissions.rs`) intercepts tool calls before prompting the user. Cascading logic:
+1. Bash → always ask user
+2. Edit/Write outside session `cwd` → hard deny (no prompt)
+3. Read/Glob/Grep inside session `cwd` → auto-allow
+4. DB persisted rule (`tool_permissions` table, scope `always`) → apply
+5. DB session rule (scope `session`) → apply
+6. Fallback → ask user via PermissionBanner
+
+PermissionBanner (`src/components/chat/PermissionBanner.tsx`): scope selector (Once/Session/Always). For `update_note` tools, shows compact banner with file path, line stats (+N -M), and "View Diff" button. PermissionManager panel (gear icon) lists and deletes persisted rules.
+
+**Diff viewer:** When `update_note` is detected, opens a side-by-side diff tab (`DiffViewer.tsx`) using `@codemirror/merge`. Both sides read-only. Fenced code blocks (```http, ```db-*, ```e2e) rendered as executable `StandaloneBlock` widgets inside CodeMirror via `StateField` decorations (`src/lib/codemirror/cm-block-widgets.tsx`). Blocks have SQL/JSON syntax highlighting (`oneDarkHighlightStyle`) and line-level diff decorations (red for deletions, green for additions). Allow/Deny buttons in diff header.
+
+**Diff tab lifecycle:** `TabState` extended with `kind: "diff"`. `usePaneState` has `openDiffTab`/`closeDiffTab` actions. Diff tabs are transient — filtered from session persistence.
+
+**Auto-save protection for MCP writes:** Event-driven state machine in `useChat`:
+- `chat:tool_use` with `update_note` → `onFileWriteStart` callback → `suppressAutoSave(filePath)` (cancels pending auto-save timer)
+- `chat:tool_result` for that tool → `onFileWriteComplete` callback → `unsuppressAutoSave(filePath)` + `forceReloadFile(filePath)` (reloads from disk into editor)
+- No timeouts — purely driven by tool lifecycle events.
+
+**Image attachments:** File picker, clipboard paste, and Tauri native drag-drop (`getCurrentWebview().onDragDropEvent()`). Max 20 images, 5MB each. Images normalized before sending to Claude: resize if either side > 2048px (Lanczos3), re-encode as JPEG Q85 (`normalize_image` in `commands.rs`, uses `image` crate).
+
+**CWD per session:** Displayed in chat header bar (truncated path). Click to change via directory picker. Falls back to active vault path. Passed to sidecar for tool execution context.
+
+**Wikilinks in chat:** User text scanned for `[[target]]` patterns in `send_chat_message`. Matching notes resolved by filesystem search (case-insensitive stem match). Note content injected as context blocks for the sidecar. Original `[[...]]` preserved in DB for display.
+
+**Usage stats:** Tokens aggregated per day/session in `usage_stats` table (upserted on `chat:done`). `cache_read_tokens` tracked alongside `input_tokens`/`output_tokens`. UsagePanel (`src/components/chat/UsagePanel.tsx`) shows CSS bar chart (last 30 days), cache efficiency percentage, and summary cards. Accessible via "Usage" tab in ChatPanel.
+
 ## Docs
 
 - `docs/SPEC.md` — Full product specification (features, data models, Tauri commands, UI details).
 - `docs/ARCHITECTURE.md` — Plugin architecture with code examples.
-- `docs/backlog/` — Epics with stories and tasks. `README.md` has dependency graph and implementation order. All 11 epics complete.
+- `docs/chat-design.md` — Chat system technical design (1000 lines): protocol spec, session lifecycle, streaming, permissions, MCP integration.
+- `docs/backlog/` — Epics with stories and tasks. `README.md` has dependency graph and implementation order. All 14 epics complete.
