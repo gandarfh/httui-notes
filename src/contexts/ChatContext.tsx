@@ -6,9 +6,11 @@ export interface ChatContextValue {
   // Sessions
   sessions: ChatSession[];
   activeSessionId: number | null;
+  activeSession: ChatSession | null;
   selectSession: (id: number) => void;
   createSession: () => Promise<ChatSession>;
   archiveSession: (id: number) => Promise<void>;
+  updateCwd: (cwd: string | null) => Promise<void>;
   // Chat
   messages: ChatMessage[];
   streamingContent: string;
