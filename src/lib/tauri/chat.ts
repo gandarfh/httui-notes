@@ -84,11 +84,15 @@ export function saveAttachmentTmp(
 export function respondChatPermission(
   permissionId: string,
   behavior: "allow" | "deny",
+  scope: "once" | "session" | "always" = "once",
+  toolName?: string,
   message?: string,
 ): Promise<void> {
   return invoke("respond_chat_permission", {
     permissionId,
     behavior,
+    scope,
+    toolName: toolName ?? null,
     message: message ?? null,
   });
 }
@@ -105,4 +109,43 @@ export function updateChatSessionCwd(
   cwd: string | null,
 ): Promise<void> {
   return invoke("update_chat_session_cwd", { sessionId, cwd });
+}
+
+// --- Permission management ---
+
+export interface ToolPermission {
+  id: number;
+  tool_name: string;
+  path_pattern: string | null;
+  workspace: string | null;
+  scope: string;
+  behavior: string;
+  session_id: number | null;
+  created_at: number;
+}
+
+export function listToolPermissions(
+  workspace?: string,
+): Promise<ToolPermission[]> {
+  return invoke("list_tool_permissions", { workspace: workspace ?? null });
+}
+
+export function deleteToolPermission(id: number): Promise<void> {
+  return invoke("delete_tool_permission", { id });
+}
+
+// --- Usage stats ---
+
+export interface DailyUsage {
+  date: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+}
+
+export function getUsageStats(
+  from: string,
+  to: string,
+): Promise<DailyUsage[]> {
+  return invoke("get_usage_stats", { from, to });
 }

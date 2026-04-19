@@ -634,6 +634,8 @@ fn main() {
             save_attachment_tmp,
             update_chat_session_cwd,
             delete_messages_after,
+            list_tool_permissions,
+            delete_tool_permission,
             force_reload_file,
         ])
         .on_window_event(|window, event| {
