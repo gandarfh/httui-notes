@@ -144,6 +144,20 @@ pub async fn send_chat_message(
         row.map(|r| r.0)
     };
 
+    // Resolve [[wikilinks]] in the user text and inject note content for the sidecar
+    if let Some(ref cwd) = effective_cwd {
+        let wikilink_re = regex::Regex::new(r"\[\[([^\]]+)\]\]").unwrap();
+        for cap in wikilink_re.captures_iter(&text) {
+            let target = &cap[1];
+            if let Ok(content) = resolve_wikilink(cwd, target) {
+                sidecar_blocks.push(serde_json::json!({
+                    "type": "text",
+                    "text": format!("\n---\n[Referenced note: {target}]\n{content}\n---\n"),
+                }));
+            }
+        }
+    }
+
     // 4. Send to sidecar (lazy spawn on first use)
     let effective_cwd_for_broker = effective_cwd.clone();
     let request_id = Uuid::new_v4().to_string();
@@ -579,6 +593,46 @@ pub async fn get_usage_stats(
 fn base64_encode(bytes: &[u8]) -> String {
     use base64::Engine;
     base64::engine::general_purpose::STANDARD.encode(bytes)
+}
+
+/// Resolve a wikilink target to note content by searching the vault directory.
+/// Matches files by stem (filename without extension), case-insensitive.
+fn resolve_wikilink(vault_path: &str, target: &str) -> Result<String, String> {
+    let target_lower = target.to_lowercase();
+    let vault = std::path::Path::new(vault_path);
+
+    fn find_note(dir: &std::path::Path, target: &str) -> Option<std::path::PathBuf> {
+        let entries = std::fs::read_dir(dir).ok()?;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                // Skip common heavy directories
+                let name = entry.file_name();
+                let name_str = name.to_string_lossy();
+                if name_str.starts_with('.') || name_str == "node_modules" || name_str == "target" {
+                    continue;
+                }
+                if let Some(found) = find_note(&path, target) {
+                    return Some(found);
+                }
+            } else if let Some(ext) = path.extension() {
+                if ext == "md" {
+                    if let Some(stem) = path.file_stem() {
+                        if stem.to_string_lossy().to_lowercase() == target {
+                            return Some(path);
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    let note_path = find_note(vault, &target_lower)
+        .ok_or_else(|| format!("Note not found: {target}"))?;
+
+    std::fs::read_to_string(&note_path)
+        .map_err(|e| format!("Failed to read note {}: {e}", note_path.display()))
 }
 
 const MAX_IMAGE_DIMENSION: u32 = 2048;
