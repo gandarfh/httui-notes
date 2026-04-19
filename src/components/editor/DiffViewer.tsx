@@ -83,23 +83,30 @@ export function DiffViewer({ tab }: DiffViewerProps) {
     };
   }, [original, proposed]);
 
-  // Auto-close when permission is resolved externally
+  // Auto-close when permission is resolved externally (not by this component)
+  const mountedRef = useRef(false);
   useEffect(() => {
+    // Skip the first render — pendingPermission is valid at mount time
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
     if (!tab.permissionId) return;
     if (!pendingPermission || pendingPermission.permissionId !== tab.permissionId) {
       actions.closeDiffTab(tab.permissionId);
     }
   }, [pendingPermission, tab.permissionId, actions]);
 
-  const handleAllow = useCallback(() => {
+  const handleAllow = useCallback(async () => {
     if (!tab.permissionId) return;
-    respondPermission(tab.permissionId, "allow", scope);
+    // Send response first, THEN close the tab
+    await respondPermission(tab.permissionId, "allow", scope);
     actions.closeDiffTab(tab.permissionId);
   }, [tab.permissionId, respondPermission, scope, actions]);
 
-  const handleDeny = useCallback(() => {
+  const handleDeny = useCallback(async () => {
     if (!tab.permissionId) return;
-    respondPermission(tab.permissionId, "deny");
+    await respondPermission(tab.permissionId, "deny");
     actions.closeDiffTab(tab.permissionId);
   }, [tab.permissionId, respondPermission, actions]);
 

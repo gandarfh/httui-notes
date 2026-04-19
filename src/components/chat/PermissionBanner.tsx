@@ -164,7 +164,10 @@ export function PermissionBanner() {
             borderColor="border"
             cursor="pointer"
             _hover={{ bg: "bg.emphasized" }}
-            onClick={() => respondPermission(permissionId, "deny")}
+            onClick={async () => {
+              await respondPermission(permissionId, "deny");
+              actions.closeDiffTab(permissionId);
+            }}
           >
             <LuX size={12} />
             Deny
@@ -183,7 +186,10 @@ export function PermissionBanner() {
             color="white"
             cursor="pointer"
             _hover={{ bg: "green.700" }}
-            onClick={() => respondPermission(permissionId, "allow", scope)}
+            onClick={async () => {
+              await respondPermission(permissionId, "allow", scope);
+              actions.closeDiffTab(permissionId);
+            }}
           >
             <LuCheck size={12} />
             Allow
