@@ -19,19 +19,19 @@ Suporte a tool calls no sidecar Node. (Implementado no Epic 11)
 - [x] Emitir `tool_use` (tool iniciada) e `tool_result` (resultado) como eventos separados
 - [x] Propagar `allowed_tools` do comando `chat` para a configuracao do `query()` do SDK (Read, Glob, Grep, Bash, Edit, Write)
 
-## Story 02: PermissionBroker no Rust
+## Story 02: PermissionBroker no Rust ✅
 
-Gerenciamento de decisoes de permissao no lado Tauri. (Simplificado — sem tabela de regras persistidas)
+Gerenciamento de decisoes de permissao no lado Tauri.
 
 ### Tasks
 
 - [x] Tools ativadas: Read, Glob, Grep, Bash, Edit, Write
-- [ ] Criar modulo `src-tauri/src/chat/permissions.rs` com struct `PermissionBroker`
-- [ ] Implementar verificacao em cascata: regra persistida → regra de sessao → emitir evento para UI
-- [ ] Criar migration para tabela `tool_permissions`
-- [ ] Implementar auto-allow para Read/Glob/Grep dentro do cwd da sessao
-- [ ] Hard deny para Edit/Write fora do cwd (sem perguntar)
-- [ ] Bash nunca auto-aprovado, sem excecao
+- [x] Criar modulo `src-tauri/src/chat/permissions.rs` com struct `PermissionBroker`
+- [x] Implementar verificacao em cascata: regra persistida → regra de sessao → emitir evento para UI
+- [x] Criar migration para tabela `tool_permissions`
+- [x] Implementar auto-allow para Read/Glob/Grep dentro do cwd da sessao
+- [x] Hard deny para Edit/Write fora do cwd (sem perguntar)
+- [x] Bash nunca auto-aprovado, sem excecao
 
 ## Story 03: Modal de permissao na UI ✅
 
@@ -45,7 +45,7 @@ Interface para aprovar/negar tool calls.
 - [x] Botoes: Negar (foco default) e Permitir
 - [x] Atalhos: `Enter` = Negar, `Cmd+Enter` = Permitir
 - [x] Comando `respond_chat_permission` ja implementado (Epic 11)
-- [ ] Radio options: "Permitir so desta vez", "Permitir nesta sessao", "Permitir sempre"
+- [x] Radio options: "Permitir so desta vez", "Permitir nesta sessao", "Permitir sempre"
 
 ## Story 04: Renderizacao de tool use na conversa ✅
 
@@ -72,16 +72,16 @@ Diretorio de trabalho associado a cada sessao de chat.
 - [x] Sidecar configura cwd no `query()` do Agent SDK
 - [x] Tauri command `update_chat_session_cwd` para alterar cwd
 - [x] Frontend wrapper `updateChatSessionCwd`
-- [ ] UI para exibir/alterar cwd na header da sessao (file picker)
+- [x] UI para exibir/alterar cwd na header da sessao (file picker)
 - [x] Default: usar vault path ativo como cwd — lido de `app_config` no `send_chat_message`
 
-## Story 06: Tela de gerenciamento de permissoes
+## Story 06: Tela de gerenciamento de permissoes ✅
 
-Interface para revisar e deletar regras persistidas. (Adiado para Epic 14)
+Interface para revisar e deletar regras persistidas.
 
 ### Tasks
 
-- [ ] Criar componente `PermissionSettings` (acessivel via settings do app)
-- [ ] Listar regras persistidas agrupadas por workspace_path
-- [ ] Exibir: tool_name, input_pattern, decision, data de criacao
-- [ ] Botao de deletar regra individual
+- [x] Criar componente `PermissionManager` (acessivel via icone de engrenagem no chat)
+- [x] Listar regras persistidas agrupadas por workspace_path
+- [x] Exibir: tool_name, input_pattern, decision, data de criacao
+- [x] Botao de deletar regra individual

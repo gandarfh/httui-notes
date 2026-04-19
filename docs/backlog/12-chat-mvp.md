@@ -40,11 +40,11 @@ Suporte a anexar imagens via file picker, drag-drop e clipboard paste.
 ### Tasks
 
 - [x] Implementar file picker com `@tauri-apps/plugin-dialog` (filtro: png, jpg, jpeg, gif, webp)
-- [ ] Implementar drag-drop via `getCurrentWebview().onDragDropEvent()`
+- [x] Implementar drag-drop via `getCurrentWebview().onDragDropEvent()`
 - [x] Implementar clipboard paste no textarea (`onPaste` handler para items image/*)
 - [x] Implementar `save_attachment_tmp` no Rust: salva bytes em `app_data_dir/tmp/<uuid>.<ext>`, retorna path
 - [x] Criar area de preview de anexos abaixo do textarea (thumbnails 48px com botao de remover)
-- [ ] Normalizar imagens antes de enviar: redimensionar se lado maior > 2048px, reencodar JPEG Q85
+- [x] Normalizar imagens antes de enviar: redimensionar se lado maior > 2048px, reencodar JPEG Q85
 - [x] Limitar: max 20 imagens por mensagem, max 5MB por imagem
 - [x] Converter attachments para content blocks base64 no Rust antes de enviar ao sidecar
 
@@ -99,7 +99,7 @@ CRUD de sessoes persistentes.
 - [x] Titulo automatico: extrair primeiras 50 chars da primeira mensagem do user como titulo
 - [x] Selecionar sessao na sidebar carrega historico do SQLite
 - [x] Retomar sessao apos restart: usar `claude_session_id` persistido para `--resume`
-- [ ] Tratar falha de resume: oferecer "continuar como conversa nova" com resumo do historico
+- [x] Tratar falha de resume: oferecer "continuar como conversa nova" com resumo do historico
 
 ## Story 08: Bolha de mensagem e UI de conversa ✅
 
