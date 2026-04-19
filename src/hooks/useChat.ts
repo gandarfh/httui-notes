@@ -255,10 +255,12 @@ export function useChat(sessionId: number | null) {
     async (permissionId: string, behavior: "allow" | "deny", scope: "once" | "session" | "always" = "once") => {
       try {
         const toolName = pendingPermission?.toolName;
+        console.log("[useChat] respondPermission", { permissionId, behavior, scope, toolName });
         await respondChatPermission(permissionId, behavior, scope, toolName);
+        console.log("[useChat] respondPermission OK");
         setPendingPermission(null);
       } catch (e) {
-        console.error("Failed to respond to permission:", e);
+        console.error("[useChat] Failed to respond to permission:", e);
       }
     },
     [pendingPermission]
