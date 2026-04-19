@@ -1,13 +1,16 @@
-import { useState, useCallback, useMemo, memo } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef, memo } from "react";
 import { Box, Text, Badge, HStack } from "@chakra-ui/react";
+import { MergeView } from "@codemirror/merge";
+import { EditorState } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
 import { ExecutableBlockShell } from "../ExecutableBlockShell";
 import { executeBlock } from "@/lib/tauri/commands";
 import type { DisplayMode, ExecutionState } from "../ExecutableBlock";
 
 interface StandaloneBlockProps {
   blockType: string;
-  lang: string;
   content: string;
+  counterpartContent?: string;
   alias?: string;
 }
 
@@ -22,24 +25,13 @@ interface ParsedBlock {
 function parseBlockContent(blockType: string, raw: string): ParsedBlock {
   try {
     const data = JSON.parse(raw);
-
     if (blockType === "db") {
-      return {
-        displayContent: data.query ?? raw,
-        connectionId: data.connectionId,
-      };
+      return { displayContent: data.query ?? raw, connectionId: data.connectionId };
     }
-
     if (blockType === "http") {
-      // HTTP content might be raw text (method + URL + headers) or JSON
       if (typeof data === "string") return { displayContent: data };
-      return {
-        displayContent: data.body ?? raw,
-        method: data.method,
-        url: data.url,
-      };
+      return { displayContent: data.body ?? raw, method: data.method, url: data.url };
     }
-
     if (blockType === "e2e") {
       return {
         displayContent: data.baseUrl
@@ -47,22 +39,84 @@ function parseBlockContent(blockType: string, raw: string): ParsedBlock {
           : JSON.stringify(data, null, 2),
       };
     }
-
     return { displayContent: JSON.stringify(data, null, 2) };
   } catch {
-    // Not JSON — content is raw text (e.g. plain SQL query)
     return { displayContent: raw };
   }
 }
 
-/**
- * A standalone executable block that works outside TipTap.
- * Used in the diff viewer to render fenced code blocks as executable widgets.
- * Read-only content, but can be executed for validation.
- */
+const readOnlyExt = EditorState.readOnly.of(true);
+const cmTheme = EditorView.theme({
+  "&": { fontSize: "12px", maxHeight: "250px" },
+  ".cm-content": { fontFamily: "var(--chakra-fonts-mono)", padding: "8px" },
+  ".cm-gutters": { display: "none" },
+  ".cm-scroller": { overflow: "auto" },
+  ".cm-mergeView": { overflow: "hidden", borderRadius: "6px" },
+  ".cm-mergeViewEditors": { overflow: "hidden" },
+  ".cm-mergeViewEditor": { overflow: "auto" },
+  ".cm-changedLine": { backgroundColor: "rgba(234, 179, 8, 0.1) !important" },
+  ".cm-changedText": { backgroundColor: "rgba(234, 179, 8, 0.25) !important" },
+  ".cm-deletedChunk": { backgroundColor: "rgba(239, 68, 68, 0.1) !important" },
+});
+
+/** Inline MergeView for showing diff within a block */
+function BlockDiffInput({ thisContent, otherContent }: { thisContent: string; otherContent: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const view = new MergeView({
+      a: { doc: otherContent, extensions: [readOnlyExt, cmTheme] },
+      b: { doc: thisContent, extensions: [readOnlyExt, cmTheme] },
+      parent: containerRef.current,
+      highlightChanges: true,
+      gutter: false,
+    });
+    return () => view.destroy();
+  }, [thisContent, otherContent]);
+
+  return (
+    <Box
+      ref={containerRef}
+      border="1px solid"
+      borderColor="border"
+      rounded="md"
+      overflow="hidden"
+      mx={3}
+      my={2}
+    />
+  );
+}
+
+/** Simple read-only code display (when no diff) */
+function BlockCodeInput({ content }: { content: string }) {
+  return (
+    <Box
+      mx={3}
+      my={2}
+      bg="bg.subtle"
+      border="1px solid"
+      borderColor="border"
+      rounded="md"
+      px={3}
+      py={2}
+      fontFamily="mono"
+      fontSize="xs"
+      whiteSpace="pre-wrap"
+      overflowX="auto"
+      maxH="200px"
+      overflowY="auto"
+      lineHeight="1.6"
+    >
+      {content}
+    </Box>
+  );
+}
+
 export const StandaloneBlock = memo(function StandaloneBlock({
   blockType,
   content,
+  counterpartContent,
   alias,
 }: StandaloneBlockProps) {
   const [displayMode, setDisplayMode] = useState<DisplayMode>("input");
@@ -71,6 +125,7 @@ export const StandaloneBlock = memo(function StandaloneBlock({
   const [error, setError] = useState<string | null>(null);
 
   const parsed = useMemo(() => parseBlockContent(blockType, content), [blockType, content]);
+  const hasDiff = counterpartContent !== undefined && counterpartContent !== parsed.displayContent;
 
   const handleRun = useCallback(async () => {
     setExecutionState("running");
@@ -104,32 +159,18 @@ export const StandaloneBlock = memo(function StandaloneBlock({
         onRun={handleRun}
         onCancel={handleCancel}
         inputSlot={
-          <Box px={3} py={2}>
-            {/* Method/URL for HTTP blocks */}
+          <Box>
             {parsed.method && (
-              <HStack gap={2} mb={2}>
+              <HStack gap={2} px={3} pt={2}>
                 <Badge size="sm" colorPalette="blue">{parsed.method}</Badge>
                 <Text fontSize="xs" fontFamily="mono" color="fg.muted" truncate>{parsed.url}</Text>
               </HStack>
             )}
-            {/* Query/content */}
-            <Box
-              bg="bg.subtle"
-              border="1px solid"
-              borderColor="border"
-              rounded="md"
-              px={3}
-              py={2}
-              fontFamily="mono"
-              fontSize="xs"
-              whiteSpace="pre-wrap"
-              overflowX="auto"
-              maxH="200px"
-              overflowY="auto"
-              lineHeight="1.6"
-            >
-              {parsed.displayContent}
-            </Box>
+            {hasDiff ? (
+              <BlockDiffInput thisContent={parsed.displayContent} otherContent={counterpartContent!} />
+            ) : (
+              <BlockCodeInput content={parsed.displayContent} />
+            )}
           </Box>
         }
         outputSlot={
@@ -168,22 +209,12 @@ function buildParams(blockType: string, content: string): Record<string, unknown
   try {
     const data = JSON.parse(content);
     if (blockType === "db") {
-      return {
-        query: data.query ?? content,
-        connection_id: data.connectionId ?? "",
-        page: 1,
-        page_size: 100,
-      };
+      return { query: data.query ?? content, connection_id: data.connectionId ?? "", page: 1, page_size: 100 };
     }
-    if (blockType === "http") {
-      return data;
-    }
-    if (blockType === "e2e") {
-      return data;
-    }
+    if (blockType === "http") return data;
+    if (blockType === "e2e") return data;
     return data;
   } catch {
-    // Raw text content
     if (blockType === "db") {
       return { query: content, connection_id: "", page: 1, page_size: 100 };
     }
