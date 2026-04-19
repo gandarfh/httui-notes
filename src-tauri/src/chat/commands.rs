@@ -81,7 +81,11 @@ pub async fn send_chat_message(
         let bytes = tokio::fs::read(&att.path)
             .await
             .map_err(|e| format!("Failed to read attachment {}: {e}", att.path))?;
-        let b64 = base64_encode(&bytes);
+
+        // Normalize: resize if > 2048px, re-encode as JPEG Q85
+        let (normalized, norm_media_type) = normalize_image(&bytes, &att.media_type)
+            .unwrap_or_else(|_| (bytes.clone(), att.media_type.clone()));
+        let b64 = base64_encode(&normalized);
 
         // DB stores path (for UI display)
         db_blocks.push(serde_json::json!({
@@ -90,12 +94,12 @@ pub async fn send_chat_message(
             "media_type": att.media_type,
         }));
 
-        // Sidecar gets base64 (for API)
+        // Sidecar gets normalized base64 (for API)
         sidecar_blocks.push(serde_json::json!({
             "type": "image",
             "source": {
                 "type": "base64",
-                "media_type": att.media_type,
+                "media_type": norm_media_type,
                 "data": b64,
             }
         }));
@@ -462,4 +466,40 @@ pub async fn update_chat_session_cwd(
 fn base64_encode(bytes: &[u8]) -> String {
     use base64::Engine;
     base64::engine::general_purpose::STANDARD.encode(bytes)
+}
+
+const MAX_IMAGE_DIMENSION: u32 = 2048;
+
+/// Normalize an image: resize if either side > 2048px, re-encode as JPEG Q85.
+/// Returns (normalized_bytes, media_type). Passes through unchanged if already small enough and JPEG.
+fn normalize_image(bytes: &[u8], media_type: &str) -> Result<(Vec<u8>, String), String> {
+    let img = image::load_from_memory(bytes)
+        .map_err(|e| format!("Failed to decode image: {e}"))?;
+
+    let (w, h) = (img.width(), img.height());
+    let needs_resize = w > MAX_IMAGE_DIMENSION || h > MAX_IMAGE_DIMENSION;
+    let is_jpeg = media_type == "image/jpeg";
+
+    // Skip if already small enough and JPEG
+    if !needs_resize && is_jpeg {
+        return Ok((bytes.to_vec(), media_type.to_string()));
+    }
+
+    let img = if needs_resize {
+        img.resize(
+            MAX_IMAGE_DIMENSION,
+            MAX_IMAGE_DIMENSION,
+            image::imageops::FilterType::Lanczos3,
+        )
+    } else {
+        img
+    };
+
+    let mut buf = Vec::new();
+    let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, 85);
+    img.to_rgb8()
+        .write_with_encoder(encoder)
+        .map_err(|e| format!("Failed to encode JPEG: {e}"))?;
+
+    Ok((buf, "image/jpeg".to_string()))
 }

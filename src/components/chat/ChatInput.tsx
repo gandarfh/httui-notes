@@ -1,6 +1,7 @@
-import { useRef, useCallback, useState } from "react";
+import { useRef, useCallback, useState, useEffect } from "react";
 import { Box, IconButton, HStack, Flex, Text, Image } from "@chakra-ui/react";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { LuSend, LuSquare, LuPaperclip, LuX } from "react-icons/lu";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useChatContext } from "@/contexts/ChatContext";
@@ -28,6 +29,7 @@ export function ChatInput() {
   const { sendMessage, isStreaming, abort, activeSessionId } = useChatContext();
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [isDragOver, setIsDragOver] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const adjustHeight = useCallback(() => {
@@ -115,6 +117,28 @@ export function ChatInput() {
     [addAttachmentFromBlob]
   );
 
+  // Tauri native drag-drop for image files
+  useEffect(() => {
+    const unlisten = getCurrentWebview().onDragDropEvent((event) => {
+      if (event.payload.type === "drop") {
+        for (const path of event.payload.paths) {
+          const ext = path.split(".").pop()?.toLowerCase() ?? "";
+          if (IMAGE_EXTENSIONS.includes(ext)) {
+            addAttachmentFromPath(path);
+          }
+        }
+        setIsDragOver(false);
+      } else if (event.payload.type === "enter" || event.payload.type === "over") {
+        setIsDragOver(true);
+      } else if (event.payload.type === "leave") {
+        setIsDragOver(false);
+      }
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [addAttachmentFromPath]);
+
   const handleSend = useCallback(async () => {
     const trimmed = text.trim();
     const hasContent = trimmed || attachments.length > 0;
@@ -145,7 +169,13 @@ export function ChatInput() {
   );
 
   return (
-    <Box borderTop="1px solid" borderColor="border" p={2} bg="bg">
+    <Box
+      borderTop="1px solid"
+      borderColor={isDragOver ? "blue.500" : "border"}
+      p={2}
+      bg={isDragOver ? "blue.500/5" : "bg"}
+      transition="border-color 0.15s, background 0.15s"
+    >
       {/* Attachment previews */}
       {attachments.length > 0 && (
         <Flex gap={1} mb={1.5} flexWrap="wrap">
