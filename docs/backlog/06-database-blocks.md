@@ -138,3 +138,7 @@ Metadata de tabelas e colunas para autocomplete.
 - [x] Eventos Tauri ao mudar estado de conexao — `PoolManager` emite `connection-status`
 - [x] Timeout override UI no bloco DB — aba Settings em `DbInput`
 - [x] Refresh automatico de schema ao conectar/reconectar — listener `connection-status`
+- [x] Query editor auto-height (80px-400px) — cresce conforme conteudo
+- [x] Botao de format SQL (sql-formatter) — formata query com indentacao
+- [x] Auto-format em queries criadas externamente (MCP) via `parseBlockData`
+- [x] Re-sync de conteudo local quando bloco e atualizado externamente (MCP/file-reloaded)

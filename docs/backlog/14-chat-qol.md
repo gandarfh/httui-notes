@@ -66,7 +66,7 @@ Ponte entre chat e vault de notas.
 
 - [x] Botao "salvar como nota" em respostas do assistant (icone LuFileDown, abre dialog save, salva .md)
 - [x] Permissao `dialog:allow-save` adicionada nas capabilities
-- [ ] Implementar servidor MCP local expondo `search_notes`, `read_note`, `link_notes`
-- [ ] Registrar MCP server como tool disponivel para o sidecar
+- [x] Implementar servidor MCP local expondo `search_notes`, `read_note`, `create_note`, `update_note`, etc. — `httui-mcp` binary com 13 tools
+- [x] Registrar MCP server como tool disponivel para o sidecar — configurado em `sidecar/src/handlers/chat.ts` com `--vault` e `--db` args
 - [ ] Comando `/note` inline no chat input para referenciar nota do vault
 - [ ] Resolucao de wikilinks no contexto do chat

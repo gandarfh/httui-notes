@@ -73,7 +73,7 @@ Diretorio de trabalho associado a cada sessao de chat.
 - [x] Tauri command `update_chat_session_cwd` para alterar cwd
 - [x] Frontend wrapper `updateChatSessionCwd`
 - [ ] UI para exibir/alterar cwd na header da sessao (file picker)
-- [ ] Default: usar vault path atual como cwd
+- [x] Default: usar vault path ativo como cwd — lido de `app_config` no `send_chat_message`
 
 ## Story 06: Tela de gerenciamento de permissoes
 
