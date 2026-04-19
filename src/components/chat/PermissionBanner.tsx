@@ -4,7 +4,7 @@ import { LuShield, LuCheck, LuX, LuGitCompareArrows } from "react-icons/lu";
 import { useChatContext } from "@/contexts/ChatContext";
 import { usePaneContext } from "@/contexts/PaneContext";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
-import { readNote, forceReloadFile } from "@/lib/tauri/commands";
+import { readNote } from "@/lib/tauri/commands";
 
 type PermissionScope = "once" | "session" | "always";
 
@@ -43,7 +43,7 @@ function computeLineStats(original: string, proposed: string): { added: number; 
 
 export function PermissionBanner() {
   const { pendingPermission, respondPermission } = useChatContext();
-  const { actions } = usePaneContext();
+  const { actions, suppressAutoSave, unsuppressAutoSave } = usePaneContext();
   const { vaultPath } = useWorkspace();
   const [scope, setScope] = useState<PermissionScope>("once");
   const [originalContent, setOriginalContent] = useState<string | null>(null);
@@ -187,14 +187,10 @@ export function PermissionBanner() {
             cursor="pointer"
             _hover={{ bg: "green.700" }}
             onClick={async () => {
+              if (notePath) suppressAutoSave(notePath);
               await respondPermission(permissionId, "allow", scope);
+              if (notePath) unsuppressAutoSave(notePath);
               actions.closeDiffTab(permissionId);
-              // Force reload file in editor after MCP tool writes it
-              if (vaultPath && notePath) {
-                setTimeout(async () => {
-                  try { await forceReloadFile(vaultPath, notePath); } catch {}
-                }, 500);
-              }
             }}
           >
             <LuCheck size={12} />

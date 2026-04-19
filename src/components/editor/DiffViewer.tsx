@@ -6,8 +6,6 @@ import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { useChatContext } from "@/contexts/ChatContext";
 import { usePaneContext } from "@/contexts/PaneContext";
-import { useWorkspace } from "@/contexts/WorkspaceContext";
-import { forceReloadFile } from "@/lib/tauri/commands";
 import { createBlockWidgetPlugin } from "@/lib/codemirror/cm-block-widgets.tsx";
 import type { TabState } from "@/types/pane";
 
@@ -51,8 +49,7 @@ export function DiffViewer({ tab }: DiffViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mergeViewRef = useRef<MergeView | null>(null);
   const { pendingPermission, respondPermission } = useChatContext();
-  const { actions } = usePaneContext();
-  const { vaultPath } = useWorkspace();
+  const { actions, suppressAutoSave, unsuppressAutoSave } = usePaneContext();
   const [scope, setScope] = useState<PermissionScope>("once");
 
   const original = tab.originalContent ?? "";
@@ -102,18 +99,14 @@ export function DiffViewer({ tab }: DiffViewerProps) {
 
   const handleAllow = useCallback(async () => {
     if (!tab.permissionId) return;
-    // Send response first, wait for MCP tool to execute, then reload + close
+    // Suppress auto-save so the editor doesn't overwrite the MCP tool's changes
+    suppressAutoSave(tab.filePath);
     await respondPermission(tab.permissionId, "allow", scope);
-    // Give MCP tool time to write the file, then force reload in editor
-    if (vaultPath && tab.filePath) {
-      setTimeout(async () => {
-        try {
-          await forceReloadFile(vaultPath, tab.filePath);
-        } catch { /* file might not be open */ }
-      }, 500);
-    }
+    // Unsuppress after MCP tool has had time to write — the file watcher will
+    // detect the change and the Editor's file-reloaded listener will reload it
+    unsuppressAutoSave(tab.filePath);
     actions.closeDiffTab(tab.permissionId);
-  }, [tab.permissionId, respondPermission, scope, actions, vaultPath, tab.filePath]);
+  }, [tab.permissionId, tab.filePath, respondPermission, scope, actions, suppressAutoSave, unsuppressAutoSave]);
 
   const handleDeny = useCallback(async () => {
     if (!tab.permissionId) return;
