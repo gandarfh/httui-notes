@@ -1,6 +1,7 @@
 import { NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/core";
-import { Box, Flex, HStack, Badge, Tabs, Input } from "@chakra-ui/react";
+import { Box, Flex, HStack, Badge, Tabs, Input, IconButton } from "@chakra-ui/react";
+import { LuAlignLeft } from "react-icons/lu";
 import { NativeSelectRoot, NativeSelectField } from "@chakra-ui/react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useColorMode } from "@/components/ui/color-mode";
@@ -108,10 +109,22 @@ const autocompleteTheme = EditorView.theme({
   },
 });
 
+import { format as formatSqlRaw } from "sql-formatter";
+
+function formatSql(input: string): string {
+  try {
+    return formatSqlRaw(input, { keywordCase: "upper", tabWidth: 2 });
+  } catch {
+    return input;
+  }
+}
+
 function parseBlockData(raw: string): DbBlockData {
   if (!raw) return { ...DEFAULT_DB_DATA };
   try {
-    return { ...DEFAULT_DB_DATA, ...JSON.parse(raw) };
+    const parsed = { ...DEFAULT_DB_DATA, ...JSON.parse(raw) };
+    if (parsed.query) parsed.query = formatSql(parsed.query);
+    return parsed;
   } catch {
     return { ...DEFAULT_DB_DATA };
   }
@@ -397,6 +410,7 @@ function DbInput({
 
         <Tabs.Content value="query" p={0} pt={2}>
           <Box
+            position="relative"
             border="1px solid"
             borderColor="border"
             rounded="md"
@@ -413,9 +427,27 @@ function DbInput({
                 autocompletion: false,
               }}
               theme={cmTheme}
-              height="80px"
+              height="auto"
+              minHeight="80px"
+              maxHeight="400px"
               style={{ fontSize: "12px" }}
             />
+            <IconButton
+              aria-label="Format SQL"
+              size="2xs"
+              variant="ghost"
+              colorPalette="gray"
+              position="absolute"
+              top={1}
+              right={1}
+              opacity={0.5}
+              _hover={{ opacity: 1 }}
+              onClick={() => {
+                onChange({ ...data, query: formatSql(data.query) });
+              }}
+            >
+              <LuAlignLeft />
+            </IconButton>
           </Box>
         </Tabs.Content>
 
