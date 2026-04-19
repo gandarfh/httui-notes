@@ -49,7 +49,7 @@ export function DiffViewer({ tab }: DiffViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mergeViewRef = useRef<MergeView | null>(null);
   const { pendingPermission, respondPermission } = useChatContext();
-  const { actions, suppressAutoSave, unsuppressAutoSave } = usePaneContext();
+  const { actions } = usePaneContext();
   const [scope, setScope] = useState<PermissionScope>("once");
 
   const original = tab.originalContent ?? "";
@@ -99,14 +99,9 @@ export function DiffViewer({ tab }: DiffViewerProps) {
 
   const handleAllow = useCallback(async () => {
     if (!tab.permissionId) return;
-    // Suppress auto-save so the editor doesn't overwrite the MCP tool's changes
-    suppressAutoSave(tab.filePath);
     await respondPermission(tab.permissionId, "allow", scope);
-    // Unsuppress after MCP tool has had time to write — the file watcher will
-    // detect the change and the Editor's file-reloaded listener will reload it
-    unsuppressAutoSave(tab.filePath);
     actions.closeDiffTab(tab.permissionId);
-  }, [tab.permissionId, tab.filePath, respondPermission, scope, actions, suppressAutoSave, unsuppressAutoSave]);
+  }, [tab.permissionId, respondPermission, scope, actions]);
 
   const handleDeny = useCallback(async () => {
     if (!tab.permissionId) return;

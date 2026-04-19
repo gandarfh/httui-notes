@@ -16,6 +16,7 @@ import { useSidebarResize } from "@/hooks/useSidebarResize";
 import { useSessionPersistence } from "@/hooks/useSessionPersistence";
 import { useChatSessions } from "@/hooks/useChatSessions";
 import { useChat } from "@/hooks/useChat";
+import { forceReloadFile } from "@/lib/tauri/commands";
 import { WorkspaceContext } from "@/contexts/WorkspaceContext";
 import { PaneContext } from "@/contexts/PaneContext";
 import { EditorSettingsContext } from "@/contexts/EditorSettingsContext";
@@ -154,7 +155,19 @@ export function AppShell() {
 
   // Chat hooks
   const chatSessions = useChatSessions();
-  const chatHook = useChat(chatSessions.activeSessionId);
+  const chatFileCallbacks = useMemo(() => ({
+    onFileWriteStart: (filePath: string) => {
+      editorSession.suppressAutoSave(filePath);
+    },
+    onFileWriteComplete: (filePath: string) => {
+      editorSession.unsuppressAutoSave(filePath);
+      // Force reload the file in the editor from disk
+      if (vault.vaultPath) {
+        forceReloadFile(vault.vaultPath, filePath).catch(() => {});
+      }
+    },
+  }), [editorSession.suppressAutoSave, editorSession.unsuppressAutoSave, vault.vaultPath]);
+  const chatHook = useChat(chatSessions.activeSessionId, chatFileCallbacks);
   const chatValue = useMemo(
     () => ({
       ...chatSessions,
