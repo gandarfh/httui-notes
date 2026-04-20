@@ -33,6 +33,9 @@ jobs:
         run: npm ci
         working-directory: landing-page
 
+      - name: Link node_modules for shared imports
+        run: ln -s landing-page/node_modules node_modules
+
       - name: Build
         run: npm run build
         working-directory: landing-page
