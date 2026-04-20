@@ -22,6 +22,9 @@
     "sql:allow-select",
     "dialog:default",
     "dialog:allow-open",
-    "dialog:allow-save"
+    "dialog:allow-save",
+    "dialog:allow-ask",
+    "updater:default",
+    "process:allow-restart"
   ]
 }

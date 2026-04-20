@@ -25,6 +25,7 @@ import { ConflictContext } from "@/contexts/ConflictContext";
 import { ChatContext } from "@/contexts/ChatContext";
 import { useEnvironments } from "@/hooks/useEnvironments";
 import { useFileConflicts } from "@/hooks/useFileConflicts";
+import { useAutoUpdate } from "@/hooks/useAutoUpdate";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 
 export function AppShell() {
@@ -42,6 +43,7 @@ export function AppShell() {
   const toggleVim = useCallback(() => setVimEnabled((v) => !v), []);
 
   // Hooks
+  useAutoUpdate();
   const { sidebarWidth, startResize } = useSidebarResize();
   const { layout, activePaneId, editorContents, unsavedFiles, getActiveLeaf, actions } =
     usePaneState();
