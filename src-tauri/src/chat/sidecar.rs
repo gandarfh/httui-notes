@@ -79,6 +79,17 @@ fn find_claude(node_path: &str) -> Option<String> {
         }
     }
 
+    // User-local installs (official installer puts claude in ~/.local/bin;
+    // some setups use ~/.claude/local). GUI apps don't inherit these via PATH.
+    if let Ok(home) = std::env::var("HOME") {
+        for rel in [".local/bin/claude", ".claude/local/claude"] {
+            let p = std::path::PathBuf::from(&home).join(rel);
+            if p.exists() {
+                return Some(p.to_string_lossy().to_string());
+            }
+        }
+    }
+
     let candidates = [
         "/opt/homebrew/bin/claude",
         "/usr/local/bin/claude",
