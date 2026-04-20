@@ -171,9 +171,9 @@ export function ChatInput() {
   return (
     <Box
       borderTop="1px solid"
-      borderColor={isDragOver ? "blue.500" : "border"}
+      borderColor={isDragOver ? "brand.500" : "border"}
       p={2}
-      bg={isDragOver ? "blue.500/5" : "bg"}
+      bg={isDragOver ? "brand.500/5" : "bg"}
       transition="border-color 0.15s, background 0.15s"
     >
       {/* Attachment previews */}
@@ -277,7 +277,7 @@ export function ChatInput() {
             aria-label="Send message"
             size="sm"
             variant="ghost"
-            colorPalette="blue"
+            colorPalette="brand"
             disabled={
               (!text.trim() && attachments.length === 0) ||
               activeSessionId === null

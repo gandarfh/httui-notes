@@ -40,7 +40,7 @@ export function ChatSessionList({ onSelectSession }: ChatSessionListProps) {
             size="2xs"
             variant="ghost"
             onClick={() => setShowSearch((v) => !v)}
-            color={showSearch ? "blue.400" : undefined}
+            color={showSearch ? "brand.400" : undefined}
           >
             <LuSearch />
           </IconButton>
@@ -86,10 +86,10 @@ export function ChatSessionList({ onSelectSession }: ChatSessionListProps) {
             py={1.5}
             rounded="md"
             cursor="pointer"
-            bg={s.id === activeSessionId ? "blue.500/10" : "transparent"}
+            bg={s.id === activeSessionId ? "brand.500/10" : "transparent"}
             borderLeft="2px solid"
-            borderColor={s.id === activeSessionId ? "blue.500" : "transparent"}
-            _hover={{ bg: s.id === activeSessionId ? "blue.500/10" : "bg.subtle" }}
+            borderColor={s.id === activeSessionId ? "brand.500" : "transparent"}
+            _hover={{ bg: s.id === activeSessionId ? "brand.500/10" : "bg.subtle" }}
             onClick={() => {
               selectSession(s.id);
               onSelectSession();

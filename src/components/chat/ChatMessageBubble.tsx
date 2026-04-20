@@ -103,7 +103,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
               style={{
                 width: "100%",
                 background: "var(--chakra-colors-bg-subtle)",
-                border: "1px solid var(--chakra-colors-blue-500)",
+                border: "1px solid var(--chakra-colors-brand-500)",
                 borderRadius: "var(--chakra-radii-md)",
                 padding: "8px 12px",
                 fontSize: "14px",
@@ -126,7 +126,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
               </Box>
               <Box
                 as="button"
-                px={2} py={0.5} rounded="sm" fontSize="xs" bg="blue.500" color="white" cursor="pointer"
+                px={2} py={0.5} rounded="sm" fontSize="xs" bg="brand.500" color="white" cursor="pointer"
                 onClick={confirmEdit}
               >
                 Send
@@ -155,9 +155,9 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
         )}
         <Box
           maxW="85%"
-          bg="blue.500/10"
+          bg="brand.500/10"
           border="1px solid"
-          borderColor="blue.500/20"
+          borderColor="brand.500/20"
           rounded="lg"
           roundedBottomRight="sm"
           px={3}

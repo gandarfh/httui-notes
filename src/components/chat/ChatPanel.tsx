@@ -147,7 +147,7 @@ function TabButton({
       fontWeight={active ? "semibold" : "normal"}
       color={active ? "fg" : "fg.muted"}
       borderBottom="2px solid"
-      borderColor={active ? "blue.500" : "transparent"}
+      borderColor={active ? "brand.500" : "transparent"}
       cursor="pointer"
       _hover={{ bg: "bg.subtle" }}
       onClick={onClick}

@@ -53,7 +53,7 @@ export function TabBar({
                 borderRightWidth="1px"
                 borderColor="border"
                 borderBottomWidth={isActive ? "2px" : "0"}
-                borderBottomColor={isActive ? "blue.500" : "transparent"}
+                borderBottomColor={isActive ? "brand.500" : "transparent"}
                 _hover={{ bg: isActive ? "bg" : "bg.muted" }}
                 onClick={() => onSelectTab(index)}
                 onMouseDown={(e) => {

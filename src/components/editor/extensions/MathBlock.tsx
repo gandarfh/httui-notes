@@ -28,7 +28,7 @@ function MathBlockView({ node, updateAttributes, selected }: NodeViewProps) {
     <NodeViewWrapper data-type="math-block">
       <Box
         border="1px solid"
-        borderColor={selected ? "blue.500" : "border"}
+        borderColor={selected ? "brand.500" : "border"}
         rounded="md"
         overflow="hidden"
         my={2}

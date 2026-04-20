@@ -66,7 +66,7 @@ function MathInlineView({ node, updateAttributes, selected }: NodeViewProps) {
         onClick={() => setEditing(true)}
         px="2px"
         rounded="sm"
-        bg={selected ? "blue.500/10" : undefined}
+        bg={selected ? "brand.500/10" : undefined}
         dangerouslySetInnerHTML={{ __html: rendered }}
       />
     </NodeViewWrapper>

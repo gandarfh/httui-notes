@@ -138,10 +138,10 @@ export function PermissionBanner() {
             rounded="md"
             fontSize="xs"
             fontWeight="medium"
-            bg="blue.600"
+            bg="brand.600"
             color="white"
             cursor="pointer"
-            _hover={{ bg: "blue.700" }}
+            _hover={{ bg: "brand.700" }}
             onClick={handleViewDiff}
             opacity={originalContent === null ? 0.5 : 1}
             pointerEvents={originalContent === null ? "none" : "auto"}

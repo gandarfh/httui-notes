@@ -172,7 +172,7 @@ export function TopBar({ sidebarOpen, onToggleSidebar, chatOpen, onToggleChat }:
           variant="ghost"
           size="sm"
           onClick={onToggleChat}
-          color={chatOpen ? "blue.400" : undefined}
+          color={chatOpen ? "brand.400" : undefined}
         >
           <LuMessageSquare />
         </IconButton>
