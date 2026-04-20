@@ -3,13 +3,95 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tokio::sync::{mpsc, Mutex, Notify};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 
 use super::protocol::{IncomingMessage, OutgoingMessage};
 
 const HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(30);
+
+/// Find the `node` binary, checking common macOS install locations
+/// since GUI apps don't inherit the user's shell PATH.
+fn find_node() -> Option<String> {
+    use std::path::{Path, PathBuf};
+
+    // Try PATH first (works in dev / terminal launches)
+    if let Ok(output) = std::process::Command::new("which").arg("node").output() {
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() && Path::new(&path).exists() {
+                return Some(path);
+            }
+        }
+    }
+
+    // nvm: scan installed versions and pick the latest
+    if let Ok(home) = std::env::var("HOME") {
+        let nvm_versions = PathBuf::from(&home).join(".nvm/versions/node");
+        if let Ok(entries) = std::fs::read_dir(&nvm_versions) {
+            let mut nodes: Vec<PathBuf> = entries
+                .flatten()
+                .map(|e| e.path().join("bin/node"))
+                .filter(|p| p.exists())
+                .collect();
+            nodes.sort();
+            if let Some(latest) = nodes.last() {
+                return Some(latest.to_string_lossy().to_string());
+            }
+        }
+    }
+
+    // Common macOS install locations
+    let candidates = [
+        "/opt/homebrew/bin/node",
+        "/usr/local/bin/node",
+        "/usr/bin/node",
+    ];
+    for candidate in &candidates {
+        if Path::new(candidate).exists() {
+            return Some(candidate.to_string());
+        }
+    }
+
+    None
+}
+
+/// Find the `claude` CLI binary, checking the same bin directory as node.
+fn find_claude(node_path: &str) -> Option<String> {
+    use std::path::Path;
+
+    // Same directory as node (e.g. ~/.nvm/versions/node/v22/bin/claude)
+    if let Some(bin_dir) = Path::new(node_path).parent() {
+        let claude = bin_dir.join("claude");
+        if claude.exists() {
+            return Some(claude.to_string_lossy().to_string());
+        }
+    }
+
+    // Try which
+    if let Ok(output) = std::process::Command::new("which").arg("claude").output() {
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() && Path::new(&path).exists() {
+                return Some(path);
+            }
+        }
+    }
+
+    let candidates = [
+        "/opt/homebrew/bin/claude",
+        "/usr/local/bin/claude",
+    ];
+    for candidate in &candidates {
+        if Path::new(candidate).exists() {
+            return Some(candidate.to_string());
+        }
+    }
+
+    None
+}
+
 const HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(5);
 const BACKOFF_DELAYS: &[Duration] = &[
     Duration::from_secs(1),
@@ -148,18 +230,38 @@ impl SidecarManager {
         requests: &Arc<Mutex<HashMap<String, mpsc::UnboundedSender<IncomingMessage>>>>,
         pong_notify: &Arc<Notify>,
     ) -> Result<(), String> {
-        // Use bun to run the sidecar TypeScript directly (avoids compiled binary signing issues on macOS)
-        let cwd = std::env::current_dir()
-            .map_err(|e| format!("Failed to get cwd: {e}"))?;
-        let sidecar_script = cwd.join("../sidecar/src/index.ts");
-        eprintln!("[sidecar] cwd={}, script={}", cwd.display(), sidecar_script.display());
+        let script_path = app
+            .path()
+            .resolve("resources/claude-sidecar.mjs", tauri::path::BaseDirectory::Resource)
+            .map_err(|e| format!("Failed to resolve sidecar resource path: {e}"))?;
+
+        let node_path = find_node().ok_or("Node.js not found. Install Node.js to use the chat feature.")?;
+
+        // Resolve claude CLI path — same bin directory as node, or via which
+        let claude_path = find_claude(&node_path).unwrap_or_default();
+        eprintln!("[sidecar] node={}, claude={}, script={}", node_path, claude_path, script_path.display());
+
+        // Build PATH that includes the node/claude bin directory so that
+        // subprocesses spawned by the Agent SDK (which use #!/usr/bin/env node) work.
+        let node_bin_dir = std::path::Path::new(&node_path)
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let system_path = std::env::var("PATH").unwrap_or_default();
+        let enriched_path = if node_bin_dir.is_empty() {
+            system_path
+        } else {
+            format!("{node_bin_dir}:{system_path}")
+        };
 
         let sidecar_cmd = app
             .shell()
-            .command("bun")
-            .args(["run", &sidecar_script.to_string_lossy()])
+            .command(&node_path)
+            .args([script_path.to_string_lossy().as_ref()])
             .env("ANTHROPIC_API_KEY", "")
-            .env("ANTHROPIC_AUTH_TOKEN", "");
+            .env("ANTHROPIC_AUTH_TOKEN", "")
+            .env("CLAUDE_CLI_PATH", &claude_path)
+            .env("PATH", &enriched_path);
 
         let (rx, new_child) = sidecar_cmd
             .spawn()

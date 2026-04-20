@@ -97,6 +97,7 @@ export async function handleChat(cmd: ChatCommand): Promise<void> {
     const q = query({
       prompt,
       options: {
+        ...(process.env.CLAUDE_CLI_PATH ? { pathToClaudeCodeExecutable: process.env.CLAUDE_CLI_PATH } : {}),
         ...(claude_session_id ? { resume: claude_session_id } : {}),
         ...(cwd ? { cwd } : {}),
         allowedTools: allowed_tools,

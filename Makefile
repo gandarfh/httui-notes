@@ -8,13 +8,14 @@ dev: sidecar
 front:
 	npm run dev
 
-# Build do sidecar (claude-sidecar-<target-triple>) exigido por tauri.conf.json externalBin
+# Build do sidecar (JS bundle) — empacotado como recurso Tauri, executado via node
 sidecar:
 	@command -v bun >/dev/null 2>&1 || { \
 		echo "Error: bun is required to build the sidecar."; \
 		echo "Install with: curl -fsSL https://bun.sh/install | bash"; \
 		exit 1; \
 	}
+	@mkdir -p src-tauri/resources
 	cd sidecar && bun install && bun run build
 
 # Build de producao (com bundle .app para macOS)
