@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "bun build --compile --target=bun-darwin-arm64 src/index.ts --outfile claude-sidecar && node scripts/rename.js",
+    "build": "bun build src/index.ts --outfile ../src-tauri/resources/claude-sidecar.mjs --target=node",
     "dev": "bun run src/index.ts"
   },
   "dependencies": {
