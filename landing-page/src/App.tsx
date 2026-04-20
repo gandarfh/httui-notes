@@ -71,8 +71,8 @@ function Nav() {
           <Link href="#features" fontSize="sm" color="fg.muted" _hover={{ color: "brand.300", textDecoration: "none" }}>Features</Link>
           <Link href="#ai" fontSize="sm" color="fg.muted" _hover={{ color: "brand.300", textDecoration: "none" }}>AI</Link>
           <Link href="#local" fontSize="sm" color="fg.muted" _hover={{ color: "brand.300", textDecoration: "none" }}>Local-first</Link>
-          <Link href="https://github.com/gandarfh/httui" target="_blank" rel="noopener" fontSize="sm" color="fg.muted" _hover={{ color: "brand.300", textDecoration: "none" }}>GitHub</Link>
-          <Link href="https://github.com/gandarfh/httui/releases" target="_blank" rel="noopener" px={4} py={1.5} rounded="md" bg="brand.400" color="brand.950" fontSize="sm" fontWeight="600" _hover={{ bg: "brand.500", textDecoration: "none" }}>
+          <Link href="https://github.com/gandarfh/httui-notes" target="_blank" rel="noopener" fontSize="sm" color="fg.muted" _hover={{ color: "brand.300", textDecoration: "none" }}>GitHub</Link>
+          <Link href="https://github.com/gandarfh/httui-notes/releases" target="_blank" rel="noopener" px={4} py={1.5} rounded="md" bg="brand.400" color="brand.950" fontSize="sm" fontWeight="600" _hover={{ bg: "brand.500", textDecoration: "none" }}>
             Download
           </Link>
         </HStack>
@@ -89,8 +89,8 @@ function Nav() {
           <Link href="#features" fontSize="sm" color="fg.muted" onClick={() => setMobileOpen(false)}>Features</Link>
           <Link href="#ai" fontSize="sm" color="fg.muted" onClick={() => setMobileOpen(false)}>AI</Link>
           <Link href="#local" fontSize="sm" color="fg.muted" onClick={() => setMobileOpen(false)}>Local-first</Link>
-          <Link href="https://github.com/gandarfh/httui" target="_blank" rel="noopener" fontSize="sm" color="fg.muted">GitHub</Link>
-          <Link href="https://github.com/gandarfh/httui/releases" target="_blank" rel="noopener" display="inline-flex" alignItems="center" justifyContent="center" gap={2} px={4} py={2} rounded="md" bg="brand.400" color="brand.950" fontSize="sm" fontWeight="600">
+          <Link href="https://github.com/gandarfh/httui-notes" target="_blank" rel="noopener" fontSize="sm" color="fg.muted">GitHub</Link>
+          <Link href="https://github.com/gandarfh/httui-notes/releases" target="_blank" rel="noopener" display="inline-flex" alignItems="center" justifyContent="center" gap={2} px={4} py={2} rounded="md" bg="brand.400" color="brand.950" fontSize="sm" fontWeight="600">
             <LuDownload size={14} /> Download
           </Link>
         </Flex>
@@ -155,10 +155,10 @@ function Hero() {
           <ScrollReveal distance={12} duration={0.5} delay={240}>
             <Flex direction="column" align="center" gap={3}>
               <Flex gap={3} wrap="wrap" justify="center">
-                <Link href="https://github.com/gandarfh/httui/releases" target="_blank" rel="noopener" display="flex" alignItems="center" gap={2} px={6} py={3} rounded="md" bg="brand.400" color="brand.950" fontWeight="700" fontSize="sm" _hover={{ bg: "brand.500", textDecoration: "none", transform: "translateY(-1px)" }} transition="all 0.15s" boxShadow="0 4px 20px rgba(236, 154, 56, 0.25)">
+                <Link href="https://github.com/gandarfh/httui-notes/releases" target="_blank" rel="noopener" display="flex" alignItems="center" gap={2} px={6} py={3} rounded="md" bg="brand.400" color="brand.950" fontWeight="700" fontSize="sm" _hover={{ bg: "brand.500", textDecoration: "none", transform: "translateY(-1px)" }} transition="all 0.15s" boxShadow="0 4px 20px rgba(236, 154, 56, 0.25)">
                   <LuDownload size={16} /> Download for macOS
                 </Link>
-                <Link href="https://github.com/gandarfh/httui" target="_blank" rel="noopener" display="flex" alignItems="center" gap={2} px={6} py={3} rounded="md" border="1px solid" borderColor="border" color="fg" fontWeight="600" fontSize="sm" _hover={{ borderColor: "fg.muted", textDecoration: "none", bg: "bg.subtle" }} transition="all 0.15s">
+                <Link href="https://github.com/gandarfh/httui-notes" target="_blank" rel="noopener" display="flex" alignItems="center" gap={2} px={6} py={3} rounded="md" border="1px solid" borderColor="border" color="fg" fontWeight="600" fontSize="sm" _hover={{ borderColor: "fg.muted", textDecoration: "none", bg: "bg.subtle" }} transition="all 0.15s">
                   <LuStar size={14} /> Star on GitHub
                 </Link>
               </Flex>
@@ -640,10 +640,10 @@ function CTA() {
         </ScrollReveal>
         <ScrollReveal distance={12} delay={240}>
           <Flex gap={3} wrap="wrap" justify="center">
-            <Link href="https://github.com/gandarfh/httui/releases" target="_blank" rel="noopener" display="inline-flex" alignItems="center" gap={2} px={7} py={3.5} rounded="md" bg="brand.400" color="brand.950" fontWeight="700" fontSize="sm" _hover={{ bg: "brand.500", textDecoration: "none", transform: "translateY(-1px)" }} transition="all 0.15s" boxShadow="0 4px 24px rgba(236, 154, 56, 0.3)">
+            <Link href="https://github.com/gandarfh/httui-notes/releases" target="_blank" rel="noopener" display="inline-flex" alignItems="center" gap={2} px={7} py={3.5} rounded="md" bg="brand.400" color="brand.950" fontWeight="700" fontSize="sm" _hover={{ bg: "brand.500", textDecoration: "none", transform: "translateY(-1px)" }} transition="all 0.15s" boxShadow="0 4px 24px rgba(236, 154, 56, 0.3)">
               <LuDownload size={16} /> Download httui
             </Link>
-            <Link href="https://github.com/gandarfh/httui" target="_blank" rel="noopener" display="inline-flex" alignItems="center" gap={2} px={7} py={3.5} rounded="md" border="1px solid" borderColor="border" color="fg" fontWeight="600" fontSize="sm" _hover={{ borderColor: "fg.muted", textDecoration: "none", bg: "bg.subtle" }} transition="all 0.15s">
+            <Link href="https://github.com/gandarfh/httui-notes" target="_blank" rel="noopener" display="inline-flex" alignItems="center" gap={2} px={7} py={3.5} rounded="md" border="1px solid" borderColor="border" color="fg" fontWeight="600" fontSize="sm" _hover={{ borderColor: "fg.muted", textDecoration: "none", bg: "bg.subtle" }} transition="all 0.15s">
               Read the source
             </Link>
           </Flex>
@@ -664,10 +664,10 @@ function Footer() {
           <Text fontSize="xs" color="fg.muted">&copy; 2026</Text>
         </HStack>
         <HStack gap={4} fontSize="xs" wrap="wrap" justify="center">
-          <Link href="https://github.com/gandarfh/httui" target="_blank" rel="noopener" color="fg.muted" _hover={{ color: "brand.300", textDecoration: "none" }} display="inline-flex" alignItems="center" gap={1}><LuStar size={12} /> Star on GitHub</Link>
-          <Link href="https://github.com/gandarfh/httui/releases" target="_blank" rel="noopener" color="fg.muted" _hover={{ color: "brand.300", textDecoration: "none" }}>Releases</Link>
-          <Link href="https://github.com/gandarfh/httui/blob/main/docs/ARCHITECTURE.md" target="_blank" rel="noopener" color="fg.muted" _hover={{ color: "brand.300", textDecoration: "none" }}>Docs</Link>
-          <Link href="https://github.com/gandarfh/httui/blob/main/LICENSE" target="_blank" rel="noopener" color="fg.muted" _hover={{ color: "brand.300", textDecoration: "none" }}>MIT License</Link>
+          <Link href="https://github.com/gandarfh/httui-notes" target="_blank" rel="noopener" color="fg.muted" _hover={{ color: "brand.300", textDecoration: "none" }} display="inline-flex" alignItems="center" gap={1}><LuStar size={12} /> Star on GitHub</Link>
+          <Link href="https://github.com/gandarfh/httui-notes/releases" target="_blank" rel="noopener" color="fg.muted" _hover={{ color: "brand.300", textDecoration: "none" }}>Releases</Link>
+          <Link href="https://github.com/gandarfh/httui-notes/blob/main/docs/ARCHITECTURE.md" target="_blank" rel="noopener" color="fg.muted" _hover={{ color: "brand.300", textDecoration: "none" }}>Docs</Link>
+          <Link href="https://github.com/gandarfh/httui-notes/blob/main/LICENSE" target="_blank" rel="noopener" color="fg.muted" _hover={{ color: "brand.300", textDecoration: "none" }}>MIT License</Link>
         </HStack>
       </Flex>
     </Box>
