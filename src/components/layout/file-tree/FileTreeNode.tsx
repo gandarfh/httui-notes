@@ -128,10 +128,10 @@ export function FileTreeNode({
             gap={1.5}
             rounded="md"
             cursor={isDragging ? "grabbing" : "pointer"}
-            bg={isOver ? "blue.subtle" : isActive ? "bg.emphasized" : "transparent"}
-            _hover={{ bg: isOver ? "blue.subtle" : isActive ? "bg.emphasized" : "bg.subtle" }}
+            bg={isOver ? "brand.subtle" : isActive ? "bg.emphasized" : "transparent"}
+            _hover={{ bg: isOver ? "brand.subtle" : isActive ? "bg.emphasized" : "bg.subtle" }}
             borderWidth={isOver ? "1px" : undefined}
-            borderColor={isOver ? "blue.500" : undefined}
+            borderColor={isOver ? "brand.500" : undefined}
             borderStyle={isOver ? "dashed" : undefined}
             opacity={isDragging ? 0.5 : 1}
             transition="background 0.1s, opacity 0.1s"

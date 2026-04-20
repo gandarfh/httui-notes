@@ -219,8 +219,8 @@ export function AppShell() {
                   <Box
                     w="4px"
                     cursor="col-resize"
-                    _hover={{ bg: "blue.500/30" }}
-                    _active={{ bg: "blue.500/50" }}
+                    _hover={{ bg: "brand.500/30" }}
+                    _active={{ bg: "brand.500/50" }}
                     transition="background 0.15s"
                     onMouseDown={startResize}
                   />

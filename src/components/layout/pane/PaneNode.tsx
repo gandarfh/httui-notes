@@ -27,7 +27,7 @@ export function PaneNode({ layout, path }: { layout: PaneLayout; path: number[] 
         flex={1}
         overflow="hidden"
         borderWidth={isActive ? "1px" : "0"}
-        borderColor="blue.500/30"
+        borderColor="brand.500/30"
         onClick={() => actions.setActivePaneId(layout.id)}
       >
         <TabBar

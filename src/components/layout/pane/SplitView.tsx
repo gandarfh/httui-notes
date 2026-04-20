@@ -67,8 +67,8 @@ export function SplitView({
         w={isHorizontal ? "100%" : "4px"}
         h={isHorizontal ? "4px" : "100%"}
         cursor={isHorizontal ? "row-resize" : "col-resize"}
-        _hover={{ bg: "blue.500/30" }}
-        _active={{ bg: "blue.500/50" }}
+        _hover={{ bg: "brand.500/30" }}
+        _active={{ bg: "brand.500/50" }}
         flexShrink={0}
         onMouseDown={startResize}
       />

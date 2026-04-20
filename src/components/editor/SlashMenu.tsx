@@ -108,7 +108,7 @@ export const SlashMenu = forwardRef<
           cursor="pointer"
           rounded="md"
           borderWidth="2px"
-          borderColor={index === safeIndex ? "blue.400" : "transparent"}
+          borderColor={index === safeIndex ? "brand.400" : "transparent"}
           bg={index === safeIndex ? "bg.subtle" : "transparent"}
           _hover={{ bg: "bg.subtle" }}
           onClick={() => selectItem(index)}

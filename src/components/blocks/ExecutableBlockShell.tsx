@@ -69,7 +69,7 @@ export function ExecutableBlockShell({
   return (
     <Box
       border="1px solid"
-      borderColor={selected ? "blue.500" : "border"}
+      borderColor={selected ? "brand.500" : "border"}
       rounded="lg"
       overflow="hidden"
       my={2}

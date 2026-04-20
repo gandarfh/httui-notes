@@ -371,7 +371,7 @@ export function EditorDragDrop({ editor, children }: EditorDragDropProps) {
             left={`${dropIndicator.left}px`}
             w={`${dropIndicator.width}px`}
             h="2px"
-            bg="blue.500"
+            bg="brand.500"
             rounded="full"
             zIndex={50}
             pointerEvents="none"
