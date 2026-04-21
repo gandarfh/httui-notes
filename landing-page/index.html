@@ -1,71 +1,91 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en" class="dark">
+
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>httui — Your API docs, alive</title>
-  <meta name="description" content="Open-source desktop editor where markdown meets execution. Write API docs, run HTTP requests, query databases, and test end-to-end flows — all in the same file. A local-first Postman alternative built with Tauri.">
-  <meta name="keywords" content="API testing, HTTP client, markdown editor, Postman alternative, API documentation, database query, E2E testing, Tauri, open source, local-first, developer tools">
-  <link rel="canonical" href="https://httui.com">
-  <meta property="og:title" content="httui — Your API docs, alive">
-  <meta property="og:description" content="Desktop markdown editor with executable HTTP, database, and E2E test blocks. Local-first, open source.">
-  <meta property="og:image" content="https://httui.com/og-image.png">
-  <meta property="og:url" content="https://httui.com">
-  <meta property="og:type" content="website">
-  <meta property="og:site_name" content="httui">
-  <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="httui — Your API docs, alive">
-  <meta name="twitter:description" content="Desktop markdown editor with executable HTTP, database, and E2E test blocks. Local-first, open source.">
-  <meta name="twitter:image" content="https://httui.com/og-image.png">
-  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <meta name="description"
+    content="Open-source desktop editor where markdown meets execution. Write API docs, run HTTP requests, query databases, and test end-to-end flows — all in the same file. A local-first Postman alternative built with Tauri." />
+  <meta name="keywords"
+    content="API testing, HTTP client, markdown editor, Postman alternative, API documentation, database query, E2E testing, Tauri, open source, local-first, developer tools" />
+  <link rel="canonical" href="https://httui.com" />
+  <meta property="og:title" content="httui — Your API docs, alive" />
+  <meta property="og:description"
+    content="Desktop markdown editor with executable HTTP, database, and E2E test blocks. Local-first, open source." />
+  <meta property="og:image" content="https://httui.com/og-image.png" />
+  <meta property="og:url" content="https://httui.com" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="httui" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="httui — Your API docs, alive" />
+  <meta name="twitter:description"
+    content="Desktop markdown editor with executable HTTP, database, and E2E test blocks. Local-first, open source." />
+  <meta name="twitter:image" content="https://httui.com/og-image.png" />
+  <link rel="icon" type="image/x-icon" href="/favicon.ico" />
   <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "SoftwareApplication",
-    "name": "httui",
-    "headline": "Your API docs, alive",
-    "description": "Open-source desktop editor where markdown meets execution. Write API docs, run HTTP requests, query databases, and test end-to-end flows — all in the same file.",
-    "url": "https://httui.com",
-    "applicationCategory": "DeveloperApplication",
-    "operatingSystem": "macOS, Linux",
-    "offers": {
-      "@type": "Offer",
-      "price": "0",
-      "priceCurrency": "USD"
-    },
-    "downloadUrl": "https://github.com/gandarfh/httui-notes/releases",
-    "softwareVersion": "0.1",
-    "license": "https://opensource.org/licenses/MIT",
-    "author": {
-      "@type": "Person",
-      "name": "João Ferreira",
-      "url": "https://github.com/gandarfh"
-    },
-    "codeRepository": "https://github.com/gandarfh/httui-notes"
-  }
-  </script>
-  <!-- Google Analytics -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-VM7Q6G94EQ"></script>
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "httui",
+        "headline": "Your API docs, alive",
+        "description": "Open-source desktop editor where markdown meets execution. Write API docs, run HTTP requests, query databases, and test end-to-end flows — all in the same file.",
+        "url": "https://httui.com",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "macOS, Linux",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "downloadUrl": "https://github.com/gandarfh/httui-notes/releases",
+        "softwareVersion": "0.1",
+        "license": "https://opensource.org/licenses/MIT",
+        "author": {
+          "@type": "Person",
+          "name": "João Ferreira",
+          "url": "https://github.com/gandarfh"
+        },
+        "codeRepository": "https://github.com/gandarfh/httui-notes"
+      }
+    </script>
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-9ZM6LQM6QY"></script>
   <script>
     window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-    gtag('config', 'G-VM7Q6G94EQ');
+    function gtag() {
+      dataLayer.push(arguments);
+    }
+    gtag("js", new Date());
+
+    gtag("config", "G-9ZM6LQM6QY");
   </script>
   <!-- Google Tag Manager -->
-  <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-  new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
-  j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-  'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
-  })(window,document,'script','dataLayer','GTM-TQWVGVC2');</script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@800;900&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>
+    (function (w, d, s, l, i) {
+      w[l] = w[l] || [];
+      w[l].push({"gtm.start": new Date().getTime(), event: "gtm.js"});
+      var f = d.getElementsByTagName(s)[0],
+        j = d.createElement(s),
+        dl = l != "dataLayer" ? "&l=" + l : "";
+      j.async = true;
+      j.src = "https://www.googletagmanager.com/gtm.js?id=" + i + dl;
+      f.parentNode.insertBefore(j, f);
+    })(window, document, "script", "dataLayer", "GTM-TQWVGVC2");
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Archivo:wght@800;900&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet" />
 </head>
+
 <body>
   <!-- Google Tag Manager (noscript) -->
-  <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-TQWVGVC2" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+  <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-TQWVGVC2" height="0" width="0"
+      style="display: none; visibility: hidden"></iframe></noscript>
   <div id="root"></div>
   <script type="module" src="/src/main.tsx"></script>
 </body>
+
 </html>
