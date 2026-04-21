@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Box, Flex, HStack, Input, Badge, Spinner, IconButton } from "@chakra-ui/react";
+import { Box, Flex, HStack, Text, Input, Badge, Spinner, IconButton } from "@chakra-ui/react";
 import { LuPenLine, LuColumns2, LuMonitorCheck, LuPlay, LuSquare } from "react-icons/lu";
 import type { DisplayMode, ExecutionState } from "./ExecutableBlock";
 
@@ -17,6 +17,8 @@ interface ExecutableBlockShellProps {
   selected?: boolean;
   statusText?: string | null;
   splitDirection?: "row" | "column";
+  /** Extra text shown after alias in header (e.g. connection name) */
+  headerMeta?: string | null;
 }
 
 const STATE_COLORS: Record<ExecutionState, string> = {
@@ -61,6 +63,7 @@ export function ExecutableBlockShell({
   selected = false,
   statusText,
   splitDirection,
+  headerMeta,
 }: ExecutableBlockShellProps) {
   const isRunning = executionState === "running";
   const showInput = displayMode === "input" || displayMode === "split";
