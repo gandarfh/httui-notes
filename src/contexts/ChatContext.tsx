@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
 import type { ChatSession, ChatMessage, AttachmentInput } from "@/lib/tauri/chat";
-import type { ToolActivity, PendingPermission } from "@/hooks/useChat";
+import type { ToolActivity, PendingPermission, ContentSegment } from "@/hooks/useChat";
 
 export interface ChatContextValue {
   // Sessions
@@ -14,6 +14,7 @@ export interface ChatContextValue {
   // Chat
   messages: ChatMessage[];
   streamingContent: string;
+  streamingSegments: ContentSegment[];
   isStreaming: boolean;
   error: string | null;
   sendMessage: (text: string, attachments?: AttachmentInput[]) => Promise<void>;

@@ -4,49 +4,83 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { LuBot, LuPencil, LuRefreshCw, LuFileDown } from "react-icons/lu";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
-import type { ChatMessage } from "@/lib/tauri/chat";
-import type { ToolActivity } from "@/hooks/useChat";
+import type { ChatMessage, ChatToolCall } from "@/lib/tauri/chat";
+import type { ToolActivity, ContentSegment } from "@/hooks/useChat";
 import { ChatMarkdown } from "./ChatMarkdown";
-import { ToolUseBlock } from "./ToolUseBlock";
+import { ToolUseGroup } from "./ToolUseGroup";
 
 interface ContentBlock {
   type: string;
   text?: string;
   path?: string;
   media_type?: string;
+  tool_use_ids?: string[];
 }
 
-function parseMessageContent(contentJson: string): {
-  text: string;
+interface ParsedContent {
+  segments: ContentSegment[];
   images: { path: string; mediaType: string }[];
-} {
+  fullText: string;
+}
+
+function parseMessageContent(contentJson: string, toolCalls: ChatToolCall[]): ParsedContent {
   try {
     const blocks: ContentBlock[] = JSON.parse(contentJson);
     if (Array.isArray(blocks)) {
-      const text = blocks
-        .filter((b) => b.type === "text")
-        .map((b) => b.text ?? "")
-        .join("\n");
-      const images = blocks
-        .filter((b) => b.type === "image" && b.path)
-        .map((b) => ({ path: b.path!, mediaType: b.media_type ?? "image/png" }));
-      return { text, images };
+      const segments: ContentSegment[] = [];
+      const images: { path: string; mediaType: string }[] = [];
+      const textParts: string[] = [];
+
+      for (const b of blocks) {
+        if (b.type === "text" && b.text) {
+          segments.push({ type: "text", text: b.text });
+          textParts.push(b.text);
+        } else if (b.type === "tool_group" && b.tool_use_ids) {
+          segments.push({ type: "tool_group", toolUseIds: b.tool_use_ids });
+        } else if (b.type === "image" && b.path) {
+          images.push({ path: b.path, mediaType: b.media_type ?? "image/png" });
+        }
+      }
+
+      // Backward compat: old messages have single text block + separate tool_calls
+      // If there are tool_calls but no tool_group segments, append one at the end
+      if (toolCalls.length > 0 && !segments.some((s) => s.type === "tool_group")) {
+        segments.push({ type: "tool_group", toolUseIds: toolCalls.map((tc) => tc.tool_use_id) });
+      }
+
+      return { segments, images, fullText: textParts.join("\n") };
     }
-    if (typeof blocks === "string") return { text: blocks, images: [] };
+    if (typeof blocks === "string") {
+      return { segments: [{ type: "text", text: blocks }], images: [], fullText: blocks };
+    }
   } catch {
-    return { text: contentJson, images: [] };
+    return { segments: [{ type: "text", text: contentJson }], images: [], fullText: contentJson };
   }
-  return { text: "", images: [] };
+  return { segments: [], images: [], fullText: "" };
 }
 
-function formatTime(unixSeconds: number): string {
+function formatTimestamp(unixSeconds: number): string {
   const date = new Date(unixSeconds * 1000);
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const now = new Date();
+  const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const msgDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const diffDays = Math.floor((today.getTime() - msgDay.getTime()) / 86400000);
+
+  if (diffDays === 0) return time;
+  if (diffDays === 1) return `ontem ${time}`;
+  if (diffDays < 7) {
+    const dayName = date.toLocaleDateString([], { weekday: "short" });
+    return `${dayName} ${time}`;
+  }
+  return `${date.toLocaleDateString([], { day: "2-digit", month: "2-digit" })} ${time}`;
 }
 
 interface ChatMessageBubbleProps {
   message: ChatMessage;
   streamingContent?: string;
+  streamingSegments?: ContentSegment[];
   toolActivity?: Map<string, ToolActivity>;
   isLastAssistant?: boolean;
   onEdit?: (turnIndex: number, newText: string) => void;
@@ -56,24 +90,25 @@ interface ChatMessageBubbleProps {
 export const ChatMessageBubble = memo(function ChatMessageBubble({
   message,
   streamingContent,
+  streamingSegments,
   toolActivity,
   isLastAssistant,
   onEdit,
   onRegenerate,
 }: ChatMessageBubbleProps) {
   const isUser = message.role === "user";
-  const parsed = parseMessageContent(message.content_json);
-  const content = streamingContent ?? parsed.text;
+  const parsed = parseMessageContent(message.content_json, message.tool_calls);
+  const content = streamingContent ?? parsed.fullText;
 
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState("");
   const editRef = useRef<HTMLTextAreaElement>(null);
 
   const startEdit = useCallback(() => {
-    setEditText(parsed.text);
+    setEditText(parsed.fullText);
     setEditing(true);
     setTimeout(() => editRef.current?.focus(), 0);
-  }, [parsed.text]);
+  }, [parsed.fullText]);
 
   const confirmEdit = useCallback(() => {
     if (editText.trim() && onEdit) {
@@ -184,14 +219,21 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
             </Text>
           )}
           <Text fontSize="2xs" color="fg.muted" textAlign="right" mt={1}>
-            {formatTime(message.created_at)}
+            {formatTimestamp(message.created_at)}
           </Text>
         </Box>
       </Box>
     );
   }
 
-  // Assistant message
+  // Assistant message — render segments in order
+  const segments = streamingSegments && streamingSegments.length > 0
+    ? streamingSegments
+    : parsed.segments;
+
+  // Build a map of tool_use_id -> ChatToolCall for quick lookup
+  const toolCallMap = new Map(message.tool_calls.map((tc) => [tc.tool_use_id, tc]));
+
   return (
     <Box px={3} py={1.5}>
       <HStack align="start" gap={2}>
@@ -209,19 +251,30 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
           <LuBot size={14} />
         </Box>
         <Box flex={1} minW={0}>
-          <ChatMarkdown content={content} />
-
-          {/* Persisted tool calls (from DB) */}
-          {message.tool_calls.length > 0 &&
-            message.tool_calls.map((tc) => (
-              <ToolUseBlock key={tc.tool_use_id} toolCall={tc} />
-            ))}
-
-          {/* Live tool activity (during streaming) */}
-          {toolActivity &&
-            Array.from(toolActivity.entries()).map(([id, act]) => (
-              <ToolUseBlock key={id} activity={act} />
-            ))}
+          {segments.map((seg, idx) => {
+            if (seg.type === "text") {
+              return <ChatMarkdown key={idx} content={seg.text} />;
+            }
+            // tool_group segment
+            const groupToolCalls = seg.toolUseIds
+              .map((id) => toolCallMap.get(id))
+              .filter((tc): tc is ChatToolCall => tc != null);
+            // For streaming, filter toolActivity to only this group's IDs
+            const groupActivity = toolActivity
+              ? new Map(
+                  seg.toolUseIds
+                    .filter((id) => toolActivity.has(id))
+                    .map((id) => [id, toolActivity.get(id)!])
+                )
+              : undefined;
+            return (
+              <ToolUseGroup
+                key={idx}
+                toolCalls={groupToolCalls}
+                toolActivity={groupActivity}
+              />
+            );
+          })}
 
           {message.is_partial && (
             <Text fontSize="2xs" color="orange.400" mt={1}>
@@ -230,7 +283,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
           )}
           <HStack mt={1} gap={1}>
             <Text fontSize="2xs" color="fg.muted">
-              {formatTime(message.created_at)}
+              {formatTimestamp(message.created_at)}
               {message.tokens_out != null && ` · ${message.tokens_out} tokens`}
             </Text>
             {message.id > 0 && (

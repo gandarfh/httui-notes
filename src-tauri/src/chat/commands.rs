@@ -205,7 +205,9 @@ pub async fn send_chat_message(
     let effective_cwd_clone = effective_cwd_for_broker;
 
     tauri::async_runtime::spawn(async move {
-        let mut accumulated_text = String::new();
+        let mut segments: Vec<serde_json::Value> = Vec::new();
+        let mut current_text = String::new();
+        let mut current_tool_ids: Vec<String> = Vec::new();
         let mut assistant_msg_id: Option<i64> = None;
 
         while let Some(msg) = rx.recv().await {
@@ -221,7 +223,12 @@ pub async fn send_chat_message(
                     .await;
                 }
                 IncomingMessage::TextDelta { text, .. } => {
-                    accumulated_text.push_str(&text);
+                    // If we were accumulating tools, flush the tool group first
+                    if !current_tool_ids.is_empty() {
+                        segments.push(serde_json::json!({"type": "tool_group", "tool_use_ids": current_tool_ids}));
+                        current_tool_ids = Vec::new();
+                    }
+                    current_text.push_str(&text);
                     let _ = app.emit(
                         "chat:delta",
                         ChatDeltaEvent {
@@ -236,9 +243,16 @@ pub async fn send_chat_message(
                     input,
                     ..
                 } => {
+                    // Flush accumulated text as a segment before tools
+                    if !current_text.is_empty() {
+                        segments.push(serde_json::json!({"type": "text", "text": current_text}));
+                        current_text = String::new();
+                    }
+                    current_tool_ids.push(tool_use_id.clone());
+
                     // Persist partial assistant message if not yet created
                     if assistant_msg_id.is_none() {
-                        let content = serde_json::json!([{"type": "text", "text": accumulated_text}]);
+                        let content = serde_json::json!(&segments);
                         if let Ok(msg) = chat::insert_message(
                             &pool_clone, session_id, "assistant",
                             &content.to_string(), None, None, true,
@@ -338,10 +352,17 @@ pub async fn send_chat_message(
                     }
                 }
                 IncomingMessage::Done { usage, stop_reason, .. } => {
+                    // Flush remaining segments
+                    if !current_tool_ids.is_empty() {
+                        segments.push(serde_json::json!({"type": "tool_group", "tool_use_ids": current_tool_ids}));
+                        current_tool_ids = Vec::new();
+                    }
+                    if !current_text.is_empty() {
+                        segments.push(serde_json::json!({"type": "text", "text": current_text}));
+                        current_text = String::new();
+                    }
                     // Persist or update assistant message
-                    let content = serde_json::json!([
-                        {"type": "text", "text": accumulated_text}
-                    ]);
+                    let content = serde_json::json!(&segments);
                     let tokens_in = usage.as_ref().map(|u| u.input_tokens as i64);
                     let tokens_out = usage.as_ref().map(|u| u.output_tokens as i64);
                     let cache_read = usage.as_ref().map(|u| u.cache_read_tokens as i64);
@@ -395,11 +416,16 @@ pub async fn send_chat_message(
                 IncomingMessage::Error {
                     category, message, ..
                 } => {
-                    // Persist partial message if we have accumulated text
-                    if !accumulated_text.is_empty() {
-                        let content = serde_json::json!([
-                            {"type": "text", "text": accumulated_text}
-                        ]);
+                    // Flush remaining segments for partial persistence
+                    if !current_tool_ids.is_empty() {
+                        segments.push(serde_json::json!({"type": "tool_group", "tool_use_ids": current_tool_ids}));
+                    }
+                    if !current_text.is_empty() {
+                        segments.push(serde_json::json!({"type": "text", "text": current_text}));
+                    }
+                    // Persist partial message if we have segments
+                    if !segments.is_empty() {
+                        let content = serde_json::json!(&segments);
                         let _ = chat::insert_message(
                             &pool_clone,
                             session_id,

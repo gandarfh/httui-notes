@@ -5,10 +5,31 @@ var __require = /* @__PURE__ */ createRequire(import.meta.url);
 import { createInterface as createInterface2 } from "readline";
 
 // src/protocol.ts
+import { createHmac } from "node:crypto";
+var HMAC_SECRET = process.env.SIDECAR_HMAC_SECRET ?? "";
+function computeHmac(payload) {
+  return createHmac("sha256", HMAC_SECRET).update(payload).digest("hex");
+}
+function verifyHmac(payload, expectedHmac) {
+  const computed = computeHmac(payload);
+  if (computed.length !== expectedHmac.length)
+    return false;
+  let result = 0;
+  for (let i = 0;i < computed.length; i++) {
+    result |= computed.charCodeAt(i) ^ expectedHmac.charCodeAt(i);
+  }
+  return result === 0;
+}
 function send(event) {
-  const line = JSON.stringify(event) + `
-`;
-  process.stdout.write(line);
+  const payload = JSON.stringify(event);
+  if (HMAC_SECRET) {
+    const hmac = computeHmac(payload);
+    process.stdout.write(JSON.stringify({ hmac, payload }) + `
+`);
+  } else {
+    process.stdout.write(payload + `
+`);
+  }
 }
 function log(...args) {
   process.stderr.write(`[sidecar] ${args.join(" ")}
@@ -16,7 +37,16 @@ function log(...args) {
 }
 function parseCommand(line) {
   try {
-    return JSON.parse(line);
+    const raw = JSON.parse(line);
+    if (raw.hmac && raw.payload && HMAC_SECRET) {
+      const payloadStr = typeof raw.payload === "string" ? raw.payload : JSON.stringify(raw.payload);
+      if (!verifyHmac(payloadStr, raw.hmac)) {
+        log("HMAC verification failed — dropping message");
+        return null;
+      }
+      return typeof raw.payload === "string" ? JSON.parse(raw.payload) : raw.payload;
+    }
+    return raw;
   } catch {
     log("Failed to parse command:", line);
     return null;

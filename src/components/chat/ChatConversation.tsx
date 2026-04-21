@@ -5,7 +5,7 @@ import { useStickyScroll } from "@/hooks/useStickyScroll";
 import { ChatMessageBubble } from "./ChatMessageBubble";
 
 export function ChatConversation() {
-  const { messages, streamingContent, isStreaming, error, toolActivity, editAndResend, regenerate, resumeFailed, resetAndContinue } = useChatContext();
+  const { messages, streamingContent, streamingSegments, isStreaming, error, toolActivity, editAndResend, regenerate, resumeFailed, resetAndContinue } = useChatContext();
   const { scrollRef, showJumpButton, scrollToBottom } = useStickyScroll([
     messages,
     streamingContent,
@@ -64,6 +64,7 @@ export function ChatConversation() {
               tool_calls: [],
             }}
             streamingContent={streamingContent}
+            streamingSegments={streamingSegments}
             toolActivity={toolActivity}
           />
         )}
