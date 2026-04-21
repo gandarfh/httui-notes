@@ -59,8 +59,8 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
   );
   const [dbName, setDbName] = useState(connection?.database_name ?? "");
   const [username, setUsername] = useState(connection?.username ?? "");
-  const [password, setPassword] = useState(connection?.password ?? "");
-  const [sslMode, setSslMode] = useState(connection?.ssl_mode ?? "disable");
+  const [password, setPassword] = useState("");
+  const [sslMode, setSslMode] = useState(connection?.ssl_mode ?? "prefer");
 
   // Advanced
   const [showAdvanced, setShowAdvanced] = useState(false);

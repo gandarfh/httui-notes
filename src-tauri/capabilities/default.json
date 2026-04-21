@@ -18,8 +18,6 @@
     "shell:allow-stdin-write",
     "notification:default",
     "sql:default",
-    "sql:allow-execute",
-    "sql:allow-select",
     "dialog:default",
     "dialog:allow-open",
     "dialog:allow-save",

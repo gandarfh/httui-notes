@@ -8,7 +8,7 @@ export interface Connection {
   port: number | null;
   database_name: string | null;
   username: string | null;
-  password: string | null;
+  has_password: boolean;
   ssl_mode: string | null;
   timeout_ms: number;
   query_timeout_ms: number;

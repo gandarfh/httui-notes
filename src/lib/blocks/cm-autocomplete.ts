@@ -76,10 +76,19 @@ function findRefStart(text: string, pos: number): { from: number; inner: string 
   return { from: openIdx + 2, inner };
 }
 
+/** T28: Max depth for autocomplete traversal to prevent deep structure exposure. */
+const MAX_AUTOCOMPLETE_DEPTH = 2;
+
+/** T32: Dangerous property names blocked from autocomplete. */
+const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
 /**
  * Navigate into a JSON value to get keys at a given path.
  */
 function getKeysAtPath(data: unknown, pathParts: string[]): Completion[] {
+  // T28: Limit autocomplete depth
+  if (pathParts.length > MAX_AUTOCOMPLETE_DEPTH) return [];
+
   let current = data;
 
   for (const part of pathParts) {
@@ -90,6 +99,7 @@ function getKeysAtPath(data: unknown, pathParts: string[]): Completion[] {
       if (isNaN(idx) || idx < 0 || idx >= current.length) return [];
       current = current[idx];
     } else if (typeof current === "object") {
+      if (DANGEROUS_KEYS.has(part)) return [];
       const obj = current as Record<string, unknown>;
       if (!(part in obj)) return [];
       current = obj[part];
@@ -109,11 +119,13 @@ function getKeysAtPath(data: unknown, pathParts: string[]): Completion[] {
   }
 
   if (typeof current === "object") {
-    return Object.entries(current as Record<string, unknown>).map(([key, val]) => ({
-      label: key,
-      type: "property",
-      detail: summarizeValue(val),
-    }));
+    return Object.entries(current as Record<string, unknown>)
+      .filter(([key]) => !DANGEROUS_KEYS.has(key))
+      .map(([key, val]) => ({
+        label: key,
+        type: "property",
+        detail: summarizeValue(val),
+      }));
   }
 
   return [];
@@ -136,9 +148,14 @@ function summarizeValue(val: unknown): string {
  * Creates just the completion source function for `{{...}}` references.
  * Use this when you need to combine with other completion sources (e.g., SQL).
  */
+export interface EnvKeyInfo {
+  key: string;
+  isSecret: boolean;
+}
+
 export function createReferenceCompletionSource(
   getBlocks: () => BlockContext[],
-  getEnvKeys?: () => string[],
+  getEnvKeys?: () => (string | EnvKeyInfo)[],
 ): (ctx: CompletionContext) => CompletionResult | null {
   return (ctx: CompletionContext) => {
     const line = ctx.state.doc.lineAt(ctx.pos);
@@ -160,13 +177,18 @@ export function createReferenceCompletionSource(
           detail: b.cachedResult ? "cached" : "no result",
         }));
 
+      // T29: Filter secret env keys from autocomplete suggestions
       if (getEnvKeys) {
-        for (const key of getEnvKeys()) {
-          options.push({
-            label: key,
-            type: "variable",
-            detail: "env",
-          });
+        for (const entry of getEnvKeys()) {
+          const key = typeof entry === "string" ? entry : entry.key;
+          const isSecret = typeof entry === "string" ? false : entry.isSecret;
+          if (!isSecret) {
+            options.push({
+              label: key,
+              type: "variable",
+              detail: "env",
+            });
+          }
         }
       }
 
@@ -203,7 +225,7 @@ export function createReferenceCompletionSource(
 
 export function createReferenceAutocomplete(
   getBlocks: () => BlockContext[],
-  getEnvKeys?: () => string[],
+  getEnvKeys?: () => (string | EnvKeyInfo)[],
 ) {
   function completionSource(ctx: CompletionContext): CompletionResult | null {
     const line = ctx.state.doc.lineAt(ctx.pos);
@@ -227,13 +249,18 @@ export function createReferenceAutocomplete(
           detail: b.cachedResult ? "cached" : "no result",
         }));
 
+      // T29: Filter secret env keys from autocomplete suggestions
       if (getEnvKeys) {
-        for (const key of getEnvKeys()) {
-          options.push({
-            label: key,
-            type: "variable",
-            detail: "env",
-          });
+        for (const entry of getEnvKeys()) {
+          const key = typeof entry === "string" ? entry : entry.key;
+          const isSecret = typeof entry === "string" ? false : entry.isSecret;
+          if (!isSecret) {
+            options.push({
+              label: key,
+              type: "variable",
+              detail: "env",
+            });
+          }
         }
       }
 

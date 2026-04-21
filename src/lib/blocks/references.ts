@@ -22,7 +22,15 @@ export interface ReferenceError {
   message: string;
 }
 
+export interface ReferenceWarning {
+  raw: string;
+  message: string;
+}
+
 const REF_REGEX = /\{\{([^}]+)\}\}/g;
+
+/** Property names that must not be accessed via JSON path navigation (prototype pollution defense). */
+const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
 /**
  * Extract all {{...}} references from text.
@@ -72,6 +80,9 @@ export function navigateJson(data: unknown, path: string[]): unknown {
       }
       current = current[index];
     } else if (typeof current === "object") {
+      if (DANGEROUS_KEYS.has(key)) {
+        throw new Error(`Access to "${key}" is not allowed`);
+      }
       const obj = current as Record<string, unknown>;
       if (!(key in obj)) {
         throw new Error(`Key "${key}" not found. Available: ${Object.keys(obj).join(", ")}`);
@@ -141,13 +152,14 @@ export function resolveAllReferences(
   blocks: BlockContext[],
   currentPos: number,
   envVariables?: Record<string, string>,
-): { resolved: string; errors: ReferenceError[] } {
+): { resolved: string; errors: ReferenceError[]; warnings: ReferenceWarning[] } {
   const refs = parseReferences(text);
   if (refs.length === 0) {
-    return { resolved: text, errors: [] };
+    return { resolved: text, errors: [], warnings: [] };
   }
 
   const errors: ReferenceError[] = [];
+  const warnings: ReferenceWarning[] = [];
   let resolved = text;
 
   // Replace from end to start to preserve positions
@@ -159,6 +171,13 @@ export function resolveAllReferences(
       // Try block reference first (block ref > env var when alias collides)
       const matchingBlock = blocks.find((b) => b.alias === ref.alias && b.pos < currentPos);
       if (matchingBlock) {
+        // T37: Warn when block alias shadows an env var
+        if (envVariables && ref.alias in envVariables) {
+          warnings.push({
+            raw: ref.raw,
+            message: `Block alias "${ref.alias}" shadows environment variable with the same name`,
+          });
+        }
         value = resolveReference(ref, blocks, currentPos);
       } else if (ref.path.length === 0 && envVariables && ref.alias in envVariables) {
         // Fallback to environment variable: {{KEY}} (no dots, no matching block)
@@ -177,5 +196,5 @@ export function resolveAllReferences(
     }
   }
 
-  return { resolved, errors };
+  return { resolved, errors, warnings };
 }

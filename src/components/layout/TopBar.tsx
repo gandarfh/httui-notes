@@ -2,6 +2,7 @@ import { HStack, Text, IconButton, Box, Badge, Menu, Portal } from "@chakra-ui/r
 import { ColorModeButton } from "@/components/ui/color-mode";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { useEnvironmentContext } from "@/contexts/EnvironmentContext";
+import { useSettingsContext } from "@/contexts/SettingsContext";
 import {
   LuMenu,
   LuSearch,
@@ -22,6 +23,7 @@ interface TopBarProps {
 export function TopBar({ sidebarOpen, onToggleSidebar, chatOpen, onToggleChat }: TopBarProps) {
   const { vaultPath, vaults, switchVault, openVault } = useWorkspace();
   const { environments, activeEnvironment, switchEnvironment, openManager } = useEnvironmentContext();
+  const { openSettings } = useSettingsContext();
   const vaultName = vaultPath ? vaultPath.split("/").pop() || vaultPath : null;
 
   return (
@@ -180,6 +182,14 @@ export function TopBar({ sidebarOpen, onToggleSidebar, chatOpen, onToggleChat }:
           color={chatOpen ? "brand.400" : undefined}
         >
           <LuMessageSquare />
+        </IconButton>
+        <IconButton
+          aria-label="Settings"
+          variant="ghost"
+          size="sm"
+          onClick={openSettings}
+        >
+          <LuSettings />
         </IconButton>
         <ColorModeButton />
       </HStack>

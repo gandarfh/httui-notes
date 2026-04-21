@@ -1,4 +1,39 @@
+use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
+use sha2::Sha256;
+
+type HmacSha256 = Hmac<Sha256>;
+
+fn bytes_to_hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn hex_to_bytes(hex: &str) -> Option<Vec<u8>> {
+    if hex.len() % 2 != 0 {
+        return None;
+    }
+    (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).ok())
+        .collect()
+}
+
+/// T25: Compute HMAC-SHA256 of a message payload.
+pub fn compute_hmac(secret: &str, payload: &str) -> String {
+    let mut mac =
+        HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC accepts any key length");
+    mac.update(payload.as_bytes());
+    bytes_to_hex(&mac.finalize().into_bytes())
+}
+
+/// T25: Verify HMAC-SHA256 of a message payload (constant-time comparison).
+pub fn verify_hmac(secret: &str, payload: &str, expected_hmac: &str) -> bool {
+    let mut mac =
+        HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC accepts any key length");
+    mac.update(payload.as_bytes());
+    let expected_bytes = hex_to_bytes(expected_hmac).unwrap_or_default();
+    mac.verify_slice(&expected_bytes).is_ok()
+}
 
 // ── Rust → Sidecar (outgoing) ────────────────────────────────────────
 

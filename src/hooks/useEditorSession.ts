@@ -12,6 +12,7 @@ interface UseEditorSessionOpts {
   actions: PaneActions;
   getActiveLeaf: () => LeafPane | null;
   hasConflict?: (filePath: string) => boolean;
+  autoSaveMs?: number; // 0 = disabled, default 1000
 }
 
 export function useEditorSession({
@@ -21,6 +22,7 @@ export function useEditorSession({
   actions,
   getActiveLeaf,
   hasConflict,
+  autoSaveMs = 1000,
 }: UseEditorSessionOpts) {
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suppressedFiles = useRef<Set<string>>(new Set());
@@ -49,16 +51,18 @@ export function useEditorSession({
 
       if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
 
-      autoSaveTimer.current = setTimeout(async () => {
-        if (hasConflict?.(filePath)) return;
-        if (suppressedFiles.current.has(filePath)) return;
-        try {
-          await writeNote(tabVaultPath, filePath, htmlToMarkdown(content));
-          actions.markUnsaved(activePaneId, filePath, false);
-        } catch (err) {
-          console.error("Auto-save failed:", err);
-        }
-      }, 1000);
+      if (autoSaveMs > 0) {
+        autoSaveTimer.current = setTimeout(async () => {
+          if (hasConflict?.(filePath)) return;
+          if (suppressedFiles.current.has(filePath)) return;
+          try {
+            await writeNote(tabVaultPath, filePath, htmlToMarkdown(content));
+            actions.markUnsaved(activePaneId, filePath, false);
+          } catch (err) {
+            console.error("Auto-save failed:", err);
+          }
+        }, autoSaveMs);
+      }
     },
     [activePaneId, actions],
   );

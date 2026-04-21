@@ -5,6 +5,7 @@ import { executeBlock, saveBlockResult } from "@/lib/tauri/commands";
 import { hashBlockContent } from "./hash";
 
 const DEPENDENCY_TIMEOUT_MS = 10_000;
+const MAX_DEPENDENCY_DEPTH = 50;
 
 /**
  * Module-level map for deduplicating in-flight dependency executions.
@@ -50,7 +51,12 @@ export function topologicalSort(
   const visited = new Set<string>();
   const visiting = new Set<string>(); // cycle detection
 
-  function visit(alias: string) {
+  function visit(alias: string, depth = 0) {
+    if (depth > MAX_DEPENDENCY_DEPTH) {
+      throw new Error(
+        `Dependency chain too deep (>${MAX_DEPENDENCY_DEPTH}): "${alias}" — possible runaway nesting`,
+      );
+    }
     if (visited.has(alias)) return;
     if (visiting.has(alias)) {
       throw new Error(`Circular dependency detected: "${alias}" references itself`);
@@ -64,7 +70,7 @@ export function topologicalSort(
     // Find this block's dependencies
     const deps = extractReferencedAliases(block.content);
     for (const dep of deps) {
-      visit(dep);
+      visit(dep, depth + 1);
     }
 
     visiting.delete(alias);

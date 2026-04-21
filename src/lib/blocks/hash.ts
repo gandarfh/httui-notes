@@ -1,12 +1,16 @@
+import { invoke } from "@tauri-apps/api/core";
+
 /**
- * Compute SHA-256 hash of block content for cache invalidation.
- * Uses Web Crypto API (available in Tauri webview).
+ * Compute block hash server-side, including environment + connection context.
+ * T31: Hash includes active environment ID and connection ID for cache isolation.
+ * T35: Hash computed server-side so frontend cannot spoof it.
  */
-export async function hashBlockContent(content: string): Promise<string> {
-  const encoded = new TextEncoder().encode(content);
-  const buffer = await crypto.subtle.digest("SHA-256", encoded);
-  const bytes = new Uint8Array(buffer);
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+export async function hashBlockContent(
+  content: string,
+  connectionId?: string | null,
+): Promise<string> {
+  return invoke("compute_block_hash", {
+    content,
+    connectionId: connectionId ?? null,
+  });
 }

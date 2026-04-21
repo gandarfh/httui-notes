@@ -6,9 +6,15 @@ use rmcp::{
     schemars, tool, tool_handler, tool_router,
 };
 use sqlx::sqlite::SqlitePool;
+use std::collections::VecDeque;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
 use crate::tools;
+
+/// T07: Max execute_block calls per minute.
+const EXECUTE_RATE_LIMIT: usize = 30;
+const EXECUTE_RATE_WINDOW_SECS: u64 = 60;
 
 #[derive(Clone)]
 pub struct NotesMcpServer {
@@ -16,6 +22,8 @@ pub struct NotesMcpServer {
     pub conn_manager: Arc<PoolManager>,
     pub registry: Arc<ExecutorRegistry>,
     pub vault_path: String,
+    /// T07: Timestamps of recent execute_block calls for rate limiting.
+    execute_timestamps: Arc<Mutex<VecDeque<std::time::Instant>>>,
 }
 
 impl NotesMcpServer {
@@ -30,7 +38,29 @@ impl NotesMcpServer {
             conn_manager,
             registry,
             vault_path,
+            execute_timestamps: Arc::new(Mutex::new(VecDeque::new())),
         }
+    }
+
+    /// T07: Check and record an execute_block call. Returns Err if rate limit exceeded.
+    async fn check_execute_rate_limit(&self) -> Result<(), String> {
+        let mut timestamps = self.execute_timestamps.lock().await;
+        let now = std::time::Instant::now();
+        let window = std::time::Duration::from_secs(EXECUTE_RATE_WINDOW_SECS);
+
+        // Remove expired entries
+        while timestamps.front().map_or(false, |t| now.duration_since(*t) > window) {
+            timestamps.pop_front();
+        }
+
+        if timestamps.len() >= EXECUTE_RATE_LIMIT {
+            return Err(format!(
+                "Rate limit exceeded: max {EXECUTE_RATE_LIMIT} execute_block calls per {EXECUTE_RATE_WINDOW_SECS}s"
+            ));
+        }
+
+        timestamps.push_back(now);
+        Ok(())
     }
 }
 
@@ -150,6 +180,10 @@ impl NotesMcpServer {
 
     #[tool(description = "Execute an executable block by its alias. Resolves dependencies and environment variables automatically.")]
     async fn execute_block(&self, Parameters(input): Parameters<ExecuteBlockInput>) -> String {
+        // T07: Rate limit execute_block calls
+        if let Err(e) = self.check_execute_rate_limit().await {
+            return serde_json::json!({"error": e}).to_string();
+        }
         tools::blocks::execute_block(
             &self.vault_path,
             &input.note_path,

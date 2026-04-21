@@ -6,7 +6,7 @@ use std::sync::Arc;
 pub async fn list_connections(pool: &SqlitePool) -> String {
     match httui_core::db::connections::list_connections(pool).await {
         Ok(conns) => {
-            // Omit passwords from output
+            // Expose only non-sensitive metadata (T27: no host, port, database_name, username)
             let safe: Vec<serde_json::Value> = conns
                 .iter()
                 .map(|c| {
@@ -14,10 +14,6 @@ pub async fn list_connections(pool: &SqlitePool) -> String {
                         "id": c.id,
                         "name": c.name,
                         "driver": c.driver,
-                        "host": c.host,
-                        "port": c.port,
-                        "database_name": c.database_name,
-                        "ssl_mode": c.ssl_mode,
                     })
                 })
                 .collect();
