@@ -2057,6 +2057,7 @@ dependencies = [
  "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "sha2",
  "sqlx",
  "tempfile",
  "tokio",
@@ -2086,12 +2087,14 @@ name = "httui-notes"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "hmac",
  "httui-core",
  "image",
  "notify",
  "regex",
  "serde",
  "serde_json",
+ "sha2",
  "sqlx",
  "tauri",
  "tauri-build",

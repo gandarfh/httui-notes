@@ -89,6 +89,21 @@ async fn save_block_result(
     .map_err(|e| e.to_string())
 }
 
+/// T31/T35: Server-side hash computation including environment + connection context.
+#[tauri::command]
+async fn compute_block_hash(
+    pool: tauri::State<'_, SqlitePool>,
+    content: String,
+    connection_id: Option<String>,
+) -> Result<String, String> {
+    let env_id = httui_notes::db::environments::get_active_environment_id(&pool).await;
+    Ok(httui_notes::block_results::compute_block_hash(
+        &content,
+        env_id.as_deref(),
+        connection_id.as_deref(),
+    ))
+}
+
 // --- Schema introspection commands ---
 
 #[tauri::command]
@@ -97,6 +112,12 @@ async fn introspect_schema(
     conn_manager: tauri::State<'_, Arc<PoolManager>>,
     connection_id: String,
 ) -> Result<Vec<httui_notes::db::schema_cache::SchemaEntry>, String> {
+    // T24: Debounce — return cached schema if fresh (< 5s) to prevent hammering target DB
+    if let Ok(Some(cached)) =
+        httui_notes::db::schema_cache::get_cached_schema(&pool, &connection_id, 5).await
+    {
+        return Ok(cached);
+    }
     httui_notes::db::schema_cache::introspect_schema(&conn_manager, &pool, &connection_id).await
 }
 
@@ -276,16 +297,17 @@ fn stop_watching(
 #[tauri::command]
 async fn list_connections(
     pool: tauri::State<'_, SqlitePool>,
-) -> Result<Vec<connections::Connection>, String> {
-    connections::list_connections(&pool).await
+) -> Result<Vec<connections::ConnectionPublic>, String> {
+    connections::list_connections_public(&pool).await
 }
 
 #[tauri::command]
 async fn create_connection(
     pool: tauri::State<'_, SqlitePool>,
     input: connections::CreateConnection,
-) -> Result<connections::Connection, String> {
-    connections::create_connection(&pool, input).await
+) -> Result<connections::ConnectionPublic, String> {
+    let conn = connections::create_connection(&pool, input).await?;
+    Ok(conn.to_public())
 }
 
 #[tauri::command]
@@ -294,10 +316,10 @@ async fn update_connection(
     conn_manager: tauri::State<'_, Arc<PoolManager>>,
     id: String,
     input: connections::UpdateConnection,
-) -> Result<connections::Connection, String> {
+) -> Result<connections::ConnectionPublic, String> {
     let result = connections::update_connection(&pool, &id, input).await?;
     conn_manager.invalidate(&id).await;
-    Ok(result)
+    Ok(result.to_public())
 }
 
 #[tauri::command]
@@ -365,7 +387,7 @@ async fn list_env_variables(
     pool: tauri::State<'_, SqlitePool>,
     environment_id: String,
 ) -> Result<Vec<httui_notes::db::environments::EnvVariable>, String> {
-    httui_notes::db::environments::list_env_variables(&pool, &environment_id).await
+    httui_notes::db::environments::list_env_variables_masked(&pool, &environment_id).await
 }
 
 #[tauri::command]
@@ -385,6 +407,18 @@ async fn delete_env_variable(
     id: String,
 ) -> Result<(), String> {
     httui_notes::db::environments::delete_env_variable(&pool, &id).await
+}
+
+// --- Internal DB query (audit/settings) ---
+
+#[tauri::command]
+async fn query_internal_db(
+    pool: tauri::State<'_, SqlitePool>,
+    query: String,
+    offset: u32,
+    fetch_size: u32,
+) -> Result<httui_notes::db::InternalQueryResult, String> {
+    httui_notes::db::query_internal_db(&pool, &query, offset, fetch_size).await
 }
 
 // --- Session restore (single IPC call for startup) ---
@@ -548,13 +582,20 @@ fn main() {
             let conn_manager = Arc::new(PoolManager::new_with_emitter(pool, emitter));
             app.manage(conn_manager.clone());
 
-            // TTL cleanup task
+            // TTL cleanup + query log retention task
             let cm = conn_manager.clone();
             tauri::async_runtime::spawn(async move {
                 let mut interval = tokio::time::interval(Duration::from_secs(60));
+                let mut log_cleanup_counter: u32 = 0;
                 loop {
                     interval.tick().await;
                     cm.cleanup_expired().await;
+                    // Clean query_log every ~30 min (30 ticks of 60s)
+                    log_cleanup_counter += 1;
+                    if log_cleanup_counter >= 30 {
+                        log_cleanup_counter = 0;
+                        cm.cleanup_query_log().await;
+                    }
                 }
             });
 
@@ -593,6 +634,7 @@ fn main() {
             execute_block,
             get_block_result,
             save_block_result,
+            compute_block_hash,
             get_config,
             set_config,
             restore_session,
@@ -641,6 +683,7 @@ fn main() {
             delete_tool_permission,
             get_usage_stats,
             force_reload_file,
+            query_internal_db,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {

@@ -7,6 +7,7 @@ import { PaneContainer } from "./pane";
 import { QuickOpen } from "@/components/search/QuickOpen";
 import { SearchPanel } from "@/components/search/SearchPanel";
 import { EnvironmentManager } from "./environments/EnvironmentManager";
+import { SettingsDrawer } from "./settings/SettingsDrawer";
 import { usePaneState } from "@/hooks/usePaneState";
 import { useVault } from "@/hooks/useVault";
 import { useFileOperations } from "@/hooks/useFileOperations";
@@ -24,6 +25,8 @@ import { EnvironmentContext } from "@/contexts/EnvironmentContext";
 import { ConflictContext } from "@/contexts/ConflictContext";
 import { ChatContext } from "@/contexts/ChatContext";
 import { useEnvironments } from "@/hooks/useEnvironments";
+import { useSettings } from "@/hooks/useSettings";
+import { SettingsContext } from "@/contexts/SettingsContext";
 import { useFileConflicts } from "@/hooks/useFileConflicts";
 import { useAutoUpdate } from "@/hooks/useAutoUpdate";
 import { ChatPanel } from "@/components/chat/ChatPanel";
@@ -44,6 +47,7 @@ export function AppShell() {
 
   // Hooks
   useAutoUpdate();
+  const settingsHook = useSettings();
   const { sidebarWidth, startResize } = useSidebarResize();
   const { layout, activePaneId, editorContents, unsavedFiles, getActiveLeaf, actions } =
     usePaneState();
@@ -62,6 +66,7 @@ export function AppShell() {
     actions,
     getActiveLeaf,
     hasConflict: fileConflicts.hasConflict,
+    autoSaveMs: settingsHook.settings.autoSaveMs,
   });
   const fileOps = useFileOperations({
     vaultPath: vault.vaultPath,
@@ -178,6 +183,20 @@ export function AppShell() {
     [chatSessions, chatHook],
   );
 
+  const settingsValue = useMemo(
+    () => ({
+      settingsOpen: settingsHook.settingsOpen,
+      openSettings: settingsHook.openSettings,
+      closeSettings: settingsHook.closeSettings,
+      settings: settingsHook.settings,
+      updateSetting: settingsHook.updateSetting,
+      theme: settingsHook.theme,
+      updateTheme: settingsHook.updateTheme,
+      resetTheme: settingsHook.resetTheme,
+    }),
+    [settingsHook],
+  );
+
   const envHook = useEnvironments();
   const environmentValue = useMemo(
     () => ({
@@ -203,6 +222,7 @@ export function AppShell() {
     <WorkspaceContext.Provider value={workspaceValue}>
       <PaneContext.Provider value={paneValue}>
         <EditorSettingsContext.Provider value={editorSettingsValue}>
+        <SettingsContext.Provider value={settingsValue}>
         <EnvironmentContext.Provider value={environmentValue}>
         <ConflictContext.Provider value={conflictValue}>
         <ChatContext.Provider value={chatValue}>
@@ -245,10 +265,12 @@ export function AppShell() {
             />
 
             <EnvironmentManager />
+            <SettingsDrawer />
           </Flex>
         </ChatContext.Provider>
         </ConflictContext.Provider>
         </EnvironmentContext.Provider>
+        </SettingsContext.Provider>
         </EditorSettingsContext.Provider>
       </PaneContext.Provider>
     </WorkspaceContext.Provider>

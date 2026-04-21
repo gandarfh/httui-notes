@@ -44,6 +44,11 @@ impl PermissionBroker {
             return PermissionVerdict::AskUser;
         }
 
+        // T06: Block execution (DB/HTTP/E2E) always requires user confirmation via sidecar
+        if tool_name == "execute_block" {
+            return PermissionVerdict::AskUser;
+        }
+
         let input_path = extract_path(tool_name, tool_input);
 
         if let Some(cwd) = cwd {
@@ -200,5 +205,19 @@ mod tests {
         let input = serde_json::json!({"file_path": "/some/file.rs"});
         let verdict = broker.check("Edit", &input, session.id, None).await;
         assert!(matches!(verdict, PermissionVerdict::Allow));
+    }
+
+    #[tokio::test]
+    async fn test_execute_block_always_ask_user() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let pool = httui_core::db::init_db(tmp.path()).await.unwrap();
+        let broker = PermissionBroker::new(pool);
+        let input = serde_json::json!({
+            "block_type": "db",
+            "params": {"connection_id": "test", "query": "SELECT 1"}
+        });
+
+        let verdict = broker.check("execute_block", &input, 1, Some("/tmp")).await;
+        assert!(matches!(verdict, PermissionVerdict::AskUser));
     }
 }

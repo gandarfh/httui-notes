@@ -37,6 +37,23 @@ pub async fn execute_block(
     pool: &SqlitePool,
     conn_manager: &Arc<PoolManager>,
 ) -> String {
+    // T16: Validate note_path — reject path traversal and absolute paths
+    if note_path.contains("..") || std::path::Path::new(note_path).is_absolute() {
+        return json!({"error": "Invalid note path"}).to_string();
+    }
+
+    // T16: Verify the block alias actually exists in the note
+    match httui_core::fs::read_note(vault_path, note_path) {
+        Ok(content) => {
+            let blocks = parser::parse_blocks(&content);
+            if !blocks.iter().any(|b| b.alias.as_deref() == Some(alias)) {
+                return json!({"error": format!("Block alias '{}' not found in note", alias)})
+                    .to_string();
+            }
+        }
+        Err(e) => return json!({"error": e}).to_string(),
+    }
+
     let runner = BlockRunner::new(registry.clone(), pool.clone(), conn_manager.clone());
 
     match runner.execute(vault_path, note_path, alias).await {

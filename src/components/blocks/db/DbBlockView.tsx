@@ -607,7 +607,7 @@ function DbBlockViewInner({
     let cancelled = false;
 
     (async () => {
-      const hash = await hashBlockContent(rawContent);
+      const hash = await hashBlockContent(rawContent, data.connectionId);
       lastHashRef.current = hash;
 
       try {
@@ -717,7 +717,7 @@ function DbBlockViewInner({
 
           // Save initial result to cache
           if (filePath) {
-            const hash = await hashBlockContent(rawContent);
+            const hash = await hashBlockContent(rawContent, data.connectionId);
             lastHashRef.current = hash;
             await saveBlockResult(
               filePath,
