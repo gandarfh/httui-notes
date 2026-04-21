@@ -57,6 +57,10 @@ export interface ToolActivity {
   pending: boolean;
 }
 
+export type ContentSegment =
+  | { type: "text"; text: string }
+  | { type: "tool_group"; toolUseIds: string[] };
+
 export interface PendingPermission {
   permissionId: string;
   toolName: string;
@@ -77,6 +81,7 @@ export interface ChatFileCallbacks {
 export function useChat(sessionId: number | null, fileCallbacks?: ChatFileCallbacks) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [streamingContent, setStreamingContent] = useState("");
+  const [streamingSegments, setStreamingSegments] = useState<ContentSegment[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toolActivity, setToolActivity] = useState<Map<string, ToolActivity>>(new Map());
@@ -85,6 +90,7 @@ export function useChat(sessionId: number | null, fileCallbacks?: ChatFileCallba
   const pendingFileUpdates = useRef<PendingFileUpdate[]>([]);
 
   const contentRef = useRef("");
+  const segmentsRef = useRef<ContentSegment[]>([]);
   const rafId = useRef(0);
   const activeRequestId = useRef<string | null>(null);
 
@@ -93,6 +99,7 @@ export function useChat(sessionId: number | null, fileCallbacks?: ChatFileCallba
     if (sessionId === null) {
       setMessages([]);
       setStreamingContent("");
+      setStreamingSegments([]);
       setIsStreaming(false);
       setError(null);
       setToolActivity(new Map());
@@ -120,9 +127,18 @@ export function useChat(sessionId: number | null, fileCallbacks?: ChatFileCallba
       listen<ChatDeltaPayload>("chat:delta", (event) => {
         if (event.payload.session_id !== sessionId) return;
         contentRef.current += event.payload.text;
+        // Track segments: append to current text segment or start a new one after tools
+        const segs = segmentsRef.current;
+        const last = segs[segs.length - 1];
+        if (last && last.type === "text") {
+          last.text += event.payload.text;
+        } else {
+          segs.push({ type: "text", text: event.payload.text });
+        }
         cancelAnimationFrame(rafId.current);
         rafId.current = requestAnimationFrame(() => {
           setStreamingContent(contentRef.current);
+          setStreamingSegments([...segs]);
         });
       })
     );
@@ -131,6 +147,15 @@ export function useChat(sessionId: number | null, fileCallbacks?: ChatFileCallba
       listen<ChatToolUsePayload>("chat:tool_use", (event) => {
         if (event.payload.session_id !== sessionId) return;
         const { tool_use_id, name, input } = event.payload;
+        // Track tool_group segment
+        const segs = segmentsRef.current;
+        const last = segs[segs.length - 1];
+        if (last && last.type === "tool_group") {
+          last.toolUseIds.push(tool_use_id);
+        } else {
+          segs.push({ type: "tool_group", toolUseIds: [tool_use_id] });
+        }
+        setStreamingSegments([...segs]);
         setToolActivity((prev) => {
           const next = new Map(prev);
           next.set(tool_use_id, { name, input, pending: true });
@@ -193,7 +218,9 @@ export function useChat(sessionId: number | null, fileCallbacks?: ChatFileCallba
       listen<ChatDonePayload>("chat:done", (event) => {
         if (event.payload.session_id !== sessionId) return;
         contentRef.current = "";
+        segmentsRef.current = [];
         setStreamingContent("");
+        setStreamingSegments([]);
         setIsStreaming(false);
         setToolActivity(new Map());
         setPendingPermission(null);
@@ -206,7 +233,9 @@ export function useChat(sessionId: number | null, fileCallbacks?: ChatFileCallba
       listen<ChatErrorPayload>("chat:error", (event) => {
         if (event.payload.session_id !== sessionId) return;
         contentRef.current = "";
+        segmentsRef.current = [];
         setStreamingContent("");
+        setStreamingSegments([]);
         setIsStreaming(false);
         setToolActivity(new Map());
         setPendingPermission(null);
@@ -258,7 +287,9 @@ export function useChat(sessionId: number | null, fileCallbacks?: ChatFileCallba
       setMessages((prev) => [...prev, optimisticMsg]);
 
       contentRef.current = "";
+      segmentsRef.current = [];
       setStreamingContent("");
+      setStreamingSegments([]);
       setIsStreaming(true);
 
       try {
@@ -354,6 +385,7 @@ export function useChat(sessionId: number | null, fileCallbacks?: ChatFileCallba
   return {
     messages,
     streamingContent,
+    streamingSegments,
     isStreaming,
     error,
     toolActivity,

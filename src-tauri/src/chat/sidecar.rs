@@ -122,6 +122,8 @@ pub struct SidecarManager {
     /// Flag to stop background tasks on shutdown
     shutdown: Arc<AtomicBool>,
     app_handle: AppHandle,
+    /// T25: Shared secret for HMAC message signing with sidecar
+    hmac_secret: String,
 }
 
 impl SidecarManager {
@@ -132,6 +134,8 @@ impl SidecarManager {
         let child = Arc::new(Mutex::new(None::<CommandChild>));
         let pong_notify = Arc::new(Notify::new());
         let shutdown = Arc::new(AtomicBool::new(false));
+        // T25: Generate HMAC secret for sidecar protocol signing
+        let hmac_secret = uuid::Uuid::new_v4().to_string();
 
         let manager = Self {
             child: child.clone(),
@@ -139,10 +143,11 @@ impl SidecarManager {
             pong_notify: pong_notify.clone(),
             shutdown: shutdown.clone(),
             app_handle: app.clone(),
+            hmac_secret: hmac_secret.clone(),
         };
 
         // Initial spawn
-        Self::spawn_process(app, &child, &requests, &pong_notify).await?;
+        Self::spawn_process(app, &child, &requests, &pong_notify, &hmac_secret).await?;
 
         // Supervisor task: respawn on termination with backoff
         let app_respawn = app.clone();
@@ -150,6 +155,7 @@ impl SidecarManager {
         let requests_respawn = requests.clone();
         let pong_respawn = pong_notify.clone();
         let shutdown_respawn = shutdown.clone();
+        let hmac_respawn = hmac_secret.clone();
         tauri::async_runtime::spawn(async move {
             let mut attempt = 0usize;
             loop {
@@ -177,6 +183,7 @@ impl SidecarManager {
                     &child_respawn,
                     &requests_respawn,
                     &pong_respawn,
+                    &hmac_respawn,
                 ).await {
                     Ok(_) => {
                         eprintln!("[sidecar] Respawned successfully");
@@ -240,6 +247,7 @@ impl SidecarManager {
         child: &Arc<Mutex<Option<CommandChild>>>,
         requests: &Arc<Mutex<HashMap<String, mpsc::UnboundedSender<IncomingMessage>>>>,
         pong_notify: &Arc<Notify>,
+        hmac_secret: &str,
     ) -> Result<(), String> {
         let script_path = app
             .path()
@@ -272,7 +280,8 @@ impl SidecarManager {
             .env("ANTHROPIC_API_KEY", "")
             .env("ANTHROPIC_AUTH_TOKEN", "")
             .env("CLAUDE_CLI_PATH", &claude_path)
-            .env("PATH", &enriched_path);
+            .env("PATH", &enriched_path)
+            .env("SIDECAR_HMAC_SECRET", &hmac_secret);
 
         let (rx, new_child) = sidecar_cmd
             .spawn()
@@ -285,20 +294,25 @@ impl SidecarManager {
         let app_clone = app.clone();
         let child_clone = child.clone();
         let pong_clone = pong_notify.clone();
+        let hmac_clone = hmac_secret.to_string();
         tauri::async_runtime::spawn(async move {
-            Self::read_events(rx, requests_clone, app_clone, child_clone, pong_clone).await;
+            Self::read_events(rx, requests_clone, app_clone, child_clone, pong_clone, hmac_clone).await;
         });
 
         Ok(())
     }
 
-    /// Send a message to the sidecar process via stdin.
+    /// Send a message to the sidecar process via stdin (T25: HMAC signed).
     pub async fn send(&self, msg: OutgoingMessage) -> Result<(), String> {
-        let line = msg.to_ndjson().map_err(|e| format!("Serialization error: {e}"))?;
+        let payload = msg.to_ndjson().map_err(|e| format!("Serialization error: {e}"))?;
+        // T25: Sign message with HMAC — transmit payload as a JSON string value
+        // to avoid re-serialization mismatch between serde_json and JS JSON.stringify
+        let hmac = super::protocol::compute_hmac(&self.hmac_secret, &payload);
+        let signed = serde_json::json!({"hmac": hmac, "payload": payload}).to_string();
         let mut guard = self.child.lock().await;
         let child = guard.as_mut().ok_or("Sidecar not running")?;
         child
-            .write((line + "\n").as_bytes())
+            .write((signed + "\n").as_bytes())
             .map_err(|e| format!("Failed to write to sidecar stdin: {e}"))?;
         Ok(())
     }
@@ -356,6 +370,7 @@ impl SidecarManager {
         app: AppHandle,
         child: Arc<Mutex<Option<CommandChild>>>,
         pong_notify: Arc<Notify>,
+        hmac_secret: String,
     ) {
         while let Some(event) = rx.recv().await {
             match event {
@@ -366,7 +381,36 @@ impl SidecarManager {
                         continue;
                     }
 
-                    match IncomingMessage::from_ndjson(line) {
+                    // T25: Verify HMAC on incoming messages from sidecar
+                    // Payload is transmitted as a JSON string value to avoid
+                    // re-serialization mismatch between serde_json and JS JSON.stringify
+                    let parsed_line = if let Ok(envelope) =
+                        serde_json::from_str::<serde_json::Value>(line)
+                    {
+                        if let (Some(hmac_val), Some(payload)) =
+                            (envelope.get("hmac").and_then(|v| v.as_str()),
+                             envelope.get("payload"))
+                        {
+                            // payload can be a string (new protocol) or object (legacy)
+                            let payload_str = if let Some(s) = payload.as_str() {
+                                s.to_string()
+                            } else {
+                                payload.to_string()
+                            };
+                            if !super::protocol::verify_hmac(&hmac_secret, &payload_str, hmac_val) {
+                                eprintln!("[sidecar] HMAC verification failed — dropping message");
+                                continue;
+                            }
+                            payload_str
+                        } else {
+                            // No HMAC envelope — use raw line (backward compat during transition)
+                            line.to_string()
+                        }
+                    } else {
+                        line.to_string()
+                    };
+
+                    match IncomingMessage::from_ndjson(&parsed_line) {
                         Ok(IncomingMessage::Pong) => {
                             pong_notify.notify_one();
                         }
