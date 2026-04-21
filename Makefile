@@ -29,7 +29,7 @@ install-deps:
 	cd src-tauri && cargo fetch
 
 # Build + instalar app em /Applications (macOS)
-APP_NAME = httui notes
+APP_NAME = httui-notes
 APP_BUNDLE = target/release/bundle/macos/$(APP_NAME).app
 install: build
 	@if [ ! -d "$(APP_BUNDLE)" ]; then \
