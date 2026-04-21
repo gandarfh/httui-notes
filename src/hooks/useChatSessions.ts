@@ -23,18 +23,23 @@ export function useChatSessions() {
 
   // Start with a fresh session, or reuse the latest if it has no messages
   useEffect(() => {
+    let cancelled = false;
     refresh().then(async () => {
+      if (cancelled) return;
       const list = await listChatSessions();
+      if (cancelled) return;
       if (list.length > 0 && list[0].title === "Nova conversa") {
         // Latest session is empty, reuse it
         setActiveSessionId(list[0].id);
       } else {
         // Create a new session
         const session = await createChatSession();
+        if (cancelled) return;
         await refresh();
         setActiveSessionId(session.id);
       }
     });
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
