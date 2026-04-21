@@ -15,13 +15,13 @@ jobs:
       matrix:
         include:
           - platform: macos-latest
-            args: --target aarch64-apple-darwin
+            args: --target aarch64-apple-darwin --bundles app,dmg
             target: aarch64-apple-darwin
           - platform: macos-latest
-            args: --target x86_64-apple-darwin
+            args: --target x86_64-apple-darwin --bundles app,dmg
             target: x86_64-apple-darwin
           - platform: ubuntu-22.04
-            args: ""
+            args: --bundles appimage,deb
             target: ""
 
     runs-on: ${{ matrix.platform }}
@@ -63,6 +63,11 @@ jobs:
       - name: Build sidecar
         run: |
           cd sidecar && bun install && bun run build
+
+      - name: Debug - list bundle directory
+        if: always()
+        run: |
+          find target -path "*/bundle/*" -type f 2>/dev/null || echo "No bundle directory found"
 
       - name: Build and release
         uses: tauri-apps/tauri-action@v0
