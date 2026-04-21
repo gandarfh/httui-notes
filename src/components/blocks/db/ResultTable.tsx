@@ -1,23 +1,15 @@
-import { Box, Flex, HStack, Text, IconButton, Input } from "@chakra-ui/react";
-import { NativeSelectRoot, NativeSelectField } from "@chakra-ui/react";
-import {
-  LuChevronsLeft,
-  LuChevronLeft,
-  LuChevronRight,
-  LuChevronsRight,
-} from "react-icons/lu";
-import { Fragment, useCallback, useState } from "react";
+import { Box, Button, Flex, HStack, Spinner, Table } from "@chakra-ui/react";
+import { Fragment, useCallback, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 
 interface ResultTableProps {
   columns: { name: string; type: string }[];
   rows: Record<string, string | number | boolean | null>[];
-  totalRows: number;
-  page: number;
-  pageSize: number;
-  onPageChange: (page: number, pageSize: number) => void;
+  durationMs?: number | null;
+  hasMore: boolean;
+  loadingMore: boolean;
+  onLoadMore: () => void;
 }
-
-const PAGE_SIZES = [25, 50, 100, 500];
 
 type CellValue = string | number | boolean | null;
 
@@ -26,14 +18,18 @@ function formatCellValue(value: CellValue): {
   isNull: boolean;
 } {
   if (value === null) return { text: "NULL", isNull: true };
-  if (typeof value === "boolean") return { text: value.toString(), isNull: false };
+  if (typeof value === "boolean")
+    return { text: value.toString(), isNull: false };
   return { text: String(value), isNull: false };
 }
 
 function tryParseJson(value: CellValue): { parsed: unknown; isJson: boolean } {
   if (typeof value !== "string") return { parsed: value, isJson: false };
   const trimmed = value.trim();
-  if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+  if (
+    (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+    (trimmed.startsWith("[") && trimmed.endsWith("]"))
+  ) {
     try {
       return { parsed: JSON.parse(trimmed), isJson: true };
     } catch {
@@ -45,7 +41,11 @@ function tryParseJson(value: CellValue): { parsed: unknown; isJson: boolean } {
 
 function DetailValue({ value }: { value: CellValue }) {
   if (value === null) {
-    return <Text as="span" fontStyle="italic" color="fg.muted" opacity={0.6}>NULL</Text>;
+    return (
+      <Box as="span" fontStyle="italic" color="fg.muted" opacity={0.6}>
+        NULL
+      </Box>
+    );
   }
   const { parsed, isJson } = tryParseJson(value);
   if (isJson) {
@@ -67,30 +67,42 @@ function DetailValue({ value }: { value: CellValue }) {
       </Box>
     );
   }
-  return <Text as="span" wordBreak="break-all">{String(value)}</Text>;
+  return (
+    <Box as="span" wordBreak="break-all">
+      {String(value)}
+    </Box>
+  );
 }
+
+const ROW_HEIGHT = 28;
 
 export function ResultTable({
   columns,
   rows,
-  totalRows,
-  page,
-  pageSize,
-  onPageChange,
+  durationMs,
+  hasMore,
+  loadingMore,
+  onLoadMore,
 }: ResultTableProps) {
-  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
-  const startRow = (page - 1) * pageSize + 1;
-  const endRow = Math.min(page * pageSize, totalRows);
-  const [goToPage, setGoToPage] = useState("");
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  const handleGoToPage = useCallback(() => {
-    const p = parseInt(goToPage);
-    if (p >= 1 && p <= totalPages) {
-      onPageChange(p, pageSize);
-      setGoToPage("");
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el || loadingMore || !hasMore) return;
+    const { scrollTop, scrollHeight, clientHeight } = el;
+    if (scrollHeight - scrollTop - clientHeight < 100) {
+      onLoadMore();
     }
-  }, [goToPage, totalPages, pageSize, onPageChange]);
+  }, [loadingMore, hasMore, onLoadMore]);
+
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: (index) =>
+      expandedRow === index ? ROW_HEIGHT + 120 : ROW_HEIGHT,
+    overscan: 10,
+  });
 
   if (columns.length === 0) {
     return (
@@ -102,158 +114,178 @@ export function ResultTable({
 
   return (
     <Box>
-      {/* Table */}
       <Box
-        overflowX="auto"
-        border="1px solid"
-        borderColor="border"
-        rounded="md"
+        ref={scrollRef}
         maxH="300px"
         overflowY="auto"
+        overflowX="auto"
+        onScroll={handleScroll}
+        onMouseDown={(e: React.MouseEvent) => e.stopPropagation()}
+        onKeyDown={(e: React.KeyboardEvent) => e.stopPropagation()}
+        onCopy={(e: React.ClipboardEvent) => e.stopPropagation()}
+        tabIndex={0}
       >
-        <Box
-          as="table"
-          w="100%"
+        <Table.Root
+          size="sm"
+          stickyHeader
           fontSize="xs"
           fontFamily="mono"
-          tabIndex={0}
-          onMouseDown={(e: React.MouseEvent) => e.stopPropagation()}
-          onKeyDown={(e: React.KeyboardEvent) => e.stopPropagation()}
-          onCopy={(e: React.ClipboardEvent) => e.stopPropagation()}
           css={{
-            borderCollapse: "collapse",
             userSelect: "text",
             cursor: "text",
-            "& th, & td": {
-              px: "8px",
-              py: "4px",
-              borderBottom: "1px solid var(--chakra-colors-border)",
-              borderRight: "1px solid var(--chakra-colors-border)",
-              textAlign: "left",
+            "& td, & th": {
               whiteSpace: "nowrap",
               maxWidth: "300px",
               overflow: "hidden",
               textOverflow: "ellipsis",
             },
-            "& th": {
-              bg: "var(--chakra-colors-bg-subtle)",
-              fontWeight: "semibold",
-              position: "sticky",
-              top: 0,
-              zIndex: 1,
-            },
-            "& tr:hover td": {
-              bg: "var(--chakra-colors-bg-subtle)",
-            },
           }}
         >
-          <thead>
-            <tr>
+          <Table.Header>
+            <Table.Row>
               {columns.map((col, i) => (
-                <th key={i} title={`${col.name} (${col.type})`}>
+                <Table.ColumnHeader key={i} title={`${col.name} (${col.type})`}>
                   {col.name}
-                </th>
+                </Table.ColumnHeader>
               ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, rowIdx) => {
-              const isExpanded = expandedRow === rowIdx;
-              return (
-                <Fragment key={rowIdx}>
-                  <tr
-                    onClick={() => {
-                      const sel = window.getSelection();
-                      if (sel && sel.toString().length > 0) return;
-                      setExpandedRow(isExpanded ? null : rowIdx);
-                    }}
-                  >
-                    {columns.map((col, colIdx) => {
-                      const cell = row[col.name] ?? null;
-                      const { text, isNull } = formatCellValue(cell);
-                      return (
-                        <td
-                          key={colIdx}
-                          title={text}
-                          style={
-                            isNull
-                              ? {
-                                  fontStyle: "italic",
-                                  color: "var(--chakra-colors-fg-muted)",
-                                  opacity: 0.6,
-                                }
-                              : undefined
-                          }
-                        >
-                          {text}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                  {isExpanded && (
-                    <tr key={`${rowIdx}-detail`}>
-                      <td
-                        colSpan={columns.length}
-                        style={{ padding: 0, background: "var(--chakra-colors-bg-subtle)" }}
-                      >
-                        <Box
-                          display="grid"
-                          gridTemplateColumns="auto 1fr"
-                          gap={0}
-                          px={3}
-                          py={2}
-                          fontSize="xs"
-                          fontFamily="mono"
-                          css={{
-                            "& > *": {
-                              py: "4px",
-                              borderBottom: "1px solid var(--chakra-colors-border)",
-                            },
-                          }}
-                        >
-                          {columns.map((col) => {
-                            const value = row[col.name] ?? null;
-                            return (
-                              <Fragment key={col.name}>
-                                <Box
-                                  fontWeight="semibold"
-                                  color="fg.muted"
-                                  pr={4}
-                                  whiteSpace="nowrap"
-                                >
-                                  {col.name}
-                                  <Text as="span" ml={1} fontSize="2xs" opacity={0.5}>
-                                    {col.type}
-                                  </Text>
-                                </Box>
-                                <Box>
-                                  <DetailValue value={value} />
-                                </Box>
-                              </Fragment>
-                            );
-                          })}
-                        </Box>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              );
-            })}
-            {rows.length === 0 && (
-              <tr>
-                <td
+            </Table.Row>
+          </Table.Header>
+          <Table.Body>
+            {rows.length === 0 ? (
+              <Table.Row>
+                <Table.Cell
                   colSpan={columns.length}
-                  style={{ textAlign: "center", color: "var(--chakra-colors-fg-muted)" }}
+                  textAlign="center"
+                  color="fg.muted"
                 >
                   No rows
-                </td>
-              </tr>
+                </Table.Cell>
+              </Table.Row>
+            ) : (
+              <>
+                {/* Top spacer */}
+                {virtualizer.getVirtualItems()[0]?.start > 0 && (
+                  <Table.Row>
+                    <Table.Cell
+                      colSpan={columns.length}
+                      h={`${virtualizer.getVirtualItems()[0].start}px`}
+                      p={0}
+                      borderBottom="none"
+                    />
+                  </Table.Row>
+                )}
+                {virtualizer.getVirtualItems().map((virtualRow) => {
+                  const rowIdx = virtualRow.index;
+                  const row = rows[rowIdx];
+                  const isExpanded = expandedRow === rowIdx;
+                  return (
+                    <Fragment key={rowIdx}>
+                      <Table.Row
+                        data-index={virtualRow.index}
+                        _hover={{ bg: "bg.subtle" }}
+                        onClick={() => {
+                          const sel = window.getSelection();
+                          if (sel && sel.toString().length > 0) return;
+                          setExpandedRow(isExpanded ? null : rowIdx);
+                        }}
+                      >
+                        {columns.map((col, colIdx) => {
+                          const cell = row[col.name] ?? null;
+                          const { text, isNull } = formatCellValue(cell);
+                          return (
+                            <Table.Cell
+                              key={colIdx}
+                              title={text}
+                              fontStyle={isNull ? "italic" : undefined}
+                              color={isNull ? "fg.muted" : undefined}
+                              opacity={isNull ? 0.6 : undefined}
+                            >
+                              {text}
+                            </Table.Cell>
+                          );
+                        })}
+                      </Table.Row>
+                      {isExpanded && (
+                        <Table.Row>
+                          <Table.Cell
+                            colSpan={columns.length}
+                            p={0}
+                            bg="bg.subtle"
+                          >
+                            <Box
+                              display="grid"
+                              gridTemplateColumns="auto 1fr"
+                              gap={0}
+                              px={3}
+                              py={2}
+                              fontSize="xs"
+                              fontFamily="mono"
+                              css={{
+                                "& > *": {
+                                  py: "4px",
+                                  borderBottom:
+                                    "1px solid var(--chakra-colors-border)",
+                                },
+                              }}
+                            >
+                              {columns.map((col) => {
+                                const value = row[col.name] ?? null;
+                                return (
+                                  <Fragment key={col.name}>
+                                    <Box
+                                      fontWeight="semibold"
+                                      color="fg.muted"
+                                      pr={4}
+                                      whiteSpace="nowrap"
+                                    >
+                                      {col.name}
+                                      <Box
+                                        as="span"
+                                        ml={1}
+                                        fontSize="2xs"
+                                        opacity={0.5}
+                                      >
+                                        {col.type}
+                                      </Box>
+                                    </Box>
+                                    <Box>
+                                      <DetailValue value={value} />
+                                    </Box>
+                                  </Fragment>
+                                );
+                              })}
+                            </Box>
+                          </Table.Cell>
+                        </Table.Row>
+                      )}
+                    </Fragment>
+                  );
+                })}
+                {/* Bottom spacer */}
+                {(() => {
+                  const items = virtualizer.getVirtualItems();
+                  const lastItem = items[items.length - 1];
+                  const remaining = lastItem
+                    ? virtualizer.getTotalSize() - lastItem.end
+                    : 0;
+                  return remaining > 0 ? (
+                    <Table.Row>
+                      <Table.Cell
+                        colSpan={columns.length}
+                        h={`${remaining}px`}
+                        p={0}
+                        borderBottom="none"
+                      />
+                    </Table.Row>
+                  ) : null;
+                })()}
+              </>
             )}
-          </tbody>
-        </Box>
+          </Table.Body>
+        </Table.Root>
       </Box>
 
-      {/* Pagination bar */}
+      {/* Footer */}
       <Flex
         align="center"
         justify="space-between"
@@ -261,86 +293,23 @@ export function ResultTable({
         py={1.5}
         fontSize="xs"
         color="fg.muted"
-        flexWrap="wrap"
-        gap={2}
       >
-        <Text>
-          Showing {startRow}-{endRow} of {totalRows} rows
-        </Text>
-
         <HStack gap={1}>
-          {/* Page size selector */}
-          <NativeSelectRoot size="xs" width="70px">
-            <NativeSelectField
-              value={pageSize}
-              onChange={(e) => onPageChange(1, parseInt(e.target.value))}
-              fontSize="xs"
-            >
-              {PAGE_SIZES.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </NativeSelectField>
-          </NativeSelectRoot>
-
-          {/* Navigation */}
-          <IconButton
-            aria-label="First page"
-            size="2xs"
-            variant="ghost"
-            onClick={() => onPageChange(1, pageSize)}
-            disabled={page <= 1}
-          >
-            <LuChevronsLeft />
-          </IconButton>
-          <IconButton
-            aria-label="Previous page"
-            size="2xs"
-            variant="ghost"
-            onClick={() => onPageChange(page - 1, pageSize)}
-            disabled={page <= 1}
-          >
-            <LuChevronLeft />
-          </IconButton>
-
-          <Text fontSize="xs" whiteSpace="nowrap">
-            {page} / {totalPages}
-          </Text>
-
-          <IconButton
-            aria-label="Next page"
-            size="2xs"
-            variant="ghost"
-            onClick={() => onPageChange(page + 1, pageSize)}
-            disabled={page >= totalPages}
-          >
-            <LuChevronRight />
-          </IconButton>
-          <IconButton
-            aria-label="Last page"
-            size="2xs"
-            variant="ghost"
-            onClick={() => onPageChange(totalPages, pageSize)}
-            disabled={page >= totalPages}
-          >
-            <LuChevronsRight />
-          </IconButton>
-
-          {/* Go to page */}
-          <Input
-            size="xs"
-            w="40px"
-            px={1}
-            textAlign="center"
-            placeholder="#"
-            value={goToPage}
-            onChange={(e) => setGoToPage(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleGoToPage();
-            }}
-          />
+          <Box as="span">{rows.length} rows fetched</Box>
+          {durationMs != null && (
+            <>
+              <Box as="span" opacity={0.4}>·</Box>
+              <Box as="span">{durationMs}ms</Box>
+            </>
+          )}
+          {loadingMore && <Spinner size="xs" />}
         </HStack>
+
+        {hasMore && !loadingMore && (
+          <Button size="xs" variant="ghost" onClick={onLoadMore}>
+            Load more
+          </Button>
+        )}
       </Flex>
     </Box>
   );

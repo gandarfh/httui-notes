@@ -1,6 +1,6 @@
 import { NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/core";
-import { Box, Flex, HStack, Badge, Tabs, Input, IconButton } from "@chakra-ui/react";
+import { Box, Flex, Badge, Tabs, Input, IconButton } from "@chakra-ui/react";
 import { LuAlignLeft } from "react-icons/lu";
 import { NativeSelectRoot, NativeSelectField } from "@chakra-ui/react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -382,26 +382,6 @@ function DbInput({
 
   return (
     <Box p={2} display="flex" flexDirection="column" gap={1.5}>
-      {/* Connection selector */}
-      <Flex gap={2} align="center">
-        <NativeSelectRoot size="xs" flex={1}>
-          <NativeSelectField
-            value={data.connectionId}
-            onChange={(e) => onChange({ ...data, connectionId: e.target.value })}
-            fontFamily="mono"
-            fontSize="xs"
-          >
-            <option value="">Select connection...</option>
-            {connections.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name} ({c.driver})
-              </option>
-            ))}
-          </NativeSelectField>
-        </NativeSelectRoot>
-      </Flex>
-
-      {/* Tabs: Query / Settings */}
       <Tabs.Root defaultValue="query" size="sm" variant="line">
         <Tabs.List>
           <Tabs.Trigger value="query" fontSize="xs">Query</Tabs.Trigger>
@@ -452,21 +432,43 @@ function DbInput({
         </Tabs.Content>
 
         <Tabs.Content value="settings" p={0} pt={2}>
-          <Flex align="center" gap={2} px={2} pb={1}>
-            <Box fontSize="xs" color="fg.muted" whiteSpace="nowrap">Timeout (ms)</Box>
-            <Input
-              size="xs"
-              type="number"
-              placeholder="30000"
-              value={data.timeoutMs ?? ""}
-              onChange={(e) => {
-                const val = e.target.value;
-                onChange({ ...data, timeoutMs: val ? parseInt(val, 10) : undefined });
-              }}
-              fontFamily="mono"
-              fontSize="xs"
-              maxW="120px"
-            />
+          <Flex direction="column" gap={2} px={2} pb={1}>
+            {/* Connection selector */}
+            <Flex align="center" gap={2}>
+              <Box fontSize="xs" color="fg.muted" whiteSpace="nowrap">Connection</Box>
+              <NativeSelectRoot size="xs" flex={1}>
+                <NativeSelectField
+                  value={data.connectionId}
+                  onChange={(e) => onChange({ ...data, connectionId: e.target.value })}
+                  fontFamily="mono"
+                  fontSize="xs"
+                >
+                  <option value="">Select connection...</option>
+                  {connections.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.driver})
+                    </option>
+                  ))}
+                </NativeSelectField>
+              </NativeSelectRoot>
+            </Flex>
+            {/* Timeout */}
+            <Flex align="center" gap={2}>
+              <Box fontSize="xs" color="fg.muted" whiteSpace="nowrap">Timeout (ms)</Box>
+              <Input
+                size="xs"
+                type="number"
+                placeholder="30000"
+                value={data.timeoutMs ?? ""}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  onChange({ ...data, timeoutMs: val ? parseInt(val, 10) : undefined });
+                }}
+                fontFamily="mono"
+                fontSize="xs"
+                maxW="120px"
+              />
+            </Flex>
           </Flex>
         </Tabs.Content>
       </Tabs.Root>
@@ -476,12 +478,20 @@ function DbInput({
 
 function DbOutput({
   response,
+  accumulatedRows,
   error,
-  onPageChange,
+  durationMs,
+  hasMore,
+  loadingMore,
+  onLoadMore,
 }: {
   response: DbResponse | null;
+  accumulatedRows: Record<string, string | number | boolean | null>[];
   error: string | null;
-  onPageChange: (page: number, pageSize: number) => void;
+  durationMs: number | null;
+  hasMore: boolean;
+  loadingMore: boolean;
+  onLoadMore: () => void;
 }) {
   if (error) {
     return (
@@ -494,19 +504,14 @@ function DbOutput({
 
   if (isSelectResponse(response)) {
     return (
-      <Box p={2} display="flex" flexDirection="column" gap={1}>
-        <HStack gap={2}>
-          <Badge colorPalette="green" variant="subtle" fontFamily="mono" size="sm">
-            {response.total_rows} rows
-          </Badge>
-        </HStack>
+      <Box p={2}>
         <ResultTable
           columns={response.columns}
-          rows={response.rows}
-          totalRows={response.total_rows}
-          page={response.page}
-          pageSize={response.page_size}
-          onPageChange={onPageChange}
+          rows={accumulatedRows}
+          durationMs={durationMs}
+          hasMore={hasMore}
+          loadingMore={loadingMore}
+          onLoadMore={onLoadMore}
         />
       </Box>
     );
@@ -540,9 +545,13 @@ function DbBlockViewInner({
   const rawContent = (node.attrs.content as string) ?? "";
 
   const [response, setResponse] = useState<DbResponse | null>(null);
+  const [accumulatedRows, setAccumulatedRows] = useState<Record<string, string | number | boolean | null>[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [depStatus, setDepStatus] = useState<string | null>(null);
   const [connections, setConnections] = useState<Connection[]>([]);
+  const [lastDuration, setLastDuration] = useState<number | null>(null);
   const cancelRef = useRef<(() => void) | null>(null);
   const lastHashRef = useRef<string>("");
   const blocksRef = useRef<BlockContext[]>([]);
@@ -623,13 +632,20 @@ function DbBlockViewInner({
     };
   }, [filePath, rawContent]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const FETCH_SIZE = 80;
+
   const executeQuery = useCallback(
-    async (page = 1, pageSize = 100) => {
+    async (offset = 0) => {
+      const isInitial = offset === 0;
       setError(null);
-      if (page === 1) {
+      if (isInitial) {
         setResponse(null);
+        setAccumulatedRows([]);
+        setHasMore(false);
         setDepStatus(null);
         updateAttributes({ executionState: "running" });
+      } else {
+        setLoadingMore(true);
       }
 
       let cancelled = false;
@@ -641,9 +657,9 @@ function DbBlockViewInner({
         const currentPos =
           (typeof getPos === "function" ? getPos() : 0) ?? 0;
 
-        // Resolve dependencies
+        // Resolve dependencies (only on initial run)
         let blocks: BlockContext[] = [];
-        if (filePath) {
+        if (isInitial && filePath) {
           const depResult = await resolveAndExecuteDependencies(
             editor,
             currentPos,
@@ -677,63 +693,81 @@ function DbBlockViewInner({
           connection_id: data.connectionId,
           query: sql,
           bind_values: bindValues,
-          page,
-          page_size: pageSize,
+          offset,
+          fetch_size: FETCH_SIZE,
           ...(data.timeoutMs ? { timeout_ms: data.timeoutMs } : {}),
         });
 
         if (cancelled) return;
 
         const resultData = result.data as unknown as DbResponse;
-        setResponse(resultData);
-        updateAttributes({
-          executionState:
-            result.status === "success" ? "success" : "error",
-          displayMode: "split",
-        });
 
-        // Save to cache (only first page)
-        if (filePath && page === 1) {
-          const hash = await hashBlockContent(rawContent);
-          lastHashRef.current = hash;
-          const totalRows = isSelectResponse(resultData)
-            ? resultData.total_rows
-            : null;
-          await saveBlockResult(
-            filePath,
-            hash,
-            result.status,
-            JSON.stringify(resultData),
-            result.duration_ms,
-            totalRows,
-          );
+        if (isInitial) {
+          setResponse(resultData);
+          setLastDuration(result.duration_ms ?? null);
+          if (isSelectResponse(resultData)) {
+            setAccumulatedRows(resultData.rows);
+            setHasMore(resultData.has_more);
+          }
+          updateAttributes({
+            executionState:
+              result.status === "success" ? "success" : "error",
+            displayMode: "split",
+          });
+
+          // Save initial result to cache
+          if (filePath) {
+            const hash = await hashBlockContent(rawContent);
+            lastHashRef.current = hash;
+            await saveBlockResult(
+              filePath,
+              hash,
+              result.status,
+              JSON.stringify(resultData),
+              result.duration_ms,
+              isSelectResponse(resultData) ? resultData.rows.length : null,
+            );
+          }
+        } else {
+          // Append rows from load-more
+          if (isSelectResponse(resultData)) {
+            setAccumulatedRows((prev) => [...prev, ...resultData.rows]);
+            setHasMore(resultData.has_more);
+          }
         }
       } catch (err) {
         if (cancelled) return;
         setDepStatus(null);
         setError(err instanceof Error ? err.message : String(err));
-        updateAttributes({ executionState: "error", displayMode: "split" });
+        if (isInitial) {
+          updateAttributes({ executionState: "error", displayMode: "split" });
+        }
+      } finally {
+        setLoadingMore(false);
       }
     },
     [data, rawContent, filePath, editor, getPos, updateAttributes],
   );
 
   const handleRun = useCallback(() => {
-    executeQuery(1, 100);
+    executeQuery(0);
   }, [executeQuery]);
 
-  const handlePageChange = useCallback(
-    (page: number, pageSize: number) => {
-      executeQuery(page, pageSize);
-    },
-    [executeQuery],
-  );
+  const handleLoadMore = useCallback(() => {
+    if (!loadingMore && hasMore) {
+      executeQuery(accumulatedRows.length);
+    }
+  }, [executeQuery, loadingMore, hasMore, accumulatedRows.length]);
 
   const handleCancel = useCallback(() => {
     cancelRef.current?.();
     cancelRef.current = null;
+    setLoadingMore(false);
     updateAttributes({ executionState: "idle" });
   }, [updateAttributes]);
+
+  const selectedConn = connections.find((c) => c.id === data.connectionId);
+  const headerMeta = selectedConn ? `${selectedConn.name} ${selectedConn.driver}` : null;
 
   return (
     <NodeViewWrapper data-type="db-block">
@@ -749,6 +783,7 @@ function DbBlockViewInner({
         selected={selected}
         statusText={depStatus}
         splitDirection="column"
+        headerMeta={headerMeta}
         inputSlot={
           <DbInput
             data={data}
@@ -762,8 +797,12 @@ function DbBlockViewInner({
         outputSlot={
           <DbOutput
             response={response}
+            accumulatedRows={accumulatedRows}
             error={error}
-            onPageChange={handlePageChange}
+            durationMs={lastDuration}
+            hasMore={hasMore}
+            loadingMore={loadingMore}
+            onLoadMore={handleLoadMore}
           />
         }
       />

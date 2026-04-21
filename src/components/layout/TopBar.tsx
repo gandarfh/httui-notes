@@ -5,7 +5,6 @@ import { useEnvironmentContext } from "@/contexts/EnvironmentContext";
 import {
   LuMenu,
   LuSearch,
-  LuFolder,
   LuPlus,
   LuChevronDown,
   LuGlobe,
@@ -37,8 +36,8 @@ export function TopBar({ sidebarOpen, onToggleSidebar, chatOpen, onToggleChat }:
       justify="space-between"
       flexShrink={0}
     >
-      {/* Left */}
-      <HStack gap={2}>
+      {/* Left — brand + vault breadcrumb */}
+      <HStack gap={1}>
         <IconButton
           aria-label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
           variant="ghost"
@@ -50,10 +49,61 @@ export function TopBar({ sidebarOpen, onToggleSidebar, chatOpen, onToggleChat }:
         <Text fontWeight="semibold" fontSize="sm">
           Notes
         </Text>
+
+        {vaultName && (
+          <>
+            <Text fontSize="xs" color="fg.muted" mx={0.5}>
+              ›
+            </Text>
+            <Menu.Root>
+              <Menu.Trigger asChild>
+                <Box
+                  as="button"
+                  display="flex"
+                  alignItems="center"
+                  gap={1}
+                  px={1.5}
+                  py={0.5}
+                  rounded="md"
+                  fontSize="xs"
+                  cursor="pointer"
+                  color="fg.muted"
+                  _hover={{ bg: "bg.subtle", color: "fg" }}
+                >
+                  <Text maxW="160px" truncate>
+                    {vaultName}
+                  </Text>
+                  <LuChevronDown size={10} />
+                </Box>
+              </Menu.Trigger>
+              <Portal>
+                <Menu.Positioner>
+                  <Menu.Content>
+                    {vaults.map((v) => (
+                      <Menu.Item
+                        key={v}
+                        value={v}
+                        onSelect={() => switchVault(v)}
+                        fontWeight={v === vaultPath ? "bold" : "normal"}
+                      >
+                        {v.split("/").pop()}
+                      </Menu.Item>
+                    ))}
+                    {vaults.length > 0 && <Menu.Separator />}
+                    <Menu.Item value="open" onSelect={openVault}>
+                      <LuPlus size={14} />
+                      <Text>Open folder...</Text>
+                    </Menu.Item>
+                  </Menu.Content>
+                </Menu.Positioner>
+              </Portal>
+            </Menu.Root>
+          </>
+        )}
       </HStack>
 
-      {/* Center */}
-      <HStack gap={2}>
+      {/* Right — environment + actions */}
+      <HStack gap={1}>
         <Menu.Root>
           <Menu.Trigger asChild>
             <Box
@@ -61,59 +111,15 @@ export function TopBar({ sidebarOpen, onToggleSidebar, chatOpen, onToggleChat }:
               display="flex"
               alignItems="center"
               gap={1.5}
-              px={3}
+              px={2.5}
               py={1}
               rounded="md"
-              fontSize="sm"
-              cursor="pointer"
-              _hover={{ bg: "bg.subtle" }}
-            >
-              <LuFolder size={14} />
-              <Text fontSize="xs" maxW="128px" truncate>
-                {vaultName ?? "Open Vault"}
-              </Text>
-              <LuChevronDown size={12} />
-            </Box>
-          </Menu.Trigger>
-          <Portal>
-            <Menu.Positioner>
-              <Menu.Content>
-                {vaults.map((v) => (
-                  <Menu.Item
-                    key={v}
-                    value={v}
-                    onSelect={() => switchVault(v)}
-                    fontWeight={v === vaultPath ? "bold" : "normal"}
-                  >
-                    {v.split("/").pop()}
-                  </Menu.Item>
-                ))}
-                {vaults.length > 0 && <Menu.Separator />}
-                <Menu.Item value="open" onSelect={openVault}>
-                  <LuPlus size={14} />
-                  <Text>Open folder...</Text>
-                </Menu.Item>
-              </Menu.Content>
-            </Menu.Positioner>
-          </Portal>
-        </Menu.Root>
-
-        <Menu.Root>
-          <Menu.Trigger asChild>
-            <Box
-              as="button"
-              display="flex"
-              alignItems="center"
-              gap={1.5}
-              px={3}
-              py={1}
-              rounded="md"
-              fontSize="sm"
+              fontSize="xs"
               cursor="pointer"
               _hover={{ bg: "bg.subtle" }}
             >
               <LuGlobe size={14} />
-              <Text fontSize="xs" maxW="128px" truncate>
+              <Text maxW="128px" truncate>
                 {activeEnvironment?.name ?? "No env"}
               </Text>
               {activeEnvironment && (
@@ -155,10 +161,9 @@ export function TopBar({ sidebarOpen, onToggleSidebar, chatOpen, onToggleChat }:
             </Menu.Positioner>
           </Portal>
         </Menu.Root>
-      </HStack>
 
-      {/* Right */}
-      <HStack gap={1}>
+        <Box w="1px" h="16px" bg="border" mx={1} />
+
         <IconButton
           aria-label="Search"
           variant="ghost"
