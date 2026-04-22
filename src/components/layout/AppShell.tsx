@@ -20,7 +20,7 @@ import { useChat } from "@/hooks/useChat";
 import { forceReloadFile } from "@/lib/tauri/commands";
 import { WorkspaceContext } from "@/contexts/WorkspaceContext";
 import { PaneContext } from "@/contexts/PaneContext";
-import { EditorSettingsContext } from "@/contexts/EditorSettingsContext";
+import { EditorSettingsContext, type EditorEngine } from "@/contexts/EditorSettingsContext";
 import { EnvironmentContext } from "@/contexts/EnvironmentContext";
 import { ConflictContext } from "@/contexts/ConflictContext";
 import { ChatContext } from "@/contexts/ChatContext";
@@ -37,6 +37,7 @@ export function AppShell() {
   const [searchPanelOpen, setSearchPanelOpen] = useState(false);
   const [vimEnabled, setVimEnabled] = useState(false);
   const [vimMode, setVimMode] = useState("normal");
+  const [editorEngine, setEditorEngine] = useState<EditorEngine>("codemirror");
 
   const [chatOpen, setChatOpen] = useState(false);
   const [chatWidth] = useState(380);
@@ -67,6 +68,7 @@ export function AppShell() {
     getActiveLeaf,
     hasConflict: fileConflicts.hasConflict,
     autoSaveMs: settingsHook.settings.autoSaveMs,
+    editorEngine,
   });
   const fileOps = useFileOperations({
     vaultPath: vault.vaultPath,
@@ -83,6 +85,7 @@ export function AppShell() {
     setVaults: vault.setVaults,
     setVaultPath: vault.setVaultPath,
     setEntries: vault.setEntries,
+    editorEngine,
   });
 
   const shortcutActions = useMemo(
@@ -148,8 +151,10 @@ export function AppShell() {
       vimMode,
       toggleVim,
       setVimMode,
+      editorEngine,
+      setEditorEngine,
     }),
-    [vimEnabled, vimMode, toggleVim],
+    [vimEnabled, vimMode, toggleVim, editorEngine],
   );
 
   const conflictValue = useMemo(

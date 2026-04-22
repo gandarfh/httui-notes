@@ -859,7 +859,7 @@ function HttpOutput({ response, error }: { response: HttpResponse | null; error:
 
 // --- Main view ---
 
-function HttpBlockViewInner({ node, editor, getPos, updateAttributes, selected }: NodeViewProps) {
+function HttpBlockViewInner({ node, editor, getPos, updateAttributes, selected, deleteNode }: NodeViewProps) {
   const { colorMode } = useColorMode();
   const { filePath } = useBlockContext();
   const { getActiveVariables, variablesVersion } = useEnvironmentContext();
@@ -1084,6 +1084,7 @@ function HttpBlockViewInner({ node, editor, getPos, updateAttributes, selected }
         onCancel={handleCancel}
         selected={selected}
         statusText={depStatus}
+        onDelete={deleteNode}
         inputSlot={<HttpInput data={data} onChange={handleDataChange} cmTheme={cmTheme} blocksRef={blocksRef} envKeysRef={envKeysRef} envVarsRef={envVarsRef} getPos={getPos} />}
         outputSlot={<HttpOutput response={response} error={error} />}
       />
