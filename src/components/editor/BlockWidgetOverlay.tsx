@@ -276,7 +276,8 @@ export function BlockWidgetOverlay({ view, filePath }: BlockWidgetOverlayProps) 
     }
   }, [entries]);
 
-  // Sync widget height back to placeholder + CM6 height map
+  // Sync widget height back to placeholder + CM6 height map + re-read positions
+  const heightSyncPending = useRef(false);
   const syncHeight = useCallback(
     (blockId: string, height: number) => {
       if (Math.abs(getCachedHeight(blockId) - height) <= 2) return;
@@ -284,6 +285,14 @@ export function BlockWidgetOverlay({ view, filePath }: BlockWidgetOverlayProps) 
       const el = getPlaceholderElement(blockId);
       if (el) el.style.height = `${height}px`;
       view.requestMeasure();
+      // Batch: schedule one re-read after all ResizeObserver callbacks settle
+      if (!heightSyncPending.current) {
+        heightSyncPending.current = true;
+        requestAnimationFrame(() => {
+          heightSyncPending.current = false;
+          notifyListeners();
+        });
+      }
     },
     [view],
   );
