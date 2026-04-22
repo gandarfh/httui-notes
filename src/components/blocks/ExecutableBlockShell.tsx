@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Box, Flex, HStack, Text, Input, Badge, Spinner, IconButton } from "@chakra-ui/react";
-import { LuPenLine, LuColumns2, LuMonitorCheck, LuPlay, LuSquare } from "react-icons/lu";
+import { LuPenLine, LuColumns2, LuMonitorCheck, LuPlay, LuSquare, LuX } from "react-icons/lu";
 import type { DisplayMode, ExecutionState } from "./ExecutableBlock";
 
 interface ExecutableBlockShellProps {
@@ -19,6 +19,8 @@ interface ExecutableBlockShellProps {
   splitDirection?: "row" | "column";
   /** Extra text shown after alias in header (e.g. connection name) */
   headerMeta?: string | null;
+  /** Called when user clicks the delete button */
+  onDelete?: () => void;
 }
 
 const STATE_COLORS: Record<ExecutionState, string> = {
@@ -64,6 +66,7 @@ export function ExecutableBlockShell({
   statusText,
   splitDirection,
   headerMeta,
+  onDelete,
 }: ExecutableBlockShellProps) {
   const isRunning = executionState === "running";
   const showInput = displayMode === "input" || displayMode === "split";
@@ -147,6 +150,23 @@ export function ExecutableBlockShell({
         >
           {isRunning ? <LuSquare /> : <LuPlay />}
         </IconButton>
+
+        {onDelete && (
+          <IconButton
+            aria-label="Delete block"
+            size="xs"
+            variant="ghost"
+            colorPalette="gray"
+            opacity={0.5}
+            _hover={{ opacity: 1, colorPalette: "red" }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+          >
+            <LuX />
+          </IconButton>
+        )}
       </Flex>
 
       {/* Content area */}

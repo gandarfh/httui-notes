@@ -535,6 +535,7 @@ function DbBlockViewInner({
   getPos,
   updateAttributes,
   selected,
+  deleteNode,
 }: NodeViewProps) {
   const { colorMode } = useColorMode();
   const { filePath } = useBlockContext();
@@ -616,6 +617,10 @@ function DbBlockViewInner({
         if (cached) {
           const parsed = JSON.parse(cached.response);
           setResponse(parsed);
+          if (isSelectResponse(parsed)) {
+            setAccumulatedRows(parsed.rows);
+            setHasMore(parsed.has_more ?? false);
+          }
           setError(null);
           updateAttributes({ executionState: "cached", displayMode: "split" });
         } else if (executionState === "cached") {
@@ -784,6 +789,7 @@ function DbBlockViewInner({
         statusText={depStatus}
         splitDirection="column"
         headerMeta={headerMeta}
+        onDelete={deleteNode}
         inputSlot={
           <DbInput
             data={data}

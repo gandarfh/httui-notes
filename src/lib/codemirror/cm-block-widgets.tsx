@@ -1,4 +1,4 @@
-import { RangeSetBuilder, StateField, Text as CMText } from "@codemirror/state";
+import { Annotation, RangeSetBuilder, StateField, Text as CMText } from "@codemirror/state";
 import {
   Decoration,
   WidgetType,
@@ -7,7 +7,17 @@ import {
 } from "@codemirror/view";
 import { createRoot, type Root } from "react-dom/client";
 import { Provider } from "@/components/ui/provider";
+import { WidgetProviders } from "./widget-providers";
 import { StandaloneBlock } from "@/components/blocks/standalone/StandaloneBlock";
+import { BlockAdapter } from "@/components/blocks/BlockAdapter";
+import type { BlockWidgetContext } from "./block-widget-context";
+
+/**
+ * Annotation to mark transactions originated from block widgets.
+ * When present, the decoration StateField maps positions instead of rebuilding,
+ * preventing widget destruction/recreation (which causes flicker).
+ */
+const widgetTransaction = Annotation.define<boolean>();
 
 const BLOCK_OPEN_RE = /^```(http|db(?:-[\w:-]+)?|e2e)(.*)$/;
 const BLOCK_CLOSE_RE = /^```\s*$/;
@@ -109,6 +119,7 @@ class BlockWidget extends WidgetType {
   toDOM(): HTMLElement {
     const container = document.createElement("div");
     container.className = "cm-block-widget";
+    container.contentEditable = "false";
     container.style.padding = "2px 0";
     container.style.overflow = "hidden";
     container.style.maxWidth = "100%";
@@ -189,6 +200,7 @@ function buildDecorations(doc: CMText, counterpartBlocks: FencedBlock[], side: "
 /**
  * Create a CodeMirror extension that replaces fenced executable blocks with React widget decorations.
  * Accepts the counterpart markdown (other side of the diff) to enable inline diff within blocks.
+ * Used by DiffViewer (read-only, no cursor awareness).
  */
 export function createBlockWidgetPlugin(counterpartMarkdown: string | undefined, side: "a" | "b") {
   const counterpartBlocks = counterpartMarkdown
@@ -207,4 +219,238 @@ export function createBlockWidgetPlugin(counterpartMarkdown: string | undefined,
     },
     provide: (f) => EditorView.decorations.from(f),
   });
+}
+
+// ── Cursor-aware block widgets for the main editor ──────────────────────────
+
+/** Store for the filePath — set by MarkdownEditor */
+let editorBlockWidgetFilePath = "";
+
+/** Set the filePath for editor block widgets (called from MarkdownEditor) */
+export function setEditorBlockWidgetFilePath(filePath: string) {
+  editorBlockWidgetFilePath = filePath;
+}
+
+class EditorBlockWidget extends WidgetType {
+  private root: Root | null = null;
+
+  constructor(
+    readonly lang: string,
+    readonly info: string,
+    readonly content: string,
+    readonly from: number,
+    readonly to: number,
+  ) {
+    super();
+  }
+
+  toDOM(view: EditorView): HTMLElement {
+    const container = document.createElement("div");
+    container.className = "cm-block-widget cm-editor-block-widget";
+    container.contentEditable = "false";
+    container.style.padding = "2px 0";
+    container.style.overflow = "hidden";
+    container.style.boxSizing = "border-box";
+
+    // Find the current block in the document by alias (robust against position drift)
+    const widgetAlias = extractAlias(this.info);
+    const widgetLang = this.lang;
+
+    const findCurrentBlock = (): FencedBlock | undefined => {
+      const blocks = findFencedBlocks(view.state.doc);
+      // Find by alias first (unique), fall back to closest position match
+      if (widgetAlias) {
+        return blocks.find(b => extractAlias(b.info) === widgetAlias && b.lang === widgetLang);
+      }
+      // No alias: find the block of same type closest to original position
+      return blocks
+        .filter(b => b.lang === widgetLang)
+        .sort((a, b) => Math.abs(a.from - this.from) - Math.abs(b.from - this.from))[0];
+    };
+
+    const ctx: BlockWidgetContext = {
+      view,
+      from: this.from,
+      to: this.to,
+      content: this.content,
+      info: this.info,
+      lang: this.lang,
+      filePath: editorBlockWidgetFilePath,
+      updateContent: (newContent: string) => {
+        const block = findCurrentBlock();
+        if (!block) return;
+        const doc = view.state.doc;
+        const openingLine = doc.lineAt(block.from);
+        const closingLine = doc.lineAt(block.to);
+        const contentStart = openingLine.to + 1;
+        const contentEnd = closingLine.from - 1;
+        if (contentStart <= contentEnd) {
+          view.dispatch({
+            changes: { from: contentStart, to: contentEnd, insert: newContent },
+            annotations: widgetTransaction.of(true),
+          });
+        }
+      },
+      updateInfo: (newInfo: string) => {
+        const block = findCurrentBlock();
+        if (!block) return;
+        const doc = view.state.doc;
+        const openingLine = doc.lineAt(block.from);
+        const langMatch = openingLine.text.match(/^```(\S+)/);
+        if (langMatch) {
+          const infoStart = block.from + 3 + langMatch[1].length;
+          const infoEnd = openingLine.to;
+          const insert = newInfo ? ` ${newInfo}` : "";
+          view.dispatch({
+            changes: { from: infoStart, to: infoEnd, insert },
+            annotations: widgetTransaction.of(true),
+          });
+        }
+      },
+    };
+
+    // Defer React render to next microtask to avoid nested React updates
+    // (toDOM can be called during CM6 dispatch, which may be inside a React render)
+    const root = createRoot(container);
+    this.root = root;
+    queueMicrotask(() => {
+      root.render(
+        <WidgetProviders>
+          <BlockAdapter ctx={ctx} />
+        </WidgetProviders>,
+      );
+    });
+
+    return container;
+  }
+
+  destroy(): void {
+    if (this.root) {
+      const root = this.root;
+      this.root = null;
+      queueMicrotask(() => root.unmount());
+    }
+  }
+
+  eq(other: EditorBlockWidget): boolean {
+    return (
+      this.lang === other.lang &&
+      this.content === other.content &&
+      this.info === other.info
+    );
+  }
+
+  get estimatedHeight(): number {
+    return 200;
+  }
+
+  ignoreEvent(event: Event): boolean {
+    // Allow mouse events through so CM6 can track selection across widgets
+    const type = event.type;
+    if (type === "mousedown" || type === "mouseup" || type === "mousemove" || type === "pointerdown") {
+      return false;
+    }
+    return true;
+  }
+}
+
+/**
+ * Build decorations for executable blocks.
+ * Blocks are ALWAYS shown as widgets (they're interactive).
+ * Cursor-aware toggling (raw mode) will be via settings toggle (Phase 4).
+ */
+const hiddenLineDecoration = Decoration.line({ class: "cm-hidden-block-line" });
+
+function buildCursorAwareDecorations(state: import("@codemirror/state").EditorState): DecorationSet {
+  const decorations: { from: number; to: number; deco: Decoration }[] = [];
+  const blocks = findFencedBlocks(state.doc);
+
+  for (const block of blocks) {
+    // Insert widget BEFORE the block as a standalone block-level element
+    decorations.push({
+      from: block.from,
+      to: block.from,
+      deco: Decoration.widget({
+        widget: new EditorBlockWidget(
+          block.lang, block.info, block.content,
+          block.from, block.to,
+        ),
+        block: true,
+        side: -1,
+      }),
+    });
+
+    // Hide each line of the block's raw markdown
+    const startLine = state.doc.lineAt(block.from).number;
+    const endLine = state.doc.lineAt(block.to).number;
+    for (let lineNum = startLine; lineNum <= endLine; lineNum++) {
+      const line = state.doc.line(lineNum);
+      decorations.push({
+        from: line.from,
+        to: line.from,
+        deco: hiddenLineDecoration,
+      });
+    }
+  }
+
+  // Sort by position
+  decorations.sort((a, b) => a.from - b.from || a.to - b.to);
+
+  const builder = new RangeSetBuilder<Decoration>();
+  for (const { from, to, deco } of decorations) {
+    builder.add(from, to, deco);
+  }
+  return builder.finish();
+}
+
+/**
+ * Create block widget extension for the main editor.
+ * Blocks always render as widgets. Raw mode toggle is via settings (Phase 4).
+ */
+/** Count blocks in a document (lightweight check for structural changes) */
+function countBlocks(doc: CMText): number {
+  let count = 0;
+  for (let i = 1; i <= doc.lines; i++) {
+    if (BLOCK_OPEN_RE.test(doc.line(i).text)) count++;
+  }
+  return count;
+}
+
+export function createEditorBlockWidgets() {
+  let lastBlockCount = 0;
+
+  const field = StateField.define<DecorationSet>({
+    create(state) {
+      lastBlockCount = countBlocks(state.doc);
+      return buildCursorAwareDecorations(state);
+    },
+    update(decos, tr) {
+      if (tr.annotation(widgetTransaction)) {
+        return decos.map(tr.changes);
+      }
+      if (tr.docChanged) {
+        const newCount = countBlocks(tr.state.doc);
+        if (newCount !== lastBlockCount) {
+          lastBlockCount = newCount;
+          return buildCursorAwareDecorations(tr.state);
+        }
+        return decos.map(tr.changes);
+      }
+
+      return decos;
+    },
+    provide: (f) => EditorView.decorations.from(f),
+  });
+
+  // Make hidden block ranges atomic so cursor skips over them
+  const atomicBlocks = EditorView.atomicRanges.of((view) => {
+    const blocks = findFencedBlocks(view.state.doc);
+    const builder = new RangeSetBuilder<Decoration>();
+    for (const block of blocks) {
+      builder.add(block.from, block.to, Decoration.mark({}));
+    }
+    return builder.finish();
+  });
+
+  return [field, atomicBlocks];
 }

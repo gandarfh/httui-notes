@@ -4,6 +4,7 @@ import { markdownToHtml } from "@/lib/markdown/parser";
 import { htmlToMarkdown } from "@/lib/markdown/serializer";
 import type { PaneActions } from "@/hooks/usePaneState";
 import type { LeafPane } from "@/types/pane";
+import type { EditorEngine } from "@/contexts/EditorSettingsContext";
 
 interface UseEditorSessionOpts {
   vaultPath: string | null;
@@ -13,6 +14,7 @@ interface UseEditorSessionOpts {
   getActiveLeaf: () => LeafPane | null;
   hasConflict?: (filePath: string) => boolean;
   autoSaveMs?: number; // 0 = disabled, default 1000
+  editorEngine?: EditorEngine;
 }
 
 export function useEditorSession({
@@ -23,7 +25,9 @@ export function useEditorSession({
   getActiveLeaf,
   hasConflict,
   autoSaveMs = 1000,
+  editorEngine = "tiptap",
 }: UseEditorSessionOpts) {
+  const useCM = editorEngine === "codemirror";
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suppressedFiles = useRef<Set<string>>(new Set());
 
@@ -31,9 +35,12 @@ export function useEditorSession({
     async (filePath: string) => {
       if (!vaultPath) return;
       try {
-        if (!editorContents.has(filePath)) {
+        const cached = editorContents.get(filePath);
+        // Re-read from disk if: no cache, or CM mode but cache contains HTML from TipTap
+        const needsRead = !cached || (useCM && cached.trimStart().startsWith("<"));
+        if (needsRead) {
           const markdown = await readNote(vaultPath, filePath);
-          editorContents.set(filePath, markdownToHtml(markdown));
+          editorContents.set(filePath, useCM ? markdown : markdownToHtml(markdown));
         }
         actions.openFile(filePath, editorContents.get(filePath) ?? "", vaultPath);
         setConfig("active_file", filePath).catch(() => {});
@@ -56,7 +63,7 @@ export function useEditorSession({
           if (hasConflict?.(filePath)) return;
           if (suppressedFiles.current.has(filePath)) return;
           try {
-            await writeNote(tabVaultPath, filePath, htmlToMarkdown(content));
+            await writeNote(tabVaultPath, filePath, useCM ? content : htmlToMarkdown(content));
             actions.markUnsaved(activePaneId, filePath, false);
           } catch (err) {
             console.error("Auto-save failed:", err);
@@ -74,7 +81,7 @@ export function useEditorSession({
     if (!tab) return;
     const content = editorContents.get(tab.filePath);
     if (content) {
-      writeNote(tab.vaultPath, tab.filePath, htmlToMarkdown(content))
+      writeNote(tab.vaultPath, tab.filePath, useCM ? content : htmlToMarkdown(content))
         .then(() => actions.markUnsaved(leaf.id, tab.filePath, false))
         .catch((err) => console.error("Save failed:", err));
     }

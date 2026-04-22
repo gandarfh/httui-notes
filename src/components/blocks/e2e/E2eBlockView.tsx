@@ -752,7 +752,7 @@ function escapeHtml(text: string): string {
 /* ------------------------------------------------------------------ */
 /*  Main E2E Block View                                                */
 /* ------------------------------------------------------------------ */
-function E2eBlockViewInner({ node, editor, getPos, updateAttributes, selected }: NodeViewProps) {
+function E2eBlockViewInner({ node, editor, getPos, updateAttributes, selected, deleteNode }: NodeViewProps) {
   const { filePath } = useBlockContext();
   const { colorMode } = useColorMode();
   const cmTheme = colorMode === "dark" ? "dark" : "light";
@@ -1155,6 +1155,7 @@ function E2eBlockViewInner({ node, editor, getPos, updateAttributes, selected }:
         outputSlot={outputSlot}
         selected={selected}
         statusText={depStatus}
+        onDelete={deleteNode}
       />
     </NodeViewWrapper>
   );

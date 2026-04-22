@@ -4,6 +4,7 @@ import { markdownToHtml } from "@/lib/markdown/parser";
 import type { PaneActions } from "@/hooks/usePaneState";
 import { scrollPositionsStore } from "@/hooks/usePaneState";
 import type { PaneLayout } from "@/types/pane";
+import type { EditorEngine } from "@/contexts/EditorSettingsContext";
 
 interface UseSessionPersistenceOpts {
   layout: PaneLayout;
@@ -14,6 +15,7 @@ interface UseSessionPersistenceOpts {
   setVaults: (vaults: string[]) => void;
   setVaultPath: (path: string | null) => void;
   setEntries: (entries: import("@/lib/tauri/commands").FileEntry[]) => void;
+  editorEngine?: EditorEngine;
 }
 
 // Remove tabs for files that no longer exist from the layout
@@ -48,7 +50,9 @@ export function useSessionPersistence({
   setVaults,
   setVaultPath,
   setEntries,
+  editorEngine = "tiptap",
 }: UseSessionPersistenceOpts): void {
+  const useCM = editorEngine === "codemirror";
   const sessionRestored = useRef(false);
 
   // Load session on startup — single IPC roundtrip
@@ -72,11 +76,11 @@ export function useSessionPersistence({
             try {
               const parsed = JSON.parse(session.pane_layout) as PaneLayout;
 
-              // Convert tab contents from Rust (markdown) to HTML
+              // Convert tab contents from Rust (markdown) to editor format
               const contents = new Map<string, string>();
               for (const tab of session.tab_contents) {
                 if (tab.content) {
-                  contents.set(tab.file_path, markdownToHtml(tab.content));
+                  contents.set(tab.file_path, useCM ? tab.content : markdownToHtml(tab.content));
                 }
               }
 
@@ -99,7 +103,7 @@ export function useSessionPersistence({
             // Fallback: active_file content is already in tab_contents
             const tab = session.tab_contents[0];
             if (tab?.content) {
-              actions.openFile(tab.file_path, markdownToHtml(tab.content), tab.vault_path);
+              actions.openFile(tab.file_path, useCM ? tab.content : markdownToHtml(tab.content), tab.vault_path);
             }
           }
         }
