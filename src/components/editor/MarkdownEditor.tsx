@@ -44,6 +44,23 @@ interface MarkdownEditorProps {
 // Compartment for toggling vim mode without recreating the editor
 const vimCompartment = new Compartment();
 
+// Module-level ref for widget focus management
+let _vimWasEnabled = false;
+
+/** Temporarily disable vim when a widget is focused */
+export function disableVimForWidget(view: EditorView) {
+  _vimWasEnabled = true;
+  view.dispatch({ effects: vimCompartment.reconfigure([]) });
+}
+
+/** Restore vim when widget loses focus */
+export function restoreVimAfterWidget(view: EditorView) {
+  if (_vimWasEnabled) {
+    view.dispatch({ effects: vimCompartment.reconfigure(vim()) });
+    _vimWasEnabled = false;
+  }
+}
+
 // Custom highlight style — no heading styles (hybrid rendering handles those)
 const markdownHighlightStyle = HighlightStyle.define([
   { tag: tags.strong, fontWeight: "600" },

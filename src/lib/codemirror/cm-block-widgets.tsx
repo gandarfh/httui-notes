@@ -11,6 +11,7 @@ import { WidgetProviders } from "./widget-providers";
 import { StandaloneBlock } from "@/components/blocks/standalone/StandaloneBlock";
 import { BlockAdapter } from "@/components/blocks/BlockAdapter";
 import type { BlockWidgetContext } from "./block-widget-context";
+import { disableVimForWidget, restoreVimAfterWidget } from "@/components/editor/MarkdownEditor";
 
 /**
  * Annotation to mark transactions originated from block widgets.
@@ -251,6 +252,17 @@ class EditorBlockWidget extends WidgetType {
     container.style.padding = "2px 0";
     container.style.overflow = "hidden";
     container.style.boxSizing = "border-box";
+
+    // Focus management: disable vim when widget is focused, restore on blur
+    container.addEventListener("focusin", () => {
+      disableVimForWidget(view);
+    });
+    container.addEventListener("focusout", (e) => {
+      const related = (e as FocusEvent).relatedTarget as Node | null;
+      if (!related || !container.contains(related)) {
+        restoreVimAfterWidget(view);
+      }
+    });
 
     // Find the current block in the document by alias (robust against position drift)
     const widgetAlias = extractAlias(this.info);
