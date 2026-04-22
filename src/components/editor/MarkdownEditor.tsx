@@ -14,6 +14,7 @@ import { slashCommands, slashCompletionSource } from "@/lib/codemirror/cm-slash-
 import { createEditorBlockWidgets, setEditorBlockWidgetFilePath } from "@/lib/codemirror/cm-block-widgets";
 import { wikilinks, createWikilinkCompletion } from "@/lib/codemirror/cm-wikilinks";
 import { tables } from "@/lib/codemirror/cm-tables";
+import { moveBlocksKeymap } from "@/lib/codemirror/cm-move-blocks";
 import { setWidgetEnvironmentContext } from "@/lib/codemirror/widget-providers";
 import { scrollPositionsStore } from "@/hooks/usePaneState";
 import { BlockContextProvider } from "@/components/blocks/BlockContext";
@@ -219,6 +220,7 @@ export function MarkdownEditor({
           ...searchKeymap,
           indentWithTab,
         ]),
+        moveBlocksKeymap(),
         hybridRendering(),
         createEditorBlockWidgets(),
         tables(),
