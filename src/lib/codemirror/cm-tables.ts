@@ -153,7 +153,22 @@ function buildTableDecorations(state: EditorState): DecorationSet {
       }
     }
 
-    if (cursorInTable) continue; // Show raw pipes
+    if (cursorInTable) {
+      // Cursor inside — show raw pipes but with table styling
+      for (let line = tableStartLine; line <= tableEndLine; line++) {
+        const lineObj = state.doc.line(line);
+        // Skip separator row (---|---) — just style it subtly
+        const isSeparator = SEPARATOR_RE.test(lineObj.text.trim());
+        builder.add(
+          lineObj.from,
+          lineObj.from,
+          Decoration.line({
+            class: isSeparator ? "cm-table-raw-separator" : "cm-table-raw-line",
+          }),
+        );
+      }
+      continue;
+    }
 
     builder.add(
       table.from,
@@ -212,6 +227,22 @@ const tableTheme = EditorView.theme({
   },
   ".cm-table-widget tr:hover td": {
     backgroundColor: "var(--chakra-colors-bg-subtle)",
+  },
+  // Raw table lines (cursor inside table)
+  ".cm-table-raw-line": {
+    fontFamily: "var(--chakra-fonts-mono)",
+    fontSize: "13px",
+    backgroundColor: "var(--chakra-colors-bg-subtle)",
+    borderLeft: "2px solid var(--chakra-colors-border)",
+    paddingLeft: "8px",
+  },
+  ".cm-table-raw-separator": {
+    fontFamily: "var(--chakra-fonts-mono)",
+    fontSize: "13px",
+    backgroundColor: "var(--chakra-colors-bg-subtle)",
+    borderLeft: "2px solid var(--chakra-colors-border)",
+    paddingLeft: "8px",
+    opacity: "0.4",
   },
 });
 

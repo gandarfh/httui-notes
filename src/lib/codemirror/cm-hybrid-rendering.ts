@@ -273,17 +273,15 @@ function buildDecorations(view: EditorView): DecorationSet {
         }
       }
 
-      // ── Horizontal rule ──
+      // ── Horizontal rule (Tier 2: always a styled line) ──
       if (name === "HorizontalRule") {
-        if (!overlapsWithCursor(state, node.from, node.to, cursorLines)) {
-          decorations.push({
-            from: node.from,
-            to: node.to,
-            deco: Decoration.replace({
-              widget: new HrWidget(),
-            }),
-          });
-        }
+        const line = state.doc.lineAt(node.from);
+        const onCursor = overlapsWithCursor(state, node.from, node.to, cursorLines);
+        decorations.push({
+          from: line.from,
+          to: line.from,
+          deco: Decoration.line({ class: onCursor ? "cm-hr-line cm-hr-editing" : "cm-hr-line" }),
+        });
       }
 
       // ── List bullets (- or *) ──
@@ -433,11 +431,25 @@ const hybridTheme = EditorView.theme({
     },
   },
 
-  // Horizontal rule
-  ".cm-hr-widget": {
-    border: "none",
+  // Horizontal rule — full-width line, text sits on top when editing
+  ".cm-hr-line": {
+    position: "relative",
+    color: "transparent",
+  },
+  ".cm-hr-line::after": {
+    content: '""',
+    position: "absolute",
+    left: "0",
+    right: "0",
+    top: "50%",
     borderTop: "1px solid var(--chakra-colors-border)",
-    margin: "24px 0",
+    pointerEvents: "none",
+  },
+  ".cm-hr-line.cm-hr-editing": {
+    color: "var(--chakra-colors-fg-subtle)",
+  },
+  ".cm-hr-line.cm-hr-editing::after": {
+    display: "none",
   },
 
   // Task checkboxes — larger, Notion-style
