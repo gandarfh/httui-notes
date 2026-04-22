@@ -234,16 +234,15 @@ export const StandaloneBlock = memo(function StandaloneBlock({
             <Box p={2} display="flex" flexDirection="column" gap={1}>
               <HStack gap={2}>
                 <Badge colorPalette="green" variant="subtle" fontFamily="mono" size="sm">
-                  {dbResponse.total_rows} rows
+                  {dbResponse.rows.length} rows
                 </Badge>
               </HStack>
               <ResultTable
                 columns={dbResponse.columns}
                 rows={dbResponse.rows}
-                totalRows={dbResponse.total_rows}
-                page={dbResponse.page}
-                pageSize={dbResponse.page_size}
-                onPageChange={() => {}}
+                hasMore={false}
+                loadingMore={false}
+                onLoadMore={() => {}}
               />
             </Box>
           ) : dbResponse ? (

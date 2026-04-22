@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Box, Flex, HStack, Text, Input, Badge, Spinner, IconButton } from "@chakra-ui/react";
+import { Box, Flex, HStack, Input, Badge, Spinner, IconButton } from "@chakra-ui/react";
 import { LuPenLine, LuColumns2, LuMonitorCheck, LuPlay, LuSquare, LuX } from "react-icons/lu";
 import type { DisplayMode, ExecutionState } from "./ExecutableBlock";
 
@@ -65,7 +65,7 @@ export function ExecutableBlockShell({
   selected = false,
   statusText,
   splitDirection,
-  headerMeta,
+  headerMeta: _headerMeta,
   onDelete,
 }: ExecutableBlockShellProps) {
   const isRunning = executionState === "running";
