@@ -142,14 +142,13 @@ export const ToolUseGroup = memo(function ToolUseGroup({
     });
   };
 
-  const itemKey = (item: ToolItem, idx: number) =>
+  const itemKey = (item: ToolItem, _idx: number) =>
     item.kind === "persisted" ? item.data.tool_use_id : item.id;
 
   // Summary line
   const summaryParts: string[] = [];
   if (pendingCount > 0) summaryParts.push(`${pendingCount} running`);
   if (errorCount > 0) summaryParts.push(`${errorCount} failed`);
-  const doneCount = items.length - pendingCount;
   const summaryText = pendingCount > 0
     ? `${items.length} tools · ${summaryParts.join(", ")}`
     : `${items.length} tool${items.length !== 1 ? "s" : ""} used${errorCount > 0 ? ` · ${errorCount} failed` : ""}`;

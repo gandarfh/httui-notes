@@ -227,7 +227,7 @@ interface PortalWidgetProps {
   onHeightChange: (height: number) => void;
 }
 
-function PortalWidget({ ctx, top, width, onHeightChange }: PortalWidgetProps) {
+function PortalWidget({ ctx, top, onHeightChange }: PortalWidgetProps) {
   const ref = useRef<HTMLDivElement>(null);
 
   // Observe height changes and sync to placeholder
