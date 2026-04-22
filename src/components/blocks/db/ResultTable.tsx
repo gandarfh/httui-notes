@@ -1,17 +1,16 @@
 import { Box, Button, Flex, HStack, Spinner, Table } from "@chakra-ui/react";
 import { Fragment, useCallback, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import type { CellValue } from "./types";
 
 interface ResultTableProps {
   columns: { name: string; type: string }[];
-  rows: Record<string, string | number | boolean | null>[];
+  rows: Record<string, CellValue>[];
   durationMs?: number | null;
   hasMore: boolean;
   loadingMore: boolean;
   onLoadMore: () => void;
 }
-
-type CellValue = string | number | boolean | null;
 
 function formatCellValue(value: CellValue): {
   text: string;
@@ -20,6 +19,8 @@ function formatCellValue(value: CellValue): {
   if (value === null) return { text: "NULL", isNull: true };
   if (typeof value === "boolean")
     return { text: value.toString(), isNull: false };
+  if (typeof value === "object")
+    return { text: JSON.stringify(value), isNull: false };
   return { text: String(value), isNull: false };
 }
 
@@ -39,6 +40,26 @@ function tryParseJson(value: CellValue): { parsed: unknown; isJson: boolean } {
   return { parsed: value, isJson: false };
 }
 
+function JsonBlock({ value }: { value: unknown }) {
+  return (
+    <Box
+      as="pre"
+      m={0}
+      p={2}
+      bg="bg.subtle"
+      rounded="sm"
+      fontSize="xs"
+      fontFamily="mono"
+      whiteSpace="pre-wrap"
+      wordBreak="break-all"
+      maxH="200px"
+      overflowY="auto"
+    >
+      {JSON.stringify(value, null, 2)}
+    </Box>
+  );
+}
+
 function DetailValue({ value }: { value: CellValue }) {
   if (value === null) {
     return (
@@ -47,25 +68,13 @@ function DetailValue({ value }: { value: CellValue }) {
       </Box>
     );
   }
+  // Already a structured value (JSON column, array) — render directly.
+  if (typeof value === "object") {
+    return <JsonBlock value={value} />;
+  }
   const { parsed, isJson } = tryParseJson(value);
   if (isJson) {
-    return (
-      <Box
-        as="pre"
-        m={0}
-        p={2}
-        bg="bg.subtle"
-        rounded="sm"
-        fontSize="xs"
-        fontFamily="mono"
-        whiteSpace="pre-wrap"
-        wordBreak="break-all"
-        maxH="200px"
-        overflowY="auto"
-      >
-        {JSON.stringify(parsed, null, 2)}
-      </Box>
-    );
+    return <JsonBlock value={parsed} />;
   }
   return (
     <Box as="span" wordBreak="break-all">

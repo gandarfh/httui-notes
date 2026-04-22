@@ -9,9 +9,17 @@ export const DEFAULT_DB_DATA: DbBlockData = {
   query: "",
 };
 
+export type CellValue =
+  | string
+  | number
+  | boolean
+  | null
+  | CellValue[]
+  | { [key: string]: CellValue };
+
 export interface DbSelectResponse {
   columns: { name: string; type: string }[];
-  rows: Record<string, string | number | boolean | null>[];
+  rows: Record<string, CellValue>[];
   has_more: boolean;
 }
 

@@ -12,7 +12,7 @@ import { EditorView, tooltips } from "@codemirror/view";
 import { ExecutableBlockShell } from "../ExecutableBlockShell";
 import { useBlockContext } from "../BlockContext";
 import type { DisplayMode, ExecutionState } from "../ExecutableBlock";
-import type { DbBlockData, DbResponse } from "./types";
+import type { CellValue, DbBlockData, DbResponse } from "./types";
 import { DEFAULT_DB_DATA, isSelectResponse } from "./types";
 import { executeBlock, getBlockResult, saveBlockResult } from "@/lib/tauri/commands";
 import { hashBlockContent } from "@/lib/blocks/hash";
@@ -486,7 +486,7 @@ function DbOutput({
   onLoadMore,
 }: {
   response: DbResponse | null;
-  accumulatedRows: Record<string, string | number | boolean | null>[];
+  accumulatedRows: Record<string, CellValue>[];
   error: string | null;
   durationMs: number | null;
   hasMore: boolean;
@@ -546,7 +546,7 @@ function DbBlockViewInner({
   const rawContent = (node.attrs.content as string) ?? "";
 
   const [response, setResponse] = useState<DbResponse | null>(null);
-  const [accumulatedRows, setAccumulatedRows] = useState<Record<string, string | number | boolean | null>[]>([]);
+  const [accumulatedRows, setAccumulatedRows] = useState<Record<string, CellValue>[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
