@@ -2,10 +2,14 @@
  * BlockWidgetOverlay — renders block widgets OUTSIDE the CM6 editor DOM
  * via absolute positioning over placeholder elements.
  *
- * This isolates widgets from the editor's contentEditable, preventing
- * focus leaks, scroll interference, and selection side effects.
+ * Performance design:
+ * - Reacts to `docVersion` prop from MarkdownEditor (driven by CM6 updateListener)
+ * - No MutationObserver (CM6 recycles DOM nodes during scroll, causing storms)
+ * - No requestAnimationFrame polling
+ * - Memoized PortalWidget prevents cascade re-renders
+ * - ResizeObserver only on editor root for width changes
  */
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, memo } from "react";
 import { createPortal } from "react-dom";
 import { Box } from "@chakra-ui/react";
 import type { EditorView } from "@codemirror/view";
@@ -18,9 +22,9 @@ import {
 import { BlockAdapter } from "@/components/blocks/BlockAdapter";
 import type { BlockWidgetContext } from "@/lib/codemirror/block-widget-context";
 
-interface OverlayBlock {
-  block: FencedBlock;
+interface OverlayEntry {
   id: string;
+  block: FencedBlock;
   top: number;
   width: number;
 }
@@ -28,69 +32,44 @@ interface OverlayBlock {
 interface BlockWidgetOverlayProps {
   view: EditorView;
   filePath: string;
+  /** Incremented by MarkdownEditor on docChanged/geometryChanged */
+  docVersion: number;
 }
 
-export function BlockWidgetOverlay({ view, filePath }: BlockWidgetOverlayProps) {
-  const [overlayBlocks, setOverlayBlocks] = useState<OverlayBlock[]>([]);
-  const rafRef = useRef<number>(0);
-
-  // Scan document for blocks and compute positions
-  const updatePositions = useCallback(() => {
-    const blocks = findFencedBlocks(view.state.doc);
-    const newOverlayBlocks: OverlayBlock[] = [];
-
-    for (const block of blocks) {
-      const alias = extractAlias(block.info);
-      const id = alias ?? `${block.lang}_${block.from}`;
-
-      const placeholder = view.dom.querySelector(
-        `[data-block-id="${id}"]`,
-      ) as HTMLElement | null;
-
-      if (placeholder) {
-        // Use offsetTop relative to the scroller (overlay is inside scroller)
-        newOverlayBlocks.push({
-          block,
-          id,
-          top: placeholder.offsetTop,
-          width: placeholder.offsetWidth,
-        });
-      }
+/** Read placeholder positions from DOM */
+function readPositions(view: EditorView, blocks: FencedBlock[]): OverlayEntry[] {
+  const entries: OverlayEntry[] = [];
+  for (const block of blocks) {
+    const id = extractAlias(block.info) ?? `${block.lang}_${block.from}`;
+    const el = view.dom.querySelector(`[data-block-id="${id}"]`) as HTMLElement | null;
+    if (el) {
+      entries.push({ id, block, top: el.offsetTop, width: el.offsetWidth });
     }
+  }
+  return entries;
+}
 
-    setOverlayBlocks(newOverlayBlocks);
-  }, [view]);
+export function BlockWidgetOverlay({ view, filePath, docVersion }: BlockWidgetOverlayProps) {
+  const [entries, setEntries] = useState<OverlayEntry[]>([]);
+  const blocksRef = useRef<FencedBlock[]>([]);
 
-  // Update positions on DOM changes and resize (no scroll needed — overlay is inside scroller)
+  // React to docVersion changes — scan blocks and read positions
   useEffect(() => {
-    requestAnimationFrame(() => updatePositions());
-
-    // Detect DOM changes (placeholder insertion/removal)
-    const mutationObserver = new MutationObserver(() => {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = requestAnimationFrame(updatePositions);
+    // Use rAF to batch with browser layout (single frame)
+    const raf = requestAnimationFrame(() => {
+      blocksRef.current = findFencedBlocks(view.state.doc);
+      setEntries(readPositions(view, blocksRef.current));
     });
-    mutationObserver.observe(view.dom, { childList: true, subtree: true });
+    return () => cancelAnimationFrame(raf);
+  }, [view, docVersion]);
 
-    // Detect resize
-    const resizeObserver = new ResizeObserver(() => {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = requestAnimationFrame(updatePositions);
-    });
-    resizeObserver.observe(view.dom);
-
-    return () => {
-      mutationObserver.disconnect();
-      resizeObserver.disconnect();
-      cancelAnimationFrame(rafRef.current);
-    };
-  }, [view, updatePositions]);
-
-  // Create BlockWidgetContext for a block
+  // Create BlockWidgetContext — stable per block identity
   const createCtx = useCallback(
     (block: FencedBlock): BlockWidgetContext => {
       const findCurrentBlock = (): FencedBlock | undefined => {
-        const blocks = findFencedBlocks(view.state.doc);
+        const blocks = blocksRef.current.length > 0
+          ? blocksRef.current
+          : findFencedBlocks(view.state.doc);
         const alias = extractAlias(block.info);
         if (alias) {
           return blocks.find(
@@ -152,17 +131,17 @@ export function BlockWidgetOverlay({ view, filePath }: BlockWidgetOverlayProps) 
   // Sync widget height back to placeholder
   const syncHeight = useCallback(
     (blockId: string, height: number) => {
-      const placeholder = view.dom.querySelector(
+      const el = view.dom.querySelector(
         `[data-block-id="${blockId}"]`,
       ) as HTMLElement | null;
-      if (placeholder && Math.abs(placeholder.offsetHeight - height) > 2) {
-        placeholder.style.height = `${height}px`;
+      if (el && Math.abs(el.offsetHeight - height) > 2) {
+        el.style.height = `${height}px`;
       }
     },
     [view],
   );
 
-  // Get or create overlay container inside the CM6 scroller
+  // Overlay container inside CM6 scroller
   const overlayEl = useRef<HTMLDivElement | null>(null);
   if (!overlayEl.current) {
     const div = document.createElement("div");
@@ -176,80 +155,78 @@ export function BlockWidgetOverlay({ view, filePath }: BlockWidgetOverlayProps) 
     overlayEl.current = div;
   }
 
-  // Inject overlay div into the CM6 scroller (position: relative context)
   useEffect(() => {
     const scroller = view.scrollDOM;
     const el = overlayEl.current;
     if (!el || !scroller) return;
-
-    // The scroller needs position: relative for absolute children
     scroller.style.position = "relative";
     scroller.appendChild(el);
-
-    return () => {
-      el.remove();
-    };
+    return () => { el.remove(); };
   }, [view]);
 
   return createPortal(
     <>
-      {overlayBlocks.map(({ id, top, width }) => {
-        const block = findFencedBlocks(view.state.doc).find(b => {
-          const a = extractAlias(b.info);
-          return (a ?? `${b.lang}_${b.from}`) === id;
-        });
-        if (!block) return null;
-        return (
-          <PortalWidget
-            key={id}
-            block={block}
-            blockId={id}
-            ctx={createCtx(block)}
-            top={top}
-            width={width}
-            onHeightChange={(h) => syncHeight(id, h)}
-          />
-        );
-      })}
+      {entries.map(({ id, block, top, width }) => (
+        <MemoPortalWidget
+          key={id}
+          blockId={id}
+          block={block}
+          ctx={createCtx(block)}
+          top={top}
+          width={width}
+          onHeightChange={syncHeight}
+        />
+      ))}
     </>,
     overlayEl.current,
   );
 }
 
-// ── Individual portal widget ─────────────────────────────────────────────────
+// ── Memoized portal widget ──────────────────────────────────────────────────
 
 interface PortalWidgetProps {
-  block: FencedBlock;
   blockId: string;
+  block: FencedBlock;
   ctx: BlockWidgetContext;
   top: number;
   width: number;
-  onHeightChange: (height: number) => void;
+  onHeightChange: (blockId: string, height: number) => void;
 }
 
-function PortalWidget({ ctx, top, onHeightChange }: PortalWidgetProps) {
-  const ref = useRef<HTMLDivElement>(null);
+const MemoPortalWidget = memo(
+  function PortalWidget({ blockId, ctx, top, onHeightChange }: PortalWidgetProps) {
+    const ref = useRef<HTMLDivElement>(null);
 
-  // Observe height changes and sync to placeholder
-  useEffect(() => {
-    if (!ref.current) return;
-    const observer = new ResizeObserver(([entry]) => {
-      onHeightChange(entry.contentRect.height);
-    });
-    observer.observe(ref.current);
-    return () => observer.disconnect();
-  }, [onHeightChange]);
+    useEffect(() => {
+      if (!ref.current) return;
+      const observer = new ResizeObserver(([entry]) => {
+        onHeightChange(blockId, entry.contentRect.height);
+      });
+      observer.observe(ref.current);
+      return () => observer.disconnect();
+    }, [blockId, onHeightChange]);
 
-  return (
-    <Box
-      ref={ref}
-      position="absolute"
-      top={`${top}px`}
-      left="32px"
-      right="32px"
-      pointerEvents="auto"
-    >
-      <BlockAdapter ctx={ctx} />
-    </Box>
-  );
-}
+    return (
+      <Box
+        ref={ref}
+        position="absolute"
+        top={`${top}px`}
+        left="32px"
+        right="32px"
+        pointerEvents="auto"
+      >
+        <BlockAdapter ctx={ctx} />
+      </Box>
+    );
+  },
+  (prev, next) => {
+    // Only re-render if position changed or block content changed
+    return (
+      prev.blockId === next.blockId &&
+      prev.top === next.top &&
+      prev.width === next.width &&
+      prev.block.content === next.block.content &&
+      prev.block.info === next.block.info
+    );
+  },
+);
