@@ -110,15 +110,15 @@ function buildDecorations(view: EditorView): DecorationSet {
     enter(node: SyntaxNode) {
       const name = node.type.name;
 
-      // ── Headings ──
+      // ── Headings (Tier 2: always styled, reveal # on cursor) ──
       if (name.startsWith("ATXHeading") && headingLineClasses[name]) {
+        // Always apply heading line class — keeps font size/weight even on cursor line
+        const line = state.doc.lineAt(node.from);
+        decorations.push({ from: line.from, to: line.from, deco: headingLineClasses[name] });
+        // Only hide # marks when cursor is NOT on this line
         if (!overlapsWithCursor(state, node.from, node.to, cursorLines)) {
-          const line = state.doc.lineAt(node.from);
-          decorations.push({ from: line.from, to: line.from, deco: headingLineClasses[name] });
-          // Hide the # marks
           const headerMark = node.node.getChild("HeaderMark");
           if (headerMark) {
-            // Include the space after #
             const hideEnd = Math.min(headerMark.to + 1, node.to);
             decorations.push({
               from: headerMark.from,
@@ -335,15 +335,15 @@ function buildDecorations(view: EditorView): DecorationSet {
         }
       }
 
-      // ── Blockquote markers ──
+      // ── Blockquote markers (Tier 2: always styled, reveal > on cursor) ──
       if (name === "QuoteMark") {
+        const line = state.doc.lineAt(node.from);
+        decorations.push({
+          from: line.from,
+          to: line.from,
+          deco: Decoration.line({ class: "cm-blockquote-line" }),
+        });
         if (!overlapsWithCursor(state, node.from, node.to, cursorLines)) {
-          const line = state.doc.lineAt(node.from);
-          decorations.push({
-            from: line.from,
-            to: line.from,
-            deco: Decoration.line({ class: "cm-blockquote-line" }),
-          });
           // Hide the > character
           const hideEnd = Math.min(node.to + 1, line.to);
           decorations.push({
