@@ -221,6 +221,21 @@ export function createBlockWidgetPlugin(counterpartMarkdown: string | undefined,
 
 // ── Editor placeholders (lightweight, no React) ─────────────────────────────
 
+// Height cache — stores last measured height per block ID.
+// Used by PlaceholderWidget.estimatedHeight so CM6 predicts scroll position correctly.
+const heightCache = new Map<string, number>();
+const DEFAULT_PLACEHOLDER_HEIGHT = 200;
+
+export function setCachedHeight(id: string, h: number) { heightCache.set(id, h); }
+export function getCachedHeight(id: string): number { return heightCache.get(id) ?? DEFAULT_PLACEHOLDER_HEIGHT; }
+export function clearHeightCache() { heightCache.clear(); }
+
+// Placeholder element registry — avoids querySelector for direct DOM access.
+const placeholderElements = new Map<string, HTMLElement>();
+export function getPlaceholderElement(id: string): HTMLElement | undefined {
+  return placeholderElements.get(id);
+}
+
 /**
  * Lightweight placeholder widget — just a div with a height.
  * Reserves space in the editor where the real widget (rendered via Portal)
@@ -235,9 +250,14 @@ class PlaceholderWidget extends WidgetType {
     const div = document.createElement("div");
     div.className = "cm-block-placeholder";
     div.dataset.blockId = this.blockId;
-    div.style.height = "200px"; // Initial estimate, synced by ResizeObserver
+    div.style.height = `${getCachedHeight(this.blockId)}px`;
     div.style.width = "100%";
+    placeholderElements.set(this.blockId, div);
     return div;
+  }
+
+  destroy(): void {
+    placeholderElements.delete(this.blockId);
   }
 
   eq(other: PlaceholderWidget): boolean {
@@ -245,7 +265,7 @@ class PlaceholderWidget extends WidgetType {
   }
 
   get estimatedHeight(): number {
-    return 200;
+    return getCachedHeight(this.blockId);
   }
 
   ignoreEvent(): boolean {
@@ -253,10 +273,9 @@ class PlaceholderWidget extends WidgetType {
   }
 }
 
-/** Generate a stable ID for a block (alias or fallback to lang+position) */
-function getBlockId(block: FencedBlock): string {
-  const alias = extractAlias(block.info);
-  return alias ?? `${block.lang}_${block.from}`;
+/** Generate a stable ID for a block — index-based so alias/content edits don't destroy widgets */
+function getBlockId(_block: FencedBlock, index: number): string {
+  return `block_${index}`;
 }
 
 const hiddenLineDecoration = Decoration.line({ class: "cm-hidden-block-line" });
@@ -265,13 +284,14 @@ function buildEditorDecorations(state: import("@codemirror/state").EditorState):
   const decorations: { from: number; to: number; deco: Decoration }[] = [];
   const blocks = findFencedBlocks(state.doc);
 
-  for (const block of blocks) {
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i];
     // Placeholder widget — reserves space, positioned before the hidden lines
     decorations.push({
       from: block.from,
       to: block.from,
       deco: Decoration.widget({
-        widget: new PlaceholderWidget(getBlockId(block)),
+        widget: new PlaceholderWidget(getBlockId(block, i)),
         block: true,
         side: -1,
       }),
@@ -299,7 +319,7 @@ function buildEditorDecorations(state: import("@codemirror/state").EditorState):
   return builder.finish();
 }
 
-/** Count blocks in a document (lightweight check for structural changes) */
+/** Count blocks in a document (lightweight structural change check) */
 function countBlocks(doc: CMText): number {
   let count = 0;
   for (let i = 1; i <= doc.lines; i++) {
@@ -314,10 +334,13 @@ function countBlocks(doc: CMText): number {
  */
 export function createEditorBlockWidgets() {
   let lastBlockCount = 0;
+  // Cache block ranges for atomicRanges — avoids redundant findFencedBlocks calls
+  let cachedBlocks: FencedBlock[] = [];
 
   const field = StateField.define<DecorationSet>({
     create(state) {
-      lastBlockCount = countBlocks(state.doc);
+      cachedBlocks = findFencedBlocks(state.doc);
+      lastBlockCount = cachedBlocks.length;
       return buildEditorDecorations(state);
     },
     update(decos, tr) {
@@ -328,6 +351,7 @@ export function createEditorBlockWidgets() {
         const newCount = countBlocks(tr.state.doc);
         if (newCount !== lastBlockCount) {
           lastBlockCount = newCount;
+          cachedBlocks = findFencedBlocks(tr.state.doc);
           return buildEditorDecorations(tr.state);
         }
         return decos.map(tr.changes);
@@ -338,10 +362,10 @@ export function createEditorBlockWidgets() {
   });
 
   // Make hidden block ranges atomic so cursor skips over them
-  const atomicBlocks = EditorView.atomicRanges.of((view) => {
-    const blocks = findFencedBlocks(view.state.doc);
+  // Reuses cachedBlocks from the StateField instead of re-scanning
+  const atomicBlocks = EditorView.atomicRanges.of(() => {
     const builder = new RangeSetBuilder<Decoration>();
-    for (const block of blocks) {
+    for (const block of cachedBlocks) {
       builder.add(block.from, block.to, Decoration.mark({}));
     }
     return builder.finish();

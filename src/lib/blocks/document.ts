@@ -48,23 +48,7 @@ export async function collectBlocksAbove(
   });
 
   // Fetch cached results in parallel
-  await Promise.all(
-    blocks.map(async (block) => {
-      if (!block.content) return;
-      try {
-        const hash = await hashBlockContent(block.content);
-        const cached = await getBlockResult(filePath, hash);
-        if (cached) {
-          block.cachedResult = {
-            status: cached.status,
-            response: cached.response,
-          };
-        }
-      } catch {
-        // Cache lookup failed, leave as null
-      }
-    }),
-  );
+  await populateCachedResults(blocks, filePath);
 
   return blocks;
 }
@@ -103,23 +87,7 @@ export async function collectAllBlocks(
     return false;
   });
 
-  await Promise.all(
-    blocks.map(async (block) => {
-      if (!block.content) return;
-      try {
-        const hash = await hashBlockContent(block.content);
-        const cached = await getBlockResult(filePath, hash);
-        if (cached) {
-          block.cachedResult = {
-            status: cached.status,
-            response: cached.response,
-          };
-        }
-      } catch {
-        // Cache lookup failed
-      }
-    }),
-  );
+  await populateCachedResults(blocks, filePath);
 
   return blocks;
 }
@@ -135,6 +103,16 @@ function isExecutableLang(lang: string): boolean {
   return false;
 }
 
+/** Extract connectionId from block content JSON (for DB blocks) */
+function extractConnectionId(content: string): string | null {
+  try {
+    const data = JSON.parse(content);
+    return data.connectionId ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** Populate cached results for a list of BlockContexts (shared helper) */
 async function populateCachedResults(
   blocks: BlockContext[],
@@ -144,7 +122,8 @@ async function populateCachedResults(
     blocks.map(async (block) => {
       if (!block.content) return;
       try {
-        const hash = await hashBlockContent(block.content);
+        const connectionId = block.blockType === "db" ? extractConnectionId(block.content) : null;
+        const hash = await hashBlockContent(block.content, connectionId);
         const cached = await getBlockResult(filePath, hash);
         if (cached) {
           block.cachedResult = {

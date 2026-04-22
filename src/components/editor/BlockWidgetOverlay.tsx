@@ -3,24 +3,107 @@
  * via absolute positioning over placeholder elements.
  *
  * Performance design:
- * - Reacts to `docVersion` prop from MarkdownEditor (driven by CM6 updateListener)
- * - No MutationObserver (CM6 recycles DOM nodes during scroll, causing storms)
- * - No requestAnimationFrame polling
- * - Memoized PortalWidget prevents cascade re-renders
- * - ResizeObserver only on editor root for width changes
+ * - ViewPlugin inside CM6 notifies React only on block/viewport changes (not every scroll)
+ * - useSyncExternalStore for tear-free CM6→React communication
+ * - Viewport-aware: only renders blocks in/near visible area
+ * - coordsAtPos for positioning (no querySelector — works with CM6 virtualization)
+ * - requestMeasure for coordinated DOM reads
+ * - Stable ctx cache prevents cascade re-renders via React.memo
+ * - Height cache in PlaceholderWidget for accurate scroll predictions
  */
-import { useEffect, useRef, useState, useCallback, memo } from "react";
+import { useEffect, useRef, useState, useCallback, useSyncExternalStore, memo } from "react";
 import { createPortal } from "react-dom";
 import { Box } from "@chakra-ui/react";
-import type { EditorView } from "@codemirror/view";
+import { EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import {
   findFencedBlocks,
   extractAlias,
   widgetTransaction,
+  setCachedHeight,
+  getCachedHeight,
+  getPlaceholderElement,
   type FencedBlock,
 } from "@/lib/codemirror/cm-block-widgets";
 import { BlockAdapter } from "@/components/blocks/BlockAdapter";
 import type { BlockWidgetContext } from "@/lib/codemirror/block-widget-context";
+
+// ── ViewPlugin notifier (lives inside CM6, notifies React) ──────────────────
+
+let blockUpdateVersion = 0;
+const listeners = new Set<() => void>();
+
+function notifyListeners() {
+  blockUpdateVersion++;
+  for (const fn of listeners) fn();
+}
+
+/** CM6 ViewPlugin that detects block structure and viewport changes */
+export const blockNotifierPlugin = ViewPlugin.fromClass(
+  class {
+    lastFingerprint: string;
+    lastVpFrom: number;
+    lastVpTo: number;
+    pending = false;
+
+    constructor(view: EditorView) {
+      this.lastFingerprint = this.fingerprint(view);
+      this.lastVpFrom = view.viewport.from;
+      this.lastVpTo = view.viewport.to;
+    }
+
+    fingerprint(view: EditorView): string {
+      const blocks = findFencedBlocks(view.state.doc);
+      return blocks.map(b => `${b.from}:${b.to}:${b.info}`).join(",");
+    }
+
+    update(update: ViewUpdate) {
+      let notify = false;
+
+      if (update.docChanged) {
+        const fp = this.fingerprint(update.view);
+        if (fp !== this.lastFingerprint) {
+          this.lastFingerprint = fp;
+          notify = true;
+        }
+      }
+
+      const vp = update.view.viewport;
+      if (vp.from !== this.lastVpFrom || vp.to !== this.lastVpTo) {
+        this.lastVpFrom = vp.from;
+        this.lastVpTo = vp.to;
+        notify = true;
+      }
+
+      if (notify) this.scheduleNotify();
+    }
+
+    scheduleNotify() {
+      if (this.pending) return;
+      this.pending = true;
+      requestAnimationFrame(() => {
+        this.pending = false;
+        notifyListeners();
+      });
+    }
+  },
+);
+
+// ── useSyncExternalStore hook for CM6→React ─────────────────────────────────
+
+function subscribeToBlockUpdates(cb: () => void) {
+  listeners.add(cb);
+  return () => { listeners.delete(cb); };
+}
+
+function getBlockUpdateVersion() {
+  return blockUpdateVersion;
+}
+
+function useBlockUpdates(): number {
+  return useSyncExternalStore(subscribeToBlockUpdates, getBlockUpdateVersion);
+}
+
+// ── Overlay component ───────────────────────────────────────────────────────
 
 interface OverlayEntry {
   id: string;
@@ -32,40 +115,94 @@ interface OverlayEntry {
 interface BlockWidgetOverlayProps {
   view: EditorView;
   filePath: string;
-  /** Incremented by MarkdownEditor on docChanged/geometryChanged */
-  docVersion: number;
 }
 
-/** Read placeholder positions from DOM */
-function readPositions(view: EditorView, blocks: FencedBlock[]): OverlayEntry[] {
+/** Indexed block — preserves original index for stable ID generation */
+interface IndexedBlock {
+  index: number;
+  block: FencedBlock;
+}
+
+/** Compute positions using coordsAtPos (works even when placeholders are virtualized) */
+function readPositions(view: EditorView, blocks: IndexedBlock[]): OverlayEntry[] {
   const entries: OverlayEntry[] = [];
-  for (const block of blocks) {
-    const id = extractAlias(block.info) ?? `${block.lang}_${block.from}`;
-    const el = view.dom.querySelector(`[data-block-id="${id}"]`) as HTMLElement | null;
-    if (el) {
-      entries.push({ id, block, top: el.offsetTop, width: el.offsetWidth });
+  const scrollerRect = view.scrollDOM.getBoundingClientRect();
+
+  for (const { index, block } of blocks) {
+    const id = `block_${index}`;
+
+    // coordsAtPos uses CM6's height map — works even when DOM is virtualized
+    const coords = view.coordsAtPos(block.from);
+    if (!coords) {
+      // Fallback: try the placeholder element directly
+      const el = getPlaceholderElement(id);
+      if (el) {
+        entries.push({ id, block, top: el.offsetTop, width: scrollerRect.width - 64 });
+      }
+      continue;
     }
+
+    const top = coords.top - scrollerRect.top + view.scrollDOM.scrollTop;
+    entries.push({ id, block, top, width: scrollerRect.width - 64 });
   }
   return entries;
 }
 
-export function BlockWidgetOverlay({ view, filePath, docVersion }: BlockWidgetOverlayProps) {
+export function BlockWidgetOverlay({ view, filePath }: BlockWidgetOverlayProps) {
   const [entries, setEntries] = useState<OverlayEntry[]>([]);
   const blocksRef = useRef<FencedBlock[]>([]);
+  const ctxCacheRef = useRef(new Map<string, BlockWidgetContext>());
+  const version = useBlockUpdates();
 
-  // React to docVersion changes — scan blocks and read positions
+  // React to block/viewport changes via requestMeasure
   useEffect(() => {
-    // Use rAF to batch with browser layout (single frame)
+    view.requestMeasure({
+      read(view) {
+        const allBlocks = findFencedBlocks(view.state.doc);
+        const { from: vpFrom, to: vpTo } = view.viewport;
+        const margin = 2000;
+        const visible: IndexedBlock[] = [];
+        for (let i = 0; i < allBlocks.length; i++) {
+          const b = allBlocks[i];
+          if (b.to >= vpFrom - margin && b.from <= vpTo + margin) {
+            visible.push({ index: i, block: b });
+          }
+        }
+        return { allBlocks, positions: readPositions(view, visible) };
+      },
+      write({ allBlocks, positions }) {
+        blocksRef.current = allBlocks;
+        setEntries(positions);
+      },
+    });
+  }, [view, version]);
+
+  // Initial render (ViewPlugin hasn't notified yet)
+  useEffect(() => {
     const raf = requestAnimationFrame(() => {
-      blocksRef.current = findFencedBlocks(view.state.doc);
-      setEntries(readPositions(view, blocksRef.current));
+      const allBlocks = findFencedBlocks(view.state.doc);
+      blocksRef.current = allBlocks;
+      const indexed: IndexedBlock[] = allBlocks.map((block, index) => ({ index, block }));
+      setEntries(readPositions(view, indexed));
     });
     return () => cancelAnimationFrame(raf);
-  }, [view, docVersion]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
 
-  // Create BlockWidgetContext — stable per block identity
-  const createCtx = useCallback(
-    (block: FencedBlock): BlockWidgetContext => {
+  // Stable ctx cache — only creates new ctx when block identity changes
+  const getOrCreateCtx = useCallback(
+    (block: FencedBlock, id: string): BlockWidgetContext => {
+      const cached = ctxCacheRef.current.get(id);
+      if (
+        cached &&
+        cached.content === block.content &&
+        cached.info === block.info &&
+        cached.from === block.from &&
+        cached.to === block.to
+      ) {
+        return cached;
+      }
+
       const findCurrentBlock = (): FencedBlock | undefined => {
         const blocks = blocksRef.current.length > 0
           ? blocksRef.current
@@ -84,7 +221,7 @@ export function BlockWidgetOverlay({ view, filePath, docVersion }: BlockWidgetOv
           )[0];
       };
 
-      return {
+      const ctx: BlockWidgetContext = {
         view,
         from: block.from,
         to: block.to,
@@ -124,19 +261,29 @@ export function BlockWidgetOverlay({ view, filePath, docVersion }: BlockWidgetOv
           }
         },
       };
+
+      ctxCacheRef.current.set(id, ctx);
+      return ctx;
     },
     [view, filePath],
   );
 
-  // Sync widget height back to placeholder
+  // Clean stale ctx entries
+  useEffect(() => {
+    const currentIds = new Set(entries.map(e => e.id));
+    for (const key of ctxCacheRef.current.keys()) {
+      if (!currentIds.has(key)) ctxCacheRef.current.delete(key);
+    }
+  }, [entries]);
+
+  // Sync widget height back to placeholder + CM6 height map
   const syncHeight = useCallback(
     (blockId: string, height: number) => {
-      const el = view.dom.querySelector(
-        `[data-block-id="${blockId}"]`,
-      ) as HTMLElement | null;
-      if (el && Math.abs(el.offsetHeight - height) > 2) {
-        el.style.height = `${height}px`;
-      }
+      if (Math.abs(getCachedHeight(blockId) - height) <= 2) return;
+      setCachedHeight(blockId, height);
+      const el = getPlaceholderElement(blockId);
+      if (el) el.style.height = `${height}px`;
+      view.requestMeasure();
     },
     [view],
   );
@@ -171,7 +318,7 @@ export function BlockWidgetOverlay({ view, filePath, docVersion }: BlockWidgetOv
           key={id}
           blockId={id}
           block={block}
-          ctx={createCtx(block)}
+          ctx={getOrCreateCtx(block, id)}
           top={top}
           width={width}
           onHeightChange={syncHeight}
@@ -220,13 +367,11 @@ const MemoPortalWidget = memo(
     );
   },
   (prev, next) => {
-    // Only re-render if position changed or block content changed
     return (
       prev.blockId === next.blockId &&
       prev.top === next.top &&
       prev.width === next.width &&
-      prev.block.content === next.block.content &&
-      prev.block.info === next.block.info
+      prev.ctx === next.ctx
     );
   },
 );
