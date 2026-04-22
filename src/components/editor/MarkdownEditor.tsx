@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from "react";
+import { useRef, useEffect, useCallback, useState } from "react";
 import { Box } from "@chakra-ui/react";
 import { EditorView, keymap } from "@codemirror/view";
 import { EditorState, Compartment } from "@codemirror/state";
@@ -11,15 +11,14 @@ import { search, highlightSelectionMatches, searchKeymap } from "@codemirror/sea
 import { vim } from "@replit/codemirror-vim";
 import { hybridRendering } from "@/lib/codemirror/cm-hybrid-rendering";
 import { slashCommands, slashCompletionSource } from "@/lib/codemirror/cm-slash-commands";
-import { createEditorBlockWidgets, setEditorBlockWidgetFilePath } from "@/lib/codemirror/cm-block-widgets";
+import { createEditorBlockWidgets } from "@/lib/codemirror/cm-block-widgets";
 import { wikilinks, createWikilinkCompletion } from "@/lib/codemirror/cm-wikilinks";
 import { tables } from "@/lib/codemirror/cm-tables";
 import { moveBlocksKeymap } from "@/lib/codemirror/cm-move-blocks";
-import { setWidgetEnvironmentContext } from "@/lib/codemirror/widget-providers";
 import { scrollPositionsStore } from "@/hooks/usePaneState";
 import { BlockContextProvider } from "@/components/blocks/BlockContext";
+import { BlockWidgetOverlay } from "./BlockWidgetOverlay";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
-import { useEnvironmentContext } from "@/contexts/EnvironmentContext";
 import type { FileEntry } from "@/lib/tauri/commands";
 
 function flattenFiles(entries: FileEntry[]): { name: string; path: string }[] {
@@ -45,23 +44,6 @@ interface MarkdownEditorProps {
 // Compartment for toggling vim mode without recreating the editor
 const vimCompartment = new Compartment();
 
-// Module-level ref for widget focus management
-let _vimWasEnabled = false;
-
-/** Temporarily disable vim when a widget is focused */
-export function disableVimForWidget(view: EditorView) {
-  _vimWasEnabled = true;
-  view.dispatch({ effects: vimCompartment.reconfigure([]) });
-}
-
-/** Restore vim when widget loses focus */
-export function restoreVimAfterWidget(view: EditorView) {
-  if (_vimWasEnabled) {
-    view.dispatch({ effects: vimCompartment.reconfigure(vim()) });
-    _vimWasEnabled = false;
-  }
-}
-
 // Custom highlight style — no heading styles (hybrid rendering handles those)
 const markdownHighlightStyle = HighlightStyle.define([
   { tag: tags.strong, fontWeight: "600" },
@@ -76,7 +58,6 @@ const markdownHighlightStyle = HighlightStyle.define([
   { tag: tags.url, color: "var(--chakra-colors-blue-400)" },
   { tag: tags.monospace, fontFamily: "var(--chakra-fonts-mono)", fontSize: "0.85em" },
   { tag: tags.processingInstruction, color: "var(--chakra-colors-fg-subtle)" },
-  // No heading styles — hybrid rendering handles them
 ]);
 
 // Static theme for the markdown editor
@@ -85,7 +66,6 @@ const editorTheme = EditorView.theme({
     height: "100%",
     fontSize: "14px",
   },
-  // Only apply padding to the top-level editor, not nested CMs inside widgets
   "&.cm-editor > .cm-scroller > .cm-content": {
     fontFamily: "var(--chakra-fonts-body)",
     padding: "24px 32px",
@@ -104,19 +84,17 @@ const editorTheme = EditorView.theme({
   ".cm-activeLine": {
     backgroundColor: "transparent",
   },
-  // Fenced code block lines
   ".tok-meta": {
     color: "var(--chakra-colors-fg-subtle) !important",
   },
   ".cm-selectionBackground, ::selection": {
     backgroundColor: "var(--chakra-colors-blue-500/20) !important",
   },
-  // Fenced code blocks
   ".cm-line:has(.tok-meta)": {
     fontFamily: "var(--chakra-fonts-mono)",
     fontSize: "0.875em",
   },
-  // Vim command line panel (for /, :, ? commands)
+  // Vim panels
   ".cm-vim-panel": {
     padding: "2px 8px",
     fontFamily: "var(--chakra-fonts-mono)",
@@ -133,7 +111,6 @@ const editorTheme = EditorView.theme({
     border: "none",
     outline: "none",
   },
-  // Vim search highlights
   ".cm-searchMatch": {
     backgroundColor: "var(--chakra-colors-yellow-500/30)",
     borderRadius: "2px",
@@ -141,7 +118,6 @@ const editorTheme = EditorView.theme({
   ".cm-searchMatch-selected": {
     backgroundColor: "var(--chakra-colors-yellow-500/50)",
   },
-  // CM panels container
   ".cm-panels": {
     backgroundColor: "var(--chakra-colors-bg-subtle)",
     color: "var(--chakra-colors-fg)",
@@ -149,12 +125,9 @@ const editorTheme = EditorView.theme({
   ".cm-panels-bottom": {
     borderTop: "1px solid var(--chakra-colors-border)",
   },
-  // Block widgets — stay within editor width
-  ".cm-editor-block-widget": {
-    maxWidth: "100%",
+  // Block placeholders
+  ".cm-block-placeholder": {
     width: "100%",
-    userSelect: "none",
-    "-webkit-user-select": "none",
   },
   // Hide raw markdown lines behind block widgets
   ".cm-hidden-block-line": {
@@ -175,8 +148,6 @@ export function MarkdownEditor({
   vimEnabled = false,
 }: MarkdownEditorProps) {
   const { entries, handleFileSelect } = useWorkspace();
-  const envContext = useEnvironmentContext();
-  setWidgetEnvironmentContext(envContext);
   const entriesRef = useRef(entries);
   entriesRef.current = entries;
   const handleFileSelectRef = useRef(handleFileSelect);
@@ -187,10 +158,9 @@ export function MarkdownEditor({
   onChangeRef.current = onChange;
   const isExternalUpdate = useRef(false);
   const filePathRef = useRef(filePath);
+  const [editorReady, setEditorReady] = useState(false);
 
-  // Keep filePath in sync for block widgets (module-level, no React side effects)
   filePathRef.current = filePath;
-  setEditorBlockWidgetFilePath(filePath);
 
   // Create the editor on mount
   useEffect(() => {
@@ -254,24 +224,23 @@ export function MarkdownEditor({
     });
 
     viewRef.current = view;
+    setEditorReady(true);
 
-    // Restore scroll position
     const saved = scrollPositionsStore.get(filePath);
     if (saved) {
       view.scrollDOM.scrollTop = saved;
     }
 
     return () => {
-      // Save scroll position before destroy
       scrollPositionsStore.set(filePathRef.current, view.scrollDOM.scrollTop);
       view.destroy();
       viewRef.current = null;
+      setEditorReady(false);
     };
-    // Only recreate on mount/unmount — content and file switching handled below
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Toggle vim mode via compartment (no editor recreation)
+  // Toggle vim mode
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
@@ -280,7 +249,7 @@ export function MarkdownEditor({
     });
   }, [vimEnabled]);
 
-  // Handle file switching — update doc content when filePath changes
+  // Handle file switching
   const prevFilePathRef = useRef(filePath);
   const contentRef = useRef(content);
   contentRef.current = content;
@@ -293,7 +262,6 @@ export function MarkdownEditor({
     const view = viewRef.current;
     if (!view) return;
 
-    // Save scroll of previous file
     scrollPositionsStore.set(prevPath, view.scrollDOM.scrollTop);
 
     isExternalUpdate.current = true;
@@ -306,12 +274,11 @@ export function MarkdownEditor({
     });
     isExternalUpdate.current = false;
 
-    // Restore scroll for new file
     const saved = scrollPositionsStore.get(filePath);
     view.scrollDOM.scrollTop = saved ?? 0;
   }, [filePath]);
 
-  // Handle scroll position saving
+  // Save scroll position
   const handleScroll = useCallback(() => {
     const view = viewRef.current;
     if (view) {
@@ -331,7 +298,6 @@ export function MarkdownEditor({
           const view = viewRef.current;
           if (!view) return;
 
-          // Only update if content actually changed (avoids auto-save → watcher loop)
           const currentContent = view.state.doc.toString();
           if (currentContent === event.payload.markdown) return;
 
@@ -357,17 +323,22 @@ export function MarkdownEditor({
 
   return (
     <BlockContextProvider value={{ filePath }}>
-      <Box
-        ref={containerRef}
-        h="100%"
-        overflow="hidden"
-        bg="bg"
-        onScroll={handleScroll}
-        css={{
-          "& .cm-editor": { height: "100%" },
-          "& .cm-editor.cm-focused": { outline: "none" },
-        }}
-      />
+      <Box position="relative" h="100%" overflow="hidden">
+        <Box
+          ref={containerRef}
+          h="100%"
+          overflow="hidden"
+          bg="bg"
+          onScroll={handleScroll}
+          css={{
+            "& .cm-editor": { height: "100%" },
+            "& .cm-editor.cm-focused": { outline: "none" },
+          }}
+        />
+        {editorReady && viewRef.current && (
+          <BlockWidgetOverlay view={viewRef.current} filePath={filePath} />
+        )}
+      </Box>
     </BlockContextProvider>
   );
 }
