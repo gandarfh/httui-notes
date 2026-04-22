@@ -11,7 +11,8 @@ import { search, highlightSelectionMatches, searchKeymap } from "@codemirror/sea
 import { vim } from "@replit/codemirror-vim";
 import { hybridRendering } from "@/lib/codemirror/cm-hybrid-rendering";
 import { slashCommands, slashCompletionSource } from "@/lib/codemirror/cm-slash-commands";
-import { createEditorBlockWidgets } from "@/lib/codemirror/cm-block-widgets";
+import { createEditorBlockWidgets, clearHeightCache } from "@/lib/codemirror/cm-block-widgets";
+import { blockNotifierPlugin } from "./BlockWidgetOverlay";
 import { wikilinks, createWikilinkCompletion } from "@/lib/codemirror/cm-wikilinks";
 import { tables } from "@/lib/codemirror/cm-tables";
 import { moveBlocksKeymap } from "@/lib/codemirror/cm-move-blocks";
@@ -159,7 +160,6 @@ export function MarkdownEditor({
   const isExternalUpdate = useRef(false);
   const filePathRef = useRef(filePath);
   const [editorReady, setEditorReady] = useState(false);
-  const [docVersion, setDocVersion] = useState(0);
 
   filePathRef.current = filePath;
 
@@ -170,9 +170,6 @@ export function MarkdownEditor({
     const updateListener = EditorView.updateListener.of((update) => {
       if (update.docChanged && !isExternalUpdate.current) {
         onChangeRef.current(update.state.doc.toString());
-      }
-      if (update.docChanged || update.geometryChanged) {
-        setDocVersion((v) => v + 1);
       }
     });
 
@@ -197,6 +194,7 @@ export function MarkdownEditor({
         moveBlocksKeymap(),
         hybridRendering(),
         createEditorBlockWidgets(),
+        blockNotifierPlugin,
         tables(),
         slashCommands(),
         wikilinks({
@@ -267,6 +265,7 @@ export function MarkdownEditor({
     if (!view) return;
 
     scrollPositionsStore.set(prevPath, view.scrollDOM.scrollTop);
+    clearHeightCache();
 
     isExternalUpdate.current = true;
     view.dispatch({
@@ -340,7 +339,7 @@ export function MarkdownEditor({
           }}
         />
         {editorReady && viewRef.current && (
-          <BlockWidgetOverlay view={viewRef.current} filePath={filePath} docVersion={docVersion} />
+          <BlockWidgetOverlay view={viewRef.current} filePath={filePath} />
         )}
       </Box>
     </BlockContextProvider>

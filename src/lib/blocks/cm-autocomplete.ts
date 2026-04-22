@@ -77,7 +77,7 @@ function findRefStart(text: string, pos: number): { from: number; inner: string 
 }
 
 /** T28: Max depth for autocomplete traversal to prevent deep structure exposure. */
-const MAX_AUTOCOMPLETE_DEPTH = 2;
+const MAX_AUTOCOMPLETE_DEPTH = 5;
 
 /** T32: Dangerous property names blocked from autocomplete. */
 const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
