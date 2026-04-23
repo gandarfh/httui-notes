@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { EditorState } from "@codemirror/state";
-import { EditorView, Decoration, type DecorationSet } from "@codemirror/view";
+import { EditorView } from "@codemirror/view";
 import {
   findFencedBlocks,
   extractAlias,
@@ -197,15 +197,9 @@ describe("decoration field", () => {
     );
     expect(field).toBeDefined();
     // Verify state has decorations
-    let decoSet: DecorationSet | null = null;
     state.facet(EditorView.decorations).forEach((d) => {
       if (typeof d === "function") {
-        const result = d(state as never);
-        if (result && result instanceof Decoration.set([]).constructor) {
-          decoSet = result as DecorationSet;
-        }
-      } else if (d instanceof Decoration.set([]).constructor) {
-        decoSet = d as DecorationSet;
+        d(state as never);
       }
     });
     // Just verify state was created with the extension
