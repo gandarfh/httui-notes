@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Box, HStack, Text, IconButton, Input } from "@chakra-ui/react";
 import { LuPlus, LuTrash2, LuSearch } from "react-icons/lu";
-import { useChatContext } from "@/contexts/ChatContext";
+import { useChatStore } from "@/stores/chat";
 
 function timeAgo(unixSeconds: number): string {
   const now = Math.floor(Date.now() / 1000);
@@ -17,8 +17,11 @@ interface ChatSessionListProps {
 }
 
 export function ChatSessionList({ onSelectSession }: ChatSessionListProps) {
-  const { sessions, activeSessionId, selectSession, createSession, archiveSession } =
-    useChatContext();
+  const sessions = useChatStore((s) => s.sessions);
+  const activeSessionId = useChatStore((s) => s.activeSessionId);
+  const selectSession = useChatStore((s) => s.selectSession);
+  const createSession = useChatStore((s) => s.createSession);
+  const archiveSession = useChatStore((s) => s.archiveSession);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
 

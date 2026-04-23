@@ -2,7 +2,7 @@ import { useState, useCallback } from "react";
 import { Box, Text, HStack, VStack, Menu, Portal } from "@chakra-ui/react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
-import { usePaneContext } from "@/contexts/PaneContext";
+import { usePaneStore } from "@/stores/pane";
 import type { FileEntry } from "@/lib/tauri/commands";
 import { InlineInput } from "./InlineInput";
 import {
@@ -30,7 +30,7 @@ export function FileTreeNode({
     handleDelete,
     cancelInlineCreate,
   } = useWorkspace();
-  const { getActiveLeaf } = usePaneContext();
+  const getActiveLeaf = usePaneStore((s) => s.getActiveLeaf);
 
   const [expanded, setExpanded] = useState(depth === 0);
   const [renaming, setRenaming] = useState(false);

@@ -5,38 +5,55 @@ import { Editor } from "@/components/editor";
 import { MarkdownEditor } from "@/components/editor/MarkdownEditor";
 import { DiffViewer } from "@/components/editor/DiffViewer";
 import { ConflictBanner } from "../ConflictBanner";
-import { usePaneContext } from "@/contexts/PaneContext";
-import { useEditorSettings } from "@/contexts/EditorSettingsContext";
-import { useConflictContext } from "@/contexts/ConflictContext";
+import { usePaneStore } from "@/stores/pane";
+import { useSettingsStore } from "@/stores/settings";
 import { SplitView } from "./SplitView";
 import type { PaneLayout } from "@/types/pane";
 import { readNote } from "@/lib/tauri/commands";
 
-export function PaneNode({ layout, path }: { layout: PaneLayout; path: number[] }) {
-  const { activePaneId, editorContents, unsavedFiles, actions, handleEditorChange } = usePaneContext();
-  const { vimEnabled, setVimMode, editorEngine } = useEditorSettings();
-  const conflictCtx = useConflictContext();
+interface PaneNodeProps {
+  layout: PaneLayout;
+  path: number[];
+  handleEditorChange: (paneId: string, filePath: string, content: string, vaultPath: string) => void;
+  onNavigateFile?: (filePath: string) => void;
+}
+
+export function PaneNode({ layout, path, handleEditorChange, onNavigateFile }: PaneNodeProps) {
+  const activePaneId = usePaneStore((s) => s.activePaneId);
+  const editorContents = usePaneStore((s) => s.editorContents);
+  const unsavedFiles = usePaneStore((s) => s.unsavedFiles);
+  const hasConflict = usePaneStore((s) => s.hasConflict);
+  const resolveConflict = usePaneStore((s) => s.resolveConflict);
+  const openFile = usePaneStore((s) => s.openFile);
+  const setActivePaneId = usePaneStore((s) => s.setActivePaneId);
+  const selectTab = usePaneStore((s) => s.selectTab);
+  const closeTab = usePaneStore((s) => s.closeTab);
+  const closeOthers = usePaneStore((s) => s.closeOthers);
+  const closeAll = usePaneStore((s) => s.closeAll);
+  const vimEnabled = useSettingsStore((s) => s.vimEnabled);
+  const setVimMode = useSettingsStore((s) => s.setVimMode);
+  const editorEngine = useSettingsStore((s) => s.editorEngine);
+  // navigateFile passed via prop chain to avoid WorkspaceContext subscription
+  // (which would re-render on every file tree change, resetting CM6 scroll)
 
   // When switching to CM mode, re-read files that were cached as HTML by TipTap
   const prevEngineRef = useRef(editorEngine);
   useEffect(() => {
     if (prevEngineRef.current !== editorEngine && editorEngine === "codemirror") {
-      // Re-read all cached files from disk as markdown
       if (layout.type === "leaf") {
         for (const tab of layout.tabs) {
           if (tab.kind === "diff") continue;
           const cached = editorContents.get(tab.filePath);
           if (cached && cached.trimStart().startsWith("<")) {
             readNote(tab.vaultPath, tab.filePath).then((md) => {
-              editorContents.set(tab.filePath, md);
-              actions.openFile(tab.filePath, md, tab.vaultPath);
+              openFile(tab.filePath, md, tab.vaultPath);
             }).catch(() => {});
           }
         }
       }
     }
     prevEngineRef.current = editorEngine;
-  }, [editorEngine, layout, editorContents, actions]);
+  }, [editorEngine, layout, editorContents, openFile]);
 
   if (layout.type === "leaf") {
     const activeTab = layout.tabs[layout.activeTab];
@@ -52,16 +69,16 @@ export function PaneNode({ layout, path }: { layout: PaneLayout; path: number[] 
         overflow="hidden"
         borderWidth={isActive ? "1px" : "0"}
         borderColor="brand.500/30"
-        onClick={() => actions.setActivePaneId(layout.id)}
+        onClick={() => setActivePaneId(layout.id)}
       >
         <TabBar
           tabs={layout.tabs}
           activeTab={layout.activeTab}
           unsavedFiles={unsavedFiles}
-          onSelectTab={(index) => actions.selectTab(layout.id, index)}
-          onCloseTab={(index) => actions.closeTab(layout.id, index)}
-          onCloseOthers={(index) => actions.closeOthers(layout.id, index)}
-          onCloseAll={() => actions.closeAll(layout.id)}
+          onSelectTab={(index) => selectTab(layout.id, index)}
+          onCloseTab={(index) => closeTab(layout.id, index)}
+          onCloseOthers={(index) => closeOthers(layout.id, index)}
+          onCloseAll={() => closeAll(layout.id)}
         />
         {activeTab ? (
           activeTab.kind === "diff" ? (
@@ -70,11 +87,11 @@ export function PaneNode({ layout, path }: { layout: PaneLayout; path: number[] 
             </Box>
           ) : (
           <Box flex={1} overflow="hidden" display="flex" flexDirection="column">
-            {conflictCtx?.hasConflict(activeTab.filePath) && (
+            {hasConflict(activeTab.filePath) && (
               <ConflictBanner
                 filePath={activeTab.filePath}
-                onReload={() => conflictCtx.resolveConflict(activeTab.filePath, "reload")}
-                onKeep={() => conflictCtx.resolveConflict(activeTab.filePath, "keep")}
+                onReload={() => resolveConflict(activeTab.filePath, "reload", activeTab.vaultPath)}
+                onKeep={() => resolveConflict(activeTab.filePath, "keep", null)}
               />
             )}
             <Box flex={1} overflow="hidden">
@@ -84,6 +101,7 @@ export function PaneNode({ layout, path }: { layout: PaneLayout; path: number[] 
                   onChange={(c) => handleEditorChange(layout.id, activeTab.filePath, c, activeTab.vaultPath)}
                   filePath={activeTab.filePath}
                   vimEnabled={vimEnabled}
+                  onNavigateFile={onNavigateFile}
                 />
               ) : (
                 <Editor
@@ -108,5 +126,5 @@ export function PaneNode({ layout, path }: { layout: PaneLayout; path: number[] 
     );
   }
 
-  return <SplitView layout={layout} path={path} />;
+  return <SplitView layout={layout} path={path} handleEditorChange={handleEditorChange} onNavigateFile={onNavigateFile} />;
 }

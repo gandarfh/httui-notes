@@ -4,8 +4,8 @@ import { LuCheck, LuX } from "react-icons/lu";
 import { MergeView } from "@codemirror/merge";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { useChatContext } from "@/contexts/ChatContext";
-import { usePaneContext } from "@/contexts/PaneContext";
+import { useChatStore } from "@/stores/chat";
+import { usePaneStore } from "@/stores/pane";
 import { createBlockWidgetPlugin } from "@/lib/codemirror/cm-block-widgets.tsx";
 import type { TabState } from "@/types/pane";
 
@@ -48,8 +48,9 @@ const themeExtension = EditorView.theme({
 export function DiffViewer({ tab }: DiffViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mergeViewRef = useRef<MergeView | null>(null);
-  const { pendingPermission, respondPermission } = useChatContext();
-  const { actions } = usePaneContext();
+  const pendingPermission = useChatStore((s) => s.pendingPermission);
+  const respondPermission = useChatStore((s) => s.respondPermission);
+  const closeDiffTab = usePaneStore((s) => s.closeDiffTab);
   const [scope, setScope] = useState<PermissionScope>("once");
 
   const original = tab.originalContent ?? "";
@@ -93,21 +94,21 @@ export function DiffViewer({ tab }: DiffViewerProps) {
     }
     if (!tab.permissionId) return;
     if (!pendingPermission || pendingPermission.permissionId !== tab.permissionId) {
-      actions.closeDiffTab(tab.permissionId);
+      closeDiffTab(tab.permissionId);
     }
-  }, [pendingPermission, tab.permissionId, actions]);
+  }, [pendingPermission, tab.permissionId, closeDiffTab]);
 
   const handleAllow = useCallback(async () => {
     if (!tab.permissionId) return;
     await respondPermission(tab.permissionId, "allow", scope);
-    actions.closeDiffTab(tab.permissionId);
-  }, [tab.permissionId, respondPermission, scope, actions]);
+    closeDiffTab(tab.permissionId);
+  }, [tab.permissionId, respondPermission, scope, closeDiffTab]);
 
   const handleDeny = useCallback(async () => {
     if (!tab.permissionId) return;
     await respondPermission(tab.permissionId, "deny");
-    actions.closeDiffTab(tab.permissionId);
-  }, [tab.permissionId, respondPermission, actions]);
+    closeDiffTab(tab.permissionId);
+  }, [tab.permissionId, respondPermission, closeDiffTab]);
 
   return (
     <Box h="100%" display="flex" flexDirection="column" overflow="hidden">

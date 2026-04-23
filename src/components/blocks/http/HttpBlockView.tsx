@@ -25,7 +25,7 @@ import { resolveAndExecuteDependencies } from "@/lib/blocks/dependencies";
 import { referenceHighlight, createReferenceTooltip } from "@/lib/blocks/cm-references";
 import { createReferenceAutocomplete } from "@/lib/blocks/cm-autocomplete";
 import type { BlockContext } from "@/lib/blocks/references";
-import { useEnvironmentContext } from "@/contexts/EnvironmentContext";
+import { useEnvironmentStore } from "@/stores/environment";
 
 const cmTransparentBg = EditorView.theme({
   "&": { backgroundColor: "transparent !important" },
@@ -862,7 +862,8 @@ function HttpOutput({ response, error }: { response: HttpResponse | null; error:
 function HttpBlockViewInner({ node, editor, getPos, updateAttributes, selected, deleteNode }: NodeViewProps) {
   const { colorMode } = useColorMode();
   const { filePath } = useBlockContext();
-  const { getActiveVariables, variablesVersion } = useEnvironmentContext();
+  const getActiveVariables = useEnvironmentStore((s) => s.getActiveVariables);
+  const variablesVersion = useEnvironmentStore((s) => s.variablesVersion);
   const cmTheme = colorMode === "dark" ? "dark" : "light";
   const alias = (node.attrs.alias as string) ?? "";
   const displayMode = (node.attrs.displayMode as DisplayMode) ?? "input";

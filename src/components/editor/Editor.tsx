@@ -23,7 +23,7 @@ import { Wikilink } from "./extensions/Wikilink";
 import { EditorDragDrop } from "./extensions/EditorDragDrop";
 import { TableToolbar } from "./extensions/TableToolbar";
 import { registry } from "@/components/blocks/registry";
-import { editorContentsStore, scrollPositionsStore } from "@/hooks/usePaneState";
+import { usePaneStore } from "@/stores/pane";
 import { BlockContextProvider } from "@/components/blocks/BlockContext";
 import "@/components/blocks/http";
 import "@/components/blocks/db";
@@ -209,7 +209,7 @@ export function Editor({
         if (event.payload.path !== filePath) return;
 
         const html = markdownToHtml(event.payload.markdown);
-        editorContentsStore.set(filePath, html);
+        usePaneStore.getState().updateContent(filePath, html);
         isExternalUpdate.current = true;
         editor.commands.setContent(html);
         isExternalUpdate.current = false;
@@ -226,7 +226,7 @@ export function Editor({
   const handleScroll = useCallback(() => {
     const el = scrollContainerRef.current;
     if (el) {
-      scrollPositionsStore.set(filePath, el.scrollTop);
+      usePaneStore.getState().setScrollPosition(filePath, el.scrollTop);
     }
   }, [filePath]);
 
@@ -234,7 +234,7 @@ export function Editor({
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (el) {
-      const saved = scrollPositionsStore.get(filePath);
+      const saved = usePaneStore.getState().getScrollPosition(filePath);
       el.scrollTop = saved ?? 0;
     }
   }, [filePath]);

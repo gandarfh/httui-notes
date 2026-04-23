@@ -1,22 +1,10 @@
 import { useEffect, useRef } from "react";
 import { restoreSession, setConfig, startWatching, rebuildSearchIndex } from "@/lib/tauri/commands";
 import { markdownToHtml } from "@/lib/markdown/parser";
-import type { PaneActions } from "@/hooks/usePaneState";
-import { scrollPositionsStore } from "@/hooks/usePaneState";
+import { usePaneStore } from "@/stores/pane";
+import { useWorkspaceStore } from "@/stores/workspace";
+import { useSettingsStore } from "@/stores/settings";
 import type { PaneLayout } from "@/types/pane";
-import type { EditorEngine } from "@/contexts/EditorSettingsContext";
-
-interface UseSessionPersistenceOpts {
-  layout: PaneLayout;
-  activePaneId: string;
-  actions: PaneActions;
-  vimEnabled: boolean;
-  setVimEnabled: (enabled: boolean) => void;
-  setVaults: (vaults: string[]) => void;
-  setVaultPath: (path: string | null) => void;
-  setEntries: (entries: import("@/lib/tauri/commands").FileEntry[]) => void;
-  editorEngine?: EditorEngine;
-}
 
 // Remove tabs for files that no longer exist from the layout
 function filterDeletedTabs(
@@ -24,7 +12,6 @@ function filterDeletedTabs(
   existingFiles: Set<string>,
 ): PaneLayout {
   if (node.type === "leaf") {
-    // Filter out diff tabs (transient) and tabs for deleted files
     const validTabs = node.tabs.filter((t) => t.kind !== "diff" && existingFiles.has(t.filePath));
     return {
       ...node,
@@ -41,18 +28,7 @@ function filterDeletedTabs(
   };
 }
 
-export function useSessionPersistence({
-  layout,
-  activePaneId,
-  actions,
-  vimEnabled,
-  setVimEnabled,
-  setVaults,
-  setVaultPath,
-  setEntries,
-  editorEngine = "tiptap",
-}: UseSessionPersistenceOpts): void {
-  const useCM = editorEngine === "codemirror";
+export function useSessionPersistence(): void {
   const sessionRestored = useRef(false);
 
   // Load session on startup — single IPC roundtrip
@@ -60,23 +36,25 @@ export function useSessionPersistence({
     (async () => {
       try {
         const session = await restoreSession();
+        const useCM = useSettingsStore.getState().editorEngine === "codemirror";
 
-        setVaults(session.vaults);
-        if (session.vim_enabled) setVimEnabled(true);
+        useWorkspaceStore.getState().setVaults(session.vaults);
+        if (session.vim_enabled) useSettingsStore.getState().setVimEnabled(true);
 
         if (session.active_vault) {
-          setVaultPath(session.active_vault);
-          setEntries(session.file_tree);
+          useWorkspaceStore.getState().setVaultPath(session.active_vault);
+          useWorkspaceStore.getState().setEntries(session.file_tree);
 
           // Fire-and-forget: start watching + rebuild index
           startWatching(session.active_vault).catch(() => {});
           rebuildSearchIndex(session.active_vault).catch(() => {});
 
+          const { restoreLayout, scrollPositions } = usePaneStore.getState();
+
           if (session.pane_layout && session.active_pane_id) {
             try {
               const parsed = JSON.parse(session.pane_layout) as PaneLayout;
 
-              // Convert tab contents from Rust (markdown) to editor format
               const contents = new Map<string, string>();
               for (const tab of session.tab_contents) {
                 if (tab.content) {
@@ -85,25 +63,27 @@ export function useSessionPersistence({
               }
 
               const cleanedLayout = filterDeletedTabs(parsed, new Set(contents.keys()));
-              actions.restoreLayout(cleanedLayout, session.active_pane_id, contents);
+              restoreLayout(cleanedLayout, session.active_pane_id, contents);
 
               // Restore scroll positions
               if (session.scroll_positions) {
                 try {
                   const positions = JSON.parse(session.scroll_positions) as Record<string, number>;
+                  const newPositions = new Map(scrollPositions);
                   for (const [fp, pos] of Object.entries(positions)) {
-                    scrollPositionsStore.set(fp, pos);
+                    newPositions.set(fp, pos);
                   }
+                  usePaneStore.setState({ scrollPositions: newPositions });
                 } catch { /* invalid JSON, ignore */ }
               }
             } catch {
               // Invalid layout JSON, use default
             }
           } else if (session.active_file) {
-            // Fallback: active_file content is already in tab_contents
             const tab = session.tab_contents[0];
             if (tab?.content) {
-              actions.openFile(tab.file_path, useCM ? tab.content : markdownToHtml(tab.content), tab.vault_path);
+              const { openFile } = usePaneStore.getState();
+              openFile(tab.file_path, useCM ? tab.content : markdownToHtml(tab.content), tab.vault_path);
             }
           }
         }
@@ -113,20 +93,29 @@ export function useSessionPersistence({
         sessionRestored.current = true;
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Save pane layout on changes (only after session restore completes)
   useEffect(() => {
     if (!sessionRestored.current) return;
-    setConfig("pane_layout", JSON.stringify(layout)).catch(() => {});
-    setConfig("active_pane_id", activePaneId).catch(() => {});
-    setConfig("scroll_positions", JSON.stringify(Object.fromEntries(scrollPositionsStore))).catch(() => {});
-  }, [layout, activePaneId]);
 
-  // Save vim preference (only after session restore completes)
+    return usePaneStore.subscribe((state, prevState) => {
+      if (state.layout !== prevState.layout || state.activePaneId !== prevState.activePaneId) {
+        setConfig("pane_layout", JSON.stringify(state.layout)).catch(() => {});
+        setConfig("active_pane_id", state.activePaneId).catch(() => {});
+        setConfig("scroll_positions", JSON.stringify(Object.fromEntries(state.scrollPositions))).catch(() => {});
+      }
+    });
+  }, []);
+
+  // Save vim preference on changes (only after session restore completes)
   useEffect(() => {
     if (!sessionRestored.current) return;
-    setConfig("vim_enabled", vimEnabled ? "true" : "false").catch(() => {});
-  }, [vimEnabled]);
+
+    return useSettingsStore.subscribe((state, prevState) => {
+      if (state.vimEnabled !== prevState.vimEnabled) {
+        setConfig("vim_enabled", state.vimEnabled ? "true" : "false").catch(() => {});
+      }
+    });
+  }, []);
 }

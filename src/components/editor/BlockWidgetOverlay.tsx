@@ -22,6 +22,7 @@ import {
   setCachedHeight,
   getCachedHeight,
   getPlaceholderElement,
+  blockHeightChanged,
   type FencedBlock,
 } from "@/lib/codemirror/cm-block-widgets";
 import { BlockAdapter } from "@/components/blocks/BlockAdapter";
@@ -115,8 +116,6 @@ interface OverlayEntry {
 interface BlockWidgetOverlayProps {
   view: EditorView;
   filePath: string;
-  /** Incremented on docChanged — triggers block rescan */
-  docVersion: number;
 }
 
 /** Indexed block — preserves original index for stable ID generation */
@@ -151,14 +150,14 @@ function readPositions(view: EditorView, blocks: IndexedBlock[]): OverlayEntry[]
   return entries;
 }
 
-export function BlockWidgetOverlay({ view, filePath, docVersion }: BlockWidgetOverlayProps) {
+export function BlockWidgetOverlay({ view, filePath }: BlockWidgetOverlayProps) {
   const [entries, setEntries] = useState<OverlayEntry[]>([]);
   const blocksRef = useRef<FencedBlock[]>([]);
   const ctxCacheRef = useRef(new Map<string, BlockWidgetContext>());
   // Also subscribe to viewport changes via the ViewPlugin
   const vpVersion = useBlockUpdates();
 
-  // React to doc changes (docVersion) and viewport changes (vpVersion)
+  // React to viewport/doc changes (vpVersion covers both via blockNotifierPlugin)
   useEffect(() => {
     const allBlocks = findFencedBlocks(view.state.doc);
     const { from: vpFrom, to: vpTo } = view.viewport;
@@ -178,7 +177,7 @@ export function BlockWidgetOverlay({ view, filePath, docVersion }: BlockWidgetOv
       setEntries(positions);
     });
     return () => cancelAnimationFrame(raf);
-  }, [view, docVersion, vpVersion]);
+  }, [view, vpVersion]);
 
   // Initial render (ViewPlugin hasn't notified yet)
   useEffect(() => {
@@ -279,20 +278,31 @@ export function BlockWidgetOverlay({ view, filePath, docVersion }: BlockWidgetOv
     }
   }, [entries]);
 
-  // Sync widget height back to placeholder + CM6 height map + re-read positions
+  // Sync widget height back to CM6 via StateEffect (not direct DOM mutation).
+  // This lets CM6 handle the height change in its own transaction pipeline,
+  // preserving scroll anchoring correctly.
   const heightSyncPending = useRef(false);
+  const pendingHeightChanges = useRef<{ blockId: string; height: number }[]>([]);
   const syncHeight = useCallback(
     (blockId: string, height: number) => {
       if (Math.abs(getCachedHeight(blockId) - height) <= 2) return;
       setCachedHeight(blockId, height);
-      const el = getPlaceholderElement(blockId);
-      if (el) el.style.height = `${height}px`;
-      view.requestMeasure();
-      // Batch: schedule one re-read after all ResizeObserver callbacks settle
+      pendingHeightChanges.current.push({ blockId, height });
+      // Batch: collect all ResizeObserver callbacks in one rAF, then dispatch
+      // a single CM6 transaction with all height changes
       if (!heightSyncPending.current) {
         heightSyncPending.current = true;
         requestAnimationFrame(() => {
+          const changes = pendingHeightChanges.current;
+          pendingHeightChanges.current = [];
           heightSyncPending.current = false;
+          if (changes.length > 0) {
+            // Dispatch effects — triggers StateField rebuild → updateDOM
+            // with correct estimatedHeight, scroll anchoring preserved
+            view.dispatch({
+              effects: changes.map(c => blockHeightChanged.of(c)),
+            });
+          }
           notifyListeners();
         });
       }
