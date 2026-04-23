@@ -1,9 +1,10 @@
-import { RangeSetBuilder, StateField, type Extension, type EditorState } from "@codemirror/state";
+import { RangeSetBuilder, StateField, type Extension, type EditorState, EditorSelection, Prec } from "@codemirror/state";
 import {
   Decoration,
   type DecorationSet,
   EditorView,
   WidgetType,
+  keymap,
 } from "@codemirror/view";
 
 // ── Table detection ──────────────────────────────────────────────────────────
@@ -11,7 +12,7 @@ import {
 interface TableRange {
   from: number;
   to: number;
-  rows: string[][];  // parsed cell values
+  rows: string[][];
   hasHeader: boolean;
 }
 
@@ -35,13 +36,11 @@ function findTables(doc: { lines: number; line(n: number): { from: number; to: n
     if (headerCells && i + 1 <= doc.lines) {
       const sepLine = doc.line(i + 1);
       if (SEPARATOR_RE.test(sepLine.text.trim())) {
-        // Found a table header + separator
         const rows: string[][] = [headerCells];
         const tableFrom = line.from;
         let tableTo = sepLine.to;
         let j = i + 2;
 
-        // Consume body rows
         while (j <= doc.lines) {
           const bodyLine = doc.line(j);
           const bodyCells = parseRow(bodyLine.text);
@@ -51,13 +50,7 @@ function findTables(doc: { lines: number; line(n: number): { from: number; to: n
           j++;
         }
 
-        tables.push({
-          from: tableFrom,
-          to: tableTo,
-          rows,
-          hasHeader: true,
-        });
-
+        tables.push({ from: tableFrom, to: tableTo, rows, hasHeader: true });
         i = j;
         continue;
       }
@@ -66,6 +59,61 @@ function findTables(doc: { lines: number; line(n: number): { from: number; to: n
   }
 
   return tables;
+}
+
+// ── Table formatting (align columns with spaces) ────────────────────────────
+
+function formatTable(doc: EditorState["doc"], table: TableRange): string | null {
+  const startLine = doc.lineAt(table.from).number;
+  const endLine = doc.lineAt(table.to).number;
+
+  // Parse all rows (including separator)
+  const allLines: string[] = [];
+  const parsedRows: (string[] | "separator")[] = [];
+
+  for (let i = startLine; i <= endLine; i++) {
+    const line = doc.line(i);
+    allLines.push(line.text);
+    if (SEPARATOR_RE.test(line.text.trim())) {
+      parsedRows.push("separator");
+    } else {
+      const cells = parseRow(line.text);
+      parsedRows.push(cells ?? []);
+    }
+  }
+
+  // Compute max width per column
+  const colCount = Math.max(
+    ...parsedRows.filter((r): r is string[] => r !== "separator").map(r => r.length),
+  );
+  if (colCount === 0) return null;
+
+  const colWidths: number[] = new Array(colCount).fill(3); // min 3 for ---
+  for (const row of parsedRows) {
+    if (row === "separator") continue;
+    for (let c = 0; c < row.length; c++) {
+      colWidths[c] = Math.max(colWidths[c], row[c].length);
+    }
+  }
+
+  // Build formatted lines
+  const formatted: string[] = [];
+  for (const row of parsedRows) {
+    if (row === "separator") {
+      const sep = colWidths.map(w => "-".repeat(w)).join(" | ");
+      formatted.push(`| ${sep} |`);
+    } else {
+      const cells = colWidths.map((w, c) => {
+        const cell = row[c] ?? "";
+        return cell.padEnd(w);
+      });
+      formatted.push(`| ${cells.join(" | ")} |`);
+    }
+  }
+
+  const result = formatted.join("\n");
+  const original = allLines.join("\n");
+  return result !== original ? result : null;
 }
 
 // ── Table widget ─────────────────────────────────────────────────────────────
@@ -120,16 +168,18 @@ class TableWidget extends WidgetType {
   }
 
   ignoreEvent(): boolean {
-    return false;
+    return true;
   }
 }
 
-// ── Decoration plugin ────────────────────────────────────────────────────────
+// ── Decoration builder ──────────────────────────────────────────────────────
 
-function buildTableDecorations(state: EditorState): DecorationSet {
+// Track which table the cursor was previously inside (for format-on-exit)
+let prevCursorTableIdx = -1;
+
+function buildTableDecorations(state: EditorState, view?: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
 
-  // Get cursor line numbers
   const cursorLines = new Set<number>();
   for (const range of state.selection.ranges) {
     const startLine = state.doc.lineAt(range.from).number;
@@ -141,35 +191,55 @@ function buildTableDecorations(state: EditorState): DecorationSet {
 
   const tables = findTables(state.doc);
 
-  for (const table of tables) {
-    // Check if cursor is inside this table
+  // Find which table cursor is currently in
+  let currentTableIdx = -1;
+
+  for (let t = 0; t < tables.length; t++) {
+    const table = tables[t];
     const tableStartLine = state.doc.lineAt(table.from).number;
     const tableEndLine = state.doc.lineAt(table.to).number;
-    let cursorInTable = false;
+
     for (let line = tableStartLine; line <= tableEndLine; line++) {
       if (cursorLines.has(line)) {
-        cursorInTable = true;
+        currentTableIdx = t;
         break;
       }
     }
+  }
 
-    if (cursorInTable) {
-      // Cursor inside — show raw pipes but with table styling
+  // Format-on-exit: if cursor left a table, format it
+  if (prevCursorTableIdx !== -1 && currentTableIdx !== prevCursorTableIdx && view) {
+    const prevTable = tables[prevCursorTableIdx];
+    if (prevTable) {
+      const formatted = formatTable(state.doc, prevTable);
+      if (formatted) {
+        // Schedule the format dispatch after this update completes
+        queueMicrotask(() => {
+          view.dispatch({
+            changes: { from: prevTable.from, to: prevTable.to, insert: formatted },
+          });
+        });
+      }
+    }
+  }
+  prevCursorTableIdx = currentTableIdx;
+
+  for (let t = 0; t < tables.length; t++) {
+    const table = tables[t];
+    const isCursorIn = t === currentTableIdx;
+
+    if (isCursorIn) {
+      // Cursor inside — show raw pipes (mono font only)
+      const tableStartLine = state.doc.lineAt(table.from).number;
+      const tableEndLine = state.doc.lineAt(table.to).number;
       for (let line = tableStartLine; line <= tableEndLine; line++) {
         const lineObj = state.doc.line(line);
-        // Skip separator row (---|---) — just style it subtly
-        const isSeparator = SEPARATOR_RE.test(lineObj.text.trim());
-        builder.add(
-          lineObj.from,
-          lineObj.from,
-          Decoration.line({
-            class: isSeparator ? "cm-table-raw-separator" : "cm-table-raw-line",
-          }),
-        );
+        builder.add(lineObj.from, lineObj.from, Decoration.line({ class: "cm-table-raw" }));
       }
       continue;
     }
 
+    // Cursor outside — render as HTML table widget
     builder.add(
       table.from,
       table.to,
@@ -196,29 +266,76 @@ const tableField = StateField.define<DecorationSet>({
 
     if (cursorLineMoved) {
       lastTableCursorLine = currentLine;
-      return buildTableDecorations(tr.state);
+      // Pass the view for format-on-exit
+      const view = (tr as unknown as { view?: EditorView }).view;
+      return buildTableDecorations(tr.state, view);
     }
     if (tr.docChanged) {
-      return decos.map(tr.changes);
+      return buildTableDecorations(tr.state);
     }
     return decos;
   },
   provide: (f) => EditorView.decorations.from(f),
 });
 
+// ── Arrow key navigation into tables ─────────────────────────────────────────
+
+function findTableAtBoundary(doc: EditorState["doc"], lineNum: number, direction: "down" | "up"): TableRange | null {
+  const tables = findTables(doc);
+  for (const table of tables) {
+    const startLine = doc.lineAt(table.from).number;
+    const endLine = doc.lineAt(table.to).number;
+    if (direction === "down" && startLine === lineNum) return table;
+    if (direction === "up" && endLine === lineNum) return table;
+  }
+  return null;
+}
+
+const tableKeymap = keymap.of([
+  {
+    key: "ArrowDown",
+    run(view) {
+      const { state } = view;
+      const cursorLine = state.doc.lineAt(state.selection.main.head).number;
+      const nextLine = cursorLine + 1;
+      if (nextLine > state.doc.lines) return false;
+      const table = findTableAtBoundary(state.doc, nextLine, "down");
+      if (!table) return false;
+      const targetLine = state.doc.line(nextLine);
+      view.dispatch({ selection: EditorSelection.cursor(targetLine.from) });
+      return true;
+    },
+  },
+  {
+    key: "ArrowUp",
+    run(view) {
+      const { state } = view;
+      const cursorLine = state.doc.lineAt(state.selection.main.head).number;
+      const prevLine = cursorLine - 1;
+      if (prevLine < 1) return false;
+      const table = findTableAtBoundary(state.doc, prevLine, "up");
+      if (!table) return false;
+      const targetLine = state.doc.line(prevLine);
+      view.dispatch({ selection: EditorSelection.cursor(targetLine.to) });
+      return true;
+    },
+  },
+]);
+
 // ── Theme ────────────────────────────────────────────────────────────────────
 
 const tableTheme = EditorView.theme({
+  // Rendered table widget (cursor outside)
   ".cm-table-widget": {
     borderCollapse: "collapse",
     width: "100%",
-    margin: "8px 0",
+    margin: "4px 0",
     fontSize: "13px",
     fontFamily: "var(--chakra-fonts-body)",
   },
   ".cm-table-widget th, .cm-table-widget td": {
     border: "1px solid var(--chakra-colors-border)",
-    padding: "6px 12px",
+    padding: "8px 12px",
     textAlign: "left",
   },
   ".cm-table-widget th": {
@@ -228,21 +345,10 @@ const tableTheme = EditorView.theme({
   ".cm-table-widget tr:hover td": {
     backgroundColor: "var(--chakra-colors-bg-subtle)",
   },
-  // Raw table lines (cursor inside table)
-  ".cm-table-raw-line": {
+  // Raw table lines (cursor inside) — just mono font, no extra decoration
+  ".cm-table-raw": {
     fontFamily: "var(--chakra-fonts-mono)",
     fontSize: "13px",
-    backgroundColor: "var(--chakra-colors-bg-subtle)",
-    borderLeft: "2px solid var(--chakra-colors-border)",
-    paddingLeft: "8px",
-  },
-  ".cm-table-raw-separator": {
-    fontFamily: "var(--chakra-fonts-mono)",
-    fontSize: "13px",
-    backgroundColor: "var(--chakra-colors-bg-subtle)",
-    borderLeft: "2px solid var(--chakra-colors-border)",
-    paddingLeft: "8px",
-    opacity: "0.4",
   },
 });
 
@@ -250,5 +356,5 @@ const tableTheme = EditorView.theme({
 
 /** GFM table extension — renders pipe tables as HTML widgets, raw when cursor is inside */
 export function tables(): Extension {
-  return [tableField, tableTheme];
+  return [tableField, tableTheme, Prec.high(tableKeymap)];
 }

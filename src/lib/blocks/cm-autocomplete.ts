@@ -13,37 +13,13 @@ const autocompleteTheme = EditorView.baseTheme({
   ".cm-tooltip": {
     zIndex: "9999 !important",
   },
-  ".cm-tooltip-autocomplete": {
-    background: "var(--chakra-colors-bg) !important",
-    border: "1px solid var(--chakra-colors-border) !important",
-    borderRadius: "8px !important",
-    overflow: "hidden",
-    boxShadow: "0 8px 24px rgba(0,0,0,0.4) !important",
-    padding: "4px !important",
-  },
-  ".cm-tooltip-autocomplete ul": {
-    fontFamily: "var(--chakra-fonts-mono)",
-    fontSize: "12px",
-    maxHeight: "200px",
-  },
-  ".cm-tooltip-autocomplete li": {
-    padding: "4px 10px !important",
-    lineHeight: "1.5",
-    borderRadius: "4px",
-    margin: "1px 0",
-  },
   ".cm-tooltip-autocomplete li[aria-selected]": {
-    background: "rgba(139, 92, 246, 0.2) !important",
+    background: "var(--chakra-colors-bg-subtle) !important",
     color: "inherit !important",
   },
-  ".cm-completionIcon": {
-    opacity: "0.5",
-    width: "auto !important",
-    paddingRight: "6px",
-  },
   ".cm-completionLabel": {
-    fontWeight: "600",
-    color: "rgb(139, 92, 246)",
+    fontWeight: "500",
+    color: "var(--chakra-colors-fg)",
   },
   ".cm-completionDetail": {
     opacity: "0.5",
@@ -54,7 +30,7 @@ const autocompleteTheme = EditorView.baseTheme({
   ".cm-completionMatchedText": {
     textDecoration: "none !important",
     fontWeight: "700",
-    color: "rgb(167, 139, 250)",
+    color: "var(--chakra-colors-fg)",
   },
 });
 
