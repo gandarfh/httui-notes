@@ -330,8 +330,37 @@ class DbStatusBarPortalWidget extends WidgetType {
 
 // ───── Decoration builder ─────
 
-const fenceLineDecoration = Decoration.line({ class: "cm-db-fence-line" });
-const bodyLineDecoration = Decoration.line({ class: "cm-db-body-line" });
+/**
+ * Zero-height placeholder used to replace fence lines when the cursor is
+ * outside the block. The line's text (```db-… / ```) disappears visually
+ * while its position in the doc is preserved.
+ */
+class FenceHiddenWidget extends WidgetType {
+  toDOM(): HTMLElement {
+    const div = document.createElement("div");
+    div.className = "cm-db-fence-hidden";
+    return div;
+  }
+  eq(): boolean {
+    return true;
+  }
+  get estimatedHeight(): number {
+    return 0;
+  }
+}
+
+/**
+ * Is the cursor inside the given block (including on its fence lines)?
+ * Editing mode reveals the raw fence text; reading mode hides it and
+ * shows the card-frame UI.
+ */
+function cursorInsideBlock(
+  state: EditorState,
+  block: DbFencedBlock,
+): boolean {
+  const pos = state.selection.main.head;
+  return pos >= block.from && pos <= block.to;
+}
 
 function buildDbDecorations(
   state: EditorState,
@@ -348,47 +377,83 @@ function buildDbDecorations(
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i];
     const blockId = blockIdOf(block, i);
+    const editing = cursorInsideBlock(state, block);
 
-    // Fence line classes
-    items.push({
-      from: block.openLineFrom,
-      to: block.openLineFrom,
-      deco: fenceLineDecoration,
-      order: 0,
-    });
-    items.push({
-      from: block.closeLineFrom,
-      to: block.closeLineFrom,
-      deco: fenceLineDecoration,
-      order: 0,
-    });
+    if (editing) {
+      // ── Editing: show raw fence text with subtle styling ──
+      items.push({
+        from: block.openLineFrom,
+        to: block.openLineFrom,
+        deco: Decoration.line({ class: "cm-db-fence-line cm-db-fence-line-open" }),
+        order: 0,
+      });
+      items.push({
+        from: block.closeLineFrom,
+        to: block.closeLineFrom,
+        deco: Decoration.line({ class: "cm-db-fence-line cm-db-fence-line-close" }),
+        order: 0,
+      });
+    } else {
+      // ── Reading: hide fences, replaced by card header / closing border ──
+      // Open fence becomes the header bar (toolbar widget lives inside it).
+      items.push({
+        from: block.openLineFrom,
+        to: block.openLineTo,
+        deco: Decoration.replace({
+          widget: new DbToolbarPortalWidget(blockId, block),
+          block: true,
+        }),
+        order: 0,
+      });
+      // Close fence becomes the card's bottom border.
+      items.push({
+        from: block.closeLineFrom,
+        to: block.closeLineTo,
+        deco: Decoration.replace({
+          widget: new FenceHiddenWidget(),
+          block: true,
+        }),
+        order: 1,
+      });
+    }
 
+    // ── Body lines: line-level classes for card styling ──
+    // First/last get modifier classes so only the outer edges round.
     if (block.body.length > 0) {
       const firstBodyLine = state.doc.lineAt(block.bodyFrom).number;
       const lastBodyLine = state.doc.lineAt(block.bodyTo).number;
       for (let n = firstBodyLine; n <= lastBodyLine; n++) {
         const line = state.doc.line(n);
+        const classes = ["cm-db-body-line"];
+        if (editing) classes.push("cm-db-body-editing");
+        if (n === firstBodyLine) classes.push("cm-db-body-line-first");
+        if (n === lastBodyLine) classes.push("cm-db-body-line-last");
         items.push({
           from: line.from,
           to: line.from,
-          deco: bodyLineDecoration,
+          deco: Decoration.line({ class: classes.join(" ") }),
           order: 0,
         });
       }
     }
 
-    // Toolbar widget on open-fence line (inline, side: 1)
-    items.push({
-      from: block.openLineTo,
-      to: block.openLineTo,
-      deco: Decoration.widget({
-        widget: new DbToolbarPortalWidget(blockId, block),
-        side: 1,
-      }),
-      order: 1,
-    });
+    // ── Toolbar widget while editing (inline, absolute in CSS) ──
+    // When reading, the toolbar widget is the header replace above; when
+    // editing, we still want the controls accessible, so a second instance
+    // docks at the end of the open-fence line.
+    if (editing) {
+      items.push({
+        from: block.openLineTo,
+        to: block.openLineTo,
+        deco: Decoration.widget({
+          widget: new DbToolbarPortalWidget(blockId, block),
+          side: 1,
+        }),
+        order: 2,
+      });
+    }
 
-    // Result + status bar (block widgets after close fence)
+    // ── Result + status bar (block widgets after close fence) ──
     items.push({
       from: block.closeLineTo,
       to: block.closeLineTo,
@@ -397,7 +462,7 @@ function buildDbDecorations(
         block: true,
         side: 1,
       }),
-      order: 2,
+      order: 3,
     });
     items.push({
       from: block.closeLineTo,
@@ -407,7 +472,7 @@ function buildDbDecorations(
         block: true,
         side: 1,
       }),
-      order: 3,
+      order: 4,
     });
   }
 
@@ -532,15 +597,31 @@ export function createDbBlockExtension(): Extension {
       return buildDbDecorations(state, cachedBlocks);
     },
     update(decos, tr) {
-      if (!tr.docChanged) return decos;
-      const newCount = countDbBlocks(tr.state.doc);
-      if (newCount !== lastBlockCount) {
-        lastBlockCount = newCount;
+      // Rebuild when the document changes (structure) OR when the main
+      // selection moves across block boundaries (cursor-reveal toggle).
+      if (tr.docChanged) {
+        const newCount = countDbBlocks(tr.state.doc);
+        if (newCount !== lastBlockCount) {
+          lastBlockCount = newCount;
+        }
         cachedBlocks = findDbBlocks(tr.state.doc);
         return buildDbDecorations(tr.state, cachedBlocks);
       }
-      cachedBlocks = findDbBlocks(tr.state.doc);
-      return buildDbDecorations(tr.state, cachedBlocks);
+      if (tr.selection) {
+        // Selection moved — only rebuild if this crosses an edit-mode
+        // boundary of some block. Cheap check: scan cached blocks.
+        const oldPos = tr.startState.selection.main.head;
+        const newPos = tr.state.selection.main.head;
+        const crossed = cachedBlocks.some((b) => {
+          const oldInside = oldPos >= b.from && oldPos <= b.to;
+          const newInside = newPos >= b.from && newPos <= b.to;
+          return oldInside !== newInside;
+        });
+        if (crossed) {
+          return buildDbDecorations(tr.state, cachedBlocks);
+        }
+      }
+      return decos;
     },
     provide: (f) => EditorView.decorations.from(f),
   });

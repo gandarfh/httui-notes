@@ -169,7 +169,15 @@ const editorTheme = EditorView.theme({
     border: "none !important",
   },
 
-  // ── db block (stage 4 — fenced-native rendering) ──
+  // ── db block (stage 5 — card frame w/ cursor-reveal) ──
+  // Two modes:
+  //   (a) Reading (cursor outside): fences are replaced by a header widget
+  //       (toolbar) + a zero-height closing placeholder. Body lines draw
+  //       the left/right sides and the open fence widget + last body line
+  //       draw the rounded caps.
+  //   (b) Editing (cursor inside): fence text is revealed with a subtle
+  //       style; body lines keep light left/right borders so the user
+  //       sees where the block is; toolbar docks as a small inline widget.
   ".cm-db-fence-line": {
     color: "var(--chakra-colors-fg-muted)",
     fontFamily: "var(--chakra-fonts-mono)",
@@ -177,30 +185,86 @@ const editorTheme = EditorView.theme({
     opacity: 0.55,
     position: "relative",
     paddingRight: "320px", // reserve space for inline toolbar stub
+    borderLeft: "1px solid var(--chakra-colors-border)",
+    borderRight: "1px solid var(--chakra-colors-border)",
+  },
+  ".cm-db-fence-line-open": {
+    borderTop: "1px solid var(--chakra-colors-border)",
+    borderTopLeftRadius: "6px",
+    borderTopRightRadius: "6px",
+  },
+  ".cm-db-fence-line-close": {
+    borderBottom: "1px solid var(--chakra-colors-border)",
+    borderBottomLeftRadius: "6px",
+    borderBottomRightRadius: "6px",
   },
   ".cm-db-body-line": {
     fontFamily: "var(--chakra-fonts-mono)",
     background: "var(--chakra-colors-bg-subtle)",
-    borderLeft: "2px solid var(--chakra-colors-border)",
+    borderLeft: "1px solid var(--chakra-colors-border)",
+    borderRight: "1px solid var(--chakra-colors-border)",
     paddingLeft: "12px",
+    paddingRight: "12px",
   },
-  // Stage-5 portal containers — React mounts toolbar / result / status bar
-  // via createPortal into these divs. Layout details live in the React
-  // components; the CSS here just positions / isolates.
+  ".cm-db-body-line-first": {
+    // When the fence is hidden (reading mode), the first body line owns
+    // the top border. The toolbar widget sits right above and already has
+    // rounded top corners, so we DON'T round here — only the sides.
+  },
+  ".cm-db-body-line-last": {
+    borderBottom: "1px solid var(--chakra-colors-border)",
+    borderBottomLeftRadius: "6px",
+    borderBottomRightRadius: "6px",
+    paddingBottom: "2px",
+  },
+  // Editing mode: the fence line handles top/bottom rounding. Remove the
+  // body first/last rounding so the borders don't double up.
+  ".cm-db-body-editing.cm-db-body-line-last": {
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    borderBottom: "none",
+  },
+  // Placeholder left in place of the close fence when reading.
+  ".cm-db-fence-hidden": {
+    height: 0,
+    margin: 0,
+    padding: 0,
+  },
+
+  // ── Portal containers — React mounts into these ──
+  // Toolbar has two modes: (a) block-level header widget when reading,
+  // (b) inline overlay when editing. The widget class is the same
+  // (cm-db-toolbar-portal); the container's parent differs, so CSS
+  // selectors below branch on structural context.
   ".cm-db-toolbar-portal": {
-    position: "absolute",
-    top: "2px",
-    right: "8px",
+    // Reading-mode: renders as a block widget at the open-fence position.
+    // Chakra components inside own the look; here we just give it the
+    // card's rounded top edge + top/left/right border so it visually
+    // continues into the body below.
+    display: "block",
     background: "var(--chakra-colors-bg)",
     border: "1px solid var(--chakra-colors-border)",
-    borderRadius: "4px",
-    padding: "2px 6px",
+    borderBottom: "none",
+    borderTopLeftRadius: "6px",
+    borderTopRightRadius: "6px",
+    padding: "4px 8px",
     userSelect: "none",
     pointerEvents: "auto",
   },
+  // Inline variant (editing): CM6 renders these inside the line. Pull it
+  // to the right so the fence text stays readable on the left.
+  ".cm-db-fence-line .cm-db-toolbar-portal": {
+    position: "absolute",
+    top: "2px",
+    right: "8px",
+    display: "inline-block",
+    border: "1px solid var(--chakra-colors-border)",
+    borderRadius: "4px",
+    padding: "2px 6px",
+  },
   ".cm-db-result-portal": {
     overflowAnchor: "none",
-    margin: "8px 0 2px",
+    margin: "6px 0 2px",
     background: "var(--chakra-colors-bg)",
     border: "1px solid var(--chakra-colors-border)",
     borderRadius: "6px",
