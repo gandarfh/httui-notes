@@ -437,21 +437,8 @@ function buildDbDecorations(
       }
     }
 
-    // ── Toolbar widget while editing (inline, absolute in CSS) ──
-    // When reading, the toolbar widget is the header replace above; when
-    // editing, we still want the controls accessible, so a second instance
-    // docks at the end of the open-fence line.
-    if (editing) {
-      items.push({
-        from: block.openLineTo,
-        to: block.openLineTo,
-        deco: Decoration.widget({
-          widget: new DbToolbarPortalWidget(blockId, block),
-          side: 1,
-        }),
-        order: 2,
-      });
-    }
+    // Per spec §5.2, editing mode hides the toolbar (shortcuts take its
+    // place: ⌘↵ run, ⌘. cancel). We skip the inline toolbar here.
 
     // ── Result + status bar (block widgets after close fence) ──
     items.push({

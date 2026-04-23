@@ -150,6 +150,10 @@ export const DbFencedPanel = memo(function DbFencedPanel({
   const [cached, setCached] = useState(false);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  /** Milliseconds elapsed since the current run started; drives the live
+   *  timer shown in the result panel during execution. Reset to 0 when
+   *  not running. */
+  const [liveElapsedMs, setLiveElapsedMs] = useState(0);
   /**
    * Last-execution bindings: `{{ref.raw}} → resolved value`. Shown in the
    * drawer's Resolved bindings panel so users can debug what the driver
@@ -169,6 +173,23 @@ export const DbFencedPanel = memo(function DbFencedPanel({
   useEffect(() => {
     listConnections().then(setConnections).catch(() => {});
   }, []);
+
+  // Live elapsed timer for running state. Ticks every 100ms; stops when
+  // the execution leaves the running state. Cheap since only one block
+  // can be running per panel instance.
+  useEffect(() => {
+    if (executionState !== "running") {
+      setLiveElapsedMs(0);
+      return;
+    }
+    const startedAt = performance.now();
+    const id = window.setInterval(() => {
+      setLiveElapsedMs(Math.round(performance.now() - startedAt));
+    }, 100);
+    return () => {
+      window.clearInterval(id);
+    };
+  }, [executionState]);
 
   // ── Legacy JSON body conversion ──
   // Vaults written before stage 4 store a JSON object in the body instead
@@ -449,6 +470,9 @@ export const DbFencedPanel = memo(function DbFencedPanel({
             response={response}
             error={error}
             cached={cached}
+            liveElapsedMs={liveElapsedMs}
+            connection={activeConnection?.name ?? block.metadata.connection}
+            onCancel={cancelBlock}
           />,
           resultNode,
         )}
@@ -501,45 +525,57 @@ function DbToolbar({
   const running = executionState === "running";
   const dialectLabel = metadata.dialect.toUpperCase();
   const connLabel =
-    activeConnection?.name ??
-    metadata.connection ??
-    (metadata.connection ? metadata.connection : undefined);
+    activeConnection?.name ?? metadata.connection ?? undefined;
 
   return (
-    <HStack
+    <Flex
       className="cm-db-toolbar"
       gap={2}
       align="center"
+      justify="space-between"
       onMouseDown={(e) => e.stopPropagation()}
     >
-      <Badge colorPalette="blue" variant="solid" size="xs">
-        DB
-      </Badge>
-      {metadata.alias && (
-        <Text fontSize="xs" fontFamily="mono" fontWeight="bold">
-          {metadata.alias}
+      <HStack gap={2} align="center">
+        <Badge colorPalette="blue" variant="solid" size="xs">
+          DB
+        </Badge>
+        {metadata.alias && (
+          <Text fontSize="sm" fontFamily="mono" fontWeight="bold">
+            {metadata.alias}
+          </Text>
+        )}
+        {connLabel && (
+          <HStack gap={1} align="center">
+            {/* Connection status dot — resolved = green, unresolved = gray */}
+            <Box
+              w="6px"
+              h="6px"
+              borderRadius="full"
+              bg={activeConnection ? "green.500" : "gray.500"}
+              title={activeConnection ? "connection resolved" : "connection not found"}
+            />
+            <Text fontSize="xs" fontFamily="mono" color="fg.muted">
+              {connLabel}
+            </Text>
+          </HStack>
+        )}
+        <Text
+          fontSize="9px"
+          fontFamily="mono"
+          color="fg.muted"
+          textTransform="uppercase"
+          letterSpacing="0.05em"
+        >
+          {dialectLabel}
         </Text>
-      )}
-      {connLabel && (
-        <Text fontSize="xs" fontFamily="mono" color="fg.muted">
-          {connLabel}
-        </Text>
-      )}
-      <Text
-        fontSize="9px"
-        fontFamily="mono"
-        color="fg.muted"
-        textTransform="uppercase"
-        letterSpacing="0.05em"
-      >
-        {dialectLabel}
-      </Text>
+      </HStack>
 
       <HStack gap={1}>
         {running ? (
           <IconButton
             size="xs"
-            variant="ghost"
+            variant="solid"
+            colorPalette="red"
             aria-label="Cancel"
             onClick={onCancel}
             title="Cancel (⌘.)"
@@ -549,7 +585,8 @@ function DbToolbar({
         ) : (
           <IconButton
             size="xs"
-            variant="ghost"
+            variant={activeConnection ? "solid" : "ghost"}
+            colorPalette={activeConnection ? "green" : undefined}
             aria-label="Run"
             onClick={onRun}
             title="Run (⌘↵)"
@@ -595,7 +632,7 @@ function DbToolbar({
           <LuSettings />
         </IconButton>
       </HStack>
-    </HStack>
+    </Flex>
   );
 }
 
@@ -606,27 +643,56 @@ interface DbResultProps {
   response: DbResponse | null;
   error: string | null;
   cached: boolean;
+  liveElapsedMs: number;
+  connection: string | undefined;
+  onCancel: () => void;
 }
 
-function DbResult({ executionState, response, error, cached }: DbResultProps) {
+function formatElapsed(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function DbResult({
+  executionState,
+  response,
+  error,
+  cached,
+  liveElapsedMs,
+  connection,
+  onCancel,
+}: DbResultProps) {
+  // ── Running: big live timer ──
   if (executionState === "running") {
     return (
       <Flex
         className="cm-db-result"
-        p={4}
+        px={6}
+        py={5}
         align="center"
         justify="center"
-        gap={2}
-        color="fg.muted"
+        direction="column"
+        gap={3}
       >
-        <Spinner size="sm" />
-        <Text fontSize="sm" fontFamily="mono">
-          Running…
-        </Text>
+        <HStack gap={3} align="baseline">
+          <Spinner size="sm" color="blue.400" />
+          <Text
+            fontSize="2xl"
+            fontFamily="mono"
+            fontWeight="bold"
+            color="blue.400"
+          >
+            {formatElapsed(liveElapsedMs)}
+          </Text>
+        </HStack>
+        <Button size="xs" variant="outline" onClick={onCancel}>
+          Cancel (⌘.)
+        </Button>
       </Flex>
     );
   }
 
+  // ── Error from runtime (not a SQL error result) ──
   if (error) {
     return (
       <Box
@@ -641,11 +707,24 @@ function DbResult({ executionState, response, error, cached }: DbResultProps) {
     );
   }
 
+  // ── Empty state: nothing has been run yet ──
   if (!response) {
     return (
-      <Box className="cm-db-result" p={3} color="fg.muted" fontSize="xs" fontFamily="mono">
-        Run (⌘↵) to see results.
-      </Box>
+      <Flex
+        className="cm-db-result"
+        px={5}
+        py={6}
+        align="center"
+        justify="center"
+        direction="column"
+        gap={1}
+      >
+        <Text fontSize="sm" fontFamily="mono" color="fg.muted">
+          {connection
+            ? `Hit ⌘↵ to query ${connection}`
+            : "Pick a connection in settings to run"}
+        </Text>
+      </Flex>
     );
   }
 
@@ -660,12 +739,30 @@ function DbResult({ executionState, response, error, cached }: DbResultProps) {
 
   if (first.kind === "select") {
     return (
-      <Box className="cm-db-result" p={2}>
-        {cached && (
-          <Badge size="xs" colorPalette="gray" variant="subtle" mb={1}>
-            cached
-          </Badge>
-        )}
+      <Box className="cm-db-result">
+        <Flex
+          px={3}
+          py={1}
+          align="center"
+          gap={2}
+          borderBottom="1px solid"
+          borderColor="border"
+          fontFamily="mono"
+          fontSize="11px"
+          color="fg.muted"
+        >
+          <Text>
+            {first.rows.length} row{first.rows.length === 1 ? "" : "s"}
+          </Text>
+          {first.has_more && (
+            <Text color="yellow.500">(truncated — load more)</Text>
+          )}
+          {cached && (
+            <Badge size="xs" colorPalette="gray" variant="subtle">
+              cached
+            </Badge>
+          )}
+        </Flex>
         <ResultTable
           columns={first.columns}
           rows={first.rows}
@@ -679,15 +776,20 @@ function DbResult({ executionState, response, error, cached }: DbResultProps) {
 
   if (first.kind === "mutation") {
     return (
-      <Box className="cm-db-result" p={3}>
+      <Flex className="cm-db-result" p={3} align="center" gap={2}>
         <Badge colorPalette="blue" variant="subtle" fontFamily="mono" size="sm">
-          {first.rows_affected} rows affected
+          {first.rows_affected} row{first.rows_affected === 1 ? "" : "s"} affected
         </Badge>
-      </Box>
+        {cached && (
+          <Badge size="xs" colorPalette="gray" variant="subtle">
+            cached
+          </Badge>
+        )}
+      </Flex>
     );
   }
 
-  // Error variant
+  // Error variant from the backend (per-statement failure)
   return (
     <Box
       className="cm-db-result"
@@ -718,32 +820,74 @@ function DbStatusBar({
   response,
   cached,
 }: DbStatusBarProps) {
-  const parts: string[] = [];
-  if (connection) parts.push(connection);
-
   const first = response?.results[0];
-  if (first?.kind === "select") parts.push(`${first.rows.length} rows`);
-  else if (first?.kind === "mutation")
-    parts.push(`${first.rows_affected} affected`);
+  const rowCount =
+    first?.kind === "select"
+      ? `${first.rows.length} row${first.rows.length === 1 ? "" : "s"}`
+      : first?.kind === "mutation"
+        ? `${first.rows_affected} affected`
+        : null;
 
-  if (durationMs !== null) parts.push(`${durationMs}ms`);
-  if (cached) parts.push("cached");
-  if (executionState === "running") parts.push("running");
-  if (executionState === "cancelled") parts.push("cancelled");
-  if (executionState === "idle" && !response) parts.push("⌘↵ to run");
+  const duration =
+    durationMs !== null && durationMs !== undefined
+      ? formatElapsed(durationMs)
+      : null;
 
   return (
-    <Box
+    <Flex
       className="cm-db-statusbar"
-      px={2}
-      py="2px"
+      align="center"
+      gap={2}
       fontFamily="mono"
-      fontSize="10px"
+      fontSize="11px"
       color="fg.muted"
-      opacity={0.75}
     >
-      {parts.join(" · ")}
-    </Box>
+      {connection && (
+        <Text fontWeight="medium" color="fg">
+          {connection}
+        </Text>
+      )}
+      {rowCount && (
+        <>
+          <Text opacity={0.5}>·</Text>
+          <Text>{rowCount}</Text>
+        </>
+      )}
+      {duration && (
+        <>
+          <Text opacity={0.5}>·</Text>
+          <Text>{duration}</Text>
+        </>
+      )}
+      {cached && (
+        <>
+          <Text opacity={0.5}>·</Text>
+          <Text color="blue.400">cached</Text>
+        </>
+      )}
+      {executionState === "running" && (
+        <>
+          <Text opacity={0.5}>·</Text>
+          <Text color="yellow.500">running</Text>
+        </>
+      )}
+      {executionState === "cancelled" && (
+        <>
+          <Text opacity={0.5}>·</Text>
+          <Text color="orange.400">cancelled</Text>
+        </>
+      )}
+      {executionState === "error" && (
+        <>
+          <Text opacity={0.5}>·</Text>
+          <Text color="red.400">error</Text>
+        </>
+      )}
+      <Flex flex={1} />
+      {executionState === "idle" && !response && (
+        <Text opacity={0.6}>⌘↵ to run</Text>
+      )}
+    </Flex>
   );
 }
 

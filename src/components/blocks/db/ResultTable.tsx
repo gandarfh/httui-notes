@@ -83,7 +83,7 @@ function DetailValue({ value }: { value: CellValue }) {
   );
 }
 
-const ROW_HEIGHT = 28;
+const ROW_HEIGHT = 24;
 
 export function ResultTable({
   columns,
@@ -147,6 +147,19 @@ export function ResultTable({
               maxWidth: "300px",
               overflow: "hidden",
               textOverflow: "ellipsis",
+              padding: "2px 10px",
+              lineHeight: "20px",
+            },
+            "& thead th": {
+              background: "var(--chakra-colors-blackAlpha-200)",
+              fontWeight: 600,
+              borderBottom: "1px solid var(--chakra-colors-border)",
+            },
+            "& tbody tr:nth-of-type(even) td": {
+              background: "var(--chakra-colors-blackAlpha-50)",
+            },
+            "& tbody tr:hover td": {
+              background: "var(--chakra-colors-blackAlpha-200)",
             },
           }}
         >
@@ -154,7 +167,18 @@ export function ResultTable({
             <Table.Row>
               {columns.map((col, i) => (
                 <Table.ColumnHeader key={i} title={`${col.name} (${col.type})`}>
-                  {col.name}
+                  <HStack gap={1} align="baseline">
+                    <Box as="span">{col.name}</Box>
+                    <Box
+                      as="span"
+                      fontSize="2xs"
+                      color="fg.muted"
+                      opacity={0.7}
+                      fontWeight="normal"
+                    >
+                      {col.type}
+                    </Box>
+                  </HStack>
                 </Table.ColumnHeader>
               ))}
             </Table.Row>

@@ -5,6 +5,25 @@ import { EditorView, keymap } from "@codemirror/view";
 import { Compartment } from "@codemirror/state";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages as cmLanguages } from "@codemirror/language-data";
+import { LanguageDescription } from "@codemirror/language";
+
+// Register db / db-postgres / db-mysql / db-sqlite as SQL so markdown's
+// nested-code syntax highlighter colorizes the body of db fenced blocks.
+const dbSqlLanguages: LanguageDescription[] = [
+  "db",
+  "db-postgres",
+  "db-mysql",
+  "db-sqlite",
+].map((alias) =>
+  LanguageDescription.of({
+    name: alias,
+    alias: [alias],
+    async load() {
+      const { sql } = await import("@codemirror/lang-sql");
+      return sql();
+    },
+  }),
+);
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { syntaxHighlighting, HighlightStyle, bracketMatching } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
@@ -169,60 +188,59 @@ const editorTheme = EditorView.theme({
     border: "none !important",
   },
 
-  // ── db block (stage 5 — card frame w/ cursor-reveal) ──
-  // Two modes:
-  //   (a) Reading (cursor outside): fences are replaced by a header widget
-  //       (toolbar) + a zero-height closing placeholder. Body lines draw
-  //       the left/right sides and the open fence widget + last body line
-  //       draw the rounded caps.
-  //   (b) Editing (cursor inside): fence text is revealed with a subtle
-  //       style; body lines keep light left/right borders so the user
-  //       sees where the block is; toolbar docks as a small inline widget.
+  // ── db block (stage 5 — unified slab card) ──
+  //
+  // The 3 widget slots (toolbar / result / statusbar) plus the body lines
+  // are rendered as separate CM6 decorations but CSS stitches them into
+  // one continuous card: outer rounded border, interior dividers, no
+  // gaps between slots.
+  //
+  // Tones (top → bottom):
+  //   header     blackAlpha.200    — toolbar bar, tint to stand out
+  //   body       bg.canvas         — SQL, the "paper" where you write
+  //   result     bg.panel / bg     — output, slightly different bg
+  //   statusbar  blackAlpha.100    — footer, subtle
+  //
+  // Reading mode: fence lines are replaced by widgets.
+  // Editing mode: fence lines show up as subtle text; toolbar inline is
+  // hidden (spec §5.2), body keeps borders.
+
   ".cm-db-fence-line": {
     color: "var(--chakra-colors-fg-muted)",
     fontFamily: "var(--chakra-fonts-mono)",
     fontSize: "11px",
     opacity: 0.55,
     position: "relative",
-    paddingRight: "320px", // reserve space for inline toolbar stub
     borderLeft: "1px solid var(--chakra-colors-border)",
     borderRight: "1px solid var(--chakra-colors-border)",
-  },
-  ".cm-db-fence-line-open": {
-    borderTop: "1px solid var(--chakra-colors-border)",
-    borderTopLeftRadius: "6px",
-    borderTopRightRadius: "6px",
-  },
-  ".cm-db-fence-line-close": {
-    borderBottom: "1px solid var(--chakra-colors-border)",
-    borderBottomLeftRadius: "6px",
-    borderBottomRightRadius: "6px",
-  },
-  ".cm-db-body-line": {
-    fontFamily: "var(--chakra-fonts-mono)",
     background: "var(--chakra-colors-bg-subtle)",
-    borderLeft: "1px solid var(--chakra-colors-border)",
-    borderRight: "1px solid var(--chakra-colors-border)",
     paddingLeft: "12px",
     paddingRight: "12px",
   },
+  ".cm-db-fence-line-open": {
+    borderTop: "1px solid var(--chakra-colors-border)",
+    borderTopLeftRadius: "8px",
+    borderTopRightRadius: "8px",
+    paddingTop: "4px",
+  },
+  ".cm-db-fence-line-close": {
+    paddingBottom: "4px",
+    borderBottom: "1px solid var(--chakra-colors-border)",
+  },
+
+  ".cm-db-body-line": {
+    fontFamily: "var(--chakra-fonts-mono)",
+    background: "var(--chakra-colors-bg-canvas, var(--chakra-colors-bg))",
+    borderLeft: "1px solid var(--chakra-colors-border)",
+    borderRight: "1px solid var(--chakra-colors-border)",
+    paddingLeft: "16px",
+    paddingRight: "16px",
+  },
   ".cm-db-body-line-first": {
-    // When the fence is hidden (reading mode), the first body line owns
-    // the top border. The toolbar widget sits right above and already has
-    // rounded top corners, so we DON'T round here — only the sides.
+    paddingTop: "8px",
   },
   ".cm-db-body-line-last": {
-    borderBottom: "1px solid var(--chakra-colors-border)",
-    borderBottomLeftRadius: "6px",
-    borderBottomRightRadius: "6px",
-    paddingBottom: "2px",
-  },
-  // Editing mode: the fence line handles top/bottom rounding. Remove the
-  // body first/last rounding so the borders don't double up.
-  ".cm-db-body-editing.cm-db-body-line-last": {
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
-    borderBottom: "none",
+    paddingBottom: "8px",
   },
   // Placeholder left in place of the close fence when reading.
   ".cm-db-fence-hidden": {
@@ -231,48 +249,45 @@ const editorTheme = EditorView.theme({
     padding: 0,
   },
 
-  // ── Portal containers — React mounts into these ──
-  // Toolbar has two modes: (a) block-level header widget when reading,
-  // (b) inline overlay when editing. The widget class is the same
-  // (cm-db-toolbar-portal); the container's parent differs, so CSS
-  // selectors below branch on structural context.
+  // ── Toolbar widget (card header) ──
+  // In reading mode, renders as a block widget at the open-fence
+  // position. The inline variant (editing mode) is suppressed entirely
+  // in JS (see cm-db-block.tsx).
   ".cm-db-toolbar-portal": {
-    // Reading-mode: renders as a block widget at the open-fence position.
-    // Chakra components inside own the look; here we just give it the
-    // card's rounded top edge + top/left/right border so it visually
-    // continues into the body below.
     display: "block",
-    background: "var(--chakra-colors-bg)",
-    border: "1px solid var(--chakra-colors-border)",
-    borderBottom: "none",
-    borderTopLeftRadius: "6px",
-    borderTopRightRadius: "6px",
-    padding: "4px 8px",
+    background: "var(--chakra-colors-blackAlpha-200)",
+    borderLeft: "1px solid var(--chakra-colors-border)",
+    borderRight: "1px solid var(--chakra-colors-border)",
+    borderTop: "1px solid var(--chakra-colors-border)",
+    borderTopLeftRadius: "8px",
+    borderTopRightRadius: "8px",
+    padding: "6px 12px",
     userSelect: "none",
     pointerEvents: "auto",
   },
-  // Inline variant (editing): CM6 renders these inside the line. Pull it
-  // to the right so the fence text stays readable on the left.
-  ".cm-db-fence-line .cm-db-toolbar-portal": {
-    position: "absolute",
-    top: "2px",
-    right: "8px",
-    display: "inline-block",
-    border: "1px solid var(--chakra-colors-border)",
-    borderRadius: "4px",
-    padding: "2px 6px",
-  },
+  // (No .cm-db-fence-line nested selector: the inline toolbar is gone.)
+
   ".cm-db-result-portal": {
     overflowAnchor: "none",
-    margin: "6px 0 2px",
+    margin: 0,
     background: "var(--chakra-colors-bg)",
-    border: "1px solid var(--chakra-colors-border)",
-    borderRadius: "6px",
+    borderLeft: "1px solid var(--chakra-colors-border)",
+    borderRight: "1px solid var(--chakra-colors-border)",
+    borderTop: "1px solid var(--chakra-colors-border)",
     minHeight: "40px",
   },
+
   ".cm-db-statusbar-portal": {
-    margin: "2px 0 12px",
-    minHeight: "16px",
+    margin: "0 0 12px 0",
+    padding: "4px 12px",
+    background: "var(--chakra-colors-blackAlpha-100)",
+    border: "1px solid var(--chakra-colors-border)",
+    borderTop: "1px solid var(--chakra-colors-border)",
+    borderBottomLeftRadius: "8px",
+    borderBottomRightRadius: "8px",
+    minHeight: "20px",
+    fontFamily: "var(--chakra-fonts-mono)",
+    fontSize: "11px",
   },
 }, { dark: true });
 
@@ -308,7 +323,10 @@ export function MarkdownEditor({
   // Stable extensions (vim toggled via compartment, not via extensions prop)
   const extensions = useMemo(() => [
     vimCompartment.of([]),
-    markdown({ base: markdownLanguage, codeLanguages: cmLanguages }),
+    markdown({
+      base: markdownLanguage,
+      codeLanguages: [...dbSqlLanguages, ...cmLanguages],
+    }),
     syntaxHighlighting(markdownHighlightStyle),
     bracketMatching(),
     closeBrackets(),
