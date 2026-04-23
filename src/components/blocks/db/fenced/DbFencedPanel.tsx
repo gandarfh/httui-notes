@@ -82,6 +82,9 @@ import { useEnvironmentStore } from "@/stores/environment";
 
 interface DbFencedPanelProps {
   blockId: string;
+  /** Current block metadata — read from the registry each render.
+   *  Passed separately from `entry` so React.memo can detect updates. */
+  block: DbPortalEntry["block"];
   entry: DbPortalEntry;
   view: EditorView;
   filePath: string;
@@ -137,11 +140,11 @@ function resolveConnection(
 
 export const DbFencedPanel = memo(function DbFencedPanel({
   blockId,
+  block,
   entry,
   view,
   filePath,
 }: DbFencedPanelProps) {
-  const block = entry.block;
   const [executionState, setExecutionState] =
     useState<ExecutionState>("idle");
   const [response, setResponse] = useState<DbResponse | null>(null);

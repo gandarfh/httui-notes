@@ -209,18 +209,35 @@ function unregisterSlot(blockId: string, slot: DbWidgetSlot) {
 }
 
 /**
- * Build a block id. Prefers the alias (stable as users insert / reorder
- * blocks) and falls back to the document index for blocks without an alias.
- *
- * Colliding aliases (two blocks with the same alias in one doc) end up
- * sharing an id — which is the existing behavior: the first one wins for
- * refs anyway, and the visual panel state just collapses onto a single
- * block. Users see a warning in the reference system if this happens.
+ * Build a block id. Index-based so metadata edits (especially the alias)
+ * don't swap the id under us — the React panel state must stay bound to
+ * the same block while the user is editing it. Insert-above reordering
+ * does migrate state, which is a lesser evil than losing drawer focus
+ * on every keystroke. A future stable-id-in-info-string proposal can
+ * fix the reorder case without reintroducing the edit-swap.
  */
-function blockIdOf(block: DbFencedBlock, index: number): string {
-  const alias = block.metadata.alias;
-  if (alias) return `db_alias_${alias}`;
+function blockIdOf(_block: DbFencedBlock, index: number): string {
   return `db_idx_${index}`;
+}
+
+/**
+ * Sync the `block` field of every registry entry with the latest scan.
+ * Called whenever cachedBlocks is recomputed so the React panel sees
+ * fresh metadata/body/range through `entry.block`. Widgets whose `eq`
+ * returns true are never re-added via toDOM/updateDOM, so without this
+ * sync the entry would hold a stale block reference.
+ */
+function syncRegistryBlocks(blocks: DbFencedBlock[]): void {
+  let mutated = false;
+  for (let i = 0; i < blocks.length; i++) {
+    const id = blockIdOf(blocks[i], i);
+    const entry = entries.get(id);
+    if (entry && entry.block !== blocks[i]) {
+      entry.block = blocks[i];
+      mutated = true;
+    }
+  }
+  if (mutated) notify();
 }
 
 // ───── Widgets (register-only — React mounts from DbWidgetPortals) ─────
@@ -581,6 +598,7 @@ export function createDbBlockExtension(): Extension {
     create(state) {
       cachedBlocks = findDbBlocks(state.doc);
       lastBlockCount = cachedBlocks.length;
+      syncRegistryBlocks(cachedBlocks);
       return buildDbDecorations(state, cachedBlocks);
     },
     update(decos, tr) {
@@ -592,6 +610,9 @@ export function createDbBlockExtension(): Extension {
           lastBlockCount = newCount;
         }
         cachedBlocks = findDbBlocks(tr.state.doc);
+        // Keep the portal registry's `entry.block` in sync so the React
+        // panel's metadata/body reflect the doc edit immediately.
+        syncRegistryBlocks(cachedBlocks);
         return buildDbDecorations(tr.state, cachedBlocks);
       }
       if (tr.selection) {

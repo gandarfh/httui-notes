@@ -42,6 +42,10 @@ export function DbWidgetPortals({ view, filePath }: DbWidgetPortalsProps) {
         <DbFencedPanel
           key={blockId}
           blockId={blockId}
+          // Pass block separately so React.memo detects when the scanner
+          // updates it (entry is a stable ref, but entry.block swaps on
+          // every doc edit via syncRegistryBlocks).
+          block={entry.block}
           entry={entry}
           view={view}
           filePath={filePath}
