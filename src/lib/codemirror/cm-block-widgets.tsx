@@ -219,62 +219,124 @@ export function createBlockWidgetPlugin(counterpartMarkdown: string | undefined,
   });
 }
 
-// ── Editor placeholders (lightweight, no React) ─────────────────────────────
-
-// Height cache — stores last measured height per block ID.
-// Used by PlaceholderWidget.estimatedHeight so CM6 predicts scroll position correctly.
-const heightCache = new Map<string, number>();
-const DEFAULT_PLACEHOLDER_HEIGHT = 200;
-
-export function setCachedHeight(id: string, h: number) { heightCache.set(id, h); }
-export function getCachedHeight(id: string): number { return heightCache.get(id) ?? DEFAULT_PLACEHOLDER_HEIGHT; }
-export function clearHeightCache() { heightCache.clear(); }
-
-// Placeholder element registry — avoids querySelector for direct DOM access.
-const placeholderElements = new Map<string, HTMLElement>();
-export function getPlaceholderElement(id: string): HTMLElement | undefined {
-  return placeholderElements.get(id);
-}
+// ── Portal widgets (React renders directly into these divs) ──────────────────
 
 /**
- * Lightweight placeholder widget — just a div with a height.
- * Reserves space in the editor where the real widget (rendered via Portal)
- * will be positioned on top.
+ * Widget registry — maps blockId → { element, block }.
+ * React renders into these divs via createPortal (in WidgetPortals component).
+ * CM6 owns the div and measures its height naturally — no height cache needed.
  */
-class PlaceholderWidget extends WidgetType {
-  constructor(readonly blockId: string) {
+const widgetContainers = new Map<string, { element: HTMLElement; block: FencedBlock }>();
+let portalVersion = 0;
+const portalListeners = new Set<() => void>();
+
+function notifyPortals() {
+  portalVersion++;
+  for (const fn of portalListeners) fn();
+}
+
+export function subscribeToPortals(cb: () => void) {
+  portalListeners.add(cb);
+  return () => { portalListeners.delete(cb); };
+}
+export function getPortalVersion() { return portalVersion; }
+export function getWidgetContainers() { return widgetContainers; }
+
+/**
+ * Portal widget — a div in CM6's document flow.
+ * React renders block components (HttpBlockView, DbBlockView, etc.)
+ * directly into this div via createPortal. CM6 measures height naturally.
+ * No overlay, no absolute positioning, no height cache.
+ */
+// Height cache keyed by blockId — stores last measured DOM height so CM6's
+// estimatedHeight returns a stable value even across widget rebuilds.
+// Without this, CM6's scroll anchoring calculates wrong positions when
+// widget content changes async (e.g., query results arrive after execution).
+const widgetHeights = new Map<string, number>();
+
+class PortalWidget extends WidgetType {
+  constructor(readonly blockId: string, readonly block: FencedBlock) {
     super();
   }
 
   toDOM(): HTMLElement {
+    // Outer div — CM6 sees this. Has min-height to prevent shrinkage during
+    // React transient re-renders (which would break CM6 scroll anchoring).
     const div = document.createElement("div");
-    div.className = "cm-block-placeholder";
-    div.dataset.blockId = this.blockId;
-    div.style.height = `${getCachedHeight(this.blockId)}px`;
-    div.style.width = "100%";
-    placeholderElements.set(this.blockId, div);
+    div.className = "cm-block-portal";
+    const saved = widgetHeights.get(this.blockId);
+    if (saved) div.style.minHeight = `${saved}px`;
+
+    // Inner div — React renders here. Its natural height is observed to
+    // drive the outer div's min-height. This separation lets us shrink
+    // legitimately (toggle edit/split) without the min-height feedback loop.
+    const inner = document.createElement("div");
+    inner.className = "cm-block-portal-inner";
+    div.appendChild(inner);
+
+    widgetContainers.set(this.blockId, { element: inner, block: this.block });
+
+    let shrinkRaf1 = 0;
+    let shrinkRaf2 = 0;
+    const ro = new ResizeObserver(() => {
+      const h = inner.offsetHeight;
+      if (h <= 0) return;
+      const prev = widgetHeights.get(this.blockId) ?? 0;
+      if (h > prev) {
+        // Grow immediately
+        widgetHeights.set(this.blockId, h);
+        div.style.minHeight = `${h}px`;
+        cancelAnimationFrame(shrinkRaf1);
+        cancelAnimationFrame(shrinkRaf2);
+      } else if (h < prev) {
+        // Shrink after layout stabilizes (~2 rAFs absorb React transients)
+        cancelAnimationFrame(shrinkRaf1);
+        cancelAnimationFrame(shrinkRaf2);
+        shrinkRaf1 = requestAnimationFrame(() => {
+          shrinkRaf2 = requestAnimationFrame(() => {
+            const current = inner.offsetHeight;
+            if (current > 0 && current < (widgetHeights.get(this.blockId) ?? 0)) {
+              widgetHeights.set(this.blockId, current);
+              div.style.minHeight = `${current}px`;
+            }
+          });
+        });
+      }
+    });
+    ro.observe(inner);
+    (div as HTMLElement & { __ro?: ResizeObserver }).__ro = ro;
+
+    notifyPortals();
     return div;
   }
 
   updateDOM(dom: HTMLElement): boolean {
-    // Re-register in case a prior destroy() cleared it
-    placeholderElements.set(this.blockId, dom);
+    widgetContainers.set(this.blockId, { element: dom, block: this.block });
+    notifyPortals();
     return true;
   }
 
   destroy(dom: HTMLElement): void {
-    // Only delete if this is still the registered element (avoid clearing a newer registration)
-    if (placeholderElements.get(this.blockId) === dom) {
-      placeholderElements.delete(this.blockId);
+    if (dom.offsetHeight > 0) {
+      widgetHeights.set(this.blockId, dom.offsetHeight);
     }
+    const ro = (dom as HTMLElement & { __ro?: ResizeObserver }).__ro;
+    ro?.disconnect();
+    widgetContainers.delete(this.blockId);
+    notifyPortals();
   }
 
-  eq(other: PlaceholderWidget): boolean {
+  eq(other: PortalWidget): boolean {
     return this.blockId === other.blockId;
   }
 
   get estimatedHeight(): number {
-    return getCachedHeight(this.blockId);
+    // Read actual DOM height if widget is currently rendered
+    const entry = widgetContainers.get(this.blockId);
+    if (entry?.element.offsetHeight) {
+      return entry.element.offsetHeight;
+    }
+    return widgetHeights.get(this.blockId) ?? 100;
   }
 
   ignoreEvent(): boolean {
@@ -295,12 +357,12 @@ function buildEditorDecorations(state: import("@codemirror/state").EditorState):
 
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i];
-    // Placeholder widget — reserves space, positioned before the hidden lines
+    // Portal widget — React renders block UI directly into this div
     decorations.push({
       from: block.from,
       to: block.from,
       deco: Decoration.widget({
-        widget: new PlaceholderWidget(getBlockId(block, i)),
+        widget: new PortalWidget(getBlockId(block, i), block),
         block: true,
         side: -1,
       }),
@@ -339,7 +401,7 @@ function countBlocks(doc: CMText): number {
 
 /**
  * Create editor block extension — placeholders + hidden lines + atomic ranges.
- * Actual widget rendering is done by BlockWidgetOverlay via React Portal.
+ * Actual widget rendering is done by WidgetPortals via React createPortal into PortalWidget divs.
  */
 export function createEditorBlockWidgets() {
   let lastBlockCount = 0;
