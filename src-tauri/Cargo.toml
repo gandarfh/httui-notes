@@ -27,6 +27,8 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 regex = "1"
 hmac = "0.12"
 sha2 = "0.10"
+tokio-util = "0.7"
+async-trait = "0.1"
 
 [dev-dependencies]
 tempfile = "3"

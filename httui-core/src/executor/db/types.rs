@@ -75,6 +75,24 @@ pub struct DbStats {
     pub rows_streamed: Option<u64>,
 }
 
+/// Streaming chunk emitted to a `tauri::Channel<DbChunk>` during execution.
+///
+/// Stage 3 ships the minimal set of variants needed for cancel-aware
+/// execution. Richer variants (Rows, Stats, Message) land with B6
+/// (row streaming) once the executor consumes `fetch_size` incrementally
+/// instead of buffering.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum DbChunk {
+    /// Terminal chunk containing the full response. Consumer should close
+    /// the subscription after receiving this.
+    Complete(DbResponse),
+    /// Terminal chunk indicating the execution failed before completing.
+    Error { message: String },
+    /// Terminal chunk indicating the execution was cancelled.
+    Cancelled,
+}
+
 impl DbResponse {
     /// Build a single-select-result response (the common case today).
     pub fn single_select(
@@ -179,6 +197,30 @@ mod tests {
         let resp = DbResponse::single_mutation(1, 1);
         let s = serde_json::to_string(&resp).unwrap();
         assert!(!s.contains("\"plan\""));
+    }
+
+    #[test]
+    fn db_chunk_complete_serializes_inline() {
+        let chunk = DbChunk::Complete(DbResponse::single_mutation(2, 4));
+        let json = serde_json::to_value(&chunk).unwrap();
+        assert_eq!(json["kind"], "complete");
+        assert_eq!(json["results"][0]["kind"], "mutation");
+        assert_eq!(json["results"][0]["rows_affected"], 2);
+        assert_eq!(json["stats"]["elapsed_ms"], 4);
+    }
+
+    #[test]
+    fn db_chunk_error_and_cancelled_serialize() {
+        let err = DbChunk::Error {
+            message: "boom".into(),
+        };
+        let err_json = serde_json::to_value(&err).unwrap();
+        assert_eq!(err_json["kind"], "error");
+        assert_eq!(err_json["message"], "boom");
+
+        let cancelled = DbChunk::Cancelled;
+        let cancelled_json = serde_json::to_value(&cancelled).unwrap();
+        assert_eq!(cancelled_json["kind"], "cancelled");
     }
 
     #[test]

@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use std::sync::Arc;
 use std::time::Instant;
+use tokio_util::sync::CancellationToken;
 
 use self::types::DbResponse;
 use super::{BlockResult, Executor, ExecutorError};
@@ -37,38 +38,20 @@ impl DbExecutor {
     pub fn new(conn_manager: Arc<PoolManager>) -> Self {
         Self { conn_manager }
     }
-}
 
-#[async_trait]
-impl Executor for DbExecutor {
-    fn block_type(&self) -> &str {
-        "db"
-    }
-
-    async fn validate(&self, params: &serde_json::Value) -> Result<(), String> {
-        let p: DbParams =
-            serde_json::from_value(params.clone()).map_err(|e| format!("Invalid params: {e}"))?;
-
-        if p.connection_id.trim().is_empty() {
-            return Err("connection_id is required".to_string());
-        }
-        if p.query.trim().is_empty() {
-            return Err("query is required".to_string());
-        }
-        if p.fetch_size == 0 {
-            return Err("fetch_size must be >= 1".to_string());
-        }
-        if p.fetch_size > MAX_FETCH_SIZE {
-            return Err(format!("fetch_size must be <= {MAX_FETCH_SIZE}"));
-        }
-        if p.offset > MAX_OFFSET {
-            return Err(format!("offset must be <= {MAX_OFFSET}"));
-        }
-
-        Ok(())
-    }
-
-    async fn execute(&self, params: serde_json::Value) -> Result<BlockResult, ExecutorError> {
+    /// Cancel-aware execution returning the typed response directly.
+    ///
+    /// The `cancel` token is observed with `tokio::select!`. When it fires,
+    /// the in-flight driver future is dropped and the caller gets a
+    /// cancellation error. Note that `sqlx` does not currently propagate
+    /// cancellation to the server for all drivers — for Postgres it works
+    /// well, for MySQL/SQLite a running query may still run to completion
+    /// on the server side while we release the pooled connection.
+    pub async fn execute_with_cancel(
+        &self,
+        params: serde_json::Value,
+        cancel: CancellationToken,
+    ) -> Result<DbResponse, ExecutorError> {
         let p: DbParams = serde_json::from_value(params)
             .map_err(|e| ExecutorError(format!("Invalid params: {e}")))?;
 
@@ -91,13 +74,24 @@ impl Executor for DbExecutor {
         let start = Instant::now();
         let timeout = std::time::Duration::from_millis(effective_timeout_ms);
 
-        let result = tokio::time::timeout(
-            timeout,
-            pool.execute_query(&p.query, &p.bind_values, p.offset, p.fetch_size),
-        )
-        .await
-        .map_err(|_| ExecutorError(format!("Query timed out after {}ms", effective_timeout_ms)))?
-        .map_err(ExecutorError);
+        let run = pool.execute_query(&p.query, &p.bind_values, p.offset, p.fetch_size);
+        let timed = tokio::time::timeout(timeout, run);
+
+        let result = tokio::select! {
+            biased;
+            _ = cancel.cancelled() => {
+                Err(ExecutorError("Query cancelled".to_string()))
+            }
+            res = timed => {
+                match res {
+                    Err(_) => Err(ExecutorError(format!(
+                        "Query timed out after {effective_timeout_ms}ms"
+                    ))),
+                    Ok(Err(e)) => Err(ExecutorError(e)),
+                    Ok(Ok(r)) => Ok(r),
+                }
+            }
+        };
 
         let duration_ms = start.elapsed().as_millis() as u64;
 
@@ -138,6 +132,47 @@ impl Executor for DbExecutor {
             DbResponse::single_mutation(result.rows_affected.unwrap_or(0), duration_ms)
         };
 
+        Ok(response)
+    }
+}
+
+#[async_trait]
+impl Executor for DbExecutor {
+    fn block_type(&self) -> &str {
+        "db"
+    }
+
+    async fn validate(&self, params: &serde_json::Value) -> Result<(), String> {
+        let p: DbParams =
+            serde_json::from_value(params.clone()).map_err(|e| format!("Invalid params: {e}"))?;
+
+        if p.connection_id.trim().is_empty() {
+            return Err("connection_id is required".to_string());
+        }
+        if p.query.trim().is_empty() {
+            return Err("query is required".to_string());
+        }
+        if p.fetch_size == 0 {
+            return Err("fetch_size must be >= 1".to_string());
+        }
+        if p.fetch_size > MAX_FETCH_SIZE {
+            return Err(format!("fetch_size must be <= {MAX_FETCH_SIZE}"));
+        }
+        if p.offset > MAX_OFFSET {
+            return Err(format!("offset must be <= {MAX_OFFSET}"));
+        }
+
+        Ok(())
+    }
+
+    async fn execute(&self, params: serde_json::Value) -> Result<BlockResult, ExecutorError> {
+        // Fresh token that never fires — preserves pre-stage-3 behavior for
+        // callers that don't care about cancellation.
+        let response = self
+            .execute_with_cancel(params, CancellationToken::new())
+            .await?;
+
+        let duration_ms = response.stats.elapsed_ms;
         let data = serde_json::to_value(&response).map_err(|e| {
             ExecutorError(format!("Failed to serialize DB response: {e}"))
         })?;
@@ -437,5 +472,130 @@ mod tests {
             result.data["results"][0]["rows"].as_array().unwrap().len(),
             0
         );
+    }
+
+    // ───── Stage 3: cancel-aware execution ─────
+
+    #[tokio::test]
+    async fn test_execute_with_cancel_completes_when_not_cancelled() {
+        let (manager, conn_id) = setup_test_env().await;
+        let pool = manager.get_pool(&conn_id).await.unwrap();
+        match pool.as_ref() {
+            crate::db::connections::DatabasePool::Sqlite(p) => {
+                sqlx::query("CREATE TABLE t (n INTEGER)")
+                    .execute(p)
+                    .await
+                    .unwrap();
+                sqlx::query("INSERT INTO t VALUES (1), (2)")
+                    .execute(p)
+                    .await
+                    .unwrap();
+            }
+            _ => panic!("expected SQLite pool"),
+        }
+
+        let executor = DbExecutor::new(manager);
+        let token = CancellationToken::new();
+        let resp = executor
+            .execute_with_cancel(
+                serde_json::json!({
+                    "connection_id": conn_id,
+                    "query": "SELECT * FROM t",
+                }),
+                token,
+            )
+            .await
+            .unwrap();
+
+        // Fresh token never fires → execution completes normally.
+        assert_eq!(resp.results.len(), 1);
+        match &resp.results[0] {
+            crate::executor::db::types::DbResult::Select { rows, .. } => {
+                assert_eq!(rows.len(), 2);
+            }
+            other => panic!("expected Select, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_execute_with_cancel_returns_error_when_pre_cancelled() {
+        let (manager, conn_id) = setup_test_env().await;
+        let pool = manager.get_pool(&conn_id).await.unwrap();
+        match pool.as_ref() {
+            crate::db::connections::DatabasePool::Sqlite(p) => {
+                sqlx::query("CREATE TABLE t (n INTEGER)")
+                    .execute(p)
+                    .await
+                    .unwrap();
+            }
+            _ => panic!("expected SQLite pool"),
+        }
+
+        let executor = DbExecutor::new(manager);
+        let token = CancellationToken::new();
+        // Cancel before calling — the select! branch with `biased` will
+        // observe the cancelled token immediately.
+        token.cancel();
+
+        let err = executor
+            .execute_with_cancel(
+                serde_json::json!({
+                    "connection_id": conn_id,
+                    "query": "SELECT 1",
+                }),
+                token,
+            )
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.0, "Query cancelled");
+    }
+
+    #[tokio::test]
+    async fn test_execute_with_cancel_during_query() {
+        let (manager, conn_id) = setup_test_env().await;
+        let pool = manager.get_pool(&conn_id).await.unwrap();
+        match pool.as_ref() {
+            crate::db::connections::DatabasePool::Sqlite(p) => {
+                sqlx::query("CREATE TABLE t (n INTEGER)")
+                    .execute(p)
+                    .await
+                    .unwrap();
+            }
+            _ => panic!("expected SQLite pool"),
+        }
+
+        let executor = Arc::new(DbExecutor::new(manager));
+        let token = CancellationToken::new();
+        let cancel_handle = token.clone();
+
+        // Spawn the executor; fire cancel shortly after.
+        let exec_fut = {
+            let executor = executor.clone();
+            tokio::spawn(async move {
+                executor
+                    .execute_with_cancel(
+                        serde_json::json!({
+                            "connection_id": conn_id,
+                            "query": "SELECT 1",
+                        }),
+                        token,
+                    )
+                    .await
+            })
+        };
+
+        // Yield then cancel. SQLite in-memory queries are so fast they
+        // typically finish first, so accept either outcome — what matters
+        // is that no panic and no deadlock occurs, and if cancelled the
+        // error message matches.
+        tokio::task::yield_now().await;
+        cancel_handle.cancel();
+
+        let result = exec_fut.await.expect("task joined");
+        match result {
+            Ok(resp) => assert_eq!(resp.results.len(), 1),
+            Err(e) => assert_eq!(e.0, "Query cancelled"),
+        }
     }
 }

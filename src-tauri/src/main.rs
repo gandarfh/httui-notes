@@ -53,6 +53,28 @@ async fn execute_block(
         .map_err(|e| e.to_string())
 }
 
+/// Newtype wrapper letting the registry hold `DbExecutor` via `Arc` so the
+/// same instance can also back the streamed/cancel-aware Tauri command.
+struct SharedDbExecutor(Arc<httui_notes::executor::db::DbExecutor>);
+
+#[async_trait::async_trait]
+impl httui_notes::executor::Executor for SharedDbExecutor {
+    fn block_type(&self) -> &str {
+        self.0.block_type()
+    }
+
+    async fn validate(&self, params: &serde_json::Value) -> Result<(), String> {
+        self.0.validate(params).await
+    }
+
+    async fn execute(
+        &self,
+        params: serde_json::Value,
+    ) -> Result<httui_notes::executor::BlockResult, httui_notes::executor::ExecutorError> {
+        self.0.execute(params).await
+    }
+}
+
 // --- Block result cache commands ---
 
 #[tauri::command]
@@ -599,14 +621,20 @@ fn main() {
                 }
             });
 
-            // Executor registry
+            // Executor registry. DbExecutor is held as Arc<…> so the
+            // cancel-aware streamed command (see src/executions.rs) can
+            // share a single instance with the legacy `execute_block`.
+            let db_executor = Arc::new(
+                httui_notes::executor::db::DbExecutor::new(conn_manager),
+            );
+            app.manage(db_executor.clone());
+            app.manage(httui_notes::executions::ExecutionRegistry::new());
+
             let mut executor_registry = httui_notes::executor::ExecutorRegistry::new();
             executor_registry.register(Box::new(
                 httui_notes::executor::http::HttpExecutor::new(),
             ));
-            executor_registry.register(Box::new(
-                httui_notes::executor::db::DbExecutor::new(conn_manager),
-            ));
+            executor_registry.register(Box::new(SharedDbExecutor(db_executor)));
             executor_registry.register(Box::new(
                 httui_notes::executor::e2e::E2eExecutor::new(),
             ));
@@ -632,6 +660,8 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             execute_block,
+            httui_notes::executions::execute_db_streamed,
+            httui_notes::executions::cancel_block,
             get_block_result,
             save_block_result,
             compute_block_hash,
