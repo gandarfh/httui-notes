@@ -780,9 +780,12 @@ pub struct QueryResult {
     pub is_select: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ColumnInfo {
     pub name: String,
+    /// Driver-reported type name (e.g. "INTEGER", "int4"). Renamed on the
+    /// wire to `type` so TS consumers can write `col.type` ergonomically.
+    #[serde(rename = "type")]
     pub type_name: String,
 }
 

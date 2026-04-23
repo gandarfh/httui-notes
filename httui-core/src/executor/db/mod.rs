@@ -1,8 +1,11 @@
+pub mod types;
+
 use async_trait::async_trait;
 use serde::Deserialize;
 use std::sync::Arc;
 use std::time::Instant;
 
+use self::types::DbResponse;
 use super::{BlockResult, Executor, ExecutorError};
 use crate::db::connections::PoolManager;
 
@@ -113,21 +116,10 @@ impl Executor for DbExecutor {
 
         let result = result?;
 
-        if result.is_select {
+        let response = if result.is_select {
             let col_names: Vec<&str> = result.columns.iter().map(|c| c.name.as_str()).collect();
 
-            let columns: Vec<serde_json::Value> = result
-                .columns
-                .iter()
-                .map(|c| {
-                    serde_json::json!({
-                        "name": c.name,
-                        "type": c.type_name,
-                    })
-                })
-                .collect();
-
-            // Convert rows from arrays to objects keyed by column name
+            // Convert rows from arrays to objects keyed by column name.
             let rows: Vec<serde_json::Value> = result
                 .rows
                 .iter()
@@ -141,24 +133,20 @@ impl Executor for DbExecutor {
                 })
                 .collect();
 
-            Ok(BlockResult {
-                status: "success".to_string(),
-                data: serde_json::json!({
-                    "columns": columns,
-                    "rows": rows,
-                    "has_more": result.has_more,
-                }),
-                duration_ms,
-            })
+            DbResponse::single_select(result.columns, rows, result.has_more, duration_ms)
         } else {
-            Ok(BlockResult {
-                status: "success".to_string(),
-                data: serde_json::json!({
-                    "rows_affected": result.rows_affected,
-                }),
-                duration_ms,
-            })
-        }
+            DbResponse::single_mutation(result.rows_affected.unwrap_or(0), duration_ms)
+        };
+
+        let data = serde_json::to_value(&response).map_err(|e| {
+            ExecutorError(format!("Failed to serialize DB response: {e}"))
+        })?;
+
+        Ok(BlockResult {
+            status: "success".to_string(),
+            data,
+            duration_ms,
+        })
     }
 }
 
@@ -282,9 +270,12 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.status, "success");
-        assert_eq!(result.data["has_more"], false);
-        assert_eq!(result.data["rows"].as_array().unwrap().len(), 2);
-        assert_eq!(result.data["columns"].as_array().unwrap().len(), 2);
+        let first = &result.data["results"][0];
+        assert_eq!(first["kind"], "select");
+        assert_eq!(first["has_more"], false);
+        assert_eq!(first["rows"].as_array().unwrap().len(), 2);
+        assert_eq!(first["columns"].as_array().unwrap().len(), 2);
+        assert!(result.data["stats"]["elapsed_ms"].is_number());
     }
 
     #[tokio::test]
@@ -312,7 +303,9 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.status, "success");
-        assert_eq!(result.data["rows_affected"], 2);
+        let first = &result.data["results"][0];
+        assert_eq!(first["kind"], "mutation");
+        assert_eq!(first["rows_affected"], 2);
     }
 
     #[tokio::test]
@@ -347,8 +340,10 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.status, "success");
-        assert_eq!(result.data["has_more"], false);
-        assert_eq!(result.data["rows"].as_array().unwrap().len(), 2);
+        let first = &result.data["results"][0];
+        assert_eq!(first["kind"], "select");
+        assert_eq!(first["has_more"], false);
+        assert_eq!(first["rows"].as_array().unwrap().len(), 2);
     }
 
     #[tokio::test]
@@ -386,8 +381,11 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(result.data["has_more"], true);
-        assert_eq!(result.data["rows"].as_array().unwrap().len(), 5);
+        assert_eq!(result.data["results"][0]["has_more"], true);
+        assert_eq!(
+            result.data["results"][0]["rows"].as_array().unwrap().len(),
+            5
+        );
 
         // Second fetch: offset=5, fetch_size=5 → 5 rows, has_more=true
         let result = executor
@@ -400,8 +398,11 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(result.data["has_more"], true);
-        assert_eq!(result.data["rows"].as_array().unwrap().len(), 5);
+        assert_eq!(result.data["results"][0]["has_more"], true);
+        assert_eq!(
+            result.data["results"][0]["rows"].as_array().unwrap().len(),
+            5
+        );
 
         // Third fetch: offset=10, fetch_size=5 → 5 rows, has_more=false
         let result = executor
@@ -414,8 +415,11 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(result.data["has_more"], false);
-        assert_eq!(result.data["rows"].as_array().unwrap().len(), 5);
+        assert_eq!(result.data["results"][0]["has_more"], false);
+        assert_eq!(
+            result.data["results"][0]["rows"].as_array().unwrap().len(),
+            5
+        );
 
         // Fourth fetch: offset=15, fetch_size=5 → 0 rows, has_more=false
         let result = executor
@@ -428,7 +432,10 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(result.data["has_more"], false);
-        assert_eq!(result.data["rows"].as_array().unwrap().len(), 0);
+        assert_eq!(result.data["results"][0]["has_more"], false);
+        assert_eq!(
+            result.data["results"][0]["rows"].as_array().unwrap().len(),
+            0
+        );
     }
 }

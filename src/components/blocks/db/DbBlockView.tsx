@@ -13,7 +13,7 @@ import { ExecutableBlockShell } from "../ExecutableBlockShell";
 import { useBlockContext } from "../BlockContext";
 import type { DisplayMode, ExecutionState } from "../ExecutableBlock";
 import type { CellValue, DbBlockData, DbResponse } from "./types";
-import { DEFAULT_DB_DATA, isSelectResponse } from "./types";
+import { DEFAULT_DB_DATA, firstSelectResult, normalizeDbResponse } from "./types";
 import { executeBlock, getBlockResult, saveBlockResult } from "@/lib/tauri/commands";
 import { hashBlockContent } from "@/lib/blocks/hash";
 import { resolveAllReferences } from "@/lib/blocks/references";
@@ -502,11 +502,14 @@ function DbOutput({
   }
   if (!response) return null;
 
-  if (isSelectResponse(response)) {
+  const first = response.results[0];
+  if (!first) return null;
+
+  if (first.kind === "select") {
     return (
       <Box p={2}>
         <ResultTable
-          columns={response.columns}
+          columns={first.columns}
           rows={accumulatedRows}
           durationMs={durationMs}
           hasMore={hasMore}
@@ -517,12 +520,20 @@ function DbOutput({
     );
   }
 
-  // Mutation response
+  if (first.kind === "mutation") {
+    return (
+      <Box p={3}>
+        <Badge colorPalette="blue" variant="subtle" fontFamily="mono" size="sm">
+          {first.rows_affected} rows affected
+        </Badge>
+      </Box>
+    );
+  }
+
+  // Error result
   return (
-    <Box p={3}>
-      <Badge colorPalette="blue" variant="subtle" fontFamily="mono" size="sm">
-        {response.rows_affected} rows affected
-      </Badge>
+    <Box p={3} color="red.500" fontSize="sm" fontFamily="mono">
+      {first.message}
     </Box>
   );
 }
@@ -615,11 +626,12 @@ function DbBlockViewInner({
         const cached = await getBlockResult(filePath, hash);
         if (cancelled) return;
         if (cached) {
-          const parsed = JSON.parse(cached.response);
-          setResponse(parsed);
-          if (isSelectResponse(parsed)) {
-            setAccumulatedRows(parsed.rows);
-            setHasMore(parsed.has_more ?? false);
+          const normalized = normalizeDbResponse(JSON.parse(cached.response));
+          setResponse(normalized);
+          const sel = firstSelectResult(normalized);
+          if (sel) {
+            setAccumulatedRows(sel.rows);
+            setHasMore(sel.has_more);
           }
           setError(null);
           updateAttributes({ executionState: "cached", displayMode: "split" });
@@ -705,14 +717,15 @@ function DbBlockViewInner({
 
         if (cancelled) return;
 
-        const resultData = result.data as unknown as DbResponse;
+        const resultData = normalizeDbResponse(result.data);
 
         if (isInitial) {
           setResponse(resultData);
           setLastDuration(result.duration_ms ?? null);
-          if (isSelectResponse(resultData)) {
-            setAccumulatedRows(resultData.rows);
-            setHasMore(resultData.has_more);
+          const sel = firstSelectResult(resultData);
+          if (sel) {
+            setAccumulatedRows(sel.rows);
+            setHasMore(sel.has_more);
           }
           updateAttributes({
             executionState:
@@ -730,14 +743,15 @@ function DbBlockViewInner({
               result.status,
               JSON.stringify(resultData),
               result.duration_ms,
-              isSelectResponse(resultData) ? resultData.rows.length : null,
+              sel ? sel.rows.length : null,
             );
           }
         } else {
           // Append rows from load-more
-          if (isSelectResponse(resultData)) {
-            setAccumulatedRows((prev) => [...prev, ...resultData.rows]);
-            setHasMore(resultData.has_more);
+          const sel = firstSelectResult(resultData);
+          if (sel) {
+            setAccumulatedRows((prev) => [...prev, ...sel.rows]);
+            setHasMore(sel.has_more);
           }
         }
       } catch (err) {

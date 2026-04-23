@@ -224,3 +224,150 @@ describe("resolveAllReferences", () => {
     expect(errors[0].message).toContain("no cached result");
   });
 });
+
+describe("db block reference shim (stage-2 response shape)", () => {
+  const stage2Response = {
+    results: [
+      {
+        kind: "select",
+        columns: [
+          { name: "id", type: "int" },
+          { name: "name", type: "text" },
+        ],
+        rows: [
+          { id: 7, name: "alice" },
+          { id: 8, name: "bob" },
+        ],
+        has_more: false,
+      },
+      {
+        kind: "mutation",
+        rows_affected: 3,
+      },
+    ],
+    messages: [],
+    stats: { elapsed_ms: 12 },
+  };
+
+  const dbBlock: BlockContext = {
+    alias: "q",
+    blockType: "db-postgres",
+    pos: 10,
+    content: "",
+    cachedResult: {
+      status: "success",
+      response: JSON.stringify(stage2Response),
+    },
+  };
+
+  it("legacy shim: {{alias.response.col}} resolves to results[0].rows[0][col]", () => {
+    const { resolved, errors } = resolveAllReferences(
+      "user={{q.response.name}}",
+      [dbBlock],
+      100,
+    );
+    expect(errors).toHaveLength(0);
+    expect(resolved).toBe("user=alice");
+  });
+
+  it("legacy shim works for numeric column values", () => {
+    const { resolved, errors } = resolveAllReferences(
+      "id={{q.response.id}}",
+      [dbBlock],
+      100,
+    );
+    expect(errors).toHaveLength(0);
+    expect(resolved).toBe("id=7");
+  });
+
+  it("explicit multi-result: {{alias.response.0.rows.0.name}}", () => {
+    const { resolved, errors } = resolveAllReferences(
+      "{{q.response.0.rows.0.name}}",
+      [dbBlock],
+      100,
+    );
+    expect(errors).toHaveLength(0);
+    expect(resolved).toBe("alice");
+  });
+
+  it("explicit multi-result: {{alias.response.1.rows_affected}} reaches mutation result", () => {
+    const { resolved, errors } = resolveAllReferences(
+      "{{q.response.1.rows_affected}}",
+      [dbBlock],
+      100,
+    );
+    expect(errors).toHaveLength(0);
+    expect(resolved).toBe("3");
+  });
+
+  it("explicit multi-result: second row via rows.1", () => {
+    const { resolved, errors } = resolveAllReferences(
+      "{{q.response.0.rows.1.name}}",
+      [dbBlock],
+      100,
+    );
+    expect(errors).toHaveLength(0);
+    expect(resolved).toBe("bob");
+  });
+
+  it("out-of-range index raises a meaningful error", () => {
+    const { errors } = resolveAllReferences(
+      "{{q.response.5.rows}}",
+      [dbBlock],
+      100,
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message.toLowerCase()).toMatch(/(not found|out of bounds|undefined)/);
+  });
+
+  it("legacy cache shape (pre-stage-2) still navigates directly", () => {
+    const legacyBlock: BlockContext = {
+      alias: "old",
+      blockType: "db",
+      pos: 5,
+      content: "",
+      cachedResult: {
+        status: "success",
+        response: JSON.stringify({
+          columns: [{ name: "id", type: "int" }],
+          rows: [{ id: 99 }],
+          has_more: false,
+        }),
+      },
+    };
+    // Pre-stage-2 cache exposes columns/rows at the top level; the shim
+    // only kicks in for the new shape, so legacy refs navigate raw.
+    const { resolved, errors } = resolveAllReferences(
+      "{{old.response.rows.0.id}}",
+      [legacyBlock],
+      100,
+    );
+    expect(errors).toHaveLength(0);
+    expect(resolved).toBe("99");
+  });
+
+  it("shim does not apply to non-db blocks", () => {
+    // An http block whose body happens to have a `results` field must NOT
+    // be treated as a db response.
+    const httpBlock: BlockContext = {
+      alias: "http",
+      blockType: "http",
+      pos: 5,
+      content: "",
+      cachedResult: {
+        status: "success",
+        response: JSON.stringify({
+          status_code: 200,
+          results: [{ id: 1 }],
+        }),
+      },
+    };
+    const { resolved, errors } = resolveAllReferences(
+      "{{http.response.results.0.id}}",
+      [httpBlock],
+      100,
+    );
+    expect(errors).toHaveLength(0);
+    expect(resolved).toBe("1");
+  });
+});

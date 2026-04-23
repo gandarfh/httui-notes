@@ -8,7 +8,11 @@ import { sql } from "@codemirror/lang-sql";
 import { json } from "@codemirror/lang-json";
 import { ExecutableBlockShell } from "../ExecutableBlockShell";
 import { ResultTable } from "../db/ResultTable";
-import { isSelectResponse, type DbResponse } from "../db/types";
+import {
+  firstSelectResult,
+  normalizeDbResponse,
+  type DbResponse,
+} from "../db/types";
 import { executeBlock } from "@/lib/tauri/commands";
 import type { DisplayMode, ExecutionState } from "../ExecutableBlock";
 
@@ -180,7 +184,7 @@ export const StandaloneBlock = memo(function StandaloneBlock({
       const params = buildParams(blockType, content);
       const result = await executeBlock(blockType, params);
       if (blockType === "db" && result.data) {
-        setDbResponse(result.data as unknown as DbResponse);
+        setDbResponse(normalizeDbResponse(result.data));
       } else {
         setRawResponse(JSON.stringify(result.data, null, 2));
       }
@@ -225,33 +229,64 @@ export const StandaloneBlock = memo(function StandaloneBlock({
             />
           </Box>
         }
-        outputSlot={
-          error ? (
-            <Box p={3} color="red.500" fontSize="sm" fontFamily="mono">
-              {error}
-            </Box>
-          ) : dbResponse && isSelectResponse(dbResponse) ? (
-            <Box p={2} display="flex" flexDirection="column" gap={1}>
-              <HStack gap={2}>
-                <Badge colorPalette="green" variant="subtle" fontFamily="mono" size="sm">
-                  {dbResponse.rows.length} rows
-                </Badge>
-              </HStack>
-              <ResultTable
-                columns={dbResponse.columns}
-                rows={dbResponse.rows}
-                hasMore={false}
-                loadingMore={false}
-                onLoadMore={() => {}}
-              />
-            </Box>
-          ) : dbResponse ? (
-            <Box p={3}>
-              <Badge colorPalette="blue" variant="subtle" fontFamily="mono" size="sm">
-                {(dbResponse as { rows_affected: number }).rows_affected} rows affected
-              </Badge>
-            </Box>
-          ) : rawResponse ? (
+        outputSlot={(() => {
+          if (error) {
+            return (
+              <Box p={3} color="red.500" fontSize="sm" fontFamily="mono">
+                {error}
+              </Box>
+            );
+          }
+          if (dbResponse) {
+            const sel = firstSelectResult(dbResponse);
+            if (sel) {
+              return (
+                <Box p={2} display="flex" flexDirection="column" gap={1}>
+                  <HStack gap={2}>
+                    <Badge
+                      colorPalette="green"
+                      variant="subtle"
+                      fontFamily="mono"
+                      size="sm"
+                    >
+                      {sel.rows.length} rows
+                    </Badge>
+                  </HStack>
+                  <ResultTable
+                    columns={sel.columns}
+                    rows={sel.rows}
+                    hasMore={false}
+                    loadingMore={false}
+                    onLoadMore={() => {}}
+                  />
+                </Box>
+              );
+            }
+            const first = dbResponse.results[0];
+            if (first && first.kind === "mutation") {
+              return (
+                <Box p={3}>
+                  <Badge
+                    colorPalette="blue"
+                    variant="subtle"
+                    fontFamily="mono"
+                    size="sm"
+                  >
+                    {first.rows_affected} rows affected
+                  </Badge>
+                </Box>
+              );
+            }
+            if (first && first.kind === "error") {
+              return (
+                <Box p={3} color="red.500" fontSize="sm" fontFamily="mono">
+                  {first.message}
+                </Box>
+              );
+            }
+            return null;
+          }
+          return rawResponse ? (
             <Box px={3} py={2}>
               <Box
                 bg="bg.subtle"
@@ -270,8 +305,8 @@ export const StandaloneBlock = memo(function StandaloneBlock({
                 {rawResponse}
               </Box>
             </Box>
-          ) : null
-        }
+          ) : null;
+        })()}
       />
     </Box>
   );

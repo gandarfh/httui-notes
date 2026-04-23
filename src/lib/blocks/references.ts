@@ -125,9 +125,20 @@ export function resolveReference(
     throw new Error(`Alias "${ref.alias}" has invalid cached response`);
   }
 
-  // Build the navigation context: { response: parsedData, status: "success" }
+  // For db blocks with the stage-2 response shape (`{results, messages,
+  // stats}`), wrap the response in a view that supports two access patterns:
+  //   - {{alias.response.0.rows.0.id}} → results[0].rows[0].id (explicit)
+  //   - {{alias.response.id}}          → results[0].rows[0].id (legacy shim)
+  // Pre-stage-2 cached shapes are navigated as-is so old caches keep working.
+  const isDbBlock =
+    block.blockType === "db" || block.blockType.startsWith("db-");
+  const responseValue =
+    isDbBlock && isNewDbResponseShape(responseData)
+      ? makeDbResponseView(responseData)
+      : responseData;
+
   const context: Record<string, unknown> = {
-    response: responseData,
+    response: responseValue,
     status: block.cachedResult.status,
   };
 
@@ -137,6 +148,61 @@ export function resolveReference(
     return JSON.stringify(value);
   }
   return String(value);
+}
+
+function isNewDbResponseShape(value: unknown): value is { results: unknown[] } {
+  if (!value || typeof value !== "object") return false;
+  const obj = value as { results?: unknown };
+  return Array.isArray(obj.results);
+}
+
+/**
+ * Build a Proxy view over a stage-2 `DbResponse`. Numeric keys index into
+ * `results`; non-numeric keys are delegated to `results[0].rows[0]` so
+ * pre-redesign refs like `{{alias.response.id}}` keep resolving.
+ */
+function makeDbResponseView(dbResponse: { results: unknown[] }): object {
+  const firstRow = (): Record<string, unknown> | null => {
+    const first = dbResponse.results[0];
+    if (!first || typeof first !== "object") return null;
+    const rows = (first as { rows?: unknown }).rows;
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+    const row = rows[0];
+    if (!row || typeof row !== "object") return null;
+    return row as Record<string, unknown>;
+  };
+
+  return new Proxy(
+    {},
+    {
+      has(_target, key) {
+        if (typeof key !== "string") return false;
+        if (/^\d+$/.test(key)) {
+          return parseInt(key, 10) < dbResponse.results.length;
+        }
+        const row = firstRow();
+        return row !== null && key in row;
+      },
+      get(_target, key) {
+        if (typeof key !== "string") return undefined;
+        if (/^\d+$/.test(key)) {
+          return dbResponse.results[parseInt(key, 10)];
+        }
+        const row = firstRow();
+        return row ? row[key] : undefined;
+      },
+      ownKeys(_target) {
+        const keys: string[] = [];
+        for (let i = 0; i < dbResponse.results.length; i++) keys.push(String(i));
+        const row = firstRow();
+        if (row) keys.push(...Object.keys(row));
+        return keys;
+      },
+      getOwnPropertyDescriptor(_target, _key) {
+        return { enumerable: true, configurable: true };
+      },
+    },
+  );
 }
 
 /**

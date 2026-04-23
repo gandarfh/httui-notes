@@ -16,4 +16,21 @@ registry.register({
 });
 
 export { DbBlock } from "./node";
-export type { DbBlockData, DbResponse, DbSelectResponse, DbMutationResponse } from "./types";
+export type {
+  DbBlockData,
+  DbResponse,
+  DbResult,
+  DbColumn,
+  DbRow,
+  DbMessage,
+  DbStats,
+  CellValue,
+} from "./types";
+export {
+  normalizeDbResponse,
+  firstSelectResult,
+  isSelectResult,
+  isMutationResult,
+  isErrorResult,
+  isDbResponse,
+} from "./types";
