@@ -10,15 +10,6 @@ import type { SyntaxNode } from "@lezer/common";
 
 // ── Widgets ──────────────────────────────────────────────────────────────────
 
-class HrWidget extends WidgetType {
-  toDOM() {
-    const hr = document.createElement("hr");
-    hr.className = "cm-hr-widget";
-    return hr;
-  }
-  eq() { return true; }
-}
-
 class BulletWidget extends WidgetType {
   toDOM() {
     const span = document.createElement("span");

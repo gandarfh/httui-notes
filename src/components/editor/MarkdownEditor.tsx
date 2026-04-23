@@ -87,9 +87,6 @@ const editorTheme = EditorView.theme({
   ".cm-content": {
     overflowAnchor: "none",
   },
-  ".cm-block-portal": {
-    overflowAnchor: "none",
-  },
   ".cm-gutters": {
     display: "none",
   },
@@ -137,6 +134,7 @@ const editorTheme = EditorView.theme({
     borderTop: "1px solid var(--chakra-colors-border)",
   },
   ".cm-block-portal": {
+    overflowAnchor: "none",
     width: "100%",
     background: "var(--chakra-colors-bg)",
     margin: "8px 0",
