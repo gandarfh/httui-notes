@@ -1,8 +1,8 @@
 import { HStack, Text, IconButton, Box, Badge, Menu, Portal } from "@chakra-ui/react";
 import { ColorModeButton } from "@/components/ui/color-mode";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
-import { useEnvironmentContext } from "@/contexts/EnvironmentContext";
-import { useSettingsContext } from "@/contexts/SettingsContext";
+import { useEnvironmentStore } from "@/stores/environment";
+import { useSettingsStore } from "@/stores/settings";
 import {
   LuMenu,
   LuSearch,
@@ -22,8 +22,11 @@ interface TopBarProps {
 
 export function TopBar({ sidebarOpen, onToggleSidebar, chatOpen, onToggleChat }: TopBarProps) {
   const { vaultPath, vaults, switchVault, openVault } = useWorkspace();
-  const { environments, activeEnvironment, switchEnvironment, openManager } = useEnvironmentContext();
-  const { openSettings } = useSettingsContext();
+  const environments = useEnvironmentStore((s) => s.environments);
+  const activeEnvironment = useEnvironmentStore((s) => s.activeEnvironment);
+  const switchEnvironment = useEnvironmentStore((s) => s.switchEnvironment);
+  const openManager = useEnvironmentStore((s) => s.openManager);
+  const openSettings = useSettingsStore((s) => s.openSettings);
   const vaultName = vaultPath ? vaultPath.split("/").pop() || vaultPath : null;
 
   return (

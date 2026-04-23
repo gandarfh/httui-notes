@@ -3,7 +3,7 @@ import { Flex, Text, Separator, Box, VStack } from "@chakra-ui/react";
 import { NativeSelectRoot, NativeSelectField } from "@chakra-ui/react";
 import { useColorMode } from "@/components/ui/color-mode";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
-import { useSettingsContext } from "@/contexts/SettingsContext";
+import { useSettingsStore } from "@/stores/settings";
 import { Switch } from "@/components/ui/switch";
 
 const AUTO_SAVE_OPTIONS = [
@@ -17,7 +17,8 @@ const AUTO_SAVE_OPTIONS = [
 export function GeneralSection() {
   const { colorMode, toggleColorMode } = useColorMode();
   const { vaultPath, vaults } = useWorkspace();
-  const { settings, updateSetting } = useSettingsContext();
+  const settings = useSettingsStore((s) => s.settings);
+  const updateSetting = useSettingsStore((s) => s.updateSetting);
 
   const handleAutoSaveChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {

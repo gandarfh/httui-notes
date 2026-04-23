@@ -33,7 +33,7 @@ import { collectBlocksAbove } from "@/lib/blocks/document";
 import { resolveAndExecuteDependencies } from "@/lib/blocks/dependencies";
 import { referenceHighlight, createReferenceTooltip } from "@/lib/blocks/cm-references";
 import { createReferenceAutocomplete } from "@/lib/blocks/cm-autocomplete";
-import { useEnvironmentContext } from "@/contexts/EnvironmentContext";
+import { useEnvironmentStore } from "@/stores/environment";
 
 const cmTransparentBg = EditorView.theme({
   "&": { backgroundColor: "transparent !important" },
@@ -756,7 +756,8 @@ function E2eBlockViewInner({ node, editor, getPos, updateAttributes, selected, d
   const { filePath } = useBlockContext();
   const { colorMode } = useColorMode();
   const cmTheme = colorMode === "dark" ? "dark" : "light";
-  const { getActiveVariables, variablesVersion } = useEnvironmentContext();
+  const getActiveVariables = useEnvironmentStore((s) => s.getActiveVariables);
+  const variablesVersion = useEnvironmentStore((s) => s.variablesVersion);
 
   // Parse block data
   const [data, setData] = useState<E2eBlockData>(() => {

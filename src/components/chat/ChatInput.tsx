@@ -4,7 +4,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { LuSend, LuSquare, LuPaperclip, LuX } from "react-icons/lu";
 import { open } from "@tauri-apps/plugin-dialog";
-import { useChatContext } from "@/contexts/ChatContext";
+import { useChatStore } from "@/stores/chat";
 import { saveAttachmentTmp, type AttachmentInput } from "@/lib/tauri/chat";
 
 const MAX_ATTACHMENTS = 20;
@@ -26,7 +26,10 @@ interface Attachment {
 }
 
 export function ChatInput() {
-  const { sendMessage, isStreaming, abort, activeSessionId } = useChatContext();
+  const sendMessage = useChatStore((s) => s.sendMessage);
+  const isStreaming = useChatStore((s) => s.isStreaming);
+  const abort = useChatStore((s) => s.abort);
+  const activeSessionId = useChatStore((s) => s.activeSessionId);
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);

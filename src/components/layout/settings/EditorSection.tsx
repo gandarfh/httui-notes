@@ -1,8 +1,7 @@
 import { useCallback } from "react";
 import { Flex, Text, Separator, Box, VStack } from "@chakra-ui/react";
 import { NativeSelectRoot, NativeSelectField } from "@chakra-ui/react";
-import { useEditorSettings } from "@/contexts/EditorSettingsContext";
-import { useSettingsContext } from "@/contexts/SettingsContext";
+import { useSettingsStore } from "@/stores/settings";
 import { Switch } from "@/components/ui/switch";
 
 const FONT_SIZE_OPTIONS = [
@@ -24,8 +23,10 @@ const FETCH_SIZE_OPTIONS = [
 ];
 
 export function EditorSection() {
-  const { vimEnabled, toggleVim } = useEditorSettings();
-  const { settings, updateSetting } = useSettingsContext();
+  const vimEnabled = useSettingsStore((s) => s.vimEnabled);
+  const toggleVim = useSettingsStore((s) => s.toggleVim);
+  const settings = useSettingsStore((s) => s.settings);
+  const updateSetting = useSettingsStore((s) => s.updateSetting);
 
   const handleFontSizeChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {

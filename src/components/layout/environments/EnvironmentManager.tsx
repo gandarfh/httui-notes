@@ -21,23 +21,21 @@ import {
   LuLock,
   LuLockOpen,
 } from "react-icons/lu";
-import { useEnvironmentContext } from "@/contexts/EnvironmentContext";
+import { useEnvironmentStore } from "@/stores/environment";
 import type { EnvVariable } from "@/lib/tauri/commands";
 
 export function EnvironmentManager() {
-  const {
-    environments,
-    activeEnvironment,
-    managerOpen,
-    closeManager,
-    switchEnvironment,
-    createEnvironment,
-    deleteEnvironment,
-    duplicateEnvironment,
-    loadVariables,
-    setVariable,
-    deleteVariable,
-  } = useEnvironmentContext();
+  const environments = useEnvironmentStore((s) => s.environments);
+  const activeEnvironment = useEnvironmentStore((s) => s.activeEnvironment);
+  const managerOpen = useEnvironmentStore((s) => s.managerOpen);
+  const closeManager = useEnvironmentStore((s) => s.closeManager);
+  const switchEnvironment = useEnvironmentStore((s) => s.switchEnvironment);
+  const createEnvironment = useEnvironmentStore((s) => s.createEnvironment);
+  const deleteEnvironment = useEnvironmentStore((s) => s.deleteEnvironment);
+  const duplicateEnvironment = useEnvironmentStore((s) => s.duplicateEnvironment);
+  const loadVariables = useEnvironmentStore((s) => s.loadVariables);
+  const setVariable = useEnvironmentStore((s) => s.setVariable);
+  const deleteVariable = useEnvironmentStore((s) => s.deleteVariable);
 
   const [selectedEnvId, setSelectedEnvId] = useState<string | null>(null);
   const [variables, setVariables] = useState<EnvVariable[]>([]);

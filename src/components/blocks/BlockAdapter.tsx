@@ -48,7 +48,11 @@ function BlockAdapterInner({ ctx }: BlockAdapterProps) {
         ctx.updateContent(attrs.content);
       }
 
-      if ("alias" in attrs || "displayMode" in attrs) {
+      // Only persist info changes (alias/displayMode) when it's a user-initiated
+      // change — NOT when triggered by block execution (executionState in attrs).
+      // This prevents document mutation on every execute which causes scroll issues.
+      const isExecutionUpdate = "executionState" in attrs;
+      if (!isExecutionUpdate && ("alias" in attrs || "displayMode" in attrs)) {
         const currentAlias = extractAlias(ctx.info) ?? alias;
         const currentDM = extractDisplayMode(ctx.info) ?? displayMode;
         const newAlias = typeof attrs.alias === "string" ? attrs.alias : currentAlias;

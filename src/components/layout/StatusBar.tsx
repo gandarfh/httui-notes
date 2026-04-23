@@ -1,15 +1,17 @@
 import { HStack, Text, Badge, Kbd, Box } from "@chakra-ui/react";
-import { usePaneContext } from "@/contexts/PaneContext";
-import { useEditorSettings } from "@/contexts/EditorSettingsContext";
-import { useConnectionStatus } from "@/hooks/useConnectionStatus";
-import { useEnvironmentContext } from "@/contexts/EnvironmentContext";
+import { usePaneStore, selectLayout } from "@/stores/pane";
+import { useSettingsStore } from "@/stores/settings";
+import { useWorkspaceStore } from "@/stores/workspace";
+import { useEnvironmentStore } from "@/stores/environment";
 import type { PaneLayout } from "@/types/pane";
 
 export function StatusBar() {
-  const { layout } = usePaneContext();
-  const { vimEnabled, vimMode, toggleVim } = useEditorSettings();
-  const { activeConnection } = useConnectionStatus();
-  const { activeEnvironment } = useEnvironmentContext();
+  const layout = usePaneStore(selectLayout);
+  const vimEnabled = useSettingsStore((s) => s.vimEnabled);
+  const vimMode = useSettingsStore((s) => s.vimMode);
+  const toggleVim = useSettingsStore((s) => s.toggleVim);
+  const activeConnection = useWorkspaceStore((s) => s.activeConnection);
+  const activeEnvironment = useEnvironmentStore((s) => s.activeEnvironment);
   const paneCount = countLeaves(layout);
 
   return (

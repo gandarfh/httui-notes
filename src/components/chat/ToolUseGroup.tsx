@@ -15,7 +15,7 @@ import {
   LuWrench,
 } from "react-icons/lu";
 import type { ChatToolCall } from "@/lib/tauri/chat";
-import type { ToolActivity } from "@/hooks/useChat";
+import type { ToolActivity } from "@/stores/chat";
 
 type ToolItem =
   | { kind: "persisted"; data: ChatToolCall }

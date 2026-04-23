@@ -5,7 +5,7 @@ import { LuBot, LuPencil, LuRefreshCw, LuFileDown } from "react-icons/lu";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
 import type { ChatMessage, ChatToolCall } from "@/lib/tauri/chat";
-import type { ToolActivity, ContentSegment } from "@/hooks/useChat";
+import type { ToolActivity, ContentSegment } from "@/stores/chat";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { ToolUseGroup } from "./ToolUseGroup";
 

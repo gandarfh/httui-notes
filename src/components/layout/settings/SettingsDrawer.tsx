@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Box, Flex, Text, IconButton, VStack, Portal, Separator } from "@chakra-ui/react";
 import { LuX, LuSettings, LuCode, LuShieldCheck, LuKeyboard, LuInfo, LuPalette } from "react-icons/lu";
-import { useSettingsContext } from "@/contexts/SettingsContext";
+import { useSettingsStore } from "@/stores/settings";
 import { AuditSection } from "./AuditSection";
 import { GeneralSection } from "./GeneralSection";
 import { EditorSection } from "./EditorSection";
@@ -28,7 +28,8 @@ const TABS: TabDef[] = [
 ];
 
 export function SettingsDrawer() {
-  const { settingsOpen, closeSettings } = useSettingsContext();
+  const settingsOpen = useSettingsStore((s) => s.settingsOpen);
+  const closeSettings = useSettingsStore((s) => s.closeSettings);
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
 
   if (!settingsOpen) return null;

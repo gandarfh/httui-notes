@@ -3,7 +3,7 @@ import { Box, Flex, Text, VStack, HStack, Separator, Button, Badge, Input } from
 import { NativeSelectRoot, NativeSelectField } from "@chakra-ui/react";
 import { LuRotateCcw, LuSun, LuMoon } from "react-icons/lu";
 import { useColorMode } from "@/components/ui/color-mode";
-import { useSettingsContext } from "@/contexts/SettingsContext";
+import { useSettingsStore } from "@/stores/settings";
 import type { ThemeConfig, ModeColors } from "@/lib/theme/config";
 import {
   ACCENT_PALETTES,
@@ -209,7 +209,9 @@ function SettingGroup({
 // ─── Main component ─────────────────────────────────────────
 
 export function ThemeSection() {
-  const { theme, updateTheme, resetTheme } = useSettingsContext();
+  const theme = useSettingsStore((s) => s.theme);
+  const updateTheme = useSettingsStore((s) => s.updateTheme);
+  const resetTheme = useSettingsStore((s) => s.resetTheme);
   const { colorMode } = useColorMode();
   const currentMode = (colorMode === "dark" ? "dark" : "light") as "light" | "dark";
 

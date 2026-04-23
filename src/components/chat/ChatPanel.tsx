@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { Box, Flex, HStack, Text, IconButton } from "@chakra-ui/react";
 import { LuMessageSquare, LuHistory, LuSettings, LuFolderOpen, LuChartColumn } from "react-icons/lu";
 import { open } from "@tauri-apps/plugin-dialog";
-import { useChatContext } from "@/contexts/ChatContext";
+import { useChatStore } from "@/stores/chat";
 import { ChatSessionList } from "./ChatSessionList";
 import { ChatConversation } from "./ChatConversation";
 import { ChatInput } from "./ChatInput";
@@ -25,7 +25,8 @@ function truncatePath(path: string, segments = 2): string {
 export function ChatPanel({ width }: ChatPanelProps) {
   const [activeTab, setActiveTab] = useState<Tab>("chat");
   const [permManagerOpen, setPermManagerOpen] = useState(false);
-  const { activeSession, updateCwd } = useChatContext();
+  const activeSession = useChatStore((s) => s.activeSession);
+  const updateCwd = useChatStore((s) => s.updateCwd);
 
   const handleChangeCwd = useCallback(async () => {
     const selected = await open({ directory: true, multiple: false });

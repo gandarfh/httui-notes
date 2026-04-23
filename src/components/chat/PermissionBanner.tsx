@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Box, HStack, Text, Badge } from "@chakra-ui/react";
 import { LuShield, LuCheck, LuX, LuGitCompareArrows } from "react-icons/lu";
-import { useChatContext } from "@/contexts/ChatContext";
-import { usePaneContext } from "@/contexts/PaneContext";
+import { useChatStore } from "@/stores/chat";
+import { usePaneStore } from "@/stores/pane";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { readNote } from "@/lib/tauri/commands";
 
@@ -42,8 +42,10 @@ function computeLineStats(original: string, proposed: string): { added: number; 
 }
 
 export function PermissionBanner() {
-  const { pendingPermission, respondPermission } = useChatContext();
-  const { actions } = usePaneContext();
+  const pendingPermission = useChatStore((s) => s.pendingPermission);
+  const respondPermission = useChatStore((s) => s.respondPermission);
+  const openDiffTab = usePaneStore((s) => s.openDiffTab);
+  const closeDiffTab = usePaneStore((s) => s.closeDiffTab);
   const { vaultPath } = useWorkspace();
   const [scope, setScope] = useState<PermissionScope>("once");
   const [originalContent, setOriginalContent] = useState<string | null>(null);
@@ -96,7 +98,7 @@ export function PermissionBanner() {
 
   const handleViewDiff = () => {
     if (!vaultPath || originalContent === null) return;
-    actions.openDiffTab({
+    openDiffTab({
       filePath: notePath,
       vaultPath,
       permissionId,
@@ -166,7 +168,7 @@ export function PermissionBanner() {
             _hover={{ bg: "bg.emphasized" }}
             onClick={async () => {
               await respondPermission(permissionId, "deny");
-              actions.closeDiffTab(permissionId);
+              closeDiffTab(permissionId);
             }}
           >
             <LuX size={12} />
@@ -188,7 +190,7 @@ export function PermissionBanner() {
             _hover={{ bg: "green.700" }}
             onClick={async () => {
               await respondPermission(permissionId, "allow", scope);
-              actions.closeDiffTab(permissionId);
+              closeDiffTab(permissionId);
             }}
           >
             <LuCheck size={12} />

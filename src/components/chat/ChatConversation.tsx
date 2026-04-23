@@ -1,11 +1,20 @@
 import { Box, IconButton, Text } from "@chakra-ui/react";
 import { LuArrowDown } from "react-icons/lu";
-import { useChatContext } from "@/contexts/ChatContext";
+import { useChatStore } from "@/stores/chat";
 import { useStickyScroll } from "@/hooks/useStickyScroll";
 import { ChatMessageBubble } from "./ChatMessageBubble";
 
 export function ChatConversation() {
-  const { messages, streamingContent, streamingSegments, isStreaming, error, toolActivity, editAndResend, regenerate, resumeFailed, resetAndContinue } = useChatContext();
+  const messages = useChatStore((s) => s.messages);
+  const streamingContent = useChatStore((s) => s.streamingContent);
+  const streamingSegments = useChatStore((s) => s.streamingSegments);
+  const isStreaming = useChatStore((s) => s.isStreaming);
+  const error = useChatStore((s) => s.error);
+  const toolActivity = useChatStore((s) => s.toolActivity);
+  const editAndResend = useChatStore((s) => s.editAndResend);
+  const regenerate = useChatStore((s) => s.regenerate);
+  const resumeFailed = useChatStore((s) => s.resumeFailed);
+  const resetAndContinue = useChatStore((s) => s.resetAndContinue);
   const { scrollRef, showJumpButton, scrollToBottom } = useStickyScroll([
     messages,
     streamingContent,
