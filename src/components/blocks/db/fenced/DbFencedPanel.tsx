@@ -36,6 +36,15 @@ import {
   Spinner,
   Text,
 } from "@chakra-ui/react";
+import {
+  LuChartBar,
+  LuDownload,
+  LuPlay,
+  LuSettings,
+  LuSquare,
+  LuX,
+  LuZap,
+} from "react-icons/lu";
 import { EditorView } from "@codemirror/view";
 
 import {
@@ -244,7 +253,7 @@ export const DbFencedPanel = memo(function DbFencedPanel({
     if (executionState === "running") return;
     const connId = activeConnection?.id;
     if (!connId) {
-      setError("No connection selected — open ⚙ and pick one.");
+      setError("No connection selected — open settings and pick one.");
       setExecutionState("error");
       return;
     }
@@ -535,7 +544,7 @@ function DbToolbar({
             onClick={onCancel}
             title="Cancel (⌘.)"
           >
-            ⏹
+            <LuSquare />
           </IconButton>
         ) : (
           <IconButton
@@ -546,17 +555,35 @@ function DbToolbar({
             title="Run (⌘↵)"
             disabled={!activeConnection}
           >
-            ▶
+            <LuPlay />
           </IconButton>
         )}
-        <IconButton size="xs" variant="ghost" aria-label="AI" disabled title="AI — coming soon">
-          ⚡
+        <IconButton
+          size="xs"
+          variant="ghost"
+          aria-label="AI"
+          disabled
+          title="AI — coming soon"
+        >
+          <LuZap />
         </IconButton>
-        <IconButton size="xs" variant="ghost" aria-label="Explain" disabled title="EXPLAIN — coming soon">
-          ▦
+        <IconButton
+          size="xs"
+          variant="ghost"
+          aria-label="Explain"
+          disabled
+          title="EXPLAIN — coming soon"
+        >
+          <LuChartBar />
         </IconButton>
-        <IconButton size="xs" variant="ghost" aria-label="Export" disabled title="Export — coming soon">
-          ⤓
+        <IconButton
+          size="xs"
+          variant="ghost"
+          aria-label="Export"
+          disabled
+          title="Export — coming soon"
+        >
+          <LuDownload />
         </IconButton>
         <IconButton
           size="xs"
@@ -565,7 +592,7 @@ function DbToolbar({
           onClick={onOpenSettings}
           title="Settings"
         >
-          ⚙
+          <LuSettings />
         </IconButton>
       </HStack>
     </HStack>
@@ -780,7 +807,7 @@ function DbDrawer({
             aria-label="Close"
             onClick={onClose}
           >
-            ×
+            <LuX />
           </IconButton>
         </Flex>
 
