@@ -1,170 +1,140 @@
-import { describe, it, expect } from "vitest";
-import { renderHook, act } from "@testing-library/react";
-import { usePaneState } from "../usePaneState";
+import { describe, it, expect, beforeEach } from "vitest";
+import { usePaneStore } from "@/stores/pane";
 
 const V = "/test-vault";
 
-describe("usePaneState", () => {
+describe("paneStore", () => {
+  beforeEach(() => {
+    // Reset store to initial state before each test
+    usePaneStore.setState({
+      layout: { type: "leaf", id: "test-pane-1", tabs: [], activeTab: 0 },
+      activePaneId: "test-pane-1",
+      editorContents: new Map(),
+      unsavedFiles: new Set(),
+      scrollPositions: new Map(),
+      conflictFiles: new Set(),
+    });
+  });
+
   it("starts with a single empty leaf pane", () => {
-    const { result } = renderHook(() => usePaneState());
-    expect(result.current.layout.type).toBe("leaf");
-    if (result.current.layout.type === "leaf") {
-      expect(result.current.layout.tabs).toHaveLength(0);
+    const { layout } = usePaneStore.getState();
+    expect(layout.type).toBe("leaf");
+    if (layout.type === "leaf") {
+      expect(layout.tabs).toHaveLength(0);
     }
   });
 
   it("openFile adds a tab to the active pane", () => {
-    const { result } = renderHook(() => usePaneState());
-    act(() => {
-      result.current.actions.openFile("test.md", "<p>hello</p>", V);
-    });
-    if (result.current.layout.type === "leaf") {
-      expect(result.current.layout.tabs).toHaveLength(1);
-      expect(result.current.layout.tabs[0].filePath).toBe("test.md");
-      expect(result.current.layout.tabs[0].vaultPath).toBe(V);
-      expect(result.current.layout.activeTab).toBe(0);
+    usePaneStore.getState().openFile("test.md", "<p>hello</p>", V);
+    const { layout } = usePaneStore.getState();
+    if (layout.type === "leaf") {
+      expect(layout.tabs).toHaveLength(1);
+      expect(layout.tabs[0].filePath).toBe("test.md");
+      expect(layout.tabs[0].vaultPath).toBe(V);
+      expect(layout.activeTab).toBe(0);
     }
   });
 
   it("openFile switches to existing tab instead of duplicating", () => {
-    const { result } = renderHook(() => usePaneState());
-    act(() => {
-      result.current.actions.openFile("a.md", "a", V);
-      result.current.actions.openFile("b.md", "b", V);
-    });
-    act(() => {
-      result.current.actions.openFile("a.md", "a", V);
-    });
-    if (result.current.layout.type === "leaf") {
-      expect(result.current.layout.tabs).toHaveLength(2);
-      expect(result.current.layout.activeTab).toBe(0);
+    const store = usePaneStore.getState();
+    store.openFile("a.md", "a", V);
+    usePaneStore.getState().openFile("b.md", "b", V);
+    usePaneStore.getState().openFile("a.md", "a", V);
+    const { layout } = usePaneStore.getState();
+    if (layout.type === "leaf") {
+      expect(layout.tabs).toHaveLength(2);
+      expect(layout.activeTab).toBe(0);
     }
   });
 
   it("closeTab removes a tab", () => {
-    const { result } = renderHook(() => usePaneState());
-    act(() => {
-      result.current.actions.openFile("a.md", "a", V);
-      result.current.actions.openFile("b.md", "b", V);
-    });
-    const paneId = result.current.activePaneId;
-    act(() => {
-      result.current.actions.closeTab(paneId, 0);
-    });
-    if (result.current.layout.type === "leaf") {
-      expect(result.current.layout.tabs).toHaveLength(1);
-      expect(result.current.layout.tabs[0].filePath).toBe("b.md");
+    usePaneStore.getState().openFile("a.md", "a", V);
+    usePaneStore.getState().openFile("b.md", "b", V);
+    const { activePaneId } = usePaneStore.getState();
+    usePaneStore.getState().closeTab(activePaneId, 0);
+    const { layout } = usePaneStore.getState();
+    if (layout.type === "leaf") {
+      expect(layout.tabs).toHaveLength(1);
+      expect(layout.tabs[0].filePath).toBe("b.md");
     }
   });
 
   it("splitVertical creates a split layout", () => {
-    const { result } = renderHook(() => usePaneState());
-    act(() => {
-      result.current.actions.splitVertical();
-    });
-    expect(result.current.layout.type).toBe("split");
-    if (result.current.layout.type === "split") {
-      expect(result.current.layout.direction).toBe("vertical");
-      expect(result.current.layout.ratio).toBe(0.5);
+    usePaneStore.getState().splitVertical();
+    const { layout } = usePaneStore.getState();
+    expect(layout.type).toBe("split");
+    if (layout.type === "split") {
+      expect(layout.direction).toBe("vertical");
+      expect(layout.ratio).toBe(0.5);
     }
   });
 
   it("splitHorizontal creates a horizontal split", () => {
-    const { result } = renderHook(() => usePaneState());
-    act(() => {
-      result.current.actions.splitHorizontal();
-    });
-    expect(result.current.layout.type).toBe("split");
-    if (result.current.layout.type === "split") {
-      expect(result.current.layout.direction).toBe("horizontal");
+    usePaneStore.getState().splitHorizontal();
+    const { layout } = usePaneStore.getState();
+    expect(layout.type).toBe("split");
+    if (layout.type === "split") {
+      expect(layout.direction).toBe("horizontal");
     }
   });
 
   it("markUnsaved toggles unsavedFiles set", () => {
-    const { result } = renderHook(() => usePaneState());
-    act(() => {
-      result.current.actions.openFile("a.md", "a", V);
-    });
-    const paneId = result.current.activePaneId;
-    act(() => {
-      result.current.actions.markUnsaved(paneId, "a.md", true);
-    });
-    expect(result.current.unsavedFiles.has("a.md")).toBe(true);
-    act(() => {
-      result.current.actions.markUnsaved(paneId, "a.md", false);
-    });
-    expect(result.current.unsavedFiles.has("a.md")).toBe(false);
+    usePaneStore.getState().openFile("a.md", "a", V);
+    const { activePaneId } = usePaneStore.getState();
+    usePaneStore.getState().markUnsaved(activePaneId, "a.md", true);
+    expect(usePaneStore.getState().unsavedFiles.has("a.md")).toBe(true);
+    usePaneStore.getState().markUnsaved(activePaneId, "a.md", false);
+    expect(usePaneStore.getState().unsavedFiles.has("a.md")).toBe(false);
   });
 
   it("nextTab cycles to next tab", () => {
-    const { result } = renderHook(() => usePaneState());
-    act(() => {
-      result.current.actions.openFile("a.md", "a", V);
-      result.current.actions.openFile("b.md", "b", V);
-      result.current.actions.openFile("c.md", "c", V);
-    });
-    act(() => {
-      result.current.actions.nextTab();
-    });
-    if (result.current.layout.type === "leaf") {
-      expect(result.current.layout.activeTab).toBe(0);
+    usePaneStore.getState().openFile("a.md", "a", V);
+    usePaneStore.getState().openFile("b.md", "b", V);
+    usePaneStore.getState().openFile("c.md", "c", V);
+    usePaneStore.getState().nextTab();
+    const { layout } = usePaneStore.getState();
+    if (layout.type === "leaf") {
+      expect(layout.activeTab).toBe(0);
     }
   });
 
   it("closeOthers keeps only the specified tab", () => {
-    const { result } = renderHook(() => usePaneState());
-    act(() => {
-      result.current.actions.openFile("a.md", "a", V);
-      result.current.actions.openFile("b.md", "b", V);
-      result.current.actions.openFile("c.md", "c", V);
-    });
-    const paneId = result.current.activePaneId;
-    act(() => {
-      result.current.actions.closeOthers(paneId, 1);
-    });
-    if (result.current.layout.type === "leaf") {
-      expect(result.current.layout.tabs).toHaveLength(1);
-      expect(result.current.layout.tabs[0].filePath).toBe("b.md");
+    usePaneStore.getState().openFile("a.md", "a", V);
+    usePaneStore.getState().openFile("b.md", "b", V);
+    usePaneStore.getState().openFile("c.md", "c", V);
+    const { activePaneId } = usePaneStore.getState();
+    usePaneStore.getState().closeOthers(activePaneId, 1);
+    const { layout } = usePaneStore.getState();
+    if (layout.type === "leaf") {
+      expect(layout.tabs).toHaveLength(1);
+      expect(layout.tabs[0].filePath).toBe("b.md");
     }
   });
 
   it("closeAll removes all tabs", () => {
-    const { result } = renderHook(() => usePaneState());
-    act(() => {
-      result.current.actions.openFile("a.md", "a", V);
-      result.current.actions.openFile("b.md", "b", V);
-    });
-    const paneId = result.current.activePaneId;
-    act(() => {
-      result.current.actions.closeAll(paneId);
-    });
-    if (result.current.layout.type === "leaf") {
-      expect(result.current.layout.tabs).toHaveLength(0);
+    usePaneStore.getState().openFile("a.md", "a", V);
+    usePaneStore.getState().openFile("b.md", "b", V);
+    const { activePaneId } = usePaneStore.getState();
+    usePaneStore.getState().closeAll(activePaneId);
+    const { layout } = usePaneStore.getState();
+    if (layout.type === "leaf") {
+      expect(layout.tabs).toHaveLength(0);
     }
   });
 
   it("resizeSplit changes split ratio", () => {
-    const { result } = renderHook(() => usePaneState());
-    act(() => {
-      result.current.actions.splitVertical();
-    });
-    act(() => {
-      result.current.actions.resizeSplit([], 0.7);
-    });
-    if (result.current.layout.type === "split") {
-      expect(result.current.layout.ratio).toBe(0.7);
+    usePaneStore.getState().splitVertical();
+    usePaneStore.getState().resizeSplit([], 0.7);
+    const { layout } = usePaneStore.getState();
+    if (layout.type === "split") {
+      expect(layout.ratio).toBe(0.7);
     }
   });
 
-  it("editorContents stores content outside React state", () => {
-    const { result } = renderHook(() => usePaneState());
-    act(() => {
-      result.current.actions.openFile("test.md", "<p>content</p>", V);
-    });
-    expect(result.current.editorContents.get("test.md")).toBe("<p>content</p>");
-    act(() => {
-      result.current.actions.updateContent("test.md", "<p>updated</p>");
-    });
-    expect(result.current.editorContents.get("test.md")).toBe("<p>updated</p>");
+  it("editorContents stores content in Zustand state", () => {
+    usePaneStore.getState().openFile("test.md", "<p>content</p>", V);
+    expect(usePaneStore.getState().editorContents.get("test.md")).toBe("<p>content</p>");
+    usePaneStore.getState().updateContent("test.md", "<p>updated</p>");
+    expect(usePaneStore.getState().editorContents.get("test.md")).toBe("<p>updated</p>");
   });
 });

@@ -6,7 +6,7 @@ import {
   allLeafIds,
   updateSplitRatio,
   replacePaneInLayout,
-} from "../usePaneState";
+} from "@/stores/pane";
 import type { PaneLayout, LeafPane } from "@/types/pane";
 
 function leaf(id: string, tabs: string[] = []): LeafPane {
