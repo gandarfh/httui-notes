@@ -1,4 +1,3 @@
-use httui_core::db::connections::PoolManager;
 use httui_core::executor::ExecutorRegistry;
 use httui_core::parser;
 use httui_core::runner::BlockRunner;
@@ -35,7 +34,6 @@ pub async fn execute_block(
     alias: &str,
     registry: &Arc<ExecutorRegistry>,
     pool: &SqlitePool,
-    conn_manager: &Arc<PoolManager>,
 ) -> String {
     // T16: Validate note_path — reject path traversal and absolute paths
     if note_path.contains("..") || std::path::Path::new(note_path).is_absolute() {
@@ -54,7 +52,7 @@ pub async fn execute_block(
         Err(e) => return json!({"error": e}).to_string(),
     }
 
-    let runner = BlockRunner::new(registry.clone(), pool.clone(), conn_manager.clone());
+    let runner = BlockRunner::new(registry.clone(), pool.clone());
 
     match runner.execute(vault_path, note_path, alias).await {
         Ok(result) => json!({

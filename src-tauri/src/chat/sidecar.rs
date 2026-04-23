@@ -117,11 +117,8 @@ pub struct SidecarManager {
     child: Arc<Mutex<Option<CommandChild>>>,
     /// Maps request_id → sender for incoming messages from sidecar
     requests: Arc<Mutex<HashMap<String, mpsc::UnboundedSender<IncomingMessage>>>>,
-    /// Notified when a pong is received (health check response)
-    pong_notify: Arc<Notify>,
     /// Flag to stop background tasks on shutdown
     shutdown: Arc<AtomicBool>,
-    app_handle: AppHandle,
     /// T25: Shared secret for HMAC message signing with sidecar
     hmac_secret: String,
 }
@@ -140,9 +137,7 @@ impl SidecarManager {
         let manager = Self {
             child: child.clone(),
             requests: requests.clone(),
-            pong_notify: pong_notify.clone(),
             shutdown: shutdown.clone(),
-            app_handle: app.clone(),
             hmac_secret: hmac_secret.clone(),
         };
 
@@ -358,7 +353,7 @@ impl SidecarManager {
 
         // Kill the process
         let mut guard = self.child.lock().await;
-        if let Some(mut child) = guard.take() {
+        if let Some(child) = guard.take() {
             let _ = child.kill();
         }
     }

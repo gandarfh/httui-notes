@@ -190,7 +190,6 @@ impl NotesMcpServer {
             &input.alias,
             &self.registry,
             &self.pool,
-            &self.conn_manager,
         )
         .await
     }

@@ -355,11 +355,9 @@ pub async fn send_chat_message(
                     // Flush remaining segments
                     if !current_tool_ids.is_empty() {
                         segments.push(serde_json::json!({"type": "tool_group", "tool_use_ids": current_tool_ids}));
-                        current_tool_ids = Vec::new();
                     }
                     if !current_text.is_empty() {
                         segments.push(serde_json::json!({"type": "text", "text": current_text}));
-                        current_text = String::new();
                     }
                     // Persist or update assistant message
                     let content = serde_json::json!(&segments);

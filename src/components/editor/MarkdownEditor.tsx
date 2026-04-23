@@ -4,6 +4,7 @@ import CodeMirror, { type ReactCodeMirrorRef } from "@uiw/react-codemirror";
 import { EditorView, keymap } from "@codemirror/view";
 import { Compartment } from "@codemirror/state";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { languages as cmLanguages } from "@codemirror/language-data";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { syntaxHighlighting, HighlightStyle, bracketMatching } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
@@ -46,20 +47,36 @@ interface MarkdownEditorProps {
 // Compartment for toggling vim mode without recreating the editor
 const vimCompartment = new Compartment();
 
-// Custom highlight style — no heading styles (hybrid rendering handles those)
+// Custom highlight style — Chakra-token driven so the editor follows the app theme.
 const markdownHighlightStyle = HighlightStyle.define([
+  // Markdown inline formatting
   { tag: tags.strong, fontWeight: "600" },
   { tag: tags.emphasis, fontStyle: "italic" },
   { tag: tags.strikethrough, textDecoration: "line-through" },
-  { tag: tags.keyword, color: "var(--chakra-colors-purple-500)" },
-  { tag: tags.string, color: "var(--chakra-colors-green-500)" },
-  { tag: tags.comment, color: "var(--chakra-colors-fg-muted)", fontStyle: "italic" },
-  { tag: tags.number, color: "var(--chakra-colors-orange-500)" },
-  { tag: tags.meta, color: "var(--chakra-colors-fg-subtle)" },
   { tag: tags.link, color: "var(--chakra-colors-blue-400)", textDecoration: "none" },
   { tag: tags.url, color: "var(--chakra-colors-blue-400)" },
   { tag: tags.monospace, fontFamily: "var(--chakra-fonts-mono)", fontSize: "0.85em" },
   { tag: tags.processingInstruction, color: "var(--chakra-colors-fg-subtle)" },
+  { tag: tags.meta, color: "var(--chakra-colors-fg-subtle)" },
+
+  // Code syntax highlighting (for nested languages via codeLanguages)
+  { tag: tags.keyword, color: "var(--chakra-colors-purple-500)" },
+  { tag: [tags.atom, tags.bool, tags.null], color: "var(--chakra-colors-orange-500)" },
+  { tag: [tags.number, tags.integer, tags.float], color: "var(--chakra-colors-orange-500)" },
+  { tag: [tags.string, tags.special(tags.string)], color: "var(--chakra-colors-green-500)" },
+  { tag: [tags.regexp, tags.escape], color: "var(--chakra-colors-green-400)" },
+  { tag: [tags.comment, tags.lineComment, tags.blockComment], color: "var(--chakra-colors-fg-muted)", fontStyle: "italic" },
+  { tag: [tags.variableName, tags.name], color: "var(--chakra-colors-fg)" },
+  { tag: [tags.propertyName, tags.attributeName], color: "var(--chakra-colors-cyan-400)" },
+  { tag: [tags.typeName, tags.className, tags.namespace], color: "var(--chakra-colors-yellow-400)" },
+  { tag: [tags.function(tags.variableName), tags.function(tags.propertyName)], color: "var(--chakra-colors-blue-400)" },
+  { tag: [tags.definition(tags.variableName), tags.definition(tags.propertyName)], color: "var(--chakra-colors-blue-300)" },
+  { tag: tags.operator, color: "var(--chakra-colors-pink-400)" },
+  { tag: [tags.punctuation, tags.bracket, tags.squareBracket, tags.paren, tags.brace], color: "var(--chakra-colors-fg-subtle)" },
+  { tag: tags.tagName, color: "var(--chakra-colors-red-400)" },
+  { tag: tags.self, color: "var(--chakra-colors-purple-400)", fontStyle: "italic" },
+  { tag: tags.heading, fontWeight: "600" },
+  { tag: tags.invalid, color: "var(--chakra-colors-red-500)" },
 ]);
 
 // Static theme for the markdown editor
@@ -183,7 +200,7 @@ export function MarkdownEditor({
   // Stable extensions (vim toggled via compartment, not via extensions prop)
   const extensions = useMemo(() => [
     vimCompartment.of([]),
-    markdown({ base: markdownLanguage }),
+    markdown({ base: markdownLanguage, codeLanguages: cmLanguages }),
     syntaxHighlighting(markdownHighlightStyle),
     bracketMatching(),
     closeBrackets(),
