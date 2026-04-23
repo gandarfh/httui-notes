@@ -43,9 +43,11 @@ import {
   type DbPortalEntry,
 } from "@/lib/codemirror/cm-db-block";
 import {
+  parseLegacyDbBody,
   stringifyDbFenceInfo,
   type DbBlockMetadata,
   type DbDisplayMode,
+  type DbSessionMode,
 } from "@/lib/blocks/db-fence";
 import {
   executeDbStreamed,
@@ -65,6 +67,9 @@ import {
   listConnections,
   type Connection,
 } from "@/lib/tauri/connections";
+import { resolveRefsToBindParams } from "@/lib/blocks/references";
+import { collectBlocksAboveCM } from "@/lib/blocks/document";
+import { useEnvironmentStore } from "@/stores/environment";
 
 interface DbFencedPanelProps {
   blockId: string;
@@ -74,6 +79,30 @@ interface DbFencedPanelProps {
 }
 
 type ExecutionState = "idle" | "running" | "success" | "error" | "cancelled";
+
+// ───── Cache hash helper ─────
+
+/**
+ * Build the cache hash key for a db block run. Includes an env snapshot of
+ * only the env vars actually referenced by the query, so two different
+ * active environments never share a cached row — and so a query that
+ * doesn't use any envs has the same hash across environments.
+ */
+async function computeDbCacheHash(
+  body: string,
+  connectionId: string,
+  envVars: Record<string, string>,
+): Promise<string> {
+  const usedEnvEntries = Object.entries(envVars)
+    .filter(([k]) => body.includes(`{{${k}}}`))
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k}=${v}`)
+    .join("\n");
+  const keyed = usedEnvEntries
+    ? `${body}\n__ENV__\n${usedEnvEntries}`
+    : body;
+  return hashBlockContent(keyed, connectionId);
+}
 
 // ───── Connection resolution ─────
 
@@ -112,6 +141,14 @@ export const DbFencedPanel = memo(function DbFencedPanel({
   const [cached, setCached] = useState(false);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  /**
+   * Last-execution bindings: `{{ref.raw}} → resolved value`. Shown in the
+   * drawer's Resolved bindings panel so users can debug what the driver
+   * actually received.
+   */
+  const [resolvedBindings, setResolvedBindings] = useState<
+    { placeholder: string; raw: string; value: unknown }[]
+  >([]);
   const abortRef = useRef<AbortController | null>(null);
 
   const activeConnection = useMemo(
@@ -124,6 +161,54 @@ export const DbFencedPanel = memo(function DbFencedPanel({
     listConnections().then(setConnections).catch(() => {});
   }, []);
 
+  // ── Legacy JSON body conversion ──
+  // Vaults written before stage 4 store a JSON object in the body instead
+  // of raw SQL. Convert the block in-place on the document: replace the
+  // body with the extracted query and merge connection/limit/timeout into
+  // the info string. This runs at most once per (blockId + body-hash)
+  // combination to prevent re-entry after the dispatch mutates the doc.
+  const migratedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (migratedRef.current === block.body) return;
+    const legacy = parseLegacyDbBody(block.body);
+    if (!legacy) return;
+    migratedRef.current = block.body;
+
+    const mergedMetadata: DbBlockMetadata = { ...block.metadata };
+    if (legacy.connectionId && !mergedMetadata.connection) {
+      mergedMetadata.connection = legacy.connectionId;
+    }
+    if (legacy.limit !== undefined && mergedMetadata.limit === undefined) {
+      mergedMetadata.limit = legacy.limit;
+    }
+    if (
+      legacy.timeoutMs !== undefined &&
+      mergedMetadata.timeoutMs === undefined
+    ) {
+      mergedMetadata.timeoutMs = legacy.timeoutMs;
+    }
+
+    const newInfoLine = "```" + stringifyDbFenceInfo(mergedMetadata);
+    const openLine = view.state.doc.lineAt(block.openLineFrom);
+
+    // Replace the open fence (to update info) AND the body (to turn JSON
+    // into raw SQL), leaving fence close untouched.
+    view.dispatch({
+      changes: [
+        {
+          from: openLine.from,
+          to: openLine.to,
+          insert: newInfoLine,
+        },
+        {
+          from: block.bodyFrom,
+          to: block.bodyTo,
+          insert: legacy.query,
+        },
+      ],
+    });
+  }, [block.body, block.bodyFrom, block.bodyTo, block.metadata, block.openLineFrom, view]);
+
   // Load cached result on mount / when block body + connection change
   useEffect(() => {
     if (!filePath) return;
@@ -133,7 +218,10 @@ export const DbFencedPanel = memo(function DbFencedPanel({
     let cancelled = false;
     (async () => {
       try {
-        const hash = await hashBlockContent(block.body, connId);
+        const envVars = await useEnvironmentStore
+          .getState()
+          .getActiveVariables();
+        const hash = await computeDbCacheHash(block.body, connId, envVars);
         const row = await getBlockResult(filePath, hash);
         if (cancelled || !row) return;
         const parsed = JSON.parse(row.response) as DbResponse;
@@ -175,17 +263,51 @@ export const DbFencedPanel = memo(function DbFencedPanel({
     const executionId = `db_${blockId}_${Date.now()}`;
     const startedAt = performance.now();
 
-    const params: Record<string, unknown> = {
-      connection_id: connId,
-      query: block.body,
-      offset: 0,
-      fetch_size: block.metadata.limit ?? 100,
-    };
-    if (block.metadata.timeoutMs !== undefined) {
-      params.timeout_ms = block.metadata.timeoutMs;
-    }
-
     try {
+      // ── Resolve {{ref}} references into bind params ──
+      // Collect blocks above (for {{alias.response.col}} resolution) and
+      // the active environment's variables (for {{ENV_KEY}}).
+      const blocksAbove = await collectBlocksAboveCM(
+        view.state.doc,
+        block.from,
+        filePath,
+      );
+      const envVars = await useEnvironmentStore
+        .getState()
+        .getActiveVariables();
+
+      const { sql, bindValues, errors: refErrors } = resolveRefsToBindParams(
+        block.body,
+        blocksAbove,
+        block.from,
+        envVars,
+      );
+      if (refErrors.length > 0) {
+        setError(`Reference errors:\n${refErrors.join("\n")}`);
+        setExecutionState("error");
+        return;
+      }
+
+      // Capture the resolved mapping so the drawer can display it.
+      const rawRefs = Array.from(block.body.matchAll(/\{\{([^}]+)\}\}/g));
+      const bindingsForDrawer = rawRefs.map((m, i) => ({
+        placeholder: `$${i + 1}`,
+        raw: m[0],
+        value: bindValues[i],
+      }));
+      setResolvedBindings(bindingsForDrawer);
+
+      const params: Record<string, unknown> = {
+        connection_id: connId,
+        query: sql,
+        bind_values: bindValues,
+        offset: 0,
+        fetch_size: block.metadata.limit ?? 100,
+      };
+      if (block.metadata.timeoutMs !== undefined) {
+        params.timeout_ms = block.metadata.timeoutMs;
+      }
+
       const outcome = await executeDbStreamed({
         executionId,
         params,
@@ -209,9 +331,10 @@ export const DbFencedPanel = memo(function DbFencedPanel({
       setDurationMs(outcome.response.stats.elapsed_ms || elapsed);
       setExecutionState("success");
 
-      // Persist to cache for {{alias.response…}} resolution.
+      // Persist to cache. Hash key includes env snapshot so different
+      // environments don't share cache entries for the same query.
       try {
-        const hash = await hashBlockContent(block.body, connId);
+        const hash = await computeDbCacheHash(block.body, connId, envVars);
         const sel = firstSelectResult(outcome.response);
         await saveBlockResult(
           filePath,
@@ -233,11 +356,13 @@ export const DbFencedPanel = memo(function DbFencedPanel({
   }, [
     activeConnection?.id,
     block.body,
+    block.from,
     block.metadata.limit,
     block.metadata.timeoutMs,
     blockId,
     executionState,
     filePath,
+    view,
   ]);
 
   const cancelBlock = useCallback(() => {
@@ -277,6 +402,15 @@ export const DbFencedPanel = memo(function DbFencedPanel({
     },
     [block.metadata, block.openLineFrom, view],
   );
+
+  const deleteBlockFromDoc = useCallback(() => {
+    // Remove the entire block range plus its trailing newline (if any) so
+    // we don't leave a blank line in its place.
+    const from = block.from;
+    const to = Math.min(block.to + 1, view.state.doc.length);
+    view.dispatch({ changes: { from, to, insert: "" } });
+    setDrawerOpen(false);
+  }, [block.from, block.to, view]);
 
   // ── Portals ──
 
@@ -326,8 +460,10 @@ export const DbFencedPanel = memo(function DbFencedPanel({
         <DbDrawer
           metadata={block.metadata}
           connections={connections}
+          resolvedBindings={resolvedBindings}
           onClose={() => setDrawerOpen(false)}
           onUpdate={updateMetadata}
+          onDelete={deleteBlockFromDoc}
         />
       )}
     </>
@@ -589,15 +725,19 @@ function DbStatusBar({
 interface DbDrawerProps {
   metadata: DbBlockMetadata;
   connections: Connection[];
+  resolvedBindings: { placeholder: string; raw: string; value: unknown }[];
   onClose: () => void;
   onUpdate: (patch: Partial<DbBlockMetadata>) => void;
+  onDelete: () => void;
 }
 
 function DbDrawer({
   metadata,
   connections,
+  resolvedBindings,
   onClose,
   onUpdate,
+  onDelete,
 }: DbDrawerProps) {
   // Close on ESC
   useEffect(() => {
@@ -735,8 +875,101 @@ function DbDrawer({
               ))}
             </HStack>
           </Box>
+
+          <DrawerSessionField
+            session={metadata.session}
+            onChange={(s) => onUpdate({ session: s })}
+          />
+
+          <Box>
+            <Text fontSize="xs" color="fg.muted" mb={1}>
+              Resolved bindings ({resolvedBindings.length})
+            </Text>
+            {resolvedBindings.length === 0 ? (
+              <Text fontSize="xs" color="fg.muted" opacity={0.6}>
+                Run the block to see the {"{{ref}}"} → $N mapping.
+              </Text>
+            ) : (
+              <Box
+                fontFamily="mono"
+                fontSize="11px"
+                display="flex"
+                flexDirection="column"
+                gap={1}
+              >
+                {resolvedBindings.map((b, i) => (
+                  <Flex key={i} gap={2}>
+                    <Text flexShrink={0} color="fg.muted">
+                      {b.placeholder}
+                    </Text>
+                    <Text flexShrink={0}>{b.raw}</Text>
+                    <Text color="fg.muted" truncate>
+                      = {JSON.stringify(b.value)}
+                    </Text>
+                  </Flex>
+                ))}
+              </Box>
+            )}
+          </Box>
+
+          <Box mt={4} pt={3} borderTop="1px solid" borderColor="border">
+            <Button
+              size="sm"
+              variant="outline"
+              colorPalette="red"
+              onClick={onDelete}
+            >
+              Delete block
+            </Button>
+          </Box>
         </Box>
       </Box>
     </Portal>
+  );
+}
+
+interface DrawerSessionFieldProps {
+  session: DbSessionMode | undefined;
+  onChange: (s: DbSessionMode | undefined) => void;
+}
+
+function DrawerSessionField({ session, onChange }: DrawerSessionFieldProps) {
+  const kind = session?.kind ?? "doc"; // doc is the default
+  const namedId = session?.kind === "named" ? session.id : "";
+
+  return (
+    <Box>
+      <Text fontSize="xs" color="fg.muted" mb={1}>
+        Session
+      </Text>
+      <HStack gap={2} mb={kind === "named" ? 2 : 0}>
+        {(["none", "doc", "named"] as const).map((k) => (
+          <Button
+            key={k}
+            size="xs"
+            variant={kind === k ? "solid" : "outline"}
+            onClick={() => {
+              if (k === "none") onChange({ kind: "none" });
+              else if (k === "doc") onChange(undefined); // doc is default → omit
+              else onChange({ kind: "named", id: namedId || "shared" });
+            }}
+          >
+            {k}
+          </Button>
+        ))}
+      </HStack>
+      {kind === "named" && (
+        <Input
+          size="sm"
+          fontFamily="mono"
+          placeholder="session id"
+          value={namedId}
+          onChange={(e) => {
+            const id = e.target.value.trim();
+            if (id) onChange({ kind: "named", id });
+          }}
+        />
+      )}
+    </Box>
   );
 }

@@ -3,6 +3,7 @@ import {
   parseReferences,
   navigateJson,
   resolveAllReferences,
+  resolveRefsToBindParams,
   type BlockContext,
 } from "../references";
 
@@ -369,5 +370,107 @@ describe("db block reference shim (stage-2 response shape)", () => {
     );
     expect(errors).toHaveLength(0);
     expect(resolved).toBe("1");
+  });
+});
+
+describe("resolveRefsToBindParams", () => {
+  const blocks: BlockContext[] = [
+    {
+      alias: "login",
+      blockType: "http",
+      pos: 5,
+      content: "",
+      cachedResult: {
+        status: "success",
+        response: JSON.stringify({ body: { id: 42, token: "abc" } }),
+      },
+    },
+  ];
+
+  it("replaces refs with ? and collects bind values in order", () => {
+    const { sql, bindValues, errors } = resolveRefsToBindParams(
+      "SELECT * FROM t WHERE id={{login.response.body.id}} AND tok={{login.response.body.token}}",
+      blocks,
+      100,
+    );
+    expect(errors).toHaveLength(0);
+    expect(sql).toBe("SELECT * FROM t WHERE id=? AND tok=?");
+    expect(bindValues).toEqual([42, "abc"]);
+  });
+
+  it("coerces numeric strings to numbers", () => {
+    const { bindValues } = resolveRefsToBindParams(
+      "SELECT {{login.response.body.id}}",
+      blocks,
+      100,
+    );
+    expect(bindValues[0]).toBe(42);
+    expect(typeof bindValues[0]).toBe("number");
+  });
+
+  it("coerces true/false/null strings to JS literals", () => {
+    const b: BlockContext[] = [
+      {
+        alias: "flags",
+        blockType: "http",
+        pos: 5,
+        content: "",
+        cachedResult: {
+          status: "success",
+          response: JSON.stringify({
+            body: { on: true, off: false, empty: null },
+          }),
+        },
+      },
+    ];
+    const { bindValues } = resolveRefsToBindParams(
+      "SELECT {{flags.response.body.on}}, {{flags.response.body.off}}, {{flags.response.body.empty}}",
+      b,
+      100,
+    );
+    expect(bindValues).toEqual([true, false, null]);
+  });
+
+  it("resolves env vars into bind values", () => {
+    const { sql, bindValues, errors } = resolveRefsToBindParams(
+      "WHERE region={{REGION}}",
+      [],
+      100,
+      { REGION: "us-east" },
+    );
+    expect(errors).toHaveLength(0);
+    expect(sql).toBe("WHERE region=?");
+    expect(bindValues).toEqual(["us-east"]);
+  });
+
+  it("keeps original ref and collects error when resolution fails", () => {
+    const { sql, bindValues, errors } = resolveRefsToBindParams(
+      "SELECT {{unknown.x}}",
+      blocks,
+      100,
+    );
+    expect(sql).toBe("SELECT {{unknown.x}}");
+    expect(bindValues).toHaveLength(0);
+    expect(errors.length).toBeGreaterThan(0);
+  });
+
+  it("handles queries without any references", () => {
+    const { sql, bindValues, errors } = resolveRefsToBindParams(
+      "SELECT * FROM t",
+      blocks,
+      100,
+    );
+    expect(sql).toBe("SELECT * FROM t");
+    expect(bindValues).toEqual([]);
+    expect(errors).toHaveLength(0);
+  });
+
+  it("preserves ref order when refs appear multiple times in one query", () => {
+    const { bindValues } = resolveRefsToBindParams(
+      "SELECT {{login.response.body.id}}, {{login.response.body.token}}, {{login.response.body.id}}",
+      blocks,
+      100,
+    );
+    expect(bindValues).toEqual([42, "abc", 42]);
   });
 });

@@ -208,9 +208,19 @@ function unregisterSlot(blockId: string, slot: DbWidgetSlot) {
   notify();
 }
 
-/** Index-based block id. Stable across alias/body edits. */
-function blockIdOf(_block: DbFencedBlock, index: number): string {
-  return `db_block_${index}`;
+/**
+ * Build a block id. Prefers the alias (stable as users insert / reorder
+ * blocks) and falls back to the document index for blocks without an alias.
+ *
+ * Colliding aliases (two blocks with the same alias in one doc) end up
+ * sharing an id — which is the existing behavior: the first one wins for
+ * refs anyway, and the visual panel state just collapses onto a single
+ * block. Users see a warning in the reference system if this happens.
+ */
+function blockIdOf(block: DbFencedBlock, index: number): string {
+  const alias = block.metadata.alias;
+  if (alias) return `db_alias_${alias}`;
+  return `db_idx_${index}`;
 }
 
 // ───── Widgets (register-only — React mounts from DbWidgetPortals) ─────

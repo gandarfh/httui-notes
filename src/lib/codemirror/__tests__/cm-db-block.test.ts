@@ -295,4 +295,42 @@ describe("fenceSkipFilter", () => {
     });
     expect(fenceSkipFilter(tr, [block])).toBeNull();
   });
+
+  // ── Vim / keymap origin-agnostic behavior ──
+  // The filter inspects only `tr.startState.selection` and `tr.selection`,
+  // not the originating keymap or userEvent. Any selection-change
+  // transaction — whether from the default keymap's ArrowDown, vim's `j`,
+  // a mouse click, or a programmatic dispatch — must go through it.
+
+  it("applies to transactions marked userEvent: select (vim-style)", () => {
+    const block = mkBlock(DOC);
+    const startState = EditorState.create({
+      doc: DOC,
+      selection: EditorSelection.cursor(DOC.line(1).to),
+    });
+    // Vim dispatches with a userEvent annotation. Confirm the filter
+    // still fires; nothing in its logic discriminates by userEvent.
+    const tr = startState.update({
+      selection: EditorSelection.cursor(DOC.line(2).from),
+      userEvent: "select",
+    });
+    const spec = fenceSkipFilter(tr, [block]);
+    expect(spec).not.toBeNull();
+    expect((spec!.selection as { head: number }).head).toBe(block.bodyFrom);
+  });
+
+  it("applies to transactions marked userEvent: select.pointer (mouse)", () => {
+    const block = mkBlock(DOC);
+    const startState = EditorState.create({
+      doc: DOC,
+      selection: EditorSelection.cursor(DOC.line(5).from),
+    });
+    const tr = startState.update({
+      selection: EditorSelection.cursor(DOC.line(4).from),
+      userEvent: "select.pointer",
+    });
+    const spec = fenceSkipFilter(tr, [block]);
+    expect(spec).not.toBeNull();
+    expect((spec!.selection as { head: number }).head).toBe(block.bodyTo);
+  });
 });

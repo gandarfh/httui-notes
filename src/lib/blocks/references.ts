@@ -264,3 +264,64 @@ export function resolveAllReferences(
 
   return { resolved, errors, warnings };
 }
+
+/**
+ * Convert `{{ref}}` placeholders in SQL (or any textual payload) to bind-
+ * param markers (`?`) and collect the resolved values in order.
+ *
+ * Used by the DB block to safely pass user-referenced values into the
+ * driver without string interpolation (SQL-safety is the whole point).
+ *
+ * - Resolution priority: block ref > env var (same as `resolveAllReferences`).
+ * - Each resolved value is coerced: "true"/"false"/"null" become the
+ *   literal JS types; numeric strings become numbers; everything else
+ *   stays a string. The backend decides final typing per driver.
+ * - On error the `{{…}}` is kept verbatim in the returned `sql` and the
+ *   error is collected so callers can show a message.
+ */
+export function resolveRefsToBindParams(
+  query: string,
+  blocks: BlockContext[],
+  currentPos: number,
+  envVariables?: Record<string, string>,
+): { sql: string; bindValues: unknown[]; errors: string[]; warnings: string[] } {
+  const refs = parseReferences(query);
+  const bindValues: unknown[] = [];
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  let sql = query;
+
+  // Collect substitutions from end to start so positions stay valid.
+  for (let i = refs.length - 1; i >= 0; i--) {
+    const ref = refs[i];
+    const { resolved, errors: resolveErrors, warnings: resolveWarnings } =
+      resolveAllReferences(`{{${ref.raw.slice(2, -2).trim()}}}`, blocks, currentPos, envVariables);
+
+    for (const e of resolveErrors) errors.push(e.message);
+    for (const w of resolveWarnings) warnings.push(w.message);
+
+    if (resolveErrors.length > 0) {
+      continue; // keep original in sql
+    }
+
+    // Coerce scalar strings into JS primitives.
+    let value: unknown = resolved;
+    if (resolved === "true") value = true;
+    else if (resolved === "false") value = false;
+    else if (resolved === "null") value = null;
+    else if (resolved.trim() !== "") {
+      const num = Number(resolved);
+      if (!Number.isNaN(num) && String(num) === resolved.trim()) {
+        value = num;
+      }
+    }
+
+    // Prepend (since we iterate backwards, the natural push order is
+    // reverse-document; reverse at the end for execution-order stability).
+    bindValues.unshift(value);
+    sql = sql.slice(0, ref.start) + "?" + sql.slice(ref.end);
+  }
+
+  return { sql, bindValues, errors, warnings };
+}
