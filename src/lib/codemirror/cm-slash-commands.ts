@@ -2,128 +2,103 @@ import {
   type CompletionContext,
   type CompletionResult,
   type Completion,
+  type CompletionSection,
 } from "@codemirror/autocomplete";
 import { EditorView } from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
 
+// ── Sections ────────────────────────────────────────────────────────────────
+
+const BASIC: CompletionSection = { name: "Basic blocks", rank: 0 };
+const FORMAT: CompletionSection = { name: "Formatting", rank: 1 };
+const EXEC: CompletionSection = { name: "Executable", rank: 2 };
+
+// ── Lucide SVG paths (same paths used by react-icons/lu) ────────────────────
+
+const ICON_SVGS: Record<string, string> = {
+  h1: '<path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="m17 12 3-2v8"/>',
+  h2: '<path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="M21 18h-4c0-4 4-3 4-6 0-1.5-2-2.5-4-1"/>',
+  h3: '<path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="M17.5 10.5c1.7-1 3.5 0 3.5 1.5a2 2 0 0 1-2 2"/><path d="M17 17.5c2 1.5 4 .3 4-1.5a2 2 0 0 0-2-2"/>',
+  "bullet-list": '<line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/>',
+  "ordered-list": '<line x1="10" x2="21" y1="6" y2="6"/><line x1="10" x2="21" y1="12" y2="12"/><line x1="10" x2="21" y1="18" y2="18"/><path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/>',
+  "task-list": '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="m9 12 2 2 4-4"/>',
+  quote: '<path d="M17 6H3"/><path d="M21 12H8"/><path d="M21 18H8"/><path d="M3 12v6"/>',
+  divider: '<line x1="2" x2="22" y1="12" y2="12"/>',
+  code: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
+  table: '<path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/>',
+  math: '<path d="M18 7V4H6l6 8-6 8h12v-3"/>',
+  "math-block": '<path d="M18 7V4H6l6 8-6 8h12v-3"/>',
+  diagram: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  database: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/>',
+  http: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+  e2e: '<path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><path d="m9 15 2 2 4-4"/>',
+};
+
+/** Create a DOM SVG element for an icon type */
+function createIconSvg(type: string): SVGElement | null {
+  const paths = ICON_SVGS[type];
+  if (!paths) return null;
+
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("width", "18");
+  svg.setAttribute("height", "18");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "2");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.innerHTML = paths;
+  return svg;
+}
+
+// ── Commands ────────────────────────────────────────────────────────────────
+
 interface SlashCommand {
   label: string;
-  icon: string;
+  type: string;
   shortcut?: string;
   insert: string;
-  /** Cursor offset from end of insertion (negative = move back) */
   cursorOffset?: number;
+  section: CompletionSection;
 }
 
 const COMMANDS: SlashCommand[] = [
-  {
-    label: "Titulo 1",
-    icon: "H1",
-    shortcut: "#",
-    insert: "# ",
-  },
-  {
-    label: "Titulo 2",
-    icon: "H2",
-    shortcut: "##",
-    insert: "## ",
-  },
-  {
-    label: "Titulo 3",
-    icon: "H3",
-    shortcut: "###",
-    insert: "### ",
-  },
-  {
-    label: "Lista com marcadores",
-    icon: ":=",
-    shortcut: "-",
-    insert: "- ",
-  },
-  {
-    label: "Lista numerada",
-    icon: "1=",
-    shortcut: "1.",
-    insert: "1. ",
-  },
-  {
-    label: "Lista de tarefas",
-    icon: "v=",
-    shortcut: "[]",
-    insert: "- [ ] ",
-  },
-  {
-    label: "Citacao",
-    icon: "\"",
-    shortcut: ">",
-    insert: "> ",
-  },
-  {
-    label: "Codigo",
-    icon: "<>",
-    shortcut: "```",
-    insert: "```\n\n```",
-    cursorOffset: -4,
-  },
-  {
-    label: "Separador",
-    icon: "--",
-    shortcut: "---",
-    insert: "---\n",
-  },
-  {
-    label: "Formula inline",
-    icon: "∑",
-    shortcut: "$",
-    insert: "$x^2$",
-    cursorOffset: -1,
-  },
-  {
-    label: "Formula em bloco",
-    icon: "∫",
-    shortcut: "$$",
-    insert: "$$\nE = mc^2\n$$",
-    cursorOffset: -3,
-  },
-  {
-    label: "Diagrama Mermaid",
-    icon: "◇",
-    insert: "```mermaid\ngraph TD\n  A --> B\n```\n",
-  },
-  {
-    label: "Tabela",
-    icon: "T#",
-    insert: "| Col 1 | Col 2 | Col 3 |\n| --- | --- | --- |\n|  |  |  |\n",
-  },
-  {
-    label: "Database Query",
-    icon: "⊕",
-    insert: '```db alias=db1\n{"connectionId":"","query":""}\n```\n',
-  },
-  {
-    label: "HTTP Request",
-    icon: "⚡",
-    insert: '```http alias=req1\n{"method":"GET","url":"","params":[],"headers":[],"body":""}\n```\n',
-  },
-  {
-    label: "E2E Test",
-    icon: "🧪",
-    insert: '```e2e alias=e2e1\n{"baseUrl":"","headers":[],"steps":[]}\n```\n',
-  },
+  // Basic blocks
+  { label: "Heading 1", type: "h1", shortcut: "#", insert: "# ", section: BASIC },
+  { label: "Heading 2", type: "h2", shortcut: "##", insert: "## ", section: BASIC },
+  { label: "Heading 3", type: "h3", shortcut: "###", insert: "### ", section: BASIC },
+  { label: "Bulleted list", type: "bullet-list", shortcut: "-", insert: "- ", section: BASIC },
+  { label: "Numbered list", type: "ordered-list", shortcut: "1.", insert: "1. ", section: BASIC },
+  { label: "To-do list", type: "task-list", shortcut: "[]", insert: "- [ ] ", section: BASIC },
+  { label: "Quote", type: "quote", shortcut: ">", insert: "> ", section: BASIC },
+
+  // Formatting
+  { label: "Divider", type: "divider", shortcut: "---", insert: "---\n", section: FORMAT },
+  { label: "Code block", type: "code", shortcut: "```", insert: "```\n\n```", cursorOffset: -4, section: FORMAT },
+  { label: "Table", type: "table", insert: "| Col 1 | Col 2 | Col 3 |\n| ----- | ----- | ----- |\n|       |       |       |\n", section: FORMAT },
+  { label: "Inline formula", type: "math", shortcut: "$", insert: "$x^2$", cursorOffset: -1, section: FORMAT },
+  { label: "Block formula", type: "math-block", shortcut: "$$", insert: "$$\nE = mc^2\n$$", cursorOffset: -3, section: FORMAT },
+  { label: "Mermaid diagram", type: "diagram", insert: "```mermaid\ngraph TD\n  A --> B\n```\n", section: FORMAT },
+
+  // Executable
+  { label: "Database Query", type: "database", insert: '```db alias=db1\n{"connectionId":"","query":""}\n```\n', section: EXEC },
+  { label: "HTTP Request", type: "http", insert: '```http alias=req1\n{"method":"GET","url":"","params":[],"headers":[],"body":""}\n```\n', section: EXEC },
+  { label: "E2E Test", type: "e2e", insert: '```e2e alias=e2e1\n{"baseUrl":"","headers":[],"steps":[]}\n```\n', section: EXEC },
 ];
 
+// ── Completion source ───────────────────────────────────────────────────────
+
 function slashCompletionSource(context: CompletionContext): CompletionResult | null {
-  // Match "/" at the beginning of a line, optionally followed by text
   const line = context.state.doc.lineAt(context.pos);
   const lineTextBefore = context.state.doc.sliceString(line.from, context.pos);
 
-  // Only activate if the line starts with "/" (possibly with leading whitespace)
   const match = lineTextBefore.match(/^(\s*)\/([\w\s]*)$/);
   if (!match) return null;
 
-  const prefix = match[1]; // whitespace before /
-  const query = match[2].toLowerCase(); // text after /
-  const from = line.from + prefix.length; // start of the /
+  const prefix = match[1];
+  const query = match[2].toLowerCase();
+  const from = line.from + prefix.length;
 
   const filtered = COMMANDS.filter((cmd) =>
     cmd.label.toLowerCase().includes(query),
@@ -134,97 +109,128 @@ function slashCompletionSource(context: CompletionContext): CompletionResult | n
   const options: Completion[] = filtered.map((cmd) => ({
     label: `/${cmd.label}`,
     displayLabel: cmd.label,
+    type: cmd.type,
     detail: cmd.shortcut,
+    section: cmd.section,
     apply: (view: EditorView, _completion: Completion, from: number, to: number) => {
       const insert = cmd.insert;
       view.dispatch({
         changes: { from, to, insert },
-        selection: {
-          anchor: from + insert.length + (cmd.cursorOffset ?? 0),
-        },
+        selection: { anchor: from + insert.length + (cmd.cursorOffset ?? 0) },
       });
     },
   }));
 
-  return {
-    from,
-    options,
-    filter: false, // We already filtered
-  };
+  return { from, options, filter: false };
 }
 
-// Theme for the autocomplete menu
-const slashMenuTheme = EditorView.theme({
-  ".cm-tooltip-autocomplete": {
-    backgroundColor: "var(--chakra-colors-bg-panel, #1a1a2e)",
-    border: "1px solid var(--chakra-colors-border, #333)",
-    borderRadius: "10px",
-    boxShadow: "0 12px 40px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.2)",
-    padding: "6px",
-    minWidth: "300px",
-    maxHeight: "400px",
-    overflowY: "auto",
-    backdropFilter: "blur(12px)",
+// ── addToOptions icon renderer (exported for MarkdownEditor) ────────────────
+
+/** Renders Lucide SVG icons in autocomplete items via CM6 addToOptions API */
+export const slashIconOption = {
+  render(completion: Completion): HTMLElement | null {
+    if (!completion.type || !ICON_SVGS[completion.type]) return null;
+    const wrapper = document.createElement("span");
+    wrapper.className = "cm-slash-icon";
+    const svg = createIconSvg(completion.type);
+    if (svg) wrapper.appendChild(svg);
+    return wrapper;
   },
+  position: 20, // before label (50) and detail (100)
+};
+
+// ── Theme ───────────────────────────────────────────────────────────────────
+
+const slashMenuTheme = EditorView.theme({
+  // Container
+  ".cm-tooltip-autocomplete": {
+    background: "var(--chakra-colors-bg) !important",
+    border: "1px solid var(--chakra-colors-border) !important",
+    borderRadius: "12px !important",
+    boxShadow: "var(--chakra-shadows-lg) !important",
+    padding: "6px !important",
+    minWidth: "300px",
+    maxWidth: "380px",
+    maxHeight: "380px",
+    overflow: "hidden auto !important",
+  },
+  // List
   ".cm-tooltip-autocomplete ul": {
-    fontFamily: "var(--chakra-fonts-body, system-ui, sans-serif)",
+    fontFamily: "var(--chakra-fonts-body) !important",
+    fontSize: "14px !important",
     listStyle: "none",
     margin: "0",
     padding: "0",
   },
-  ".cm-tooltip-autocomplete ul li": {
-    padding: "8px 12px",
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-    borderRadius: "6px",
-    cursor: "pointer",
-    transition: "background-color 0.1s",
-    margin: "1px 0",
-    border: "2px solid transparent",
+  // Section headers
+  ".cm-tooltip-autocomplete .cm-completionSection": {
+    padding: "8px 10px 6px !important",
+    fontSize: "12px !important",
+    fontWeight: "500 !important",
+    color: "var(--chakra-colors-fg-subtle) !important",
+    borderTop: "1px solid var(--chakra-colors-border) !important",
+    marginTop: "4px !important",
   },
-  ".cm-tooltip-autocomplete ul li:hover": {
-    backgroundColor: "var(--chakra-colors-bg-subtle, #262640)",
+  ".cm-tooltip-autocomplete .cm-completionSection:first-child": {
+    borderTop: "none !important",
+    marginTop: "0 !important",
+  },
+  // Items
+  ".cm-tooltip-autocomplete ul li": {
+    padding: "7px 10px !important",
+    display: "flex !important",
+    alignItems: "center !important",
+    gap: "12px !important",
+    borderRadius: "4px !important",
+    cursor: "pointer",
+    margin: "0 !important",
+    lineHeight: "1.5 !important",
+    border: "none !important",
   },
   ".cm-tooltip-autocomplete ul li[aria-selected]": {
-    backgroundColor: "var(--chakra-colors-bg-subtle, #262640)",
-    borderColor: "var(--chakra-colors-brand-400, #6366f1)",
+    background: "var(--chakra-colors-bg-subtle) !important",
   },
+  // Hide CM6 default icon (we use addToOptions instead)
   ".cm-tooltip-autocomplete .cm-completionIcon": {
-    display: "none",
+    display: "none !important",
   },
+  // Custom SVG icon from addToOptions
+  ".cm-slash-icon": {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "20px",
+    height: "20px",
+    flexShrink: "0",
+    color: "var(--chakra-colors-fg)",
+  },
+  // Label
   ".cm-tooltip-autocomplete .cm-completionLabel": {
-    fontSize: "13px",
-    fontWeight: "500",
-    color: "var(--chakra-colors-fg, #e0e0e0)",
-    flex: "1",
+    fontSize: "14px !important",
+    fontWeight: "400 !important",
+    color: "var(--chakra-colors-fg) !important",
+    flex: "1 !important",
   },
+  // Shortcut
   ".cm-tooltip-autocomplete .cm-completionDetail": {
-    fontSize: "11px",
-    fontFamily: "var(--chakra-fonts-mono, monospace)",
-    color: "var(--chakra-colors-fg-subtle, #888)",
-    fontStyle: "normal",
-    opacity: "0.7",
-    padding: "2px 6px",
-    backgroundColor: "var(--chakra-colors-bg-emphasized, #333)",
-    borderRadius: "4px",
+    fontSize: "12px !important",
+    fontFamily: "var(--chakra-fonts-body) !important",
+    fontStyle: "normal !important",
+    color: "var(--chakra-colors-fg-subtle) !important",
+    marginLeft: "auto !important",
+    flexShrink: "0",
+    opacity: "1 !important",
   },
+  // Matched text
   ".cm-tooltip-autocomplete .cm-completionMatchedText": {
-    textDecoration: "none",
-    fontWeight: "700",
-    color: "var(--chakra-colors-brand-400, #6366f1)",
+    textDecoration: "none !important",
+    fontWeight: "600 !important",
+    color: "var(--chakra-colors-fg) !important",
   },
-  // Scrollbar styling
-  ".cm-tooltip-autocomplete::-webkit-scrollbar": {
-    width: "6px",
-  },
-  ".cm-tooltip-autocomplete::-webkit-scrollbar-track": {
-    backgroundColor: "transparent",
-  },
-  ".cm-tooltip-autocomplete::-webkit-scrollbar-thumb": {
-    backgroundColor: "var(--chakra-colors-border, #444)",
-    borderRadius: "3px",
-  },
+  // Scrollbar
+  ".cm-tooltip-autocomplete::-webkit-scrollbar": { width: "4px" },
+  ".cm-tooltip-autocomplete::-webkit-scrollbar-track": { background: "transparent" },
+  ".cm-tooltip-autocomplete::-webkit-scrollbar-thumb": { background: "var(--chakra-colors-border)", borderRadius: "2px" },
 });
 
 /** Export the completion source for combining with other sources */
@@ -232,7 +238,5 @@ export { slashCompletionSource };
 
 /** Slash commands extension for CM6 — activates on "/" at line start */
 export function slashCommands(): Extension {
-  return [
-    slashMenuTheme,
-  ];
+  return [slashMenuTheme];
 }

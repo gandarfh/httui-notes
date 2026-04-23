@@ -10,7 +10,7 @@ import { autocompletion, closeBrackets, closeBracketsKeymap } from "@codemirror/
 import { search, highlightSelectionMatches, searchKeymap } from "@codemirror/search";
 import { vim } from "@replit/codemirror-vim";
 import { hybridRendering } from "@/lib/codemirror/cm-hybrid-rendering";
-import { slashCommands, slashCompletionSource } from "@/lib/codemirror/cm-slash-commands";
+import { slashCommands, slashCompletionSource, slashIconOption } from "@/lib/codemirror/cm-slash-commands";
 import { createEditorBlockWidgets, clearHeightCache } from "@/lib/codemirror/cm-block-widgets";
 import { blockNotifierPlugin } from "./BlockWidgetOverlay";
 import { wikilinks, createWikilinkCompletion } from "@/lib/codemirror/cm-wikilinks";
@@ -160,6 +160,7 @@ export function MarkdownEditor({
   const isExternalUpdate = useRef(false);
   const filePathRef = useRef(filePath);
   const [editorReady, setEditorReady] = useState(false);
+  const [docVersion, setDocVersion] = useState(0);
 
   filePathRef.current = filePath;
 
@@ -170,6 +171,9 @@ export function MarkdownEditor({
     const updateListener = EditorView.updateListener.of((update) => {
       if (update.docChanged && !isExternalUpdate.current) {
         onChangeRef.current(update.state.doc.toString());
+      }
+      if (update.docChanged) {
+        setDocVersion((v) => v + 1);
       }
     });
 
@@ -213,6 +217,7 @@ export function MarkdownEditor({
             createWikilinkCompletion(() => flattenFiles(entriesRef.current)),
           ],
           icons: false,
+          addToOptions: [slashIconOption],
         }),
         editorTheme,
         updateListener,
@@ -339,7 +344,7 @@ export function MarkdownEditor({
           }}
         />
         {editorReady && viewRef.current && (
-          <BlockWidgetOverlay view={viewRef.current} filePath={filePath} />
+          <BlockWidgetOverlay view={viewRef.current} filePath={filePath} docVersion={docVersion} />
         )}
       </Box>
     </BlockContextProvider>

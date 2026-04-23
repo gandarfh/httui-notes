@@ -256,8 +256,17 @@ class PlaceholderWidget extends WidgetType {
     return div;
   }
 
-  destroy(): void {
-    placeholderElements.delete(this.blockId);
+  updateDOM(dom: HTMLElement): boolean {
+    // Re-register in case a prior destroy() cleared it
+    placeholderElements.set(this.blockId, dom);
+    return true;
+  }
+
+  destroy(dom: HTMLElement): void {
+    // Only delete if this is still the registered element (avoid clearing a newer registration)
+    if (placeholderElements.get(this.blockId) === dom) {
+      placeholderElements.delete(this.blockId);
+    }
   }
 
   eq(other: PlaceholderWidget): boolean {

@@ -115,6 +115,8 @@ interface OverlayEntry {
 interface BlockWidgetOverlayProps {
   view: EditorView;
   filePath: string;
+  /** Incremented on docChanged — triggers block rescan */
+  docVersion: number;
 }
 
 /** Indexed block — preserves original index for stable ID generation */
@@ -123,59 +125,60 @@ interface IndexedBlock {
   block: FencedBlock;
 }
 
-/** Compute positions using coordsAtPos (works even when placeholders are virtualized) */
+/** Compute positions — uses placeholder element (primary) or coordsAtPos (fallback for virtualized) */
 function readPositions(view: EditorView, blocks: IndexedBlock[]): OverlayEntry[] {
   const entries: OverlayEntry[] = [];
   const scrollerRect = view.scrollDOM.getBoundingClientRect();
+  const width = scrollerRect.width - 64;
 
   for (const { index, block } of blocks) {
     const id = `block_${index}`;
 
-    // coordsAtPos uses CM6's height map — works even when DOM is virtualized
-    const coords = view.coordsAtPos(block.from);
-    if (!coords) {
-      // Fallback: try the placeholder element directly
-      const el = getPlaceholderElement(id);
-      if (el) {
-        entries.push({ id, block, top: el.offsetTop, width: scrollerRect.width - 64 });
-      }
+    // Primary: use placeholder element directly (works for all rendered blocks)
+    const el = getPlaceholderElement(id);
+    if (el) {
+      entries.push({ id, block, top: el.offsetTop, width });
       continue;
     }
 
-    const top = coords.top - scrollerRect.top + view.scrollDOM.scrollTop;
-    entries.push({ id, block, top, width: scrollerRect.width - 64 });
+    // Fallback: coordsAtPos for virtualized blocks (placeholder not in DOM)
+    const coords = view.coordsAtPos(block.from);
+    if (coords) {
+      const top = coords.top - scrollerRect.top + view.scrollDOM.scrollTop;
+      entries.push({ id, block, top, width });
+    }
   }
   return entries;
 }
 
-export function BlockWidgetOverlay({ view, filePath }: BlockWidgetOverlayProps) {
+export function BlockWidgetOverlay({ view, filePath, docVersion }: BlockWidgetOverlayProps) {
   const [entries, setEntries] = useState<OverlayEntry[]>([]);
   const blocksRef = useRef<FencedBlock[]>([]);
   const ctxCacheRef = useRef(new Map<string, BlockWidgetContext>());
-  const version = useBlockUpdates();
+  // Also subscribe to viewport changes via the ViewPlugin
+  const vpVersion = useBlockUpdates();
 
-  // React to block/viewport changes via requestMeasure
+  // React to doc changes (docVersion) and viewport changes (vpVersion)
   useEffect(() => {
-    view.requestMeasure({
-      read(view) {
-        const allBlocks = findFencedBlocks(view.state.doc);
-        const { from: vpFrom, to: vpTo } = view.viewport;
-        const margin = 2000;
-        const visible: IndexedBlock[] = [];
-        for (let i = 0; i < allBlocks.length; i++) {
-          const b = allBlocks[i];
-          if (b.to >= vpFrom - margin && b.from <= vpTo + margin) {
-            visible.push({ index: i, block: b });
-          }
-        }
-        return { allBlocks, positions: readPositions(view, visible) };
-      },
-      write({ allBlocks, positions }) {
-        blocksRef.current = allBlocks;
-        setEntries(positions);
-      },
+    const allBlocks = findFencedBlocks(view.state.doc);
+    const { from: vpFrom, to: vpTo } = view.viewport;
+    const margin = 2000;
+    const visible: IndexedBlock[] = [];
+    for (let i = 0; i < allBlocks.length; i++) {
+      const b = allBlocks[i];
+      if (b.to >= vpFrom - margin && b.from <= vpTo + margin) {
+        visible.push({ index: i, block: b });
+      }
+    }
+    blocksRef.current = allBlocks;
+
+    // Defer position reading to next frame (DOM needs to update first)
+    const raf = requestAnimationFrame(() => {
+      const positions = readPositions(view, visible);
+      setEntries(positions);
     });
-  }, [view, version]);
+    return () => cancelAnimationFrame(raf);
+  }, [view, docVersion, vpVersion]);
 
   // Initial render (ViewPlugin hasn't notified yet)
   useEffect(() => {
