@@ -20,6 +20,7 @@ import { tables } from "@/lib/codemirror/cm-tables";
 import { moveBlocksKeymap } from "@/lib/codemirror/cm-move-blocks";
 import { BlockContextProvider } from "@/components/blocks/BlockContext";
 import { WidgetPortals } from "./WidgetPortals";
+import { DbWidgetPortals } from "./DbWidgetPortals";
 import { useWorkspaceStore } from "@/stores/workspace";
 import type { FileEntry } from "@/lib/tauri/commands";
 import { listen } from "@tauri-apps/api/event";
@@ -183,16 +184,13 @@ const editorTheme = EditorView.theme({
     borderLeft: "2px solid var(--chakra-colors-border)",
     paddingLeft: "12px",
   },
-  ".cm-db-toolbar-stub": {
+  // Stage-5 portal containers — React mounts toolbar / result / status bar
+  // via createPortal into these divs. Layout details live in the React
+  // components; the CSS here just positions / isolates.
+  ".cm-db-toolbar-portal": {
     position: "absolute",
     top: "2px",
     right: "8px",
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "6px",
-    fontFamily: "var(--chakra-fonts-mono)",
-    fontSize: "11px",
-    color: "var(--chakra-colors-fg)",
     background: "var(--chakra-colors-bg)",
     border: "1px solid var(--chakra-colors-border)",
     borderRadius: "4px",
@@ -200,51 +198,17 @@ const editorTheme = EditorView.theme({
     userSelect: "none",
     pointerEvents: "auto",
   },
-  ".cm-db-toolbar-badge": {
-    fontWeight: 600,
-    background: "var(--chakra-colors-blue-500)",
-    color: "white",
-    padding: "0 5px",
-    borderRadius: "3px",
-    fontSize: "9px",
-    letterSpacing: "0.05em",
-  },
-  ".cm-db-toolbar-alias": {
-    fontWeight: 600,
-  },
-  ".cm-db-toolbar-connection": {
-    color: "var(--chakra-colors-fg-muted)",
-  },
-  ".cm-db-toolbar-dialect": {
-    color: "var(--chakra-colors-fg-muted)",
-    fontSize: "9px",
-    textTransform: "uppercase",
-    letterSpacing: "0.05em",
-  },
-  ".cm-db-toolbar-btn": {
-    all: "unset",
-    cursor: "not-allowed",
-    opacity: 0.45,
-    padding: "0 3px",
-    fontSize: "12px",
-  },
-  ".cm-db-result-stub": {
+  ".cm-db-result-portal": {
+    overflowAnchor: "none",
     margin: "8px 0 2px",
-    padding: "12px 14px",
-    background: "var(--chakra-colors-bg-subtle)",
-    border: "1px dashed var(--chakra-colors-border)",
+    background: "var(--chakra-colors-bg)",
+    border: "1px solid var(--chakra-colors-border)",
     borderRadius: "6px",
-    fontFamily: "var(--chakra-fonts-mono)",
-    fontSize: "11px",
-    color: "var(--chakra-colors-fg-muted)",
+    minHeight: "40px",
   },
-  ".cm-db-statusbar-stub": {
+  ".cm-db-statusbar-portal": {
     margin: "2px 0 12px",
-    padding: "2px 10px",
-    fontFamily: "var(--chakra-fonts-mono)",
-    fontSize: "10px",
-    color: "var(--chakra-colors-fg-muted)",
-    opacity: 0.75,
+    minHeight: "16px",
   },
 }, { dark: true });
 
@@ -388,7 +352,10 @@ export function MarkdownEditor({
           onCreateEditor={handleCreateEditor}
         />
         {editorReady && viewRef.current && (
-          <WidgetPortals view={viewRef.current} filePath={filePath} />
+          <>
+            <WidgetPortals view={viewRef.current} filePath={filePath} />
+            <DbWidgetPortals view={viewRef.current} filePath={filePath} />
+          </>
         )}
       </Box>
     </BlockContextProvider>

@@ -10,13 +10,17 @@ import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { createEditorBlockWidgets, getWidgetContainers } from "../cm-block-widgets";
 
-// Long document with a block in the middle so we have room to scroll
+// Long document with a block in the middle so we have room to scroll.
+// Uses e2e (not db) because db-* blocks migrated to a different
+// registry in cm-db-block.tsx — the scroll-reset bug this test guards
+// against affects the shared PortalWidget measurement path that e2e
+// still uses.
 function buildDoc(blockAtLine: number, totalLines: number): string {
   const lines: string[] = [];
   for (let i = 0; i < totalLines; i++) {
     if (i === blockAtLine) {
-      lines.push("```db {alias=q1}");
-      lines.push("SELECT * FROM users");
+      lines.push("```e2e {alias=q1}");
+      lines.push("step1");
       lines.push("```");
     } else {
       lines.push(`line ${i} — some content to make the doc scrollable`);
