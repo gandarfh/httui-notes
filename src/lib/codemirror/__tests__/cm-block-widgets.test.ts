@@ -12,12 +12,14 @@ import {
 } from "../cm-block-widgets";
 import { Text } from "@codemirror/state";
 
+// db-* blocks are handled by cm-db-block.tsx (stage 4 redesign) so this
+// suite exercises only the non-db paths: http and e2e.
 const SAMPLE_DOC = `# Notes
 
 Some text here
 
-\`\`\`db {alias=q1}
-SELECT * FROM users
+\`\`\`e2e {alias=q1}
+step1
 \`\`\`
 
 More text
@@ -40,7 +42,7 @@ describe("findFencedBlocks", () => {
     const doc = Text.of(SAMPLE_DOC.split("\n"));
     const blocks = findFencedBlocks(doc);
     expect(blocks).toHaveLength(2);
-    expect(blocks[0].lang).toBe("db");
+    expect(blocks[0].lang).toBe("e2e");
     expect(blocks[1].lang).toBe("http");
   });
 
@@ -89,7 +91,7 @@ describe("PortalWidget registry", () => {
     const entry = containers.get("block_0");
     expect(entry).toBeDefined();
     expect(entry?.element).toBeInstanceOf(HTMLElement);
-    expect(entry?.block.lang).toBe("db");
+    expect(entry?.block.lang).toBe("e2e");
     view.destroy();
   });
 
@@ -132,9 +134,9 @@ describe("widgetTransaction annotation", () => {
     // Dispatch a transaction with the widget annotation
     // (simulates ctx.updateInfo being called)
     const doc = view.state.doc;
-    const firstBlockStart = doc.line(5).from; // ```db line
+    const firstBlockStart = doc.line(5).from; // ```e2e line
     const firstBlockLine = doc.line(5);
-    const infoStart = firstBlockStart + 3 + 2; // after ```db
+    const infoStart = firstBlockStart + 3 + 3; // after ```e2e
     const infoEnd = firstBlockLine.to;
 
     view.dispatch({

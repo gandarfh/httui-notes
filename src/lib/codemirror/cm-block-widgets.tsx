@@ -19,6 +19,16 @@ export const widgetTransaction = Annotation.define<boolean>();
 const BLOCK_OPEN_RE = /^```(http|db(?:-[\w:-]+)?|e2e)(.*)$/;
 const BLOCK_CLOSE_RE = /^```\s*$/;
 
+/**
+ * db-* blocks are rendered natively by cm-db-block.tsx (stage 4 redesign).
+ * The DiffViewer path (BlockWidget below) still needs to see them via
+ * findFencedBlocks, so we match them in the regex but the editor's
+ * decoration builder filters them out.
+ */
+function isDbLang(lang: string): boolean {
+  return lang === "db" || lang.startsWith("db-");
+}
+
 export interface FencedBlock {
   from: number;
   to: number;
@@ -357,6 +367,8 @@ function buildEditorDecorations(state: import("@codemirror/state").EditorState):
 
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i];
+    // db-* blocks are rendered by cm-db-block.tsx — don't double-render them.
+    if (isDbLang(block.lang)) continue;
     // Portal widget — React renders block UI directly into this div
     decorations.push({
       from: block.from,
@@ -437,6 +449,9 @@ export function createEditorBlockWidgets() {
   const atomicBlocks = EditorView.atomicRanges.of(() => {
     const builder = new RangeSetBuilder<Decoration>();
     for (const block of cachedBlocks) {
+      // db-* blocks define their own (line-level) atomic ranges in
+      // cm-db-block.tsx so the SQL body remains editable.
+      if (isDbLang(block.lang)) continue;
       builder.add(block.from, block.to, Decoration.mark({}));
     }
     return builder.finish();

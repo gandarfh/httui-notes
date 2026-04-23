@@ -14,6 +14,7 @@ import { vim } from "@replit/codemirror-vim";
 import { hybridRendering } from "@/lib/codemirror/cm-hybrid-rendering";
 import { slashCommands, slashCompletionSource, slashIconOption } from "@/lib/codemirror/cm-slash-commands";
 import { createEditorBlockWidgets } from "@/lib/codemirror/cm-block-widgets";
+import { createDbBlockExtension } from "@/lib/codemirror/cm-db-block";
 import { wikilinks, createWikilinkCompletion } from "@/lib/codemirror/cm-wikilinks";
 import { tables } from "@/lib/codemirror/cm-tables";
 import { moveBlocksKeymap } from "@/lib/codemirror/cm-move-blocks";
@@ -166,6 +167,85 @@ const editorTheme = EditorView.theme({
     lineHeight: "0 !important",
     border: "none !important",
   },
+
+  // ── db block (stage 4 — fenced-native rendering) ──
+  ".cm-db-fence-line": {
+    color: "var(--chakra-colors-fg-muted)",
+    fontFamily: "var(--chakra-fonts-mono)",
+    fontSize: "11px",
+    opacity: 0.55,
+    position: "relative",
+    paddingRight: "320px", // reserve space for inline toolbar stub
+  },
+  ".cm-db-body-line": {
+    fontFamily: "var(--chakra-fonts-mono)",
+    background: "var(--chakra-colors-bg-subtle)",
+    borderLeft: "2px solid var(--chakra-colors-border)",
+    paddingLeft: "12px",
+  },
+  ".cm-db-toolbar-stub": {
+    position: "absolute",
+    top: "2px",
+    right: "8px",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+    fontFamily: "var(--chakra-fonts-mono)",
+    fontSize: "11px",
+    color: "var(--chakra-colors-fg)",
+    background: "var(--chakra-colors-bg)",
+    border: "1px solid var(--chakra-colors-border)",
+    borderRadius: "4px",
+    padding: "2px 6px",
+    userSelect: "none",
+    pointerEvents: "auto",
+  },
+  ".cm-db-toolbar-badge": {
+    fontWeight: 600,
+    background: "var(--chakra-colors-blue-500)",
+    color: "white",
+    padding: "0 5px",
+    borderRadius: "3px",
+    fontSize: "9px",
+    letterSpacing: "0.05em",
+  },
+  ".cm-db-toolbar-alias": {
+    fontWeight: 600,
+  },
+  ".cm-db-toolbar-connection": {
+    color: "var(--chakra-colors-fg-muted)",
+  },
+  ".cm-db-toolbar-dialect": {
+    color: "var(--chakra-colors-fg-muted)",
+    fontSize: "9px",
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+  },
+  ".cm-db-toolbar-btn": {
+    all: "unset",
+    cursor: "not-allowed",
+    opacity: 0.45,
+    padding: "0 3px",
+    fontSize: "12px",
+  },
+  ".cm-db-result-stub": {
+    margin: "8px 0 2px",
+    padding: "12px 14px",
+    background: "var(--chakra-colors-bg-subtle)",
+    border: "1px dashed var(--chakra-colors-border)",
+    borderRadius: "6px",
+    fontFamily: "var(--chakra-fonts-mono)",
+    fontSize: "11px",
+    color: "var(--chakra-colors-fg-muted)",
+  },
+  ".cm-db-statusbar-stub": {
+    margin: "2px 0 12px",
+    padding: "2px 10px",
+    fontFamily: "var(--chakra-fonts-mono)",
+    fontSize: "10px",
+    color: "var(--chakra-colors-fg-muted)",
+    opacity: 0.75,
+  },
 }, { dark: true });
 
 // Static CSS for the container — @uiw/react-codemirror wraps the editor
@@ -216,6 +296,7 @@ export function MarkdownEditor({
     ]),
     moveBlocksKeymap(),
     hybridRendering(),
+    createDbBlockExtension(),
     createEditorBlockWidgets(),
     tables(),
     slashCommands(),
