@@ -167,6 +167,18 @@ function notify() {
   for (const fn of listeners) fn();
 }
 
+// Body-only changes (fast keystrokes in the query) trigger a debounced
+// notify so the React panel's body-dependent effects still catch up, but
+// we don't re-render on every character. 250ms matches "idle typing".
+let bodyNotifyTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleBodyNotify() {
+  if (bodyNotifyTimer !== null) clearTimeout(bodyNotifyTimer);
+  bodyNotifyTimer = setTimeout(() => {
+    bodyNotifyTimer = null;
+    notify();
+  }, 250);
+}
+
 export function subscribeToDbPortals(cb: () => void): () => void {
   listeners.add(cb);
   return () => {
@@ -247,17 +259,62 @@ function blockIdOf(_block: DbFencedBlock, index: number): string {
  * returns true are never re-added via toDOM/updateDOM, so without this
  * sync the entry would hold a stale block reference.
  */
+/**
+ * Keep each registry entry in sync with the latest block scan — but only
+ * swap `entry.block` to a new reference (and `notify()`) when something
+ * *the React panel actually renders* changed (metadata or body). For
+ * position-only shifts — which fire on every keystroke anywhere in the
+ * document — we mutate the existing block object in place so future
+ * closures read fresh coordinates, while React.memo still sees the same
+ * prop reference and skips re-rendering the panel.
+ */
 function syncRegistryBlocks(blocks: DbFencedBlock[]): void {
-  let mutated = false;
+  let meaningfulChange = false;
   for (let i = 0; i < blocks.length; i++) {
     const id = blockIdOf(blocks[i], i);
     const entry = entries.get(id);
-    if (entry && entry.block !== blocks[i]) {
-      entry.block = blocks[i];
-      mutated = true;
+    if (!entry) continue;
+    const prev = entry.block;
+    const fresh = blocks[i];
+    if (prev === fresh) continue;
+
+    const prevMeta = prev.metadata;
+    const nextMeta = fresh.metadata;
+    const metaChanged =
+      prevMeta.dialect !== nextMeta.dialect ||
+      prevMeta.alias !== nextMeta.alias ||
+      prevMeta.connection !== nextMeta.connection ||
+      prevMeta.limit !== nextMeta.limit ||
+      prevMeta.timeoutMs !== nextMeta.timeoutMs ||
+      prevMeta.displayMode !== nextMeta.displayMode;
+    const bodyChanged = prev.body !== fresh.body;
+
+    if (metaChanged) {
+      entry.block = fresh;
+      meaningfulChange = true;
+    } else if (bodyChanged) {
+      // Swap the ref so the panel *eventually* sees the new body, but
+      // debounce the subscriber notify — we don't want React to re-render
+      // the whole panel on every keystroke in the query.
+      entry.block = fresh;
+      scheduleBodyNotify();
+    } else {
+      // Same meta + same body — pure position shift from edits elsewhere
+      // in the document. Mutate in place; keep the reference stable so
+      // React.memo skips the render entirely.
+      prev.from = fresh.from;
+      prev.to = fresh.to;
+      prev.bodyFrom = fresh.bodyFrom;
+      prev.bodyTo = fresh.bodyTo;
+      prev.openLineFrom = fresh.openLineFrom;
+      prev.openLineTo = fresh.openLineTo;
+      prev.closeLineFrom = fresh.closeLineFrom;
+      prev.closeLineTo = fresh.closeLineTo;
+      prev.lang = fresh.lang;
+      prev.info = fresh.info;
     }
   }
-  if (mutated) notify();
+  if (meaningfulChange) notify();
 }
 
 // ───── Widgets (register-only — React mounts from DbWidgetPortals) ─────
