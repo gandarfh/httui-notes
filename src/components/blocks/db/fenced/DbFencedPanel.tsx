@@ -34,6 +34,7 @@ import {
   NativeSelectRoot,
   Portal,
   Spinner,
+  Tabs,
   Text,
 } from "@chakra-ui/react";
 import {
@@ -863,33 +864,195 @@ function DbResult({
     );
   }
 
-  const first = response.results[0];
-  if (!first) {
+  return (
+    <DbResultTabs
+      response={response}
+      cached={cached}
+      onLoadMore={onLoadMore}
+    />
+  );
+}
+
+// ───── Result tabs (Results · Messages · Plan · Stats) ─────
+
+/**
+ * Tabbed view of a DbResponse. When `results` has more than one entry, the
+ * Results tab splits into numbered sub-tabs (1: SELECT · 2: UPDATE · …).
+ * Messages / Plan / Stats always show, with placeholder content when empty.
+ */
+function DbResultTabs({
+  response,
+  cached,
+  onLoadMore,
+}: {
+  response: DbResponse;
+  cached: boolean;
+  onLoadMore: () => Promise<void> | void;
+}) {
+  const messages = response.messages ?? [];
+  const plan = response.plan;
+  const hasResults = response.results.length > 0;
+
+  return (
+    <Tabs.Root
+      defaultValue="results"
+      size="sm"
+      variant="line"
+      className="cm-db-result"
+    >
+      <Tabs.List px={3} pt={1} borderBottom="1px solid" borderColor="border">
+        <Tabs.Trigger value="results" fontSize="xs">
+          Result{response.results.length > 1 ? `s (${response.results.length})` : ""}
+        </Tabs.Trigger>
+        <Tabs.Trigger value="messages" fontSize="xs">
+          Messages{messages.length > 0 ? ` (${messages.length})` : ""}
+        </Tabs.Trigger>
+        <Tabs.Trigger value="plan" fontSize="xs">
+          Plan
+        </Tabs.Trigger>
+        <Tabs.Trigger value="stats" fontSize="xs">
+          Stats
+        </Tabs.Trigger>
+      </Tabs.List>
+
+      <Tabs.Content value="results" p={0}>
+        {!hasResults ? (
+          <Box px={6} py={5} color="fg.muted" fontSize="sm">
+            No results returned.
+          </Box>
+        ) : response.results.length === 1 ? (
+          <DbSingleResultView
+            result={response.results[0]}
+            cached={cached}
+            onLoadMore={onLoadMore}
+          />
+        ) : (
+          <DbMultiResultView
+            results={response.results}
+            cached={cached}
+            onLoadMore={onLoadMore}
+          />
+        )}
+      </Tabs.Content>
+
+      <Tabs.Content value="messages" px={3} py={3}>
+        {messages.length === 0 ? (
+          <Text fontSize="xs" color="fg.muted" fontFamily="mono">
+            No backend messages for this run.
+          </Text>
+        ) : (
+          <Box display="flex" flexDirection="column" gap={1}>
+            {messages.map((m, i) => (
+              <Flex
+                key={i}
+                gap={2}
+                fontSize="xs"
+                fontFamily="mono"
+                align="baseline"
+              >
+                <Badge
+                  size="xs"
+                  variant="subtle"
+                  colorPalette={
+                    m.severity === "error"
+                      ? "red"
+                      : m.severity === "warning"
+                        ? "yellow"
+                        : "blue"
+                  }
+                >
+                  {m.severity}
+                </Badge>
+                <Text>{m.text}</Text>
+                {m.code && (
+                  <Text color="fg.muted" opacity={0.6}>
+                    [{m.code}]
+                  </Text>
+                )}
+              </Flex>
+            ))}
+          </Box>
+        )}
+      </Tabs.Content>
+
+      <Tabs.Content value="plan" px={3} py={3}>
+        {plan === null || plan === undefined ? (
+          <Text fontSize="xs" color="fg.muted" fontFamily="mono">
+            Use the EXPLAIN button to populate this panel.
+          </Text>
+        ) : (
+          <Box
+            as="pre"
+            m={0}
+            p={2}
+            bg="bg.subtle"
+            rounded="sm"
+            fontSize="xs"
+            fontFamily="mono"
+            whiteSpace="pre-wrap"
+            overflowX="auto"
+          >
+            {JSON.stringify(plan, null, 2)}
+          </Box>
+        )}
+      </Tabs.Content>
+
+      <Tabs.Content value="stats" px={3} py={3}>
+        <Box
+          display="grid"
+          gridTemplateColumns="auto 1fr"
+          columnGap={4}
+          rowGap={1}
+          fontSize="xs"
+          fontFamily="mono"
+        >
+          <Text color="fg.muted">Elapsed</Text>
+          <Text>{formatElapsed(response.stats.elapsed_ms)}</Text>
+          {response.stats.rows_streamed !== null &&
+            response.stats.rows_streamed !== undefined && (
+              <>
+                <Text color="fg.muted">Rows streamed</Text>
+                <Text>{response.stats.rows_streamed.toLocaleString()}</Text>
+              </>
+            )}
+          <Text color="fg.muted">Statements</Text>
+          <Text>{response.results.length}</Text>
+          <Text color="fg.muted">Cached</Text>
+          <Text color={cached ? "blue.400" : "fg.muted"}>
+            {cached ? "yes" : "no"}
+          </Text>
+        </Box>
+      </Tabs.Content>
+    </Tabs.Root>
+  );
+}
+
+/** Render a single DbResult (select / mutation / error). */
+function DbSingleResultView({
+  result,
+  cached,
+  onLoadMore,
+}: {
+  result: DbResponse["results"][number];
+  cached: boolean;
+  onLoadMore: () => Promise<void> | void;
+}) {
+  if (result.kind === "select") {
     return (
-      <Box className="cm-db-result" px={6} py={5} color="fg.muted" fontSize="sm">
-        No results returned.
-      </Box>
+      <ResultTable
+        columns={result.columns}
+        rows={result.rows}
+        hasMore={result.has_more}
+        onLoadMore={onLoadMore}
+      />
     );
   }
-
-  if (first.kind === "select") {
+  if (result.kind === "mutation") {
     return (
-      <Box className="cm-db-result">
-        <ResultTable
-          columns={first.columns}
-          rows={first.rows}
-          hasMore={first.has_more}
-          onLoadMore={onLoadMore}
-        />
-      </Box>
-    );
-  }
-
-  if (first.kind === "mutation") {
-    return (
-      <Flex className="cm-db-result" px={6} py={5} align="center" gap={3}>
+      <Flex px={6} py={5} align="center" gap={3}>
         <Badge colorPalette="blue" variant="subtle" fontFamily="mono" size="md">
-          {first.rows_affected} row{first.rows_affected === 1 ? "" : "s"} affected
+          {result.rows_affected} row{result.rows_affected === 1 ? "" : "s"}{" "}
+          affected
         </Badge>
         {cached && (
           <Badge size="sm" colorPalette="gray" variant="subtle">
@@ -899,19 +1062,55 @@ function DbResult({
       </Flex>
     );
   }
-
-  // Error variant from the backend (per-statement failure)
   return (
-    <Box
-      className="cm-db-result"
-      px={6}
-      py={5}
-      color="red.500"
-      fontSize="sm"
-      fontFamily="mono"
-    >
-      {first.message}
+    <Box px={6} py={5} color="red.500" fontSize="sm" fontFamily="mono">
+      {result.message}
     </Box>
+  );
+}
+
+/** Sub-tabs numbered by statement index for multi-result responses. */
+function DbMultiResultView({
+  results,
+  cached,
+  onLoadMore,
+}: {
+  results: DbResponse["results"];
+  cached: boolean;
+  onLoadMore: () => Promise<void> | void;
+}) {
+  return (
+    <Tabs.Root defaultValue="0" size="sm" variant="subtle">
+      <Tabs.List px={3} pt={1}>
+        {results.map((r, i) => {
+          const label =
+            r.kind === "select"
+              ? "SELECT"
+              : r.kind === "mutation"
+                ? "MUTATION"
+                : "ERROR";
+          return (
+            <Tabs.Trigger
+              key={i}
+              value={String(i)}
+              fontSize="2xs"
+              fontFamily="mono"
+            >
+              {i + 1}: {label}
+            </Tabs.Trigger>
+          );
+        })}
+      </Tabs.List>
+      {results.map((r, i) => (
+        <Tabs.Content key={i} value={String(i)} p={0}>
+          <DbSingleResultView
+            result={r}
+            cached={cached && i === 0}
+            onLoadMore={onLoadMore}
+          />
+        </Tabs.Content>
+      ))}
+    </Tabs.Root>
   );
 }
 

@@ -1499,6 +1499,53 @@ pub(crate) fn contains_multiple_statements(sql: &str) -> bool {
     false
 }
 
+/// Split a SQL string on `;` boundaries that appear in code (not in strings,
+/// line comments, or block comments). Drops statements that are empty after
+/// trimming — callers get back exactly the statements they need to execute,
+/// in source order. A single-statement input returns a single-element Vec.
+pub fn split_statements(sql: &str) -> Vec<String> {
+    let chars: Vec<char> = sql.chars().collect();
+    let len = chars.len();
+    let mut scanner = SqlScanner::new();
+    let mut i = 0;
+    let mut current = String::new();
+    let mut statements: Vec<String> = Vec::new();
+
+    while i < len {
+        let ch = chars[i];
+        let next = chars.get(i + 1).copied();
+
+        let was_code = scanner.is_code();
+        let consumed = scanner.advance(ch, next);
+
+        if ch == ';' && was_code && scanner.is_code() {
+            // Boundary — emit current statement (without the `;`).
+            let trimmed = current.trim();
+            if !trimmed.is_empty() {
+                statements.push(trimmed.to_string());
+            }
+            current.clear();
+            i += consumed;
+            continue;
+        }
+
+        // Copy the consumed chars into the current statement buffer.
+        for j in 0..consumed {
+            if i + j < len {
+                current.push(chars[i + j]);
+            }
+        }
+        i += consumed;
+    }
+
+    let trailing = current.trim();
+    if !trailing.is_empty() {
+        statements.push(trailing.to_string());
+    }
+
+    statements
+}
+
 // --- Placeholder normalization (T10 fix: handles comments) ---
 
 /// Convert `?` placeholders to `$N` for Postgres.
@@ -2086,6 +2133,53 @@ mod tests {
     #[test]
     fn test_allow_semicolon_in_block_comment() {
         assert!(!contains_multiple_statements("SELECT 1 /* ; */ FROM t"));
+    }
+
+    // --- split_statements (stage 6) ---
+
+    #[test]
+    fn test_split_single_statement() {
+        assert_eq!(split_statements("SELECT 1"), vec!["SELECT 1"]);
+        assert_eq!(split_statements("SELECT 1;"), vec!["SELECT 1"]);
+        assert_eq!(
+            split_statements("  SELECT 1  ;  "),
+            vec!["SELECT 1"]
+        );
+    }
+
+    #[test]
+    fn test_split_multiple_statements() {
+        let r = split_statements("SELECT 1; SELECT 2; SELECT 3;");
+        assert_eq!(r, vec!["SELECT 1", "SELECT 2", "SELECT 3"]);
+    }
+
+    #[test]
+    fn test_split_preserves_string_semicolons() {
+        let r = split_statements("SELECT 'a;b'; SELECT 2");
+        assert_eq!(r, vec!["SELECT 'a;b'", "SELECT 2"]);
+    }
+
+    #[test]
+    fn test_split_skips_line_and_block_comments() {
+        let r = split_statements(
+            "SELECT 1 -- ; here\n; SELECT 2 /* ; inside */; SELECT 3",
+        );
+        assert_eq!(
+            r,
+            vec![
+                "SELECT 1 -- ; here".to_string(),
+                "SELECT 2 /* ; inside */".to_string(),
+                "SELECT 3".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_split_drops_empty() {
+        assert!(split_statements("").is_empty());
+        assert!(split_statements(";;;").is_empty());
+        let r = split_statements("SELECT 1;;;SELECT 2");
+        assert_eq!(r, vec!["SELECT 1", "SELECT 2"]);
     }
 
     #[tokio::test]

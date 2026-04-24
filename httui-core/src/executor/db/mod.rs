@@ -71,13 +71,93 @@ impl DbExecutor {
                 .unwrap_or(30_000)
         };
 
+        // Split the query on SQL-aware `;` boundaries. Single-statement
+        // queries produce a 1-element vec — same as before.
+        let statements = crate::db::connections::split_statements(&p.query);
+        if statements.is_empty() {
+            return Err(ExecutorError("query is empty".to_string()));
+        }
+
+        // Bind values are a flat array across the whole query; slice per
+        // statement by placeholder count so each statement binds its own.
+        let mut bind_cursor = 0usize;
+        let mut per_statement_binds: Vec<Vec<serde_json::Value>> =
+            Vec::with_capacity(statements.len());
+        for stmt in &statements {
+            let n = crate::db::connections::count_placeholders(stmt);
+            let end = bind_cursor.saturating_add(n).min(p.bind_values.len());
+            per_statement_binds.push(p.bind_values[bind_cursor..end].to_vec());
+            bind_cursor = end;
+        }
+
+        // Apply the timeout to the WHOLE multi-statement run; the select!
+        // branch below is single-shot against the full future.
         let start = Instant::now();
         let timeout = std::time::Duration::from_millis(effective_timeout_ms);
 
-        let run = pool.execute_query(&p.query, &p.bind_values, p.offset, p.fetch_size);
+        let pool_ref = pool.clone();
+        let offset = p.offset;
+        let fetch_size = p.fetch_size;
+        let stmts = statements.clone();
+        let binds = per_statement_binds.clone();
+        let run = async move {
+            let mut results: Vec<crate::executor::db::types::DbResult> = Vec::new();
+            for (i, stmt) in stmts.iter().enumerate() {
+                let binds_i = &binds[i];
+                match pool_ref
+                    .execute_query(stmt, binds_i, offset, fetch_size)
+                    .await
+                {
+                    Ok(r) => {
+                        if r.is_select {
+                            let col_names: Vec<&str> =
+                                r.columns.iter().map(|c| c.name.as_str()).collect();
+                            let rows: Vec<serde_json::Value> = r
+                                .rows
+                                .iter()
+                                .map(|row| {
+                                    let obj: serde_json::Map<String, serde_json::Value> = col_names
+                                        .iter()
+                                        .zip(row.iter())
+                                        .map(|(name, val)| (name.to_string(), val.clone()))
+                                        .collect();
+                                    serde_json::Value::Object(obj)
+                                })
+                                .collect();
+                            results.push(
+                                crate::executor::db::types::DbResult::Select {
+                                    columns: r.columns,
+                                    rows,
+                                    has_more: r.has_more,
+                                },
+                            );
+                        } else {
+                            results.push(
+                                crate::executor::db::types::DbResult::Mutation {
+                                    rows_affected: r.rows_affected.unwrap_or(0),
+                                },
+                            );
+                        }
+                    }
+                    Err(msg) => {
+                        // Error inside a statement becomes a DbResult::Error in
+                        // this position; subsequent statements still run so users
+                        // can see what's right even when one piece is wrong.
+                        results.push(
+                            crate::executor::db::types::DbResult::Error {
+                                message: msg,
+                                line: None,
+                                column: None,
+                            },
+                        );
+                    }
+                }
+            }
+            Ok::<_, String>(results)
+        };
         let timed = tokio::time::timeout(timeout, run);
 
-        let result = tokio::select! {
+        let results = tokio::select! {
             biased;
             _ = cancel.cancelled() => {
                 Err(ExecutorError("Query cancelled".to_string()))
@@ -97,7 +177,7 @@ impl DbExecutor {
 
         // T30: Audit log — log both success and failure
         let truncated_query: String = p.query.chars().take(500).collect();
-        let status = if result.is_ok() { "success" } else { "error" };
+        let status = if results.is_ok() { "success" } else { "error" };
         let _ = sqlx::query(
             "INSERT INTO query_log (connection_id, query, status, duration_ms) VALUES (?, ?, ?, ?)",
         )
@@ -108,31 +188,17 @@ impl DbExecutor {
         .execute(self.conn_manager.app_pool())
         .await;
 
-        let result = result?;
+        let results = results?;
 
-        let response = if result.is_select {
-            let col_names: Vec<&str> = result.columns.iter().map(|c| c.name.as_str()).collect();
-
-            // Convert rows from arrays to objects keyed by column name.
-            let rows: Vec<serde_json::Value> = result
-                .rows
-                .iter()
-                .map(|row| {
-                    let obj: serde_json::Map<String, serde_json::Value> = col_names
-                        .iter()
-                        .zip(row.iter())
-                        .map(|(name, val)| (name.to_string(), val.clone()))
-                        .collect();
-                    serde_json::Value::Object(obj)
-                })
-                .collect();
-
-            DbResponse::single_select(result.columns, rows, result.has_more, duration_ms)
-        } else {
-            DbResponse::single_mutation(result.rows_affected.unwrap_or(0), duration_ms)
-        };
-
-        Ok(response)
+        Ok(DbResponse {
+            results,
+            messages: Vec::new(),
+            plan: None,
+            stats: crate::executor::db::types::DbStats {
+                elapsed_ms: duration_ms,
+                rows_streamed: None,
+            },
+        })
     }
 }
 
@@ -596,6 +662,61 @@ mod tests {
         match result {
             Ok(resp) => assert_eq!(resp.results.len(), 1),
             Err(e) => assert_eq!(e.0, "Query cancelled"),
+        }
+    }
+
+    // ───── Stage 6: multi-statement execution ─────
+
+    #[tokio::test]
+    async fn test_multi_statement_returns_multiple_results() {
+        let (manager, conn_id) = setup_test_env().await;
+        let pool = manager.get_pool(&conn_id).await.unwrap();
+        match pool.as_ref() {
+            crate::db::connections::DatabasePool::Sqlite(p) => {
+                sqlx::query("CREATE TABLE t (n INTEGER)")
+                    .execute(p)
+                    .await
+                    .unwrap();
+                sqlx::query("INSERT INTO t VALUES (1), (2), (3)")
+                    .execute(p)
+                    .await
+                    .unwrap();
+            }
+            _ => panic!("expected sqlite"),
+        }
+        let executor = DbExecutor::new(manager);
+        let resp = executor
+            .execute_with_cancel(
+                serde_json::json!({
+                    "connection_id": conn_id,
+                    "query": "SELECT count(*) AS n FROM t; INSERT INTO t VALUES (4); SELECT count(*) AS n FROM t",
+                }),
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.results.len(), 3);
+        // First: SELECT with 3 rows (before insert)
+        match &resp.results[0] {
+            crate::executor::db::types::DbResult::Select { rows, .. } => {
+                assert_eq!(rows[0]["n"], 3);
+            }
+            other => panic!("expected Select, got {other:?}"),
+        }
+        // Second: INSERT mutation
+        match &resp.results[1] {
+            crate::executor::db::types::DbResult::Mutation { rows_affected } => {
+                assert_eq!(*rows_affected, 1);
+            }
+            other => panic!("expected Mutation, got {other:?}"),
+        }
+        // Third: SELECT after insert
+        match &resp.results[2] {
+            crate::executor::db::types::DbResult::Select { rows, .. } => {
+                assert_eq!(rows[0]["n"], 4);
+            }
+            other => panic!("expected Select, got {other:?}"),
         }
     }
 }
