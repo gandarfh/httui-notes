@@ -894,11 +894,16 @@ export function createDbBlockExtension(): Extension {
   });
 
   const navFilter = EditorState.transactionFilter.of((tr) => {
-    const spec = fenceSkipFilter(tr, cachedBlocks);
+    if (!tr.selection) return tr;
+    // Compute blocks from the incoming doc instead of relying on the
+    // `cachedBlocks` closure. That closure is updated by the StateField's
+    // `update`, which runs AFTER transaction filters, so during the very
+    // first cursor move after a doc edit it lags behind and the filter
+    // uses stale offsets — showing up as arrow-up skipping lines.
+    // `findDbBlocks` is O(lines); cheap enough for an occasional keypress.
+    const blocks = findDbBlocks(tr.newDoc);
+    const spec = fenceSkipFilter(tr, blocks);
     if (!spec) return tr;
-    // Replace the transaction with our clamped selection. Filter only
-    // fires for cursor moves (no doc changes), so we're not dropping
-    // edits — just the selection the user's keystroke would've produced.
     return spec;
   });
 
