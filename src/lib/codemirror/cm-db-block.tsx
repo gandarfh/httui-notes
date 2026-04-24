@@ -18,6 +18,7 @@
 import {
   EditorSelection,
   EditorState,
+  Prec,
   RangeSetBuilder,
   StateField,
   type Extension,
@@ -184,34 +185,34 @@ export function setDbBlockActions(
   entry.actions = { ...entry.actions, ...actions };
 }
 
-function ensureEntry(blockId: string, block: DbFencedBlock): DbPortalEntry {
-  let entry = entries.get(blockId);
-  if (!entry) {
-    entry = { blockId, block, actions: {} };
-    entries.set(blockId, entry);
-  } else {
-    entry.block = block;
-  }
-  return entry;
-}
-
+/**
+ * Slot (un)register creates a NEW entry object — `DbFencedPanel` is wrapped
+ * in React.memo and would skip re-render if the `entry` prop kept the same
+ * reference across slot changes, leaving the toolbar unmounted after the
+ * cursor leaves the block.
+ */
 function registerSlot(
   blockId: string,
   block: DbFencedBlock,
   slot: DbWidgetSlot,
   element: HTMLElement,
 ) {
-  const entry = ensureEntry(blockId, block);
-  entry[slot] = element;
+  const prev = entries.get(blockId);
+  const next: DbPortalEntry = prev
+    ? { ...prev, block, [slot]: element }
+    : { blockId, block, actions: {}, [slot]: element };
+  entries.set(blockId, next);
   notify();
 }
 
 function unregisterSlot(blockId: string, slot: DbWidgetSlot) {
-  const entry = entries.get(blockId);
-  if (!entry) return;
-  entry[slot] = undefined;
-  if (!entry.toolbar && !entry.result && !entry.statusbar) {
+  const prev = entries.get(blockId);
+  if (!prev) return;
+  const next: DbPortalEntry = { ...prev, [slot]: undefined };
+  if (!next.toolbar && !next.result && !next.statusbar) {
     entries.delete(blockId);
+  } else {
+    entries.set(blockId, next);
   }
   notify();
 }
@@ -310,7 +311,11 @@ class DbResultPortalWidget extends WidgetType {
   }
 
   get estimatedHeight(): number {
-    return 80;
+    // -1 means "don't reserve any guessed space — let CM6 measure the DOM
+    // before placing the widget." This prevents a reflow every time the
+    // widget transitions between empty (~80px) and success (~380px)
+    // states, which was yanking the editor's scroll position on every run.
+    return -1;
   }
 
   ignoreEvent(): boolean {
@@ -661,7 +666,10 @@ export function createDbBlockExtension(): Extension {
     return [tr, spec];
   });
 
-  const dbKeymap = keymap.of(makeKeymap(() => cachedBlocks));
+  // Prec.high ensures ⌘↵ / ⌘. win over @codemirror/commands' defaultKeymap,
+  // which binds `Mod-Enter` → `insertBlankLine`. Without this, the default
+  // binding consumes the event before our handler runs.
+  const dbKeymap = Prec.high(keymap.of(makeKeymap(() => cachedBlocks)));
 
   return [field, atomicFenceLines, navFilter, dbKeymap];
 }

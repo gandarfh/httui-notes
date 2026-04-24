@@ -1,10 +1,8 @@
 import {
   Box,
-  Button,
   Flex,
   HStack,
   IconButton,
-  Spinner,
   Table,
 } from "@chakra-ui/react";
 import { Fragment, useCallback, useRef, useState } from "react";
@@ -17,8 +15,10 @@ interface ResultTableProps {
   rows: Record<string, CellValue>[];
   durationMs?: number | null;
   hasMore: boolean;
-  loadingMore?: boolean;
-  onLoadMore?: () => void;
+  /** Called when the user clicks Load more. May return a Promise, which
+   *  the table awaits to drive its own local loading state (so the parent
+   *  does not need to re-render just to show the spinner). */
+  onLoadMore?: () => Promise<void> | void;
 }
 
 function formatCellValue(value: CellValue): {
@@ -82,6 +82,7 @@ function JsonBlock({ value }: { value: unknown }) {
       wordBreak="break-all"
       maxH="200px"
       overflowY="auto"
+      overscrollBehavior="contain"
     >
       {JSON.stringify(value, null, 2)}
     </Box>
@@ -110,17 +111,16 @@ function DetailValue({ value }: { value: CellValue }) {
   );
 }
 
-const ROW_HEIGHT = 26;
-const EXPANDED_OVERHEAD = 140;
+const ROW_HEIGHT = 32;
+const EXPANDED_OVERHEAD = 180;
 
 // CSS as a static constant — Emotion will not re-compute on every render.
 // Uses semantic Chakra tokens via `var(--chakra-colors-*)` so the table
 // adapts to light/dark themes without branching here.
 //
-// Design intent: match the editor's flat aesthetic. No filled header or
-// footer backgrounds — hierarchy comes from typography (weight, case,
-// letterspacing) and minimal hairline borders. Zebra and hover stay as
-// the lowest-contrast signal that rows are separable.
+// Design intent: match the mockup — generous row height (~42px), comfortable
+// horizontal padding (24px), subtle header tint, no zebra (uniform rows so
+// timestamps line up visually like a proper data grid).
 const tableCss = {
   userSelect: "text",
   cursor: "text",
@@ -128,32 +128,28 @@ const tableCss = {
   borderSpacing: 0,
   "& th, & td": {
     whiteSpace: "nowrap",
-    maxWidth: "320px",
+    maxWidth: "360px",
     overflow: "hidden",
     textOverflow: "ellipsis",
-    padding: "4px 12px",
+    padding: "6px 16px",
     lineHeight: "18px",
-    borderBottom: "1px solid color-mix(in srgb, var(--chakra-colors-border) 45%, transparent)",
+    borderBottom: "1px solid color-mix(in srgb, var(--chakra-colors-border) 35%, transparent)",
     borderRight: "none",
   },
   "& thead th": {
-    background: "transparent",
-    color: "var(--chakra-colors-fg-muted)",
-    fontSize: "10px",
-    textTransform: "uppercase",
-    letterSpacing: "0.08em",
+    background: "color-mix(in srgb, var(--chakra-colors-fg) 2%, transparent)",
+    color: "var(--chakra-colors-fg)",
+    fontSize: "var(--chakra-font-sizes-xs)",
+    textTransform: "none",
+    letterSpacing: "0",
     fontWeight: 600,
-    paddingTop: "6px",
-    paddingBottom: "6px",
+    paddingTop: "8px",
+    paddingBottom: "8px",
     borderBottom: "1px solid color-mix(in srgb, var(--chakra-colors-border) 70%, transparent)",
-  },
-  "& tbody tr:nth-of-type(even):not([data-selected='true']) td": {
-    background:
-      "color-mix(in srgb, var(--chakra-colors-fg) 2.5%, transparent)",
   },
   "& tbody tr:hover:not([data-selected='true']) td": {
     background:
-      "color-mix(in srgb, var(--chakra-colors-fg) 5%, transparent)",
+      "color-mix(in srgb, var(--chakra-colors-fg) 4%, transparent)",
   },
   "& tbody tr[data-selected='true'] td": {
     background:
@@ -162,22 +158,6 @@ const tableCss = {
   "& tbody tr[data-selected='true'] td:first-of-type": {
     boxShadow: "inset 2px 0 0 var(--chakra-colors-brand-500)",
   },
-  "& .row-gutter": {
-    color: "var(--chakra-colors-fg-muted)",
-    opacity: 0.4,
-    fontVariantNumeric: "tabular-nums",
-    textAlign: "right",
-    width: "44px",
-    minWidth: "44px",
-    paddingLeft: "10px",
-    paddingRight: "10px",
-    fontSize: "10px",
-    userSelect: "none",
-    cursor: "pointer",
-  },
-  "& thead .row-gutter": {
-    opacity: 0.3,
-  },
   "& .cell-numeric": {
     textAlign: "right",
     fontVariantNumeric: "tabular-nums",
@@ -185,16 +165,16 @@ const tableCss = {
   "& .cell-null": {
     fontStyle: "italic",
     color: "var(--chakra-colors-fg-muted)",
-    opacity: 0.55,
+    opacity: 0.5,
   },
   "& .type-label": {
-    fontSize: "9px",
-    textTransform: "uppercase",
-    letterSpacing: "0.08em",
+    fontSize: "var(--chakra-font-sizes-xs)",
+    textTransform: "lowercase",
+    letterSpacing: "0",
     color: "var(--chakra-colors-fg-muted)",
-    opacity: 0.5,
-    fontWeight: 500,
-    paddingLeft: "6px",
+    opacity: 0.55,
+    fontWeight: 400,
+    paddingLeft: "8px",
   },
 } as const;
 
@@ -203,21 +183,33 @@ export function ResultTable({
   rows,
   durationMs,
   hasMore,
-  loadingMore,
   onLoadMore,
 }: ResultTableProps) {
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
   const [copiedRow, setCopiedRow] = useState<number | null>(null);
+  // Local loading state — flips only inside this component; the parent
+  // (DbFencedPanel) keeps its dedup guard in a ref to avoid cascade renders.
+  const [loadingMore, setLoadingMore] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const triggerLoadMore = useCallback(async () => {
+    if (!onLoadMore || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      await onLoadMore();
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [onLoadMore, loadingMore]);
 
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el || loadingMore || !hasMore || !onLoadMore) return;
     const { scrollTop, scrollHeight, clientHeight } = el;
     if (scrollHeight - scrollTop - clientHeight < 100) {
-      onLoadMore();
+      void triggerLoadMore();
     }
-  }, [loadingMore, hasMore, onLoadMore]);
+  }, [loadingMore, hasMore, onLoadMore, triggerLoadMore]);
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -262,6 +254,9 @@ export function ResultTable({
         maxH="340px"
         overflowY="auto"
         overflowX="auto"
+        // Contain scroll chaining: once the table hits its top/bottom edge,
+        // the wheel event does NOT propagate to the outer CodeMirror editor.
+        overscrollBehavior="contain"
         onScroll={handleScroll}
         onMouseDown={(e: React.MouseEvent) => e.stopPropagation()}
         onKeyDown={(e: React.KeyboardEvent) => e.stopPropagation()}
@@ -277,9 +272,6 @@ export function ResultTable({
         >
           <Table.Header>
             <Table.Row>
-              <Table.ColumnHeader className="row-gutter" title="Row index">
-                #
-              </Table.ColumnHeader>
               {columns.map((col, i) => {
                 const numeric = isNumericType(col.type);
                 return (
@@ -303,7 +295,7 @@ export function ResultTable({
             {rows.length === 0 ? (
               <Table.Row>
                 <Table.Cell
-                  colSpan={columns.length + 1}
+                  colSpan={columns.length}
                   textAlign="center"
                   color="fg.muted"
                   py={6}
@@ -323,7 +315,7 @@ export function ResultTable({
                 {virtualizer.getVirtualItems()[0]?.start > 0 && (
                   <Table.Row>
                     <Table.Cell
-                      colSpan={columns.length + 1}
+                      colSpan={columns.length}
                       h={`${virtualizer.getVirtualItems()[0].start}px`}
                       p={0}
                       borderBottom="none"
@@ -346,12 +338,6 @@ export function ResultTable({
                           setExpandedRow(isExpanded ? null : rowIdx);
                         }}
                       >
-                        <Table.Cell
-                          className="row-gutter"
-                          title={`Row ${rowIdx + 1}`}
-                        >
-                          {rowIdx + 1}
-                        </Table.Cell>
                         {columns.map((col, colIdx) => {
                           const cell = row[col.name] ?? null;
                           const { text, isNull } = formatCellValue(cell);
@@ -376,7 +362,7 @@ export function ResultTable({
                       {isExpanded && (
                         <Table.Row>
                           <Table.Cell
-                            colSpan={columns.length + 1}
+                            colSpan={columns.length}
                             p={0}
                             bg="bg.subtle"
                             borderBottom="1px solid"
@@ -497,7 +483,7 @@ export function ResultTable({
                   return remaining > 0 ? (
                     <Table.Row>
                       <Table.Cell
-                        colSpan={columns.length + 1}
+                        colSpan={columns.length}
                         h={`${remaining}px`}
                         p={0}
                         borderBottom="none"
@@ -511,60 +497,30 @@ export function ResultTable({
         </Table.Root>
       </Box>
 
-      {/* Footer — rendered only when the caller provides stats (durationMs)
-          or there is actionable state (truncation / loading). For the fenced
-          panel (which has its own document-level statusbar) the caller
-          omits durationMs, keeping this surface silent. For the legacy
-          DbBlockView (no external statusbar) the footer carries the count
-          + duration in a single unobtrusive line. */}
-      {(durationMs != null || hasMore || loadingMore) && (
+      {/* Footer — stats only (count + duration). Infinite scroll via
+          handleScroll triggers load-more silently; no visible loading UI. */}
+      {durationMs != null && (
         <Flex
           align="center"
-          justify="space-between"
           px={3}
           py={1.5}
+          minHeight="32px"
           fontSize="xs"
           fontFamily="mono"
           color="fg.muted"
         >
           <HStack gap={2}>
-            {durationMs != null && (
-              <>
-                <Box as="span" color="fg" opacity={0.85}>
-                  {rows.length.toLocaleString()}
-                </Box>
-                <Box as="span" opacity={0.6}>
-                  row{rows.length === 1 ? "" : "s"}
-                </Box>
-                <Box as="span" opacity={0.3}>·</Box>
-                <Box as="span" opacity={0.6}>
-                  {formatElapsed(durationMs)}
-                </Box>
-              </>
-            )}
-            {hasMore && (
-              <>
-                {durationMs != null && <Box as="span" opacity={0.3}>·</Box>}
-                <Box as="span" color="yellow.500" opacity={0.85}>
-                  truncated
-                </Box>
-              </>
-            )}
-            {loadingMore && <Spinner size="xs" />}
+            <Box as="span" color="fg" opacity={0.85}>
+              {rows.length.toLocaleString()}
+            </Box>
+            <Box as="span" opacity={0.6}>
+              row{rows.length === 1 ? "" : "s"}
+            </Box>
+            <Box as="span" opacity={0.3}>·</Box>
+            <Box as="span" opacity={0.6}>
+              {formatElapsed(durationMs)}
+            </Box>
           </HStack>
-
-          {hasMore && onLoadMore && !loadingMore && (
-            <Button
-              size="xs"
-              variant="ghost"
-              onClick={onLoadMore}
-              fontFamily="mono"
-              color="fg.muted"
-              _hover={{ color: "fg", bg: "transparent" }}
-            >
-              Load more →
-            </Button>
-          )}
         </Flex>
       )}
     </Box>

@@ -256,8 +256,6 @@ export const StandaloneBlock = memo(function StandaloneBlock({
                     columns={sel.columns}
                     rows={sel.rows}
                     hasMore={false}
-                    loadingMore={false}
-                    onLoadMore={() => {}}
                   />
                 </Box>
               );

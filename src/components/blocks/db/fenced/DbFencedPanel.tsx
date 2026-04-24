@@ -161,6 +161,10 @@ export const DbFencedPanel = memo(function DbFencedPanel({
   const [resolvedBindings, setResolvedBindings] = useState<
     { placeholder: string; raw: string; value: unknown }[]
   >([]);
+  // Load-more dedup guard. A ref (not state) so clicking the button does
+  // not trigger a re-render of the panel — the setResponse that appends
+  // the new rows is the only render needed.
+  const loadingMoreRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const activeConnection = useMemo(
@@ -404,6 +408,84 @@ export const DbFencedPanel = memo(function DbFencedPanel({
     void cancelBlockExecution(`db_${blockId}`);
   }, [blockId]);
 
+  // ── Load more: append the next page of rows to the current select
+  // result. Uses the same query + bindings as the initial run, but with
+  // offset = rows already fetched. The in-flight guard is a ref (not
+  // state); ResultTable runs its own local loading state for the button
+  // spinner so this callback doesn't force a panel re-render on click.
+  const loadMore = useCallback(async () => {
+    if (loadingMoreRef.current) return;
+    const connId = activeConnection?.id;
+    if (!connId || !response) return;
+    const first = firstSelectResult(response);
+    if (!first || !first.has_more) return;
+
+    loadingMoreRef.current = true;
+    try {
+      const blocksAbove = await collectBlocksAboveCM(
+        view.state.doc,
+        block.from,
+        filePath,
+      );
+      const envVars = await useEnvironmentStore
+        .getState()
+        .getActiveVariables();
+      const { sql, bindValues } = resolveRefsToBindParams(
+        block.body,
+        blocksAbove,
+        block.from,
+        envVars,
+      );
+
+      const params: Record<string, unknown> = {
+        connection_id: connId,
+        query: sql,
+        bind_values: bindValues,
+        offset: first.rows.length,
+        fetch_size: block.metadata.limit ?? 100,
+      };
+      if (block.metadata.timeoutMs !== undefined) {
+        params.timeout_ms = block.metadata.timeoutMs;
+      }
+
+      const outcome = await executeDbStreamed({
+        executionId: `db_${blockId}_more_${Date.now()}`,
+        params,
+      });
+      if (outcome.status !== "success") return;
+
+      const next = firstSelectResult(outcome.response);
+      if (!next) return;
+
+      setResponse((prev) => {
+        if (!prev) return outcome.response;
+        const prevFirst = firstSelectResult(prev);
+        if (!prevFirst) return outcome.response;
+        const idx = prev.results.findIndex((r) => r.kind === "select");
+        const mergedFirst = {
+          ...prevFirst,
+          rows: [...prevFirst.rows, ...next.rows],
+          has_more: next.has_more,
+        };
+        const mergedResults = [...prev.results];
+        mergedResults[idx] = mergedFirst;
+        return { ...prev, results: mergedResults };
+      });
+    } finally {
+      loadingMoreRef.current = false;
+    }
+  }, [
+    activeConnection?.id,
+    block.body,
+    block.from,
+    block.metadata.limit,
+    block.metadata.timeoutMs,
+    blockId,
+    filePath,
+    response,
+    view,
+  ]);
+
   // Register actions with the registry so ⌘↵ / ⌘. can dispatch
   useEffect(() => {
     setDbBlockActions(blockId, {
@@ -472,6 +554,7 @@ export const DbFencedPanel = memo(function DbFencedPanel({
             liveElapsedMs={liveElapsedMs}
             connection={activeConnection?.name ?? block.metadata.connection}
             onCancel={cancelBlock}
+            onLoadMore={loadMore}
           />,
           resultNode,
         )}
@@ -529,37 +612,41 @@ function DbToolbar({
   return (
     <Flex
       className="cm-db-toolbar"
-      gap={2}
+      gap={3}
       align="center"
       justify="space-between"
       minW={0}
       onMouseDown={(e) => e.stopPropagation()}
     >
-      {/* Flat identity row — no nested container. The toolbar portal itself
-          already provides the card-header chrome (bg + top border) via CSS
-          in MarkdownEditor.tsx. Adding a pill here stacked two chromes.
-          minW={0} enables ellipsis under narrow panes. */}
-      <HStack gap={2} align="center" minW={0} flex="1" overflow="hidden">
+      {/* Identity row — [DB] alias / connection [dialect-pill]. Text stays
+          at 14/13px so it never competes with the SQL below; the visual
+          hierarchy (alias > connection > dialect) comes from colour +
+          weight, not font size. */}
+      <HStack gap={3} align="center" minW={0} flex="1" overflow="hidden">
         <Badge
           colorPalette="blue"
           variant="solid"
-          size="xs"
+          size="sm"
           flexShrink={0}
           fontFamily="mono"
           letterSpacing="0.05em"
+          px={2}
+          py={1}
+          rounded="md"
         >
           DB
         </Badge>
         {metadata.alias && (
           <Text
-            fontSize="sm"
-            fontFamily="mono"
-            fontWeight="bold"
+            fontSize="14px"
+            fontFamily="heading"
+            fontWeight="700"
             whiteSpace="nowrap"
             overflow="hidden"
             textOverflow="ellipsis"
             flexShrink={1}
             minW={0}
+            letterSpacing="-0.01em"
           >
             {metadata.alias}
           </Text>
@@ -570,57 +657,52 @@ function DbToolbar({
               as="span"
               flexShrink={0}
               color="fg.muted"
-              opacity={0.3}
-              fontSize="xs"
+              opacity={0.4}
+              fontSize="sm"
+              fontWeight="300"
             >
-              ·
+              /
             </Box>
-            <HStack gap={1.5} align="center" minW={0} flexShrink={1}>
-              <Box
-                boxSize="1.5"
-                borderRadius="full"
-                flexShrink={0}
-                bg={activeConnection ? "green.400" : "gray.500"}
-                title={
-                  activeConnection
-                    ? "connection resolved"
-                    : "connection not found"
-                }
-              />
-              <Text
-                fontSize="xs"
-                fontFamily="mono"
-                color="fg.muted"
-                whiteSpace="nowrap"
-                overflow="hidden"
-                textOverflow="ellipsis"
-                minW={0}
-              >
-                {connLabel}
-              </Text>
-            </HStack>
+            <Text
+              fontSize="13px"
+              fontFamily="heading"
+              fontWeight="500"
+              color="fg.muted"
+              whiteSpace="nowrap"
+              overflow="hidden"
+              textOverflow="ellipsis"
+              minW={0}
+              flexShrink={1}
+            >
+              {connLabel}
+            </Text>
           </>
         )}
-        <Box
-          as="span"
-          fontSize="2xs"
-          fontFamily="mono"
-          color="fg.muted"
-          textTransform="uppercase"
-          letterSpacing="0.08em"
-          whiteSpace="nowrap"
+        <Badge
+          size="xs"
+          variant="subtle"
+          colorPalette="gray"
           flexShrink={0}
-          opacity={0.5}
+          fontFamily="mono"
+          fontWeight="500"
+          textTransform="lowercase"
+          letterSpacing="0.02em"
+          px={2}
+          py={0.5}
+          rounded="md"
         >
           {dialectLabel}
-        </Box>
+        </Badge>
       </HStack>
 
-      <HStack gap={0}>
+      {/* Actions — icon-only ghost buttons matching the HTTP block pattern.
+          Run is colour-only (green icon), cancel inherits red. Settings
+          uses the muted fg pair so it recedes visually. */}
+      <HStack gap={0} flexShrink={0}>
         {running ? (
           <IconButton
             size="xs"
-            variant="solid"
+            variant="ghost"
             colorPalette="red"
             aria-label="Cancel"
             onClick={onCancel}
@@ -631,8 +713,8 @@ function DbToolbar({
         ) : (
           <IconButton
             size="xs"
-            variant={activeConnection ? "solid" : "ghost"}
-            colorPalette={activeConnection ? "green" : undefined}
+            variant="ghost"
+            colorPalette="green"
             aria-label="Run"
             onClick={onRun}
             title="Run (⌘↵)"
@@ -644,6 +726,7 @@ function DbToolbar({
         <IconButton
           size="xs"
           variant="ghost"
+          colorPalette="gray"
           aria-label="Settings"
           onClick={onOpenSettings}
           title="Settings"
@@ -665,6 +748,7 @@ interface DbResultProps {
   liveElapsedMs: number;
   connection: string | undefined;
   onCancel: () => void;
+  onLoadMore: () => Promise<void> | void;
 }
 
 function formatElapsed(ms: number): string {
@@ -680,23 +764,28 @@ function DbResult({
   liveElapsedMs,
   connection,
   onCancel,
+  onLoadMore,
 }: DbResultProps) {
-  // ── Running: big live timer ──
-  if (executionState === "running") {
+  // ── Running (first-run only): big live timer ──
+  // If a response from a prior run exists we keep the table rendered so the
+  // widget height stays stable — CM6 otherwise reflows the document and
+  // yanks the scroll position on every re-run (success → running → success
+  // used to flip the widget between ~380px and ~180px).
+  if (executionState === "running" && !response) {
     return (
       <Flex
         className="cm-db-result"
         px={6}
-        py={5}
+        py={10}
         align="center"
         justify="center"
         direction="column"
-        gap={3}
+        gap={4}
       >
         <HStack gap={3} align="baseline">
-          <Spinner size="sm" color="blue.400" />
+          <Spinner size="md" color="blue.400" />
           <Text
-            fontSize="2xl"
+            fontSize="3xl"
             fontFamily="mono"
             fontWeight="bold"
             color="blue.400"
@@ -704,7 +793,7 @@ function DbResult({
             {formatElapsed(liveElapsedMs)}
           </Text>
         </HStack>
-        <Button size="xs" variant="outline" onClick={onCancel}>
+        <Button size="sm" variant="outline" onClick={onCancel}>
           Cancel (⌘.)
         </Button>
       </Flex>
@@ -716,7 +805,8 @@ function DbResult({
     return (
       <Box
         className="cm-db-result"
-        p={3}
+        px={6}
+        py={5}
         color="red.500"
         fontSize="sm"
         fontFamily="mono"
@@ -727,33 +817,36 @@ function DbResult({
   }
 
   // ── Empty state: nothing has been run yet ──
-  // Keeps the visual weight light — a single-line caption that echoes the
-  // rest of the editor's language (muted mono text, no ornamental chrome).
+  // Generous padding to echo the mockup's breathing room. Single-line
+  // caption with a subtly styled keyboard shortcut.
   if (!response) {
     return (
       <Flex
         className="cm-db-result"
-        px={4}
-        py={5}
+        px={6}
+        py={10}
         align="center"
         justify="center"
       >
         <Text
-          fontSize="xs"
+          fontSize="sm"
           fontFamily="mono"
           color="fg.muted"
-          opacity={0.7}
+          opacity={0.75}
         >
           {connection ? (
             <>
               Hit{" "}
               <Box
                 as="span"
-                px={1}
+                px={1.5}
+                py={0.5}
+                mx={1}
                 color="fg"
-                opacity={0.9}
-                borderBottom="1px dotted"
-                borderColor="border"
+                bg="blackAlpha.200"
+                rounded="sm"
+                fontSize="xs"
+                fontWeight="600"
               >
                 ⌘↵
               </Box>{" "}
@@ -773,23 +866,20 @@ function DbResult({
   const first = response.results[0];
   if (!first) {
     return (
-      <Box className="cm-db-result" p={3} color="fg.muted" fontSize="xs">
+      <Box className="cm-db-result" px={6} py={5} color="fg.muted" fontSize="sm">
         No results returned.
       </Box>
     );
   }
 
   if (first.kind === "select") {
-    // Status info (row count, truncated flag, cached badge) is rendered by
-    // the ResultTable footer + the document-level DbStatusBar — avoid the
-    // 3x redundancy that existed before by not repeating it here.
     return (
       <Box className="cm-db-result">
         <ResultTable
           columns={first.columns}
           rows={first.rows}
           hasMore={first.has_more}
-          loadingMore={false}
+          onLoadMore={onLoadMore}
         />
       </Box>
     );
@@ -797,12 +887,12 @@ function DbResult({
 
   if (first.kind === "mutation") {
     return (
-      <Flex className="cm-db-result" p={3} align="center" gap={2}>
-        <Badge colorPalette="blue" variant="subtle" fontFamily="mono" size="sm">
+      <Flex className="cm-db-result" px={6} py={5} align="center" gap={3}>
+        <Badge colorPalette="blue" variant="subtle" fontFamily="mono" size="md">
           {first.rows_affected} row{first.rows_affected === 1 ? "" : "s"} affected
         </Badge>
         {cached && (
-          <Badge size="xs" colorPalette="gray" variant="subtle">
+          <Badge size="sm" colorPalette="gray" variant="subtle">
             cached
           </Badge>
         )}
@@ -814,7 +904,8 @@ function DbResult({
   return (
     <Box
       className="cm-db-result"
-      p={3}
+      px={6}
+      py={5}
       color="red.500"
       fontSize="sm"
       fontFamily="mono"
@@ -854,69 +945,100 @@ function DbStatusBar({
       ? formatElapsed(durationMs)
       : null;
 
-  // Status dot: subtle visual cue of current state. Colour intensifies with
-  // severity so the statusbar reads at a glance without needing labels.
-  const dotColor: string | null =
+  // State → user-facing label. Shown alongside the dot so the status reads
+  // without needing colour-vision. Idle shows just the connection.
+  const stateLabel: string | null =
+    executionState === "running"
+      ? "running"
+      : executionState === "error"
+        ? "error"
+        : executionState === "cancelled"
+          ? "cancelled"
+          : executionState === "success"
+            ? "connected"
+            : connection
+              ? "connected"
+              : null;
+
+  const dotColor: string =
     executionState === "running"
       ? "yellow.400"
       : executionState === "error"
         ? "red.400"
         : executionState === "cancelled"
           ? "orange.400"
-          : executionState === "success"
-            ? "green.400"
-            : null;
+          : "green.400";
+
+  // Vertical pipe separator — inlined rather than componentised to avoid the
+  // react-hooks/static-components lint (component defined during render).
+  const pipe = (
+    <Box
+      as="span"
+      width="1px"
+      height="14px"
+      bg="border"
+      opacity={0.6}
+      flexShrink={0}
+      mx={1}
+    />
+  );
 
   return (
     <Flex
       className="cm-db-statusbar"
       align="center"
-      gap={2}
+      gap={3}
       fontFamily="mono"
       fontSize="xs"
       color="fg.muted"
     >
-      {dotColor && (
+      {/* Left cluster: connection state */}
+      <HStack gap={2} align="center" flexShrink={0}>
         <Box
-          boxSize="1.5"
+          boxSize="2"
           borderRadius="full"
           bg={dotColor}
           flexShrink={0}
         />
-      )}
-      {connection && (
-        <Text fontWeight="medium" color="fg">
-          {connection}
-        </Text>
-      )}
+        {stateLabel && (
+          <Text color="fg" fontWeight="500">
+            {stateLabel}
+          </Text>
+        )}
+      </HStack>
+
+      {/* Centre cluster: data counts + load more hint */}
       {rowCount && (
         <>
-          <Text opacity={0.3}>·</Text>
+          {pipe}
           <Text>{rowCount}</Text>
         </>
       )}
+
+      {/* Filler so right-cluster pushes to the end */}
+      <Flex flex={1} />
+
+      {/* Right cluster: timing + cache badge */}
       {duration && (
         <>
-          <Text opacity={0.3}>·</Text>
           <Text>{duration}</Text>
         </>
       )}
+      {cached && duration && pipe}
       {cached && (
-        <>
-          <Text opacity={0.3}>·</Text>
-          <Badge
-            size="xs"
-            colorPalette="blue"
-            variant="subtle"
-            fontFamily="mono"
-            textTransform="lowercase"
-          >
-            cached
-          </Badge>
-        </>
+        <Badge
+          size="xs"
+          colorPalette="gray"
+          variant="subtle"
+          fontFamily="mono"
+          textTransform="lowercase"
+          px={2}
+          py={0.5}
+          rounded="sm"
+        >
+          cached
+        </Badge>
       )}
-      <Flex flex={1} />
-      {/* Empty-state CTA is rendered by DbResult; no duplicate here. */}
     </Flex>
   );
 }

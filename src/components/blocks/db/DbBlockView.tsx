@@ -482,7 +482,6 @@ function DbOutput({
   error,
   durationMs,
   hasMore,
-  loadingMore,
   onLoadMore,
 }: {
   response: DbResponse | null;
@@ -490,7 +489,6 @@ function DbOutput({
   error: string | null;
   durationMs: number | null;
   hasMore: boolean;
-  loadingMore: boolean;
   onLoadMore: () => void;
 }) {
   if (error) {
@@ -513,7 +511,6 @@ function DbOutput({
           rows={accumulatedRows}
           durationMs={durationMs}
           hasMore={hasMore}
-          loadingMore={loadingMore}
           onLoadMore={onLoadMore}
         />
       </Box>
@@ -821,7 +818,6 @@ function DbBlockViewInner({
             error={error}
             durationMs={lastDuration}
             hasMore={hasMore}
-            loadingMore={loadingMore}
             onLoadMore={handleLoadMore}
           />
         }

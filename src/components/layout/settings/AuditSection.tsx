@@ -565,7 +565,6 @@ function ViewRunner({ view }: { view: AuditView }) {
             rows={accumulatedRows}
             durationMs={durationMs}
             hasMore={hasMore}
-            loadingMore={loadingMore}
             onLoadMore={loadMore}
           />
         </Box>

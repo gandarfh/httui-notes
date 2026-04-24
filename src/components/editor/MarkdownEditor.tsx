@@ -214,45 +214,81 @@ const editorTheme = EditorView.theme({
   // The DB block is a composite widget stitched from 4 CM6 line/widget
   // decorations (fence-open, body, fence-close, toolbar/result/statusbar
   // portals). Each needs its own border spec to form a continuous card.
-  // Borders use a muted color-mix so the card whispers instead of shouts —
-  // aligning visually with the project's edge-to-edge code blocks while
-  // still reading as a single unit. Soft tinting on header/footer.
+  //
+  // Padding scale follows the mockup: toolbar header ~20/24px, SQL body
+  // ~12/24px, statusbar ~14/24px. The horizontal padding is generous on
+  // every slice so content never touches the card edge.
+  // Chakra v3 emits token CSS vars using the category name ("spacing",
+  // "radii", "fontSizes" → `--chakra-spacing-*`, `--chakra-radii-*`,
+  // `--chakra-font-sizes-*`). See node_modules/@chakra-ui/react/dist/esm/
+  // styled-system/token-dictionary.js and theme/tokens/*.js.
   ".cm-db-fence-line": {
     color: "var(--chakra-colors-fg-muted)",
     fontFamily: "var(--chakra-fonts-mono)",
     fontSize: "var(--chakra-font-sizes-xs)",
-    opacity: 0.4,
+    opacity: 0.3,
     position: "relative",
     borderLeft: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
     borderRight: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
     background: "var(--chakra-colors-bg-subtle)",
-    paddingLeft: "var(--chakra-space-3)",
-    paddingRight: "var(--chakra-space-3)",
+    paddingLeft: "var(--chakra-spacing-4)",
+    paddingRight: "var(--chakra-spacing-4)",
   },
   ".cm-db-fence-line-open": {
     borderTop: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
     borderTopLeftRadius: "var(--chakra-radii-md)",
     borderTopRightRadius: "var(--chakra-radii-md)",
-    paddingTop: "var(--chakra-space-1)",
+    paddingTop: "var(--chakra-spacing-2)",
   },
   ".cm-db-fence-line-close": {
-    paddingBottom: "var(--chakra-space-1)",
+    paddingBottom: "var(--chakra-spacing-2)",
     borderBottom: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
   },
 
+  // Body lines hold the SQL text. Each gets a left gutter (`::before`)
+  // showing the in-block line number via CSS counters — reset on the first
+  // body line of each block, incremented on every body line. Pure CSS, no
+  // JS widget bookkeeping per line.
+  // Body layout:
+  //   [ 8px card-internal pad ][ 20px number (right-aligned) ][ 16px gap ][ SQL text ]
+  //    = paddingLeft of 44px total, with ::before occupying 8-28px.
   ".cm-db-body-line": {
     fontFamily: "var(--chakra-fonts-mono)",
     background: "var(--chakra-colors-bg-canvas, var(--chakra-colors-bg))",
     borderLeft: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
     borderRight: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
-    paddingLeft: "var(--chakra-space-4)",
-    paddingRight: "var(--chakra-space-4)",
+    paddingLeft: "44px",
+    paddingRight: "var(--chakra-spacing-3)",
+    paddingTop: "var(--chakra-spacing-1)",
+    paddingBottom: "var(--chakra-spacing-1)",
+    position: "relative",
+    counterIncrement: "db-line",
+  },
+  ".cm-db-body-line::before": {
+    content: "counter(db-line)",
+    position: "absolute",
+    left: "var(--chakra-spacing-2)",
+    top: 0,
+    bottom: 0,
+    width: "20px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    color: "var(--chakra-colors-fg-muted)",
+    opacity: 0.4,
+    fontSize: "var(--chakra-font-sizes-xs)",
+    fontFamily: "var(--chakra-fonts-mono)",
+    fontVariantNumeric: "tabular-nums",
+    lineHeight: "inherit",
+    userSelect: "none",
+    pointerEvents: "none",
   },
   ".cm-db-body-line-first": {
-    paddingTop: "var(--chakra-space-2)",
+    paddingTop: "var(--chakra-spacing-4)",
+    counterReset: "db-line",
   },
   ".cm-db-body-line-last": {
-    paddingBottom: "var(--chakra-space-2)",
+    paddingBottom: "var(--chakra-spacing-4)",
   },
   // Placeholder left in place of the close fence when reading.
   ".cm-db-fence-hidden": {
@@ -262,22 +298,24 @@ const editorTheme = EditorView.theme({
   },
 
   // ── Toolbar widget (card header) ──
-  // In reading mode, renders as a block widget at the open-fence
-  // position. The inline variant (editing mode) is suppressed entirely
-  // in JS (see cm-db-block.tsx).
+  // Tall, breathable header. Horizontal padding mirrors the body padding
+  // so the `[DB]` badge aligns vertically with the SQL text below it.
   ".cm-db-toolbar-portal": {
     display: "block",
-    background: "color-mix(in srgb, var(--chakra-colors-fg) 3%, var(--chakra-colors-bg-subtle))",
+    background: "color-mix(in srgb, var(--chakra-colors-fg) 2.5%, var(--chakra-colors-bg-subtle))",
     borderLeft: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
     borderRight: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
     borderTop: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
     borderTopLeftRadius: "var(--chakra-radii-md)",
     borderTopRightRadius: "var(--chakra-radii-md)",
-    padding: "var(--chakra-space-1-5) var(--chakra-space-3)",
+    paddingTop: "var(--chakra-spacing-1)",
+    paddingBottom: "var(--chakra-spacing-1)",
+    paddingLeft: "var(--chakra-spacing-3)",
+    paddingRight: "var(--chakra-spacing-3)",
+    minHeight: "var(--chakra-spacing-8)",
     userSelect: "none",
     pointerEvents: "auto",
   },
-  // (No .cm-db-fence-line nested selector: the inline toolbar is gone.)
 
   ".cm-db-result-portal": {
     overflowAnchor: "none",
@@ -286,20 +324,23 @@ const editorTheme = EditorView.theme({
     borderLeft: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
     borderRight: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
     borderTop: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
-    minHeight: "var(--chakra-space-10)",
+    minHeight: "var(--chakra-spacing-12)",
   },
 
   ".cm-db-statusbar-portal": {
-    margin: "0 0 var(--chakra-space-3) 0",
-    padding: "var(--chakra-space-1) var(--chakra-space-3)",
-    background: "transparent",
+    marginBottom: "var(--chakra-spacing-4)",
+    paddingTop: "var(--chakra-spacing-3)",
+    paddingBottom: "var(--chakra-spacing-3)",
+    paddingLeft: "var(--chakra-spacing-4)",
+    paddingRight: "var(--chakra-spacing-4)",
+    background: "color-mix(in srgb, var(--chakra-colors-fg) 1.5%, transparent)",
     borderLeft: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
     borderRight: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
     borderBottom: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
     borderTop: "1px solid color-mix(in srgb, var(--chakra-colors-border) 40%, transparent)",
     borderBottomLeftRadius: "var(--chakra-radii-md)",
     borderBottomRightRadius: "var(--chakra-radii-md)",
-    minHeight: "var(--chakra-space-5)",
+    minHeight: "var(--chakra-spacing-9)",
     fontFamily: "var(--chakra-fonts-mono)",
     fontSize: "var(--chakra-font-sizes-xs)",
   },
