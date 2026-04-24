@@ -328,27 +328,22 @@ const editorTheme = EditorView.theme({
     position: "relative",
     counterIncrement: "db-line",
   },
-  // Number sits at the top of the line box and is nudged down by whatever
-  // padding-top the line currently has — so it rides the text baseline on
-  // both the regular rows AND the "first-line-of-card" row that carries
-  // extra breathing room.
+  // Number matches the body text's font-size + line-height exactly so the
+  // two share a baseline — different font-sizes produced off-by-a-few-px
+  // drift. Hierarchy comes from colour + opacity, not size.
   ".cm-db-body-line::before": {
     content: "counter(db-line)",
     position: "absolute",
     left: "var(--chakra-spacing-2)",
     top: "var(--chakra-spacing-1)",
     width: "20px",
-    display: "flex",
-    alignItems: "flex-start",
-    justifyContent: "flex-end",
+    textAlign: "right",
     color: "var(--chakra-colors-fg-muted)",
     opacity: 0.4,
-    fontSize: "var(--chakra-font-sizes-xs)",
+    fontSize: "inherit",
+    lineHeight: "inherit",
     fontFamily: "var(--chakra-fonts-mono)",
     fontVariantNumeric: "tabular-nums",
-    // Matches the body font so the digit vertically aligns with the text
-    // cap height instead of picking up the editor's larger line-height.
-    lineHeight: "1.5",
     userSelect: "none",
     pointerEvents: "none",
   },
