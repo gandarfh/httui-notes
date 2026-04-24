@@ -351,15 +351,13 @@ const editorTheme = EditorView.theme({
     userSelect: "none",
     pointerEvents: "none",
   },
+  // `.cm-db-body-line-first` only seeds the CSS counter. NO padding
+  // override: variable line heights confuse CM6's pixel-based
+  // `cursorLineUp`, making arrow-up skip lines. The breathing room at
+  // the top / bottom of the card is contributed by the toolbar /
+  // fence widgets, which live outside `.cm-db-body-line`.
   ".cm-db-body-line-first": {
-    paddingTop: "10px",
     counterReset: "db-line",
-  },
-  ".cm-db-body-line-first::before": {
-    top: "10px",
-  },
-  ".cm-db-body-line-last": {
-    paddingBottom: "10px",
   },
   // Placeholder left in place of the close fence when reading.
   ".cm-db-fence-hidden": {
