@@ -365,6 +365,13 @@ const editorTheme = EditorView.theme({
     margin: 0,
     padding: 0,
   },
+  // Wrapper that groups the closing widgets (hidden fence + result +
+  // statusbar) into a SINGLE block widget. CM6's vertical motion behaves
+  // much better when it sees one widget between Text lines rather than
+  // three stacked block widgets.
+  ".cm-db-close-panel": {
+    display: "block",
+  },
 
   // ── Toolbar widget (card header) ──
   // Tall, breathable header. Horizontal padding mirrors the body padding

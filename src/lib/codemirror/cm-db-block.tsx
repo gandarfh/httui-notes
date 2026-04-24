@@ -412,104 +412,83 @@ function disconnectWidgetObserver(
   widgetHeightCache.delete(cacheKey(blockId, slot));
 }
 
-class DbResultPortalWidget extends WidgetType {
+// ───── Decoration builder ─────
+
+/**
+ * Single block widget that replaces the close-fence line with the entire
+ * post-body UI: fence hidden + result tabs + status bar.
+ *
+ * Before this consolidation we had three back-to-back `block: true`
+ * decorations (FenceHiddenWidget replacing the close fence, plus two
+ * `Decoration.widget({ block: true, side: 1 })` entries for result and
+ * statusbar). CM6's `moveVertically` gets confused when it has to skip
+ * multiple adjacent block widgets to find the next Text block — the
+ * probe Y can overshoot past the top of the document and cause the
+ * cursor to teleport to line 1.
+ *
+ * One widget replacing one doc range is the shape CM6's vertical-motion
+ * math was designed for, so keeping the trio together behaves cleanly.
+ */
+class DbClosePanelWidget extends WidgetType {
   constructor(readonly blockId: string, readonly block: DbFencedBlock) {
     super();
   }
 
   toDOM(view: EditorView): HTMLElement {
-    const div = document.createElement("div");
-    div.className = "cm-db-result-portal";
-    div.contentEditable = "false";
-    registerSlot(this.blockId, this.block, "result", div);
-    observeWidgetHeight(div, this.blockId, "result", view);
-    return div;
+    const wrap = document.createElement("div");
+    wrap.className = "cm-db-close-panel";
+    wrap.contentEditable = "false";
+
+    // Slot 1: fence spacer — previously `FenceHiddenWidget`.
+    const spacer = document.createElement("div");
+    spacer.className = "cm-db-fence-hidden";
+    wrap.appendChild(spacer);
+
+    // Slot 2: result panel portal (tabs / rows / error / plan / stats).
+    const result = document.createElement("div");
+    result.className = "cm-db-result-portal";
+    registerSlot(this.blockId, this.block, "result", result);
+    wrap.appendChild(result);
+
+    // Slot 3: status bar portal (connection dot / row count / timing).
+    const status = document.createElement("div");
+    status.className = "cm-db-statusbar-portal";
+    registerSlot(this.blockId, this.block, "statusbar", status);
+    wrap.appendChild(status);
+
+    observeWidgetHeight(wrap, this.blockId, "result", view);
+    return wrap;
   }
 
   updateDOM(dom: HTMLElement): boolean {
-    registerSlot(this.blockId, this.block, "result", dom);
+    const result = dom.querySelector(".cm-db-result-portal");
+    const status = dom.querySelector(".cm-db-statusbar-portal");
+    if (result instanceof HTMLElement) {
+      registerSlot(this.blockId, this.block, "result", result);
+    }
+    if (status instanceof HTMLElement) {
+      registerSlot(this.blockId, this.block, "statusbar", status);
+    }
     return true;
   }
 
   destroy(dom: HTMLElement): void {
     disconnectWidgetObserver(dom, this.blockId, "result");
     unregisterSlot(this.blockId, "result");
-  }
-
-  eq(other: DbResultPortalWidget): boolean {
-    return this.blockId === other.blockId;
-  }
-
-  get estimatedHeight(): number {
-    // Read the cached height from the ResizeObserver hook above. Default
-    // to the empty-panel height (tabs + status) when nothing's been
-    // rendered yet — better than -1 (which makes CM6's vertical motion
-    // guess wildly and teleport the cursor on arrow-up).
-    const cached = widgetHeightCache.get(cacheKey(this.blockId, "result"));
-    return cached ?? 80;
-  }
-
-  ignoreEvent(): boolean {
-    return true;
-  }
-}
-
-class DbStatusBarPortalWidget extends WidgetType {
-  constructor(readonly blockId: string, readonly block: DbFencedBlock) {
-    super();
-  }
-
-  toDOM(view: EditorView): HTMLElement {
-    const div = document.createElement("div");
-    div.className = "cm-db-statusbar-portal";
-    div.contentEditable = "false";
-    registerSlot(this.blockId, this.block, "statusbar", div);
-    observeWidgetHeight(div, this.blockId, "statusbar", view);
-    return div;
-  }
-
-  updateDOM(dom: HTMLElement): boolean {
-    registerSlot(this.blockId, this.block, "statusbar", dom);
-    return true;
-  }
-
-  destroy(dom: HTMLElement): void {
-    disconnectWidgetObserver(dom, this.blockId, "statusbar");
     unregisterSlot(this.blockId, "statusbar");
   }
 
-  eq(other: DbStatusBarPortalWidget): boolean {
+  eq(other: DbClosePanelWidget): boolean {
     return this.blockId === other.blockId;
   }
 
   get estimatedHeight(): number {
-    const cached = widgetHeightCache.get(cacheKey(this.blockId, "statusbar"));
-    return cached ?? 28;
+    const cached = widgetHeightCache.get(cacheKey(this.blockId, "result"));
+    return cached ?? 120; // empty-state-ish default (result tabs + status)
   }
 
   ignoreEvent(): boolean {
     return true;
-  }
-}
-
-// ───── Decoration builder ─────
-
-/**
- * Zero-height placeholder used to replace fence lines when the cursor is
- * outside the block. The line's text (```db-… / ```) disappears visually
- * while its position in the doc is preserved.
- */
-class FenceHiddenWidget extends WidgetType {
-  toDOM(): HTMLElement {
-    const div = document.createElement("div");
-    div.className = "cm-db-fence-hidden";
-    return div;
-  }
-  eq(): boolean {
-    return true;
-  }
-  get estimatedHeight(): number {
-    return 0;
   }
 }
 
@@ -557,6 +536,20 @@ function buildDbDecorations(
         deco: Decoration.line({ class: "cm-db-fence-line cm-db-fence-line-close" }),
         order: 0,
       });
+      // Result panel still visible while the user edits — inserted as a
+      // single block widget after the close fence (side: 1). Same widget
+      // class as the reading-mode replacement, so content survives mode
+      // toggles without re-mounting.
+      items.push({
+        from: block.closeLineTo,
+        to: block.closeLineTo,
+        deco: Decoration.widget({
+          widget: new DbClosePanelWidget(blockId, block),
+          block: true,
+          side: 1,
+        }),
+        order: 3,
+      });
     } else {
       // ── Reading: hide fences, replaced by card header / closing border ──
       // Open fence becomes the header bar (toolbar widget lives inside it).
@@ -569,12 +562,16 @@ function buildDbDecorations(
         }),
         order: 0,
       });
-      // Close fence becomes the card's bottom border.
+      // Close fence + result tabs + status bar are rendered as a SINGLE
+      // block widget that replaces the close-fence line. CM6's vertical
+      // motion tolerates a single big block widget between two Text
+      // lines; chaining three separate block widgets was what caused
+      // arrow-up to teleport to line 1.
       items.push({
         from: block.closeLineFrom,
         to: block.closeLineTo,
         deco: Decoration.replace({
-          widget: new FenceHiddenWidget(),
+          widget: new DbClosePanelWidget(blockId, block),
           block: true,
         }),
         order: 1,
@@ -603,28 +600,6 @@ function buildDbDecorations(
 
     // Per spec §5.2, editing mode hides the toolbar (shortcuts take its
     // place: ⌘↵ run, ⌘. cancel). We skip the inline toolbar here.
-
-    // ── Result + status bar (block widgets after close fence) ──
-    items.push({
-      from: block.closeLineTo,
-      to: block.closeLineTo,
-      deco: Decoration.widget({
-        widget: new DbResultPortalWidget(blockId, block),
-        block: true,
-        side: 1,
-      }),
-      order: 3,
-    });
-    items.push({
-      from: block.closeLineTo,
-      to: block.closeLineTo,
-      deco: Decoration.widget({
-        widget: new DbStatusBarPortalWidget(blockId, block),
-        block: true,
-        side: 1,
-      }),
-      order: 4,
-    });
   }
 
   items.sort((a, b) => a.from - b.from || a.order - b.order);
