@@ -71,6 +71,53 @@ interface MarkdownEditorProps {
 
 // Compartment for toggling vim mode without recreating the editor
 const vimCompartment = new Compartment();
+// Separate compartment for the doc-line arrow-up/down keymap. We turn it
+// off while vim mode is active — vim owns cursor motion (h/j/k/l, arrow
+// keys, visual mode) and our keymap would shadow those bindings.
+const docLineNavCompartment = new Compartment();
+
+// The actual arrow-up / arrow-down doc-line handlers. Defined outside the
+// component so both compartments share the same instance.
+const docLineNavKeymap = Prec.high(
+  keymap.of([
+    {
+      key: "ArrowUp",
+      run: (view) => {
+        const sel = view.state.selection.main;
+        if (!sel.empty) return false;
+        const doc = view.state.doc;
+        const line = doc.lineAt(sel.head);
+        if (line.number === 1) return false;
+        const prev = doc.line(line.number - 1);
+        const col = sel.head - line.from;
+        const target = Math.min(prev.from + col, prev.to);
+        view.dispatch({
+          selection: EditorSelection.cursor(target),
+          scrollIntoView: true,
+        });
+        return true;
+      },
+    },
+    {
+      key: "ArrowDown",
+      run: (view) => {
+        const sel = view.state.selection.main;
+        if (!sel.empty) return false;
+        const doc = view.state.doc;
+        const line = doc.lineAt(sel.head);
+        if (line.number === doc.lines) return false;
+        const next = doc.line(line.number + 1);
+        const col = sel.head - line.from;
+        const target = Math.min(next.from + col, next.to);
+        view.dispatch({
+          selection: EditorSelection.cursor(target),
+          scrollIntoView: true,
+        });
+        return true;
+      },
+    },
+  ]),
+);
 
 // Custom highlight style — Chakra-token driven so the editor follows the app theme.
 const markdownHighlightStyle = HighlightStyle.define([
@@ -462,53 +509,9 @@ export function MarkdownEditor({
     search({ top: false }),
     highlightSelectionMatches(),
     history(),
-    // Doc-line navigation for ArrowUp / ArrowDown. CM6's default
-    // `cursorLineUp`/`cursorLineDown` use pixel-based motion, which
-    // breaks when the document contains tall `block: true` widgets
-    // (result panels, images, etc.) — the probe coordinate can
-    // overshoot past the document top/bottom and teleport the cursor
-    // to line 1. Walking by doc line instead keeps navigation
-    // predictable regardless of how the line renders.
-    Prec.high(
-      keymap.of([
-        {
-          key: "ArrowUp",
-          run: (view) => {
-            const sel = view.state.selection.main;
-            if (!sel.empty) return false;
-            const doc = view.state.doc;
-            const line = doc.lineAt(sel.head);
-            if (line.number === 1) return false;
-            const prev = doc.line(line.number - 1);
-            const col = sel.head - line.from;
-            const target = Math.min(prev.from + col, prev.to);
-            view.dispatch({
-              selection: EditorSelection.cursor(target),
-              scrollIntoView: true,
-            });
-            return true;
-          },
-        },
-        {
-          key: "ArrowDown",
-          run: (view) => {
-            const sel = view.state.selection.main;
-            if (!sel.empty) return false;
-            const doc = view.state.doc;
-            const line = doc.lineAt(sel.head);
-            if (line.number === doc.lines) return false;
-            const next = doc.line(line.number + 1);
-            const col = sel.head - line.from;
-            const target = Math.min(next.from + col, next.to);
-            view.dispatch({
-              selection: EditorSelection.cursor(target),
-              scrollIntoView: true,
-            });
-            return true;
-          },
-        },
-      ]),
-    ),
+    // Doc-line ArrowUp/Down lives in a compartment so we can swap it out
+    // when vim mode turns on — vim owns all motion and would collide.
+    docLineNavCompartment.of(vimEnabled ? [] : docLineNavKeymap),
     keymap.of([
       // Explicit Ctrl-Space for autocomplete — avoids relying on the Mac
       // default (Alt-`) so the popup fires on every platform.
@@ -559,15 +562,24 @@ export function MarkdownEditor({
     viewRef.current = view;
     setEditorReady(true);
     if (vimEnabled) {
-      view.dispatch({ effects: vimCompartment.reconfigure(vim()) });
+      view.dispatch({
+        effects: [
+          vimCompartment.reconfigure(vim()),
+          docLineNavCompartment.reconfigure([]),
+        ],
+      });
     }
     queueMicrotask(() => view.focus());
   }, [vimEnabled]);
 
-  // Vim toggle (after initial creation)
+  // Vim toggle (after initial creation). Keeps the doc-line nav compartment
+  // in sync: vim owns motion when on; we resume control when it's off.
   useEffect(() => {
     viewRef.current?.dispatch({
-      effects: vimCompartment.reconfigure(vimEnabled ? vim() : []),
+      effects: [
+        vimCompartment.reconfigure(vimEnabled ? vim() : []),
+        docLineNavCompartment.reconfigure(vimEnabled ? [] : docLineNavKeymap),
+      ],
     });
   }, [vimEnabled]);
 
