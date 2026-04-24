@@ -457,6 +457,7 @@ struct SessionState {
     vaults: Vec<String>,
     active_vault: Option<String>,
     vim_enabled: bool,
+    sidebar_open: bool,
     pane_layout: Option<String>,
     active_pane_id: Option<String>,
     active_file: Option<String>,
@@ -496,9 +497,10 @@ async fn restore_session(
     pool: tauri::State<'_, SqlitePool>,
 ) -> Result<SessionState, String> {
     // Batch all config reads concurrently
-    let (vaults_raw, vim_raw, active_vault, pane_layout, active_pane_id, active_file, scroll_positions) = tokio::join!(
+    let (vaults_raw, vim_raw, sidebar_raw, active_vault, pane_layout, active_pane_id, active_file, scroll_positions) = tokio::join!(
         httui_notes::config::get_config(&pool, "vaults"),
         httui_notes::config::get_config(&pool, "vim_enabled"),
+        httui_notes::config::get_config(&pool, "sidebar_open"),
         httui_notes::config::get_config(&pool, "active_vault"),
         httui_notes::config::get_config(&pool, "pane_layout"),
         httui_notes::config::get_config(&pool, "active_pane_id"),
@@ -513,6 +515,7 @@ async fn restore_session(
         .unwrap_or_default();
 
     let vim_enabled = vim_raw.ok().flatten().as_deref() == Some("true");
+    let sidebar_open = sidebar_raw.ok().flatten().as_deref() != Some("false");
     let active_vault = active_vault.ok().flatten();
     let pane_layout = pane_layout.ok().flatten();
     let active_pane_id = active_pane_id.ok().flatten();
@@ -565,6 +568,7 @@ async fn restore_session(
         vaults,
         active_vault,
         vim_enabled,
+        sidebar_open,
         pane_layout,
         active_pane_id,
         active_file,
