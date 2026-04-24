@@ -55,6 +55,7 @@ import { EditorView } from "@codemirror/view";
 
 import {
   setDbBlockActions,
+  setDbBlockErrors,
   type DbPortalEntry,
 } from "@/lib/codemirror/cm-db-block";
 import {
@@ -190,6 +191,39 @@ export const DbFencedPanel = memo(function DbFencedPanel({
     if (!activeConnection?.id) return;
     void useSchemaCacheStore.getState().ensureLoaded(activeConnection.id);
   }, [activeConnection?.id]);
+
+  // SQL error squiggle: paint red wavy underline at the line/col reported
+  // by the backend. Triggered whenever the response changes; cleared when
+  // the user starts editing the query again (new body → stale location).
+  useEffect(() => {
+    const errorMarks: {
+      line: number;
+      column: number;
+      message?: string;
+    }[] = [];
+    for (const result of response?.results ?? []) {
+      if (
+        result.kind === "error" &&
+        typeof result.line === "number" &&
+        typeof result.column === "number" &&
+        result.line > 0 &&
+        result.column > 0
+      ) {
+        errorMarks.push({
+          line: result.line,
+          column: result.column,
+          message: result.message,
+        });
+      }
+    }
+    setDbBlockErrors(view, blockId, errorMarks);
+  }, [response, blockId, view]);
+
+  // Clear any lingering squiggle when the user edits the body — the old
+  // position no longer points at the same token.
+  useEffect(() => {
+    setDbBlockErrors(view, blockId, []);
+  }, [block.body, blockId, view]);
 
   // Live elapsed timer for running state. Ticks every 100ms; stops when
   // the execution leaves the running state. Cheap since only one block

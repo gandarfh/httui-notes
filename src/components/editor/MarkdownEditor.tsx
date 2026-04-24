@@ -244,6 +244,17 @@ const editorTheme = EditorView.theme({
     border: "none !important",
   },
 
+  // ── db block SQL error squiggle (stage 8b) ──
+  // Red wavy underline under the token the driver reported as bad; the
+  // `title` attribute carries the error message for hover tooltips.
+  ".cm-db-sql-error": {
+    textDecoration: "underline wavy var(--chakra-colors-red-400)",
+    textDecorationThickness: "1px",
+    textUnderlineOffset: "2px",
+    backgroundColor: "var(--chakra-colors-red-500/10)",
+    borderRadius: "2px",
+  },
+
   // ── db block (stage 5 — unified slab card) ──
   //
   // The 3 widget slots (toolbar / result / statusbar) plus the body lines

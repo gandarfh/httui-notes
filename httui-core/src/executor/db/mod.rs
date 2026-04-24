@@ -139,15 +139,21 @@ impl DbExecutor {
                             );
                         }
                     }
-                    Err(msg) => {
+                    Err(mut info) => {
                         // Error inside a statement becomes a DbResult::Error in
                         // this position; subsequent statements still run so users
                         // can see what's right even when one piece is wrong.
+                        // Resolve Postgres byte-position → (line, column) now
+                        // that we know which statement text applies.
+                        crate::db::connections::enrich_error_with_query(
+                            &mut info,
+                            stmt,
+                        );
                         results.push(
                             crate::executor::db::types::DbResult::Error {
-                                message: msg,
-                                line: None,
-                                column: None,
+                                message: info.message,
+                                line: info.location.line,
+                                column: info.location.column,
                             },
                         );
                     }

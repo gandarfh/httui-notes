@@ -20,6 +20,7 @@ import {
   EditorState,
   Prec,
   RangeSetBuilder,
+  StateEffect,
   StateField,
   type Extension,
   type Text as CMText,
@@ -669,6 +670,146 @@ function makeKeymap(getBlocks: () => DbFencedBlock[]): KeyBinding[] {
   ];
 }
 
+// ───── Error squiggle (stage 8b) ─────
+
+/**
+ * A SQL error reported by the backend, anchored at (line, column) inside
+ * the block body. `length` is how many characters the squiggle covers —
+ * defaults to the token starting at that position, capped at 32 chars so
+ * a runaway position doesn't underline the rest of the block.
+ */
+export interface DbErrorMark {
+  blockId: string;
+  line: number;
+  column: number;
+  length?: number;
+  message?: string;
+}
+
+const setDbErrorsEffect = StateEffect.define<DbErrorMark[]>();
+const clearDbErrorsEffect = StateEffect.define<string>();
+
+/**
+ * State field: map of `blockId` → current error marks. Rebuilt only when
+ * an effect fires, so keystrokes don't invalidate it.
+ */
+const dbErrorsField = StateField.define<Map<string, DbErrorMark[]>>({
+  create: () => new Map(),
+  update(value, tr) {
+    let next = value;
+    for (const effect of tr.effects) {
+      if (effect.is(setDbErrorsEffect)) {
+        next = new Map(next);
+        const marks = effect.value;
+        if (marks.length === 0) continue;
+        // All marks from a single dispatch share a blockId (the panel
+        // sends per-block updates); group defensively anyway.
+        const byBlock = new Map<string, DbErrorMark[]>();
+        for (const m of marks) {
+          const list = byBlock.get(m.blockId) ?? [];
+          list.push(m);
+          byBlock.set(m.blockId, list);
+        }
+        for (const [id, list] of byBlock) {
+          next.set(id, list);
+        }
+      } else if (effect.is(clearDbErrorsEffect)) {
+        if (next.has(effect.value)) {
+          next = new Map(next);
+          next.delete(effect.value);
+        }
+      }
+    }
+    return next;
+  },
+});
+
+/**
+ * Convert a (line, column) inside a block body into an absolute doc
+ * offset. Both inputs are 1-indexed (following Postgres / MySQL). Returns
+ * null when the coordinates overrun the body.
+ */
+function bodyLineColToOffset(
+  doc: CMText,
+  block: DbFencedBlock,
+  line: number,
+  column: number,
+): number | null {
+  if (line < 1 || column < 1) return null;
+  let offset = block.bodyFrom;
+  let lineCount = 1;
+  while (lineCount < line && offset < block.bodyTo) {
+    const next = doc.sliceString(offset, Math.min(offset + 1, block.bodyTo));
+    if (!next) break;
+    offset += 1;
+    if (next === "\n") lineCount += 1;
+  }
+  if (lineCount < line) return null;
+  offset += column - 1;
+  if (offset > block.bodyTo) return block.bodyTo;
+  return offset;
+}
+
+/** Derive decoration set from the error-marks field + current blocks. */
+function buildErrorDecorations(
+  state: EditorState,
+  blocks: DbFencedBlock[],
+  marks: Map<string, DbErrorMark[]>,
+): DecorationSet {
+  if (marks.size === 0) return Decoration.none;
+  const items: { from: number; to: number; deco: Decoration }[] = [];
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i];
+    const id = blockIdOf(block, i);
+    const blockMarks = marks.get(id);
+    if (!blockMarks) continue;
+    for (const mark of blockMarks) {
+      const from = bodyLineColToOffset(
+        state.doc,
+        block,
+        mark.line,
+        mark.column,
+      );
+      if (from === null) continue;
+      const length = Math.min(mark.length ?? 1, 32);
+      const to = Math.min(from + Math.max(length, 1), block.bodyTo);
+      if (to <= from) continue;
+      items.push({
+        from,
+        to,
+        deco: Decoration.mark({
+          class: "cm-db-sql-error",
+          attributes: mark.message ? { title: mark.message } : undefined,
+        }),
+      });
+    }
+  }
+  items.sort((a, b) => a.from - b.from);
+  const builder = new RangeSetBuilder<Decoration>();
+  for (const { from, to, deco } of items) {
+    builder.add(from, to, deco);
+  }
+  return builder.finish();
+}
+
+/**
+ * Replace the error marks for a given block. Pass an empty array to clear.
+ * Safe to call during render — the dispatch is scheduled.
+ */
+export function setDbBlockErrors(
+  view: EditorView,
+  blockId: string,
+  marks: Omit<DbErrorMark, "blockId">[],
+): void {
+  const effects: StateEffect<unknown>[] = [clearDbErrorsEffect.of(blockId)];
+  if (marks.length > 0) {
+    effects.push(
+      setDbErrorsEffect.of(marks.map((m) => ({ ...m, blockId }))),
+    );
+  }
+  view.dispatch({ effects });
+}
+
 // ───── Public extension factory ─────
 
 export function createDbBlockExtension(): Extension {
@@ -739,7 +880,14 @@ export function createDbBlockExtension(): Extension {
   // binding consumes the event before our handler runs.
   const dbKeymap = Prec.high(keymap.of(makeKeymap(() => cachedBlocks)));
 
-  return [field, atomicFenceLines, navFilter, dbKeymap];
+  // Error-mark decorations live in their own field so changes to the marks
+  // map don't force a rebuild of the full fenced-block decorations.
+  const errorDecos = EditorView.decorations.compute(
+    [dbErrorsField],
+    (state) => buildErrorDecorations(state, cachedBlocks, state.field(dbErrorsField)),
+  );
+
+  return [field, atomicFenceLines, navFilter, dbKeymap, dbErrorsField, errorDecos];
 }
 
 // ───── Autocomplete source ─────
