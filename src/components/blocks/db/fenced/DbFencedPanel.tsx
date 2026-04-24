@@ -39,10 +39,16 @@ import {
   Text,
 } from "@chakra-ui/react";
 import {
+  LuBraces,
+  LuClipboard,
+  LuDatabase,
   LuDownload,
+  LuFileText,
+  LuHardDriveDownload,
   LuPlay,
   LuSettings,
   LuSquare,
+  LuTable2,
   LuX,
 } from "react-icons/lu";
 import { EditorView } from "@codemirror/view";
@@ -856,57 +862,124 @@ function ExportMenu({ response, query, alias }: ExportMenuProps) {
     [buildPayload, alias],
   );
 
+  const formatIcon = {
+    csv: LuTable2,
+    json: LuBraces,
+    markdown: LuFileText,
+    insert: LuDatabase,
+  } as const;
+
+  const formatLabel = {
+    csv: "CSV",
+    json: "JSON",
+    markdown: "Markdown",
+    insert: "INSERT",
+  } as const;
+
+  const formatExtension = {
+    csv: ".csv",
+    json: ".json",
+    markdown: ".md",
+    insert: ".sql",
+  } as const;
+
+  const row = (
+    action: "copy" | "save",
+    format: ExportFormat,
+  ) => {
+    const Icon = formatIcon[format];
+    const handler = action === "copy" ? copy : save;
+    return (
+      <Menu.Item
+        value={`${action}-${format}`}
+        onSelect={() => void handler(format)}
+      >
+        <Flex align="center" gap={2.5} flex={1} minW={0}>
+          <Icon size={13} />
+          <Text fontSize="xs" flex={1}>
+            {formatLabel[format]}
+          </Text>
+          {action === "save" && (
+            <Text fontSize="2xs" color="fg.muted" opacity={0.7} fontFamily="mono">
+              {formatExtension[format]}
+            </Text>
+          )}
+        </Flex>
+      </Menu.Item>
+    );
+  };
+
   return (
     <Menu.Root positioning={{ placement: "bottom-end" }}>
       <Menu.Trigger asChild>
         <IconButton
-          size="xs"
+          size="2xs"
           variant="ghost"
           colorPalette="gray"
           aria-label="Export result"
           title="Export result"
           disabled={!canExport}
         >
-          <LuDownload />
+          <LuDownload size={13} />
         </IconButton>
       </Menu.Trigger>
       <Portal>
         <Menu.Positioner>
-          <Menu.Content fontSize="xs" fontFamily="mono">
+          <Menu.Content
+            minW="200px"
+            py={1}
+            css={{
+              "& [data-scope='menu'][data-part='item']": {
+                paddingTop: "4px",
+                paddingBottom: "4px",
+                paddingLeft: "10px",
+                paddingRight: "10px",
+                gap: "8px",
+              },
+            }}
+          >
             <Menu.ItemGroup>
-              <Menu.ItemGroupLabel fontSize="2xs" color="fg.muted">
+              <Menu.ItemGroupLabel
+                fontSize="2xs"
+                fontWeight="600"
+                color="fg.muted"
+                textTransform="uppercase"
+                letterSpacing="wider"
+                px={2.5}
+                py={1.5}
+                display="flex"
+                alignItems="center"
+                gap={1.5}
+              >
+                <LuClipboard size={10} />
                 Copy
               </Menu.ItemGroupLabel>
-              <Menu.Item value="copy-csv" onSelect={() => copy("csv")}>
-                CSV
-              </Menu.Item>
-              <Menu.Item value="copy-json" onSelect={() => copy("json")}>
-                JSON
-              </Menu.Item>
-              <Menu.Item value="copy-markdown" onSelect={() => copy("markdown")}>
-                Markdown
-              </Menu.Item>
-              <Menu.Item value="copy-insert" onSelect={() => copy("insert")}>
-                INSERT
-              </Menu.Item>
+              {row("copy", "csv")}
+              {row("copy", "json")}
+              {row("copy", "markdown")}
+              {row("copy", "insert")}
             </Menu.ItemGroup>
-            <Menu.Separator />
+            <Menu.Separator my={1} />
             <Menu.ItemGroup>
-              <Menu.ItemGroupLabel fontSize="2xs" color="fg.muted">
-                Save as…
+              <Menu.ItemGroupLabel
+                fontSize="2xs"
+                fontWeight="600"
+                color="fg.muted"
+                textTransform="uppercase"
+                letterSpacing="wider"
+                px={2.5}
+                py={1.5}
+                display="flex"
+                alignItems="center"
+                gap={1.5}
+              >
+                <LuHardDriveDownload size={10} />
+                Save as file
               </Menu.ItemGroupLabel>
-              <Menu.Item value="save-csv" onSelect={() => save("csv")}>
-                CSV file
-              </Menu.Item>
-              <Menu.Item value="save-json" onSelect={() => save("json")}>
-                JSON file
-              </Menu.Item>
-              <Menu.Item value="save-markdown" onSelect={() => save("markdown")}>
-                Markdown file
-              </Menu.Item>
-              <Menu.Item value="save-insert" onSelect={() => save("insert")}>
-                INSERT .sql
-              </Menu.Item>
+              {row("save", "csv")}
+              {row("save", "json")}
+              {row("save", "markdown")}
+              {row("save", "insert")}
             </Menu.ItemGroup>
           </Menu.Content>
         </Menu.Positioner>
