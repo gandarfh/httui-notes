@@ -664,18 +664,13 @@ pub async fn update_connection(
 
     let name = input.name.unwrap_or(existing.name);
     let driver = input.driver.unwrap_or(existing.driver);
-    let host = Some(input.host.unwrap_or_else(|| existing.host.unwrap_or_default()));
-    let port = Some(input.port.unwrap_or_else(|| existing.port.unwrap_or(0)));
-    let database_name = Some(
-        input
-            .database_name
-            .unwrap_or_else(|| existing.database_name.unwrap_or_default()),
-    );
-    let username = Some(
-        input
-            .username
-            .unwrap_or_else(|| existing.username.unwrap_or_default()),
-    );
+    // Preserve NULLs across partial updates: SQLite has no host/port, so
+    // forcing `Some(existing.port.unwrap_or(0))` would fail validation on
+    // every partial-field update (like the drawer's read-only toggle).
+    let host = input.host.or(existing.host);
+    let port = input.port.or(existing.port);
+    let database_name = input.database_name.or(existing.database_name);
+    let username = input.username.or(existing.username);
     // If a new password is provided, store in keychain — fail on error, no plaintext fallback
     let password = if let Some(ref new_pw) = input.password {
         if !new_pw.is_empty() {
