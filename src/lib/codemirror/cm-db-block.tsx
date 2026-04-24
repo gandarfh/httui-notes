@@ -684,8 +684,88 @@ function blockAtCursor(
   return null;
 }
 
+/**
+ * Vertical-motion helper for the custom arrow-up / arrow-down bindings.
+ * Returns the target cursor position, or `null` when the default CM6
+ * behavior should run instead (cursor is outside every db block).
+ *
+ * Strategy:
+ *  - Inside a body and the body has another line in the requested
+ *    direction → move one line within the body, keeping the visual
+ *    column.
+ *  - At the top / bottom edge of the body → clamp to `bodyFrom` /
+ *    `bodyTo` (first press stops at the edge; second press lets CM6
+ *    exit naturally).
+ *
+ * Computing the target by text offset (line.from + column) sidesteps
+ * CM6's pixel-based `cursorLineUp`, which was getting confused by
+ * replaced fence widgets and skipping lines.
+ */
+function verticalMoveInBody(
+  view: EditorView,
+  direction: "up" | "down",
+  blocks: DbFencedBlock[],
+): number | null {
+  const doc = view.state.doc;
+  const head = view.state.selection.main.head;
+  const body = blocks.find((b) => head >= b.bodyFrom && head <= b.bodyTo);
+  if (!body) return null;
+
+  const currentLine = doc.lineAt(head);
+  const column = head - currentLine.from;
+
+  if (direction === "up") {
+    // Already sitting on the first body line — don't eject on the first
+    // press; clamp to bodyFrom. From there the next up-press has
+    // `head === bodyFrom`, which we detect and return null so CM6's
+    // default handling takes the user out of the block.
+    const bodyFirstLine = doc.lineAt(body.bodyFrom);
+    if (currentLine.from === bodyFirstLine.from) {
+      if (head === body.bodyFrom) return null;
+      return body.bodyFrom;
+    }
+    const prevLine = doc.line(currentLine.number - 1);
+    return Math.min(prevLine.from + column, prevLine.to);
+  }
+
+  // down
+  const bodyLastLine = doc.lineAt(body.bodyTo);
+  if (currentLine.from === bodyLastLine.from) {
+    if (head === body.bodyTo) return null;
+    return body.bodyTo;
+  }
+  const nextLine = doc.line(currentLine.number + 1);
+  return Math.min(nextLine.from + column, nextLine.to);
+}
+
 function makeKeymap(getBlocks: () => DbFencedBlock[]): KeyBinding[] {
   return [
+    {
+      key: "ArrowUp",
+      run: (view) => {
+        const blocks = getBlocks();
+        const target = verticalMoveInBody(view, "up", blocks);
+        if (target === null) return false;
+        view.dispatch({
+          selection: EditorSelection.cursor(target),
+          scrollIntoView: true,
+        });
+        return true;
+      },
+    },
+    {
+      key: "ArrowDown",
+      run: (view) => {
+        const blocks = getBlocks();
+        const target = verticalMoveInBody(view, "down", blocks);
+        if (target === null) return false;
+        view.dispatch({
+          selection: EditorSelection.cursor(target),
+          scrollIntoView: true,
+        });
+        return true;
+      },
+    },
     {
       key: "Mod-Enter",
       run: (view) => {
