@@ -756,7 +756,22 @@ async function ensureConnections(): Promise<Connection[]> {
 // Cached keyword lists per dialect so we don't re-split on every keystroke.
 const KEYWORD_CACHE = new Map<string, Completion[]>();
 
-function dialectFor(dialect: string | undefined): SQLDialect {
+/**
+ * Resolve the effective SQL dialect. The fence keyword (`db-postgres` →
+ * `"postgres"`) wins when explicit. For the bare `db` fence, fall back to
+ * the connection driver so `db + sqlite connection` still ships SQLite
+ * keywords instead of the empty StandardSQL bag.
+ */
+function effectiveDialect(
+  fenceDialect: string | undefined,
+  connectionDriver: string | undefined,
+): string {
+  const explicit = fenceDialect && fenceDialect !== "generic" ? fenceDialect : undefined;
+  const driver = connectionDriver;
+  return explicit ?? driver ?? "postgres";
+}
+
+function dialectFor(dialect: string): SQLDialect {
   switch (dialect) {
     case "postgres":
       return PostgreSQL;
@@ -769,9 +784,8 @@ function dialectFor(dialect: string | undefined): SQLDialect {
   }
 }
 
-function keywordsFor(dialect: string | undefined): Completion[] {
-  const key = dialect ?? "generic";
-  const cached = KEYWORD_CACHE.get(key);
+function keywordsFor(dialect: string): Completion[] {
+  const cached = KEYWORD_CACHE.get(dialect);
   if (cached) return cached;
 
   const spec = dialectFor(dialect).spec;
@@ -799,7 +813,7 @@ function keywordsFor(dialect: string | undefined): Completion[] {
     })),
   ];
 
-  KEYWORD_CACHE.set(key, options);
+  KEYWORD_CACHE.set(dialect, options);
   return options;
 }
 
@@ -838,7 +852,6 @@ export function createDbSchemaCompletionSource(): CompletionSource {
     if (!word || (word.from === word.to && !ctx.explicit)) return null;
 
     const text = word.text;
-    const dialect = block.metadata.dialect;
 
     // Resolve the connection (if any). Missing / orphan connections just
     // degrade the result set — we still offer SQL keywords so Ctrl-Space
@@ -847,6 +860,11 @@ export function createDbSchemaCompletionSource(): CompletionSource {
     const connection = identifier
       ? resolveConnectionIdentifier(await ensureConnections(), identifier)
       : null;
+
+    // Dialect choice: fence wins when explicit (`db-postgres`), else the
+    // connection driver (`db` + sqlite connection → SQLite keywords), else
+    // PostgreSQL as a rich ANSI-ish fallback (avoids the empty StandardSQL).
+    const dialect = effectiveDialect(block.metadata.dialect, connection?.driver);
 
     const store = useSchemaCacheStore.getState();
     const schema = connection ? store.get(connection.id) : null;
