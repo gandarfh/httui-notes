@@ -304,6 +304,54 @@ describe("fenceSkipFilter", () => {
     expect(fenceSkipFilter(tr, [block])).toBeNull();
   });
 
+  it("staying-within-body: multi-line body, up from L2 lands on L1 untouched", () => {
+    // Body has two lines; cursor starts on L2 col 3 and presses up. CM6
+    // default lands the cursor on L1 col 3 — both positions are inside
+    // the body, so the filter must NOT interfere.
+    const lines = [
+      "before",
+      "```db-postgres",
+      "SELECT 1",   // body L1
+      "FROM users", // body L2
+      "```",
+      "after",
+    ];
+    const doc = Text.of(lines);
+    const [block] = findDbBlocks(doc);
+    const l2Offset = doc.line(4).from + 3; // body L2 col 3
+    const l1Offset = doc.line(3).from + 3; // body L1 col 3
+    const tr = mkSelectionTr(doc, l2Offset, l1Offset);
+    // Selection stays inside body → filter should pass through.
+    expect(fenceSkipFilter(tr, [block])).toBeNull();
+  });
+
+  it("two-block hop: up from block2 body L1 clamps at block2.bodyFrom, not block1", () => {
+    // Two adjacent db blocks. User in block2 body L1 col 3 presses up.
+    // CM6 skips the replaced open-fence widget and lands OUTSIDE block2
+    // (inside block1 or in the text between). Filter must clamp to
+    // block2.bodyFrom so the cursor doesn't teleport into block1.
+    const lines = [
+      "```db-postgres alias=one",
+      "SELECT 1",
+      "```",
+      "middle",
+      "```db-postgres alias=two",
+      "SELECT 2",
+      "```",
+    ];
+    const doc = Text.of(lines);
+    const blocks = findDbBlocks(doc);
+    expect(blocks).toHaveLength(2);
+    const [_one, two] = blocks;
+    const fromInside = two.bodyFrom + 3; // mid L1 of block2 body
+    const somewhereOutside = doc.line(1).from + 2; // inside block1 range
+    const tr = mkSelectionTr(doc, fromInside, somewhereOutside);
+    const spec = fenceSkipFilter(tr, blocks);
+    expect(spec).not.toBeNull();
+    const target = (spec!.selection as { head: number }).head;
+    expect(target).toBe(two.bodyFrom);
+  });
+
   it("skips back into body when moving up from after", () => {
     const block = mkBlock(DOC);
     const oldHead = DOC.line(5).from; // start of "after"
