@@ -509,9 +509,12 @@ export function MarkdownEditor({
     search({ top: false }),
     highlightSelectionMatches(),
     history(),
-    // Doc-line ArrowUp/Down lives in a compartment so we can swap it out
-    // when vim mode turns on — vim owns all motion and would collide.
-    docLineNavCompartment.of(vimEnabled ? [] : docLineNavKeymap),
+    // Doc-line ArrowUp/Down keymap — always on, even with vim. It only
+    // binds the arrow keys (not j/k), so vim's normal-mode motion still
+    // flows through the vim plugin. The arrow bindings are needed in
+    // both modes to stop CM6's pixel-based motion from teleporting the
+    // caret when the document has tall block widgets.
+    docLineNavCompartment.of(docLineNavKeymap),
     keymap.of([
       // Explicit Ctrl-Space for autocomplete — avoids relying on the Mac
       // default (Alt-`) so the popup fires on every platform.
