@@ -98,23 +98,51 @@ export function SchemaPanel({ width, onClose }: SchemaPanelProps) {
       .filter((t): t is SchemaTable => t !== null);
   }, [tables, filter]);
 
-  const toggleTable = useCallback((name: string) => {
+  const toggleTable = useCallback((key: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   }, []);
 
-  const handleDoubleClickTable = useCallback(async (tableName: string) => {
-    const snippet = `SELECT * FROM ${tableName} LIMIT 100;`;
+  const handleDoubleClickTable = useCallback(async (table: SchemaTable) => {
+    // Qualify with schema when it's not the Postgres default; plain name
+    // otherwise (SQLite has no schemas; MySQL tables live in the active DB
+    // so the USE implicit qualifier is enough).
+    const qualified =
+      table.schema && table.schema !== "public"
+        ? `${table.schema}.${table.name}`
+        : table.name;
+    const snippet = `SELECT * FROM ${qualified} LIMIT 100;`;
     try {
       await navigator.clipboard.writeText(snippet);
     } catch {
       // Clipboard unavailable — no-op.
     }
   }, []);
+
+  const groupedBySchema = useMemo(() => {
+    const groups = new Map<string, SchemaTable[]>();
+    for (const table of filteredTables) {
+      const key = table.schema ?? "";
+      const list = groups.get(key) ?? [];
+      list.push(table);
+      groups.set(key, list);
+    }
+    return Array.from(groups.entries()).map(([schema, tables]) => ({
+      schema: schema || null,
+      tables,
+    }));
+  }, [filteredTables]);
+
+  // Hide the schema heading when there's only one group and it's either
+  // null (SQLite) or the Postgres default — avoids a single "public" header
+  // that adds noise for the common case.
+  const showSchemaHeaders =
+    groupedBySchema.length > 1 ||
+    groupedBySchema.some((g) => g.schema && g.schema !== "public");
 
   const handleRefresh = useCallback(() => {
     if (!connectionId) return;
@@ -216,55 +244,74 @@ export function SchemaPanel({ width, onClose }: SchemaPanelProps) {
             </Text>
           </Box>
         )}
-        {filteredTables.map((table) => {
-          const open = expanded.has(table.name) || filter.length > 0;
-          return (
-            <Box key={table.name}>
-              <HStack
-                px={2}
-                py={1}
-                gap={1}
-                cursor="pointer"
-                _hover={{ bg: "bg.subtle" }}
-                borderRadius="sm"
-                onClick={() => toggleTable(table.name)}
-                onDoubleClick={() => handleDoubleClickTable(table.name)}
+        {groupedBySchema.map((group) => (
+          <Box key={group.schema ?? "__none__"}>
+            {showSchemaHeaders && (
+              <Text
+                px={3}
+                pt={2}
+                pb={1}
+                fontSize="2xs"
+                fontWeight="semibold"
+                color="fg.subtle"
+                textTransform="uppercase"
+                letterSpacing="wider"
               >
-                {open ? <LuChevronDown size={12} /> : <LuChevronRight size={12} />}
-                <LuTable size={12} />
-                <Text fontSize="xs" fontFamily="mono" flex={1} truncate>
-                  {table.name}
-                </Text>
-                <Badge size="xs" variant="subtle" colorPalette="gray">
-                  {table.columns.length}
-                </Badge>
-              </HStack>
-              {open && (
-                <Box pl={6}>
-                  {table.columns.map((col) => (
-                    <HStack
-                      key={col.name}
-                      px={2}
-                      py={0.5}
-                      gap={2}
-                      _hover={{ bg: "bg.subtle" }}
-                      borderRadius="sm"
-                    >
-                      <Text fontSize="xs" fontFamily="mono" flex={1} truncate>
-                        {col.name}
-                      </Text>
-                      {col.dataType && (
-                        <Text fontSize="2xs" color="fg.muted" fontFamily="mono">
-                          {col.dataType}
-                        </Text>
-                      )}
-                    </HStack>
-                  ))}
+                {group.schema ?? "default"}
+              </Text>
+            )}
+            {group.tables.map((table) => {
+              const tableKey = `${table.schema ?? ""}\0${table.name}`;
+              const open = expanded.has(tableKey) || filter.length > 0;
+              return (
+                <Box key={tableKey}>
+                  <HStack
+                    px={2}
+                    py={1}
+                    gap={1}
+                    cursor="pointer"
+                    _hover={{ bg: "bg.subtle" }}
+                    borderRadius="sm"
+                    onClick={() => toggleTable(tableKey)}
+                    onDoubleClick={() => handleDoubleClickTable(table)}
+                  >
+                    {open ? <LuChevronDown size={12} /> : <LuChevronRight size={12} />}
+                    <LuTable size={12} />
+                    <Text fontSize="xs" fontFamily="mono" flex={1} truncate>
+                      {table.name}
+                    </Text>
+                    <Badge size="xs" variant="subtle" colorPalette="gray">
+                      {table.columns.length}
+                    </Badge>
+                  </HStack>
+                  {open && (
+                    <Box pl={6}>
+                      {table.columns.map((col) => (
+                        <HStack
+                          key={col.name}
+                          px={2}
+                          py={0.5}
+                          gap={2}
+                          _hover={{ bg: "bg.subtle" }}
+                          borderRadius="sm"
+                        >
+                          <Text fontSize="xs" fontFamily="mono" flex={1} truncate>
+                            {col.name}
+                          </Text>
+                          {col.dataType && (
+                            <Text fontSize="2xs" color="fg.muted" fontFamily="mono">
+                              {col.dataType}
+                            </Text>
+                          )}
+                        </HStack>
+                      ))}
+                    </Box>
+                  )}
                 </Box>
-              )}
-            </Box>
-          );
-        })}
+              );
+            })}
+          </Box>
+        ))}
       </Box>
     </Box>
   );

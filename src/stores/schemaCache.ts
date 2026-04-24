@@ -12,6 +12,8 @@ import {
  * (with data types) and remembers the raw entries for panel rendering.
  */
 export interface SchemaTable {
+  /** Qualifying namespace (Postgres `table_schema`, MySQL active DB). Null for SQLite. */
+  schema: string | null;
   name: string;
   columns: { name: string; dataType: string | null }[];
 }
@@ -34,15 +36,32 @@ function emptyEntry(): ConnectionEntry {
 }
 
 function groupEntries(entries: SchemaEntry[]): SchemaTable[] {
-  const byTable = new Map<string, { name: string; dataType: string | null }[]>();
+  // Key is `${schema ?? ""}\0${table}` so two tables with the same name in
+  // different schemas don't collide (e.g. `public.users` vs `auth.users`).
+  const byKey = new Map<
+    string,
+    { schema: string | null; name: string; columns: { name: string; dataType: string | null }[] }
+  >();
   for (const entry of entries) {
-    const cols = byTable.get(entry.table_name) ?? [];
-    cols.push({ name: entry.column_name, dataType: entry.data_type });
-    byTable.set(entry.table_name, cols);
+    const schema = entry.schema_name ?? null;
+    const key = `${schema ?? ""}\0${entry.table_name}`;
+    const existing = byKey.get(key);
+    if (existing) {
+      existing.columns.push({ name: entry.column_name, dataType: entry.data_type });
+    } else {
+      byKey.set(key, {
+        schema,
+        name: entry.table_name,
+        columns: [{ name: entry.column_name, dataType: entry.data_type }],
+      });
+    }
   }
-  return Array.from(byTable.entries())
-    .map(([name, columns]) => ({ name, columns }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  return Array.from(byKey.values()).sort((a, b) => {
+    const sa = a.schema ?? "";
+    const sb = b.schema ?? "";
+    if (sa !== sb) return sa.localeCompare(sb);
+    return a.name.localeCompare(b.name);
+  });
 }
 
 interface SchemaCacheState {

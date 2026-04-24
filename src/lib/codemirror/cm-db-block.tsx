@@ -794,26 +794,38 @@ export function createDbSchemaCompletionSource(): CompletionSource {
       return null;
     }
 
+    // Build a lookup keyed by the label the user actually types. For Postgres
+    // with non-default schemas that's `schema.table`; for SQLite/MySQL/public
+    // it's the bare table name. Two tables with the same bare name living in
+    // different schemas therefore coexist as `auth.users` + `app.users`.
     const tableMap: Record<string, string[]> = {};
     for (const table of schema.tables) {
-      tableMap[table.name] = table.columns.map((c) => c.name);
+      const key =
+        table.schema && table.schema !== "public"
+          ? `${table.schema}.${table.name}`
+          : table.name;
+      tableMap[key] = table.columns.map((c) => c.name);
     }
     const tableNames = Object.keys(tableMap);
 
     const text = word.text;
 
-    // ── `table.` → columns of that table ──
+    // ── `<table-key>.` → columns of that table ──
+    // `lastIndexOf` handles both `users.email` and `schema.table.col` — the
+    // prefix before the final dot is the table key, the suffix is the column
+    // being typed.
     if (text.includes(".")) {
-      const [tableName] = text.split(".");
-      const cols = tableMap[tableName];
+      const lastDot = text.lastIndexOf(".");
+      const tableKey = text.slice(0, lastDot);
+      const cols = tableMap[tableKey];
       if (!cols) return null;
       return {
-        from: word.from + tableName.length + 1,
+        from: word.from + lastDot + 1,
         to: word.to,
         options: cols.map((col) => ({
           label: col,
           type: "property",
-          detail: tableName,
+          detail: tableKey,
         })),
         filter: true,
       };
@@ -839,8 +851,9 @@ export function createDbSchemaCompletionSource(): CompletionSource {
     }
 
     // ── Default: tables + columns of tables referenced in the body ──
+    // Accept qualified identifiers (e.g. `vendas.pedidos`) as a single token.
     const referenced = new Set<string>();
-    const refRe = /\b(?:FROM|JOIN|UPDATE|INTO)\s+([A-Za-z_][\w]*)/gi;
+    const refRe = /\b(?:FROM|JOIN|UPDATE|INTO)\s+([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)?)/gi;
     let m: RegExpExecArray | null;
     while ((m = refRe.exec(bodyText)) !== null) {
       if (tableMap[m[1]]) referenced.add(m[1]);

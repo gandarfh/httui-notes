@@ -384,6 +384,7 @@ describe("createDbSchemaCompletionSource", () => {
             fetchedAt: Date.now(),
             tables: [
               {
+                schema: "public",
                 name: "users",
                 columns: [
                   { name: "id", dataType: "integer" },
@@ -392,11 +393,20 @@ describe("createDbSchemaCompletionSource", () => {
                 ],
               },
               {
+                schema: "public",
                 name: "posts",
                 columns: [
                   { name: "id", dataType: "integer" },
                   { name: "user_id", dataType: "integer" },
                   { name: "title", dataType: "text" },
+                ],
+              },
+              {
+                schema: "vendas",
+                name: "pedidos",
+                columns: [
+                  { name: "id", dataType: "integer" },
+                  { name: "total", dataType: "numeric" },
                 ],
               },
             ],
@@ -477,5 +487,26 @@ describe("createDbSchemaCompletionSource", () => {
     const doc = "```db-postgres connection=prod\nSELECT * WHERE id = {{|}}\n```\n";
     const result = await runCompletion(doc);
     expect(result).toBeNull();
+  });
+
+  it("offers schema-qualified tables for non-public schemas", async () => {
+    const doc = "```db-postgres connection=prod\nSELECT * FROM |\n```\n";
+    const result = await runCompletion(doc);
+    expect(result).not.toBeNull();
+    const labels = result!.options.map((o) => o.label);
+    // public-schema tables use bare names so user typing `users` keeps working.
+    expect(labels).toContain("users");
+    // vendas schema is qualified — `vendas.pedidos` offers as single token.
+    expect(labels).toContain("vendas.pedidos");
+  });
+
+  it("offers columns after a `schema.table.` prefix", async () => {
+    const doc = "```db-postgres connection=prod\nSELECT vendas.pedidos.| FROM vendas.pedidos\n```\n";
+    const result = await runCompletion(doc);
+    expect(result).not.toBeNull();
+    const labels = result!.options.map((o) => o.label);
+    expect(labels).toEqual(expect.arrayContaining(["id", "total"]));
+    // Does not spill columns from unrelated tables.
+    expect(labels).not.toContain("email");
   });
 });

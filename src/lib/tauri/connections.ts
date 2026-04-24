@@ -77,6 +77,8 @@ export function testConnection(id: string): Promise<void> {
 // --- Schema introspection ---
 
 export interface SchemaEntry {
+  /** Null for SQLite; the namespace for Postgres/MySQL (`public`, `vendas`, …). */
+  schema_name: string | null;
   table_name: string;
   column_name: string;
   data_type: string | null;
