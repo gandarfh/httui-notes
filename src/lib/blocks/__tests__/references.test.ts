@@ -165,7 +165,7 @@ describe("resolveAllReferences", () => {
     ];
     const { errors } = resolveAllReferences("{{nocache.response.x}}", blocksNoCache, 100);
     expect(errors).toHaveLength(1);
-    expect(errors[0].message).toContain("no cached result");
+    expect(errors[0].message).toContain("no result yet");
   });
 
   it("returns error for invalid JSON path", () => {
@@ -222,7 +222,7 @@ describe("resolveAllReferences", () => {
     // because block alias match takes priority (produces error about missing cache)
     const { errors } = resolveAllReferences("{{myvar}}", blocksNoCache, 100, envVars);
     expect(errors).toHaveLength(1);
-    expect(errors[0].message).toContain("no cached result");
+    expect(errors[0].message).toContain("no result yet");
   });
 });
 
@@ -289,6 +289,37 @@ describe("db block reference shim (stage-2 response shape)", () => {
     );
     expect(errors).toHaveLength(0);
     expect(resolved).toBe("alice");
+  });
+
+  it("raw shape passthrough: {{alias.response.results.0.rows.0.id}}", () => {
+    // Autocomplete walks the raw shape so users naturally type
+    // `response.results.0.…`; the proxy must pass `results` through to
+    // the underlying DbResponse for this path to resolve.
+    const { resolved, errors } = resolveAllReferences(
+      "{{q.response.results.0.rows.0.id}}",
+      [dbBlock],
+      100,
+    );
+    expect(errors).toHaveLength(0);
+    expect(resolved).toBe("7");
+  });
+
+  it("raw shape passthrough: stats and messages", () => {
+    const { resolved: elapsed, errors: e1 } = resolveAllReferences(
+      "{{q.response.stats.elapsed_ms}}",
+      [dbBlock],
+      100,
+    );
+    expect(e1).toHaveLength(0);
+    expect(elapsed).toBe("12");
+
+    const { resolved: msgs, errors: e2 } = resolveAllReferences(
+      "{{q.response.messages}}",
+      [dbBlock],
+      100,
+    );
+    expect(e2).toHaveLength(0);
+    expect(msgs).toBe("[]");
   });
 
   it("explicit multi-result: {{alias.response.1.rows_affected}} reaches mutation result", () => {

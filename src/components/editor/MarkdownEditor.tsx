@@ -49,6 +49,11 @@ import {
 import { wikilinks, createWikilinkCompletion } from "@/lib/codemirror/cm-wikilinks";
 import { tables } from "@/lib/codemirror/cm-tables";
 import { moveBlocksKeymap } from "@/lib/codemirror/cm-move-blocks";
+import {
+  referenceHighlight,
+  createMarkdownReferenceTooltip,
+} from "@/lib/blocks/cm-references";
+import { useEnvironmentStore } from "@/stores/environment";
 import { BlockContextProvider } from "@/components/blocks/BlockContext";
 import { WidgetPortals } from "./WidgetPortals";
 import { DbWidgetPortals } from "./DbWidgetPortals";
@@ -631,6 +636,18 @@ export function MarkdownEditor({
       icons: false,
       addToOptions: [slashIconOption],
     }),
+    // `{{ref}}` visual highlight + hover tooltip. The tooltip resolves
+    // the reference against blocks above the enclosing fence (DB or
+    // http/e2e) and shows the cached value — or the resolution error.
+    // CM6 tooltips default to `position: fixed`, so the outer Box's
+    // `overflow: hidden` does NOT clip them; we don't need a custom
+    // `tooltips({ parent })` here (and setting one breaks baseTheme
+    // styling, which is scoped to `.cm-editor`).
+    ...referenceHighlight,
+    createMarkdownReferenceTooltip(
+      () => filePath,
+      () => useEnvironmentStore.getState().getActiveVariables(),
+    ),
     editorTheme,
     EditorView.lineWrapping,
   ], []);

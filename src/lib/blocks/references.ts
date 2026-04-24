@@ -115,7 +115,7 @@ export function resolveReference(
   }
 
   if (!block.cachedResult) {
-    throw new Error(`Alias "${ref.alias}" has no cached result. Run it first.`);
+    throw new Error(`Block "${ref.alias}" has no result yet — run it first.`);
   }
 
   let responseData: unknown;
@@ -157,11 +157,23 @@ function isNewDbResponseShape(value: unknown): value is { results: unknown[] } {
 }
 
 /**
- * Build a Proxy view over a stage-2 `DbResponse`. Numeric keys index into
- * `results`; non-numeric keys are delegated to `results[0].rows[0]` so
- * pre-redesign refs like `{{alias.response.id}}` keep resolving.
+ * Build a Proxy view over a stage-2 `DbResponse`. Three access patterns are
+ * supported, all mapping onto the same underlying object:
+ *   - Raw shape: `{{alias.response.results.0.rows.0.id}}` — passes through
+ *     `results` / `messages` / `stats` to the DbResponse fields directly.
+ *     This is what `{{` autocomplete guides users toward because it walks
+ *     the raw JSON shape.
+ *   - Numeric shortcut: `{{alias.response.0.rows.0.id}}` — `response.N`
+ *     indexes into `results[N]`.
+ *   - Legacy shim: `{{alias.response.id}}` — bare column names on the
+ *     response delegate to `results[0].rows[0]` so pre-redesign refs
+ *     keep resolving after the shape changed.
  */
+const DB_RESPONSE_PASSTHROUGH_KEYS = new Set(["results", "messages", "stats"]);
+
 function makeDbResponseView(dbResponse: { results: unknown[] }): object {
+  const raw = dbResponse as Record<string, unknown>;
+
   const firstRow = (): Record<string, unknown> | null => {
     const first = dbResponse.results[0];
     if (!first || typeof first !== "object") return null;
@@ -177,6 +189,7 @@ function makeDbResponseView(dbResponse: { results: unknown[] }): object {
     {
       has(_target, key) {
         if (typeof key !== "string") return false;
+        if (DB_RESPONSE_PASSTHROUGH_KEYS.has(key)) return key in raw;
         if (/^\d+$/.test(key)) {
           return parseInt(key, 10) < dbResponse.results.length;
         }
@@ -185,6 +198,7 @@ function makeDbResponseView(dbResponse: { results: unknown[] }): object {
       },
       get(_target, key) {
         if (typeof key !== "string") return undefined;
+        if (DB_RESPONSE_PASSTHROUGH_KEYS.has(key)) return raw[key];
         if (/^\d+$/.test(key)) {
           return dbResponse.results[parseInt(key, 10)];
         }
@@ -193,6 +207,9 @@ function makeDbResponseView(dbResponse: { results: unknown[] }): object {
       },
       ownKeys(_target) {
         const keys: string[] = [];
+        for (const k of DB_RESPONSE_PASSTHROUGH_KEYS) {
+          if (k in raw) keys.push(k);
+        }
         for (let i = 0; i < dbResponse.results.length; i++) keys.push(String(i));
         const row = firstRow();
         if (row) keys.push(...Object.keys(row));

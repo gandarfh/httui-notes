@@ -73,7 +73,7 @@ import {
   type DbResponse,
 } from "@/components/blocks/db/types";
 import { ResultTable } from "@/components/blocks/db/ResultTable";
-import { hashBlockContent } from "@/lib/blocks/hash";
+import { computeDbCacheHash } from "@/lib/blocks/hash";
 import {
   getBlockResult,
   saveBlockResult,
@@ -109,30 +109,6 @@ interface DbFencedPanelProps {
 }
 
 type ExecutionState = "idle" | "running" | "success" | "error" | "cancelled";
-
-// ───── Cache hash helper ─────
-
-/**
- * Build the cache hash key for a db block run. Includes an env snapshot of
- * only the env vars actually referenced by the query, so two different
- * active environments never share a cached row — and so a query that
- * doesn't use any envs has the same hash across environments.
- */
-async function computeDbCacheHash(
-  body: string,
-  connectionId: string,
-  envVars: Record<string, string>,
-): Promise<string> {
-  const usedEnvEntries = Object.entries(envVars)
-    .filter(([k]) => body.includes(`{{${k}}}`))
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([k, v]) => `${k}=${v}`)
-    .join("\n");
-  const keyed = usedEnvEntries
-    ? `${body}\n__ENV__\n${usedEnvEntries}`
-    : body;
-  return hashBlockContent(keyed, connectionId);
-}
 
 // ───── Main panel ─────
 
