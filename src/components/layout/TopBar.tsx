@@ -1,11 +1,9 @@
 import { HStack, Text, IconButton, Box, Badge, Menu, Portal } from "@chakra-ui/react";
-import { ColorModeButton } from "@/components/ui/color-mode";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { useEnvironmentStore } from "@/stores/environment";
 import { useSettingsStore } from "@/stores/settings";
 import {
   LuMenu,
-  LuSearch,
   LuPlus,
   LuChevronDown,
   LuGlobe,
@@ -173,14 +171,6 @@ export function TopBar({ sidebarOpen, onToggleSidebar, chatOpen, onToggleChat, s
         <Box w="1px" h="16px" bg="border" mx={1} />
 
         <IconButton
-          aria-label="Search"
-          variant="ghost"
-          size="sm"
-          disabled
-        >
-          <LuSearch />
-        </IconButton>
-        <IconButton
           aria-label={schemaPanelOpen ? "Close schema panel" : "Open schema panel"}
           variant="ghost"
           size="sm"
@@ -206,7 +196,6 @@ export function TopBar({ sidebarOpen, onToggleSidebar, chatOpen, onToggleChat, s
         >
           <LuSettings />
         </IconButton>
-        <ColorModeButton />
       </HStack>
     </HStack>
   );

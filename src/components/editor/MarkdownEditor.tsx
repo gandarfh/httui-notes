@@ -493,6 +493,7 @@ export function MarkdownEditor({
     if (vimEnabled) {
       view.dispatch({ effects: vimCompartment.reconfigure(vim()) });
     }
+    queueMicrotask(() => view.focus());
   }, [vimEnabled]);
 
   // Vim toggle (after initial creation)
