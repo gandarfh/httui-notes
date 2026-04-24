@@ -799,17 +799,20 @@ function keywordsFor(dialect: string): Completion[] {
 
   const options: Completion[] = [
     ...keywords.map((label) => ({
-      label: label.toUpperCase(),
+      label,
       type: "keyword",
+      detail: "keyword",
       boost: 1,
     })),
     ...types.map((label) => ({
       label,
       type: "type",
+      detail: "type",
     })),
     ...builtins.map((label) => ({
       label,
       type: "variable",
+      detail: "builtin",
     })),
   ];
 

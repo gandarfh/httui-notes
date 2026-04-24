@@ -463,7 +463,7 @@ describe("createDbSchemaCompletionSource", () => {
     const labels = result!.options.map((o) => o.label);
     // Postgres keyword list is contributed even without a connection, so
     // Ctrl-Space never yields an empty popup inside a db block.
-    expect(labels).toContain("SELECT");
+    expect(labels).toContain("select");
     expect(labels).toContain("⋯ no connection set");
     // Tables / columns only appear once a connection resolves.
     expect(labels).not.toContain("users");
@@ -474,7 +474,7 @@ describe("createDbSchemaCompletionSource", () => {
     const result = await runCompletion(doc);
     expect(result).not.toBeNull();
     const labels = result!.options.map((o) => o.label);
-    expect(labels).toContain("SELECT");
+    expect(labels).toContain("select");
     expect(labels.some((l) => l.startsWith("⋯ connection \"ghost\""))).toBe(true);
   });
 

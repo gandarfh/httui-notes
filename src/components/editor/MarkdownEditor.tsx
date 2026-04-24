@@ -175,6 +175,58 @@ const editorTheme = EditorView.theme({
   ".cm-panels-bottom": {
     borderTop: "1px solid var(--chakra-colors-border)",
   },
+
+  // ── Autocomplete popup (shared by db blocks + slash + wikilinks) ──
+  ".cm-tooltip.cm-tooltip-autocomplete": {
+    border: "1px solid var(--chakra-colors-border)",
+    backgroundColor: "var(--chakra-colors-bg)",
+    borderRadius: "6px",
+    boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+    fontFamily: "var(--chakra-fonts-mono)",
+    fontSize: "12px",
+    overflow: "hidden",
+    marginTop: "2px",
+  },
+  ".cm-tooltip.cm-tooltip-autocomplete > ul": {
+    maxHeight: "260px",
+    maxWidth: "360px",
+    minWidth: "200px",
+    fontFamily: "inherit",
+  },
+  ".cm-tooltip.cm-tooltip-autocomplete > ul > li": {
+    padding: "3px 10px",
+    lineHeight: "1.4",
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    color: "var(--chakra-colors-fg)",
+  },
+  ".cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]": {
+    backgroundColor: "var(--chakra-colors-bg-subtle)",
+    color: "var(--chakra-colors-fg)",
+  },
+  ".cm-completionLabel": {
+    flex: "1",
+    minWidth: 0,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  ".cm-completionMatchedText": {
+    color: "var(--chakra-colors-brand-400)",
+    textDecoration: "none",
+    fontWeight: "600",
+  },
+  ".cm-completionDetail": {
+    color: "var(--chakra-colors-fg-muted)",
+    fontStyle: "normal",
+    fontSize: "11px",
+    marginLeft: "8px",
+    flexShrink: 0,
+  },
+  // Subtle color code per completion `type` — only visible on the selected
+  // row via the leading strip so the list doesn't look like a Christmas tree.
+  ".cm-completionIcon": { display: "none" },
   ".cm-block-portal": {
     overflowAnchor: "none",
     width: "100%",
