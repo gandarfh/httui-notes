@@ -30,6 +30,7 @@ import {
   HStack,
   IconButton,
   Input,
+  Menu,
   NativeSelectField,
   NativeSelectRoot,
   Portal,
@@ -38,6 +39,7 @@ import {
   Text,
 } from "@chakra-ui/react";
 import {
+  LuDownload,
   LuPlay,
   LuSettings,
   LuSquare,
@@ -78,6 +80,14 @@ import { resolveRefsToBindParams } from "@/lib/blocks/references";
 import { collectBlocksAboveCM } from "@/lib/blocks/document";
 import { resolveConnectionIdentifier } from "@/lib/blocks/connection-resolve";
 import { describeDangerousQuery } from "@/lib/blocks/sql-mutation";
+import {
+  toCsv,
+  toJson,
+  toMarkdown,
+  toInserts,
+  inferTableName,
+  hasExportableRows,
+} from "@/lib/blocks/db-export";
 import { useEnvironmentStore } from "@/stores/environment";
 import { useSchemaCacheStore } from "@/stores/schemaCache";
 
@@ -560,6 +570,8 @@ export const DbFencedPanel = memo(function DbFencedPanel({
             metadata={block.metadata}
             activeConnection={activeConnection}
             executionState={executionState}
+            response={response}
+            query={block.body}
             onRun={runBlock}
             onCancel={cancelBlock}
             onOpenSettings={() => setDrawerOpen(true)}
@@ -624,6 +636,8 @@ interface DbToolbarProps {
   metadata: DbBlockMetadata;
   activeConnection: Connection | null;
   executionState: ExecutionState;
+  response: DbResponse | null;
+  query: string;
   onRun: () => void;
   onCancel: () => void;
   onOpenSettings: () => void;
@@ -633,6 +647,8 @@ function DbToolbar({
   metadata,
   activeConnection,
   executionState,
+  response,
+  query,
   onRun,
   onCancel,
   onOpenSettings,
@@ -756,6 +772,7 @@ function DbToolbar({
             <LuPlay />
           </IconButton>
         )}
+        <ExportMenu response={response} query={query} alias={metadata.alias} />
         <IconButton
           size="xs"
           variant="ghost"
@@ -768,6 +785,138 @@ function DbToolbar({
         </IconButton>
       </HStack>
     </Flex>
+  );
+}
+
+// ───── Export menu ─────
+
+interface ExportMenuProps {
+  response: DbResponse | null;
+  query: string;
+  alias: string | undefined;
+}
+
+type ExportFormat = "csv" | "json" | "markdown" | "insert";
+
+function ExportMenu({ response, query, alias }: ExportMenuProps) {
+  const select = response ? firstSelectResult(response) : null;
+  const canExport = select !== null && hasExportableRows(select);
+
+  const buildPayload = useCallback(
+    (format: ExportFormat): { text: string; extension: string } | null => {
+      if (!select) return null;
+      const tableName = inferTableName(query) ?? alias ?? "";
+      switch (format) {
+        case "csv":
+          return { text: toCsv(select), extension: "csv" };
+        case "json":
+          return { text: toJson(select), extension: "json" };
+        case "markdown":
+          return { text: toMarkdown(select), extension: "md" };
+        case "insert":
+          return { text: toInserts(select, tableName), extension: "sql" };
+      }
+    },
+    [select, query, alias],
+  );
+
+  const copy = useCallback(
+    async (format: ExportFormat) => {
+      const payload = buildPayload(format);
+      if (!payload) return;
+      try {
+        await navigator.clipboard.writeText(payload.text);
+      } catch {
+        // Clipboard denied — user can retry via "Save to file".
+      }
+    },
+    [buildPayload],
+  );
+
+  const save = useCallback(
+    async (format: ExportFormat) => {
+      const payload = buildPayload(format);
+      if (!payload) return;
+      try {
+        const [{ save: saveDialog }, { writeTextFile }] = await Promise.all([
+          import("@tauri-apps/plugin-dialog"),
+          import("@tauri-apps/plugin-fs"),
+        ]);
+        const base = alias?.trim() || "query-result";
+        const path = await saveDialog({
+          defaultPath: `${base}.${payload.extension}`,
+          filters: [
+            {
+              name: payload.extension.toUpperCase(),
+              extensions: [payload.extension],
+            },
+          ],
+        });
+        if (!path) return;
+        await writeTextFile(path, payload.text);
+      } catch {
+        // User cancelled or Tauri plugin unavailable — silently drop.
+      }
+    },
+    [buildPayload, alias],
+  );
+
+  return (
+    <Menu.Root positioning={{ placement: "bottom-end" }}>
+      <Menu.Trigger asChild>
+        <IconButton
+          size="xs"
+          variant="ghost"
+          colorPalette="gray"
+          aria-label="Export result"
+          title="Export result"
+          disabled={!canExport}
+        >
+          <LuDownload />
+        </IconButton>
+      </Menu.Trigger>
+      <Portal>
+        <Menu.Positioner>
+          <Menu.Content fontSize="xs" fontFamily="mono">
+            <Menu.ItemGroup>
+              <Menu.ItemGroupLabel fontSize="2xs" color="fg.muted">
+                Copy
+              </Menu.ItemGroupLabel>
+              <Menu.Item value="copy-csv" onSelect={() => copy("csv")}>
+                CSV
+              </Menu.Item>
+              <Menu.Item value="copy-json" onSelect={() => copy("json")}>
+                JSON
+              </Menu.Item>
+              <Menu.Item value="copy-markdown" onSelect={() => copy("markdown")}>
+                Markdown
+              </Menu.Item>
+              <Menu.Item value="copy-insert" onSelect={() => copy("insert")}>
+                INSERT
+              </Menu.Item>
+            </Menu.ItemGroup>
+            <Menu.Separator />
+            <Menu.ItemGroup>
+              <Menu.ItemGroupLabel fontSize="2xs" color="fg.muted">
+                Save as…
+              </Menu.ItemGroupLabel>
+              <Menu.Item value="save-csv" onSelect={() => save("csv")}>
+                CSV file
+              </Menu.Item>
+              <Menu.Item value="save-json" onSelect={() => save("json")}>
+                JSON file
+              </Menu.Item>
+              <Menu.Item value="save-markdown" onSelect={() => save("markdown")}>
+                Markdown file
+              </Menu.Item>
+              <Menu.Item value="save-insert" onSelect={() => save("insert")}>
+                INSERT .sql
+              </Menu.Item>
+            </Menu.ItemGroup>
+          </Menu.Content>
+        </Menu.Positioner>
+      </Portal>
+    </Menu.Root>
   );
 }
 
