@@ -15,7 +15,6 @@ Transformar o bloco DB no **ambiente de trabalho principal** para quem hoje usa 
 O redesign atual (fenced nativo + info string) libera três coisas que hoje são bloqueadas pela arquitetura:
 
 - Query como texto cru → autocomplete ciente de schema passa a fazer sentido.
-- Múltiplos blocos no mesmo doc com mesma conexão → sessão/transação por documento vira possível.
 - Drawer/toolbar desacoplados da query → espaço para EXPLAIN, export, AI, schema nav.
 
 Se essas três peças não entrarem no desenho agora, adicioná-las depois exige refazer o redesign. Este doc é o guia para não pintar canto.
@@ -26,6 +25,7 @@ Se essas três peças não entrarem no desenho agora, adicioná-las depois exige
 - **Não** suportar dialetos além de Postgres/MySQL/SQLite no curto prazo.
 - **Não** competir em volume de tipos exóticos — cobrir o essencial (JSONB, array, uuid, timestamp, enum) e cair num fallback legível para o resto.
 - **Não** virar IDE de banco autônoma — o bloco vive dentro do Notes, não é janela standalone.
+- **Não** manter sessão transacional compartilhada entre blocos do mesmo doc. `BEGIN` num bloco + `COMMIT` em outro é explicitamente fora de escopo. Transações multi-statement dentro de **um** bloco continuam OK.
 
 ---
 
@@ -105,7 +105,7 @@ Status bar no rodapé.
 ### 5.2 Cursor dentro do bloco
 
 ````
-```db-postgres alias=churn connection=prod limit=100 session=doc
+```db-postgres alias=churn connection=prod limit=100
 SELECT user_id, count(*) AS n
 FROM events
 WHERE type = 'churn'
@@ -211,9 +211,6 @@ Erro estruturado com line/col → squiggle no token. Fuzzy match contra schema c
                                                   │ ● split                  │
                                                   │ ○ output                 │
                                                   │                          │
-                                                  │ Session                  │
-                                                  │ ○ none  ● doc  ○ named   │
-                                                  │                          │
                                                   │ Resolved bindings (2)    │
                                                   │  $1 START_DATE = 2025…   │
                                                   │                          │
@@ -295,7 +292,6 @@ Tab "Chart" aparece quando o shape do result permite (≥1 numérica + ≥1 cate
 | B1 | Schema browser permanente | Painel direito | Alta |
 | B2 | Autocomplete ciente de schema (tabelas/colunas/FK) | CM6 no bloco | Média |
 | B3 | Múltiplas statements por bloco + multi result set | `DbResponse` shape + executor | Alta |
-| B4 | Sessão transacional por doc | Pool lifecycle + executor | Alta |
 | B5 | Cancelar query em andamento | Executor + UI ⏹ | Média |
 | B6 | Paginação real + streaming | Channel + grid virtualizado | Alta |
 | B7 | Modo read-only por conexão | Flag + confirm dialog | Baixa |
@@ -358,17 +354,7 @@ type DbResponse = {
 
 Se sair como está hoje (`columns+rows` OU `rows_affected`) e depois virar multi, **todas as refs `{{alias.response...}}` salvas nos vaults quebram**.
 
-### 7.2 Sessão por documento
-
-Pool volta a ter lifecycle, mas amarrado ao doc aberto, não ao runner:
-
-- Doc aberto → alocar conexão dedicada por `connection_id` referenciada.
-- Doc fechado → release.
-- Flag `session` no info string: `none` (stateless), `doc` (default), `named=<id>` (compartilhar entre docs).
-
-Implica trazer parte do `PoolManager` removido no commit `6e30072` de volta, porém como **DocSessionManager** no Tauri state, não dentro do `BlockRunner`.
-
-### 7.3 Executor com cancel token
+### 7.2 Executor com cancel token
 
 Assinatura:
 
@@ -384,18 +370,18 @@ fn execute_query(
 
 Retorno streamed via `tauri::Channel`. Hoje é `Future<DbResponse>` único. Mudar depois = refatorar toda chamada.
 
-### 7.4 Identifier de connection no info string
+### 7.3 Identifier de connection no info string
 
 **Decisão pendente.** Três alternativas (ver seção 2 do redesign):
 - UUID (péssimo raw) · Slug (colide em rename) · Quoted name (requer parser mais rico).
 
 **Proposta:** UUID + alias opcional (`connection=prod`) com resolução: slug primeiro, fallback UUID. Mantém legibilidade sem perder estabilidade.
 
-### 7.5 Schema cache compartilhado
+### 7.4 Schema cache compartilhado
 
 Autocomplete, ERD, FK-nav, AI, full-scan warning — todos precisam do mesmo snapshot de schema. Centralizar em **um** store (Zustand ou Tauri state) com TTL e refresh explícito. Evita 5 caches divergentes.
 
-### 7.6 Result storage
+### 7.5 Result storage
 
 Recomendação: **não** introduzir Zustand `dbResults` novo. Reusar cache SQLite (já existe) + `Channel` para execuções live. Refs `{{alias.response…}}` leem do cache. Execução em andamento publica via Channel para o widget.
 
@@ -425,7 +411,6 @@ Ao fim da V1, um dev backend deve conseguir rodar o dia inteiro sem abrir DBeave
 Foco: razões para **preferir** Notes sobre DBeaver.
 
 - **B3** multi result set (shape novo).
-- **B4** sessão por doc + transações entre blocos.
 - **B6** paginação/streaming real.
 - **N1** histórico vault-wide (Cmd+P).
 - **N2** AI schema-aware.
@@ -470,4 +455,3 @@ Foco: fechar as lacunas onde ainda se abre DBeaver.
 - [`ARCHITECTURE.md`](./ARCHITECTURE.md) — plugin architecture (contexto do registry).
 - [`SPEC.md`](./SPEC.md) — especificação geral do produto.
 - [`chat-design.md`](./chat-design.md) — design do chat (base para AI schema-aware via MCP).
-- Commit `6e30072` — remoção do `PoolManager` do `BlockRunner`. Precisa ser parcialmente revertido como `DocSessionManager` para V2/B4.

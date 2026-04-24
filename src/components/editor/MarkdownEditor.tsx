@@ -210,34 +210,41 @@ const editorTheme = EditorView.theme({
 
   // All spacing uses --chakra-space-* tokens (1 = 4px, 1.5 = 6px,
   // 2 = 8px, 3 = 12px, 4 = 16px); borders use --chakra-radii-md (8px).
+  // ── Card chrome ──
+  // The DB block is a composite widget stitched from 4 CM6 line/widget
+  // decorations (fence-open, body, fence-close, toolbar/result/statusbar
+  // portals). Each needs its own border spec to form a continuous card.
+  // Borders use a muted color-mix so the card whispers instead of shouts —
+  // aligning visually with the project's edge-to-edge code blocks while
+  // still reading as a single unit. Soft tinting on header/footer.
   ".cm-db-fence-line": {
     color: "var(--chakra-colors-fg-muted)",
     fontFamily: "var(--chakra-fonts-mono)",
     fontSize: "var(--chakra-font-sizes-xs)",
-    opacity: 0.55,
+    opacity: 0.4,
     position: "relative",
-    borderLeft: "1px solid var(--chakra-colors-border)",
-    borderRight: "1px solid var(--chakra-colors-border)",
+    borderLeft: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
+    borderRight: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
     background: "var(--chakra-colors-bg-subtle)",
     paddingLeft: "var(--chakra-space-3)",
     paddingRight: "var(--chakra-space-3)",
   },
   ".cm-db-fence-line-open": {
-    borderTop: "1px solid var(--chakra-colors-border)",
+    borderTop: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
     borderTopLeftRadius: "var(--chakra-radii-md)",
     borderTopRightRadius: "var(--chakra-radii-md)",
     paddingTop: "var(--chakra-space-1)",
   },
   ".cm-db-fence-line-close": {
     paddingBottom: "var(--chakra-space-1)",
-    borderBottom: "1px solid var(--chakra-colors-border)",
+    borderBottom: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
   },
 
   ".cm-db-body-line": {
     fontFamily: "var(--chakra-fonts-mono)",
     background: "var(--chakra-colors-bg-canvas, var(--chakra-colors-bg))",
-    borderLeft: "1px solid var(--chakra-colors-border)",
-    borderRight: "1px solid var(--chakra-colors-border)",
+    borderLeft: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
+    borderRight: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
     paddingLeft: "var(--chakra-space-4)",
     paddingRight: "var(--chakra-space-4)",
   },
@@ -260,10 +267,10 @@ const editorTheme = EditorView.theme({
   // in JS (see cm-db-block.tsx).
   ".cm-db-toolbar-portal": {
     display: "block",
-    background: "var(--chakra-colors-blackAlpha-200)",
-    borderLeft: "1px solid var(--chakra-colors-border)",
-    borderRight: "1px solid var(--chakra-colors-border)",
-    borderTop: "1px solid var(--chakra-colors-border)",
+    background: "color-mix(in srgb, var(--chakra-colors-fg) 3%, var(--chakra-colors-bg-subtle))",
+    borderLeft: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
+    borderRight: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
+    borderTop: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
     borderTopLeftRadius: "var(--chakra-radii-md)",
     borderTopRightRadius: "var(--chakra-radii-md)",
     padding: "var(--chakra-space-1-5) var(--chakra-space-3)",
@@ -276,18 +283,20 @@ const editorTheme = EditorView.theme({
     overflowAnchor: "none",
     margin: 0,
     background: "var(--chakra-colors-bg)",
-    borderLeft: "1px solid var(--chakra-colors-border)",
-    borderRight: "1px solid var(--chakra-colors-border)",
-    borderTop: "1px solid var(--chakra-colors-border)",
+    borderLeft: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
+    borderRight: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
+    borderTop: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
     minHeight: "var(--chakra-space-10)",
   },
 
   ".cm-db-statusbar-portal": {
     margin: "0 0 var(--chakra-space-3) 0",
     padding: "var(--chakra-space-1) var(--chakra-space-3)",
-    background: "var(--chakra-colors-blackAlpha-100)",
-    border: "1px solid var(--chakra-colors-border)",
-    borderTop: "1px solid var(--chakra-colors-border)",
+    background: "transparent",
+    borderLeft: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
+    borderRight: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
+    borderBottom: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
+    borderTop: "1px solid color-mix(in srgb, var(--chakra-colors-border) 40%, transparent)",
     borderBottomLeftRadius: "var(--chakra-radii-md)",
     borderBottomRightRadius: "var(--chakra-radii-md)",
     minHeight: "var(--chakra-space-5)",

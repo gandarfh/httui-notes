@@ -2,7 +2,7 @@
  * Parser and serializer for DB block fenced-code info strings.
  *
  * New format (post-redesign):
- *   ```db-postgres alias=db1 connection=prod limit=100 timeout=30000 display=split session=doc
+ *   ```db-postgres alias=db1 connection=prod limit=100 timeout=30000 display=split
  *   SELECT * FROM users;
  *   ```
  *
@@ -14,7 +14,7 @@
  * Rules:
  * - Tokens separated by whitespace; `key=value` (no spaces, no quotes — MVP).
  * - Order does not matter on read; canonical order on write is:
- *   `alias → connection → limit → timeout → display → session`.
+ *   `alias → connection → limit → timeout → display`.
  *   This guarantees deterministic roundtrip and clean git diffs.
  * - Unknown keys are ignored silently.
  * - Invalid values are ignored silently (no throw).
@@ -24,11 +24,6 @@ export type DbDialect = "postgres" | "mysql" | "sqlite" | "generic";
 
 export type DbDisplayMode = "input" | "split" | "output";
 
-export type DbSessionMode =
-  | { kind: "none" }
-  | { kind: "doc" }
-  | { kind: "named"; id: string };
-
 export interface DbBlockMetadata {
   dialect: DbDialect;
   alias?: string;
@@ -36,7 +31,6 @@ export interface DbBlockMetadata {
   limit?: number;
   timeoutMs?: number;
   displayMode?: DbDisplayMode;
-  session?: DbSessionMode;
 }
 
 const DIALECT_FROM_TOKEN: Record<string, DbDialect> = {
@@ -98,36 +92,10 @@ export function parseDbFenceInfo(info: string): DbBlockMetadata | null {
         }
         break;
       }
-      case "session": {
-        const session = parseSessionValue(value);
-        if (session) meta.session = session;
-        break;
-      }
     }
   }
 
   return meta;
-}
-
-function parseSessionValue(value: string): DbSessionMode | null {
-  if (value === "none") return { kind: "none" };
-  if (value === "doc") return { kind: "doc" };
-  if (value.startsWith("named:")) {
-    const id = value.slice("named:".length);
-    if (id.length > 0) return { kind: "named", id };
-  }
-  return null;
-}
-
-function stringifySessionValue(session: DbSessionMode): string {
-  switch (session.kind) {
-    case "none":
-      return "none";
-    case "doc":
-      return "doc";
-    case "named":
-      return `named:${session.id}`;
-  }
 }
 
 /**
@@ -141,9 +109,6 @@ export function stringifyDbFenceInfo(meta: DbBlockMetadata): string {
   if (meta.limit !== undefined) parts.push(`limit=${meta.limit}`);
   if (meta.timeoutMs !== undefined) parts.push(`timeout=${meta.timeoutMs}`);
   if (meta.displayMode !== undefined) parts.push(`display=${meta.displayMode}`);
-  if (meta.session !== undefined) {
-    parts.push(`session=${stringifySessionValue(meta.session)}`);
-  }
   return parts.join(" ");
 }
 

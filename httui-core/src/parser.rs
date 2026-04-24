@@ -27,8 +27,8 @@ const EXECUTABLE_TYPES: &[&str] = &[
 ///   - Legacy: body starts with `{` and parses as JSON containing a string `query` field.
 ///     `params` is the JSON as-is.
 ///   - New: body is raw SQL; `params` is synthesized as
-///     `{query, connection_id?, limit?, timeout_ms?, session?}` by merging info-string
-///     tokens (`connection=`, `limit=`, `timeout=`, `session=`) with the body.
+///     `{query, connection_id?, limit?, timeout_ms?}` by merging info-string
+///     tokens (`connection=`, `limit=`, `timeout=`) with the body.
 pub fn parse_blocks(markdown: &str) -> Vec<ParsedBlock> {
     let mut blocks = Vec::new();
     let lines: Vec<&str> = markdown.lines().collect();
@@ -149,14 +149,6 @@ fn synthesize_db_params_from_info(
             obj.insert(
                 "timeout_ms".to_string(),
                 serde_json::Value::Number(timeout.into()),
-            );
-        }
-    }
-    if let Some(session) = attrs.get("session") {
-        if !session.is_empty() {
-            obj.insert(
-                "session".to_string(),
-                serde_json::Value::String(session.clone()),
             );
         }
     }
@@ -401,7 +393,7 @@ not valid json
 
     #[test]
     fn test_parse_db_new_format_raw_sql() {
-        let md = r#"```db-postgres alias=db1 connection=prod limit=100 timeout=30000 display=split session=doc
+        let md = r#"```db-postgres alias=db1 connection=prod limit=100 timeout=30000 display=split
 SELECT *
 FROM users
 WHERE id > 10
@@ -419,7 +411,7 @@ WHERE id > 10
         assert_eq!(blocks[0].params["connection_id"], "prod");
         assert_eq!(blocks[0].params["limit"], 100);
         assert_eq!(blocks[0].params["timeout_ms"], 30000);
-        assert_eq!(blocks[0].params["session"], "doc");
+        assert!(blocks[0].params.get("session").is_none());
     }
 
     #[test]

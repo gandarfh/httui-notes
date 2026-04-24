@@ -33,7 +33,7 @@ Reescrever o bloco DB como um **fenced code block nativo** do CM6. A query **é*
 ### 2.1 Formato do arquivo
 
 ````
-```db-postgres alias=db1 connection=prod limit=100 timeout=30000 display=split session=doc
+```db-postgres alias=db1 connection=prod limit=100 timeout=30000 display=split
 SELECT *
 FROM responses
 WHERE id > 10
@@ -48,12 +48,11 @@ WHERE id > 10
 - `limit=` — row limit (default 100, backend injeta se ausente).
 - `timeout=` — timeout em ms.
 - `display=` — `input` | `split` | `output` (default `split`).
-- `session=` — `none` | `doc` (default) | `named=<id>`. Controla reuso de conexão (ver 3.4).
 
 **Regras do info string:**
 - Tokens separados por espaço, formato `key=value`.
 - Values sem espaço/aspas (MVP). Caso precise: suportar aspas duplas depois.
-- Ordem não importa na leitura, mas a **forma canônica na escrita** é fixa (`alias → connection → limit → timeout → display → session`) para roundtrip determinístico e diffs limpos no git.
+- Ordem não importa na leitura, mas a **forma canônica na escrita** é fixa (`alias → connection → limit → timeout → display`) para roundtrip determinístico e diffs limpos no git.
 - Keys desconhecidas ignoradas silenciosamente.
 
 **Corpo:**
@@ -94,7 +93,6 @@ Toolbar some quando cursor está dentro do bloco. Atalhos tomam o lugar: `⌘↵
   - **Row limit** — number input.
   - **Timeout (ms)** — number input.
   - **Display mode** — radio (input/split/output).
-  - **Session** — radio (none/doc/named) + input opcional para named.
   - **Resolved bindings** — read-only, mostra o mapeamento `{{ref}} → $N` da última execução (debug).
   - **Delete block** — botão destrutivo.
 - Cada mudança dispara `view.dispatch({changes})` reescrevendo **só** o info string na forma canônica. Annotation `widgetTransaction` evita rebuild de decoração.
@@ -178,7 +176,7 @@ Consumidores: autocomplete do CM6, schema panel, AI assist, futuros (FK nav, ful
 
 **Execução:**
 - Botão ▶ (toolbar) dispara função `runDbBlock(alias, query, metadata)`.
-- Função monta um `BlockRequest` com `{ block_type: "db", params: { query, connection_id, limit, timeout_ms, session } }`.
+- Função monta um `BlockRequest` com `{ block_type: "db", params: { query, connection_id, limit, timeout_ms } }`.
 - Chama `invoke("execute_block", ...)` passando um `Channel` para chunks.
 - Recebe chunks `{ kind: "row" | "message" | "stats" | "error" | "complete" }` até `complete`.
 - Cache final escrito via `save_block_result`.
@@ -192,8 +190,8 @@ Consumidores: autocomplete do CM6, schema panel, AI assist, futuros (FK nav, ful
 **Parser** (`httui-core/src/parser.rs`):
 - `parse_blocks` com ramo dedicado para `db-*`:
   - **Heurística retrocompatível**: se body trim-start começa com `{` e parseia como JSON com chave `query`, é formato legado — extrai campos do JSON.
-  - Caso contrário: body **é** a query; `connection_id`/`limit`/`timeout_ms`/`session` vêm do info string.
-  - Resultado: `ParsedBlock` com `params: JSON { query, connection_id, limit, timeout_ms, session }`.
+  - Caso contrário: body **é** a query; `connection_id`/`limit`/`timeout_ms` vêm do info string.
+  - Resultado: `ParsedBlock` com `params: JSON { query, connection_id, limit, timeout_ms }`.
 - Testes de roundtrip: `parse → stringify → parse` preserva shape exata.
 
 **Response shape novo** (`httui-core/src/executor/db/types.rs`):
@@ -227,12 +225,6 @@ async fn execute_query(
 - `cancel` é `tokio_util::sync::CancellationToken`. Comando Tauri `cancel_block` sinaliza o token por `execution_id`.
 - Erros de SQL capturam `position` (Postgres), `line/column` (MySQL). Propagam para o frontend como `DbResult::Error`.
 
-**Session por documento** (novo — ver 3.4).
-
-**Runner** (`httui-core/src/runner.rs`):
-- Recebe parâmetro `session_key` derivado do doc aberto.
-- Delega a seleção de conexão ao `DocSessionManager`.
-
 **MCP** (`httui-mcp/src/tools/blocks.rs`):
 - `list_blocks` e `execute_block` usam `parser::parse_blocks` compartilhado — pegam a retrocompat de graça.
 
@@ -243,18 +235,6 @@ async fn execute_query(
   - `env_snapshot`: hash das env vars usadas em `{{...}}` (evita hit cruzado entre envs).
 - Migração: invalidar tudo. É só cache.
 - Cache **nunca** serve resultado quando a query tem statement de mutação (UPDATE/DELETE/INSERT/DDL). Detecção simples por prefixo dos tokens.
-
-### 3.4 Sessão por documento
-
-Componente novo: `DocSessionManager` em `src-tauri/src/db/session.rs`.
-
-- Por `(document_path, connection_id, session_mode)` mantém uma conexão dedicada do pool.
-- `session_mode`:
-  - `none` — sem sessão, conexão do pool por execução, release imediato.
-  - `doc` (default) — conexão mantida enquanto o doc está aberto. Transações (`BEGIN`/`COMMIT`/`ROLLBACK`) sobrevivem entre blocos.
-  - `named=<id>` — conexão compartilhada entre docs com mesmo `named`. Para runbooks que atravessam arquivos.
-- Lifecycle: `PaneContext` notifica `DocSessionManager` em abrir/fechar doc. Release após idle configurável (default 5min).
-- O commit `6e30072` removeu `PoolManager` do `BlockRunner` — volta aqui como `DocSessionManager` fora do runner, seguindo a separação correta de preocupações.
 
 ---
 
@@ -346,7 +326,6 @@ Depois de 1-2 releases estáveis (instrumentar contador de reads legados), remov
 12. **IME (composição de input)** — CM6 trata nativamente quando conteúdo não é atomic. Já não há compose em fence raw.
 13. **Execução cancelada com resultados parciais** — `DbResponse.results` com o que chegou antes do cancel + `stats` indicando cancelado. Mostrar badge "cancelled" na status bar.
 14. **Statement destrutivo sem WHERE** — detecção via parser simples; confirm dialog antes do run. Desabilitável no settings.
-15. **Doc fechado com transação aberta** (`BEGIN` sem `COMMIT`/`ROLLBACK`) — `DocSessionManager` faz `ROLLBACK` implícito na release. Aviso no status bar no close.
 
 ---
 
@@ -358,7 +337,6 @@ Depois de 1-2 releases estáveis (instrumentar contador de reads legados), remov
 - **Drawer** (RTL): abre/fecha, cada campo edita info string na forma canônica, roundtrip sem drift.
 - **Execução** (integração): ▶ dispara `execute_block`, chunks chegam, cancel interrompe, erro pinta squiggle.
 - **Multi-result** (integração): `BEGIN; UPDATE; SELECT; ROLLBACK;` retorna `results.len() == 4` (ou 2, decidir se `BEGIN`/`ROLLBACK` viram `DbResult::Mutation`).
-- **Sessão por doc** (integração): `BEGIN` no bloco A + `COMMIT` no bloco B funciona; `ROLLBACK` automático no close do doc.
 - **Migração** (unit + E2E): arquivo JSON legado abre correto, salva no novo após edição.
 - **Schema cache**: shared entre autocomplete e panel; invalidação e refresh consistente.
 - **Cache de resultado**: mutation não serve de cache; env snapshot separa hits.
@@ -403,7 +381,7 @@ Entrega **ponta-a-ponta**, sem fases de PoC. Em ordem de execução com invarian
 ### Etapa 5 — Toolbar, drawer, execução
 
 - `DbToolbarWidget` com todos os botões (▶ ⚡ ▦ ⤓ ⚙). AI e EXPLAIN podem chegar como stubs que abrem "em breve".
-- `DbDrawer` (portal) com alias/connection/limit/timeout/display/session + resolved bindings + readonly toggle.
+- `DbDrawer` (portal) com alias/connection/limit/timeout/display + resolved bindings + readonly toggle.
 - ▶ conecta ao executor streamed da Etapa 3. Cancel via ⏹ ou `⌘.`.
 - Status bar ao vivo.
 - **Invariante:** bloco totalmente usável como substituto do atual.
@@ -416,14 +394,7 @@ Entrega **ponta-a-ponta**, sem fases de PoC. Em ordem de execução com invarian
 - `ResultTable` virtualizado.
 - **Invariante:** multi-statement começa a funcionar (query `BEGIN; UPDATE; SELECT; ROLLBACK;` retorna os N result sets).
 
-### Etapa 7 — Sessão por doc + transações
-
-- `DocSessionManager` no Rust. Integração com `PaneContext` para lifecycle.
-- Info string `session=` ganha efeito real.
-- Release automático no close do doc com rollback se transação aberta.
-- **Invariante:** `BEGIN` num bloco + `COMMIT` em outro no mesmo doc funciona.
-
-### Etapa 8 — Schema panel + autocomplete schema-aware
+### Etapa 7 — Schema panel + autocomplete schema-aware
 
 - `SchemaCache` Zustand.
 - Painel direito com tree, busca, double-click insere SELECT.
@@ -431,14 +402,14 @@ Entrega **ponta-a-ponta**, sem fases de PoC. Em ordem de execução com invarian
 - Completion pós-FROM/WHERE/JOIN.
 - **Invariante:** ambiente começa a sentir substituição de DBeaver.
 
-### Etapa 9 — Read-only mode + erros com line/col + export
+### Etapa 8 — Read-only mode + erros com line/col + export
 
 - Flag `is_readonly` em `connections` + confirm dialog para mutation.
 - Parse de `position`/`line`/`column` dos erros Postgres/MySQL; squiggle no CM6.
 - Menu ⤓ com CSV/JSON/Markdown/INSERT/clipboard/save file.
 - **Invariante:** feature set da V1 da visão completo.
 
-### Etapa 10 — Limpeza
+### Etapa 9 — Limpeza
 
 - Remover `src/components/blocks/db/DbBlockView.tsx`.
 - Remover código ≠ db-\* do `cm-block-widgets` se não houver mais uso.
@@ -457,6 +428,7 @@ Cada etapa é mergeable. Nenhuma deixa o app num estado quebrado para vaults exi
 - Schema diff, ERD mermaid, data editor inline, FK navigation, AI rewrite — todos ficam para V2/V3 (ver `db-block-vision.md`).
 - Dialetos além de Postgres/MySQL/SQLite — não neste escopo.
 - Backup/restore, import wizard, server admin — nunca.
+- **Sessão transacional compartilhada entre blocos** — `BEGIN` num bloco + `COMMIT` em outro não é suportado. Cada execução abre/fecha sua própria conexão do pool. Transações multi-statement dentro de **um** bloco continuam OK (via suporte multi-result da Etapa 6).
 
 ---
 
@@ -465,7 +437,6 @@ Cada etapa é mergeable. Nenhuma deixa o app num estado quebrado para vaults exi
 - **Navegação customizada** com atomic ranges seletivos tem cantos obscuros (vim mode, seleções multilinha, IME). Mitigação: testes de navegação prioritários na Etapa 4; plano B é `atomicRanges` completo e navegação custom via keymap.
 - **Performance** — decoração a cada keystroke em docs grandes. Mitigação: cache de blocos (pattern em `cm-block-widgets`) invalidado só em `docChanged` com block count mudado.
 - **Shape de response mudando** — se o multi-result não for planejado direito, refs `{{alias.response...}}` quebram. Mitigação: shim na Etapa 2 preserva refs legadas via mapeamento `response → results[0].rows[0]`.
-- **`DocSessionManager` com leak de conexão** — se lifecycle falha, pool esgota. Mitigação: idle timeout agressivo (5min default) + comando debug para listar sessões ativas.
 - **Schema cache desatualizado** — usuário renomeia coluna fora do app e autocomplete engana. Mitigação: botão refresh + TTL curto por default + invalidação quando executor reporta `undefined_column`.
 - **Info string crescendo** — se precisar de muita metadata, fica ilegível. Mitigação: reservar chave `extra=base64(json)` como escape hatch documentado.
 - **Chakra Drawer focus trap** — pode brigar com ProseMirror/CM6. Usar Portal + Box como em search panels (não `Dialog.Root`).

@@ -37,13 +37,10 @@ import {
   Text,
 } from "@chakra-ui/react";
 import {
-  LuChartBar,
-  LuDownload,
   LuPlay,
   LuSettings,
   LuSquare,
   LuX,
-  LuZap,
 } from "react-icons/lu";
 import { EditorView } from "@codemirror/view";
 
@@ -56,7 +53,6 @@ import {
   stringifyDbFenceInfo,
   type DbBlockMetadata,
   type DbDisplayMode,
-  type DbSessionMode,
 } from "@/lib/blocks/db-fence";
 import {
   executeDbStreamed,
@@ -526,7 +522,7 @@ function DbToolbar({
   onOpenSettings,
 }: DbToolbarProps) {
   const running = executionState === "running";
-  const dialectLabel = metadata.dialect.toUpperCase();
+  const dialectLabel = metadata.dialect.toLowerCase();
   const connLabel =
     activeConnection?.name ?? metadata.connection ?? undefined;
 
@@ -539,12 +535,19 @@ function DbToolbar({
       minW={0}
       onMouseDown={(e) => e.stopPropagation()}
     >
-      {/* minW={0} lets the flex item shrink below its content, enabling
-          overflow:hidden + ellipsis on the children. Without it, long
-          aliases/connections would force the toolbar wider than the card
-          and the row would wrap onto two lines in a narrow pane. */}
+      {/* Flat identity row — no nested container. The toolbar portal itself
+          already provides the card-header chrome (bg + top border) via CSS
+          in MarkdownEditor.tsx. Adding a pill here stacked two chromes.
+          minW={0} enables ellipsis under narrow panes. */}
       <HStack gap={2} align="center" minW={0} flex="1" overflow="hidden">
-        <Badge colorPalette="blue" variant="solid" size="xs" flexShrink={0}>
+        <Badge
+          colorPalette="blue"
+          variant="solid"
+          size="xs"
+          flexShrink={0}
+          fontFamily="mono"
+          letterSpacing="0.05em"
+        >
           DB
         </Badge>
         {metadata.alias && (
@@ -562,42 +565,58 @@ function DbToolbar({
           </Text>
         )}
         {connLabel && (
-          <HStack gap={1} align="center" minW={0} flexShrink={1}>
-            {/* Connection status dot — resolved = green, unresolved = gray */}
+          <>
             <Box
-              boxSize="1.5"
-              borderRadius="full"
+              as="span"
               flexShrink={0}
-              bg={activeConnection ? "green.500" : "gray.500"}
-              title={activeConnection ? "connection resolved" : "connection not found"}
-            />
-            <Text
-              fontSize="xs"
-              fontFamily="mono"
               color="fg.muted"
-              whiteSpace="nowrap"
-              overflow="hidden"
-              textOverflow="ellipsis"
-              minW={0}
+              opacity={0.3}
+              fontSize="xs"
             >
-              {connLabel}
-            </Text>
-          </HStack>
+              ·
+            </Box>
+            <HStack gap={1.5} align="center" minW={0} flexShrink={1}>
+              <Box
+                boxSize="1.5"
+                borderRadius="full"
+                flexShrink={0}
+                bg={activeConnection ? "green.400" : "gray.500"}
+                title={
+                  activeConnection
+                    ? "connection resolved"
+                    : "connection not found"
+                }
+              />
+              <Text
+                fontSize="xs"
+                fontFamily="mono"
+                color="fg.muted"
+                whiteSpace="nowrap"
+                overflow="hidden"
+                textOverflow="ellipsis"
+                minW={0}
+              >
+                {connLabel}
+              </Text>
+            </HStack>
+          </>
         )}
-        <Text
+        <Box
+          as="span"
           fontSize="2xs"
           fontFamily="mono"
           color="fg.muted"
           textTransform="uppercase"
-          letterSpacing="0.05em"
+          letterSpacing="0.08em"
           whiteSpace="nowrap"
           flexShrink={0}
+          opacity={0.5}
         >
           {dialectLabel}
-        </Text>
+        </Box>
       </HStack>
 
-      <HStack gap={1}>
+      <HStack gap={0}>
         {running ? (
           <IconButton
             size="xs"
@@ -622,33 +641,6 @@ function DbToolbar({
             <LuPlay />
           </IconButton>
         )}
-        <IconButton
-          size="xs"
-          variant="ghost"
-          aria-label="AI"
-          disabled
-          title="AI — coming soon"
-        >
-          <LuZap />
-        </IconButton>
-        <IconButton
-          size="xs"
-          variant="ghost"
-          aria-label="Explain"
-          disabled
-          title="EXPLAIN — coming soon"
-        >
-          <LuChartBar />
-        </IconButton>
-        <IconButton
-          size="xs"
-          variant="ghost"
-          aria-label="Export"
-          disabled
-          title="Export — coming soon"
-        >
-          <LuDownload />
-        </IconButton>
         <IconButton
           size="xs"
           variant="ghost"
@@ -735,21 +727,44 @@ function DbResult({
   }
 
   // ── Empty state: nothing has been run yet ──
+  // Keeps the visual weight light — a single-line caption that echoes the
+  // rest of the editor's language (muted mono text, no ornamental chrome).
   if (!response) {
     return (
       <Flex
         className="cm-db-result"
-        px={5}
-        py={6}
+        px={4}
+        py={5}
         align="center"
         justify="center"
-        direction="column"
-        gap={1}
       >
-        <Text fontSize="sm" fontFamily="mono" color="fg.muted">
-          {connection
-            ? `Hit ⌘↵ to query ${connection}`
-            : "Pick a connection in settings to run"}
+        <Text
+          fontSize="xs"
+          fontFamily="mono"
+          color="fg.muted"
+          opacity={0.7}
+        >
+          {connection ? (
+            <>
+              Hit{" "}
+              <Box
+                as="span"
+                px={1}
+                color="fg"
+                opacity={0.9}
+                borderBottom="1px dotted"
+                borderColor="border"
+              >
+                ⌘↵
+              </Box>{" "}
+              to query{" "}
+              <Box as="span" color="fg" fontWeight="600">
+                {connection}
+              </Box>
+            </>
+          ) : (
+            "Pick a connection in settings to run"
+          )}
         </Text>
       </Flex>
     );
@@ -765,37 +780,16 @@ function DbResult({
   }
 
   if (first.kind === "select") {
+    // Status info (row count, truncated flag, cached badge) is rendered by
+    // the ResultTable footer + the document-level DbStatusBar — avoid the
+    // 3x redundancy that existed before by not repeating it here.
     return (
       <Box className="cm-db-result">
-        <Flex
-          px={3}
-          py={1}
-          align="center"
-          gap={2}
-          borderBottom="1px solid"
-          borderColor="border"
-          fontFamily="mono"
-          fontSize="xs"
-          color="fg.muted"
-        >
-          <Text>
-            {first.rows.length} row{first.rows.length === 1 ? "" : "s"}
-          </Text>
-          {first.has_more && (
-            <Text color="yellow.500">(truncated — load more)</Text>
-          )}
-          {cached && (
-            <Badge size="xs" colorPalette="gray" variant="subtle">
-              cached
-            </Badge>
-          )}
-        </Flex>
         <ResultTable
           columns={first.columns}
           rows={first.rows}
           hasMore={first.has_more}
           loadingMore={false}
-          onLoadMore={() => {}}
         />
       </Box>
     );
@@ -850,7 +844,7 @@ function DbStatusBar({
   const first = response?.results[0];
   const rowCount =
     first?.kind === "select"
-      ? `${first.rows.length} row${first.rows.length === 1 ? "" : "s"}`
+      ? `${first.rows.length.toLocaleString()} row${first.rows.length === 1 ? "" : "s"}`
       : first?.kind === "mutation"
         ? `${first.rows_affected} affected`
         : null;
@@ -859,6 +853,19 @@ function DbStatusBar({
     durationMs !== null && durationMs !== undefined
       ? formatElapsed(durationMs)
       : null;
+
+  // Status dot: subtle visual cue of current state. Colour intensifies with
+  // severity so the statusbar reads at a glance without needing labels.
+  const dotColor: string | null =
+    executionState === "running"
+      ? "yellow.400"
+      : executionState === "error"
+        ? "red.400"
+        : executionState === "cancelled"
+          ? "orange.400"
+          : executionState === "success"
+            ? "green.400"
+            : null;
 
   return (
     <Flex
@@ -869,6 +876,14 @@ function DbStatusBar({
       fontSize="xs"
       color="fg.muted"
     >
+      {dotColor && (
+        <Box
+          boxSize="1.5"
+          borderRadius="full"
+          bg={dotColor}
+          flexShrink={0}
+        />
+      )}
       {connection && (
         <Text fontWeight="medium" color="fg">
           {connection}
@@ -876,44 +891,32 @@ function DbStatusBar({
       )}
       {rowCount && (
         <>
-          <Text opacity={0.5}>·</Text>
+          <Text opacity={0.3}>·</Text>
           <Text>{rowCount}</Text>
         </>
       )}
       {duration && (
         <>
-          <Text opacity={0.5}>·</Text>
+          <Text opacity={0.3}>·</Text>
           <Text>{duration}</Text>
         </>
       )}
       {cached && (
         <>
-          <Text opacity={0.5}>·</Text>
-          <Text color="blue.400">cached</Text>
-        </>
-      )}
-      {executionState === "running" && (
-        <>
-          <Text opacity={0.5}>·</Text>
-          <Text color="yellow.500">running</Text>
-        </>
-      )}
-      {executionState === "cancelled" && (
-        <>
-          <Text opacity={0.5}>·</Text>
-          <Text color="orange.400">cancelled</Text>
-        </>
-      )}
-      {executionState === "error" && (
-        <>
-          <Text opacity={0.5}>·</Text>
-          <Text color="red.400">error</Text>
+          <Text opacity={0.3}>·</Text>
+          <Badge
+            size="xs"
+            colorPalette="blue"
+            variant="subtle"
+            fontFamily="mono"
+            textTransform="lowercase"
+          >
+            cached
+          </Badge>
         </>
       )}
       <Flex flex={1} />
-      {executionState === "idle" && !response && (
-        <Text opacity={0.6}>⌘↵ to run</Text>
-      )}
+      {/* Empty-state CTA is rendered by DbResult; no duplicate here. */}
     </Flex>
   );
 }
@@ -1074,11 +1077,6 @@ function DbDrawer({
             </HStack>
           </Box>
 
-          <DrawerSessionField
-            session={metadata.session}
-            onChange={(s) => onUpdate({ session: s })}
-          />
-
           <Box>
             <Text fontSize="xs" color="fg.muted" mb={1}>
               Resolved bindings ({resolvedBindings.length})
@@ -1126,48 +1124,3 @@ function DbDrawer({
   );
 }
 
-interface DrawerSessionFieldProps {
-  session: DbSessionMode | undefined;
-  onChange: (s: DbSessionMode | undefined) => void;
-}
-
-function DrawerSessionField({ session, onChange }: DrawerSessionFieldProps) {
-  const kind = session?.kind ?? "doc"; // doc is the default
-  const namedId = session?.kind === "named" ? session.id : "";
-
-  return (
-    <Box>
-      <Text fontSize="xs" color="fg.muted" mb={1}>
-        Session
-      </Text>
-      <HStack gap={2} mb={kind === "named" ? 2 : 0}>
-        {(["none", "doc", "named"] as const).map((k) => (
-          <Button
-            key={k}
-            size="xs"
-            variant={kind === k ? "solid" : "outline"}
-            onClick={() => {
-              if (k === "none") onChange({ kind: "none" });
-              else if (k === "doc") onChange(undefined); // doc is default → omit
-              else onChange({ kind: "named", id: namedId || "shared" });
-            }}
-          >
-            {k}
-          </Button>
-        ))}
-      </HStack>
-      {kind === "named" && (
-        <Input
-          size="sm"
-          fontFamily="mono"
-          placeholder="session id"
-          value={namedId}
-          onChange={(e) => {
-            const id = e.target.value.trim();
-            if (id) onChange({ kind: "named", id });
-          }}
-        />
-      )}
-    </Box>
-  );
-}

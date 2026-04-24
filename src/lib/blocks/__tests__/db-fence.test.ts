@@ -24,7 +24,7 @@ describe("parseDbFenceInfo", () => {
 
   it("parses a complete canonical info string", () => {
     const meta = parseDbFenceInfo(
-      "db-postgres alias=db1 connection=prod limit=100 timeout=30000 display=split session=doc",
+      "db-postgres alias=db1 connection=prod limit=100 timeout=30000 display=split",
     );
     expect(meta).toEqual({
       dialect: "postgres",
@@ -33,7 +33,6 @@ describe("parseDbFenceInfo", () => {
       limit: 100,
       timeoutMs: 30000,
       displayMode: "split",
-      session: { kind: "doc" },
     });
   });
 
@@ -73,7 +72,7 @@ describe("parseDbFenceInfo", () => {
 
   it("ignores invalid values silently", () => {
     const meta = parseDbFenceInfo(
-      "db-postgres alias=db1 limit=abc timeout=-5 display=weird session=bogus",
+      "db-postgres alias=db1 limit=abc timeout=-5 display=weird",
     );
     expect(meta).toEqual({
       dialect: "postgres",
@@ -84,16 +83,6 @@ describe("parseDbFenceInfo", () => {
   it("rejects zero-length values", () => {
     const meta = parseDbFenceInfo("db-postgres alias= connection=prod");
     expect(meta).toEqual({ dialect: "postgres", connection: "prod" });
-  });
-
-  it("parses session named:<id>", () => {
-    const meta = parseDbFenceInfo("db-postgres session=named:runbook-42");
-    expect(meta?.session).toEqual({ kind: "named", id: "runbook-42" });
-  });
-
-  it("rejects session=named without id", () => {
-    const meta = parseDbFenceInfo("db-postgres session=named:");
-    expect(meta?.session).toBeUndefined();
   });
 
   it("tolerates extra whitespace between tokens", () => {
@@ -125,7 +114,6 @@ describe("stringifyDbFenceInfo", () => {
   it("emits canonical order regardless of property iteration order", () => {
     const meta: DbBlockMetadata = {
       dialect: "postgres",
-      session: { kind: "doc" },
       displayMode: "split",
       timeoutMs: 30000,
       limit: 100,
@@ -133,7 +121,7 @@ describe("stringifyDbFenceInfo", () => {
       alias: "db1",
     };
     expect(stringifyDbFenceInfo(meta)).toBe(
-      "db-postgres alias=db1 connection=prod limit=100 timeout=30000 display=split session=doc",
+      "db-postgres alias=db1 connection=prod limit=100 timeout=30000 display=split",
     );
   });
 
@@ -145,15 +133,6 @@ describe("stringifyDbFenceInfo", () => {
         displayMode: "split",
       }),
     ).toBe("db-postgres alias=db1 display=split");
-  });
-
-  it("serializes session named:<id>", () => {
-    expect(
-      stringifyDbFenceInfo({
-        dialect: "postgres",
-        session: { kind: "named", id: "shared" },
-      }),
-    ).toBe("db-postgres session=named:shared");
   });
 });
 
@@ -168,13 +147,8 @@ describe("parseDbFenceInfo + stringifyDbFenceInfo roundtrip", () => {
       limit: 100,
       timeoutMs: 30000,
       displayMode: "split",
-      session: { kind: "doc" },
     },
-    { dialect: "sqlite", session: { kind: "none" } },
-    {
-      dialect: "postgres",
-      session: { kind: "named", id: "runbook-1" },
-    },
+    { dialect: "sqlite" },
     { dialect: "mysql", connection: "550e8400-e29b-41d4-a716-446655440000" },
   ];
 
