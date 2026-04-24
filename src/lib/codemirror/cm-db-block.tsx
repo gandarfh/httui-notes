@@ -1134,7 +1134,7 @@ export function createDbSchemaCompletionSource(): CompletionSource {
       return {
         from: word.from,
         to: word.to,
-        options: [...tableOptions, ...statusHint(connection, identifier, schemaLoaded)],
+        options: [...tableOptions, ...statusHint(connection, identifier, schemaLoaded, ctx.explicit)],
         filter: true,
       };
     }
@@ -1170,7 +1170,7 @@ export function createDbSchemaCompletionSource(): CompletionSource {
       ...columnOptions,
       ...tableOptions,
       ...keywordOptions,
-      ...statusHint(connection, identifier, schemaLoaded),
+      ...statusHint(connection, identifier, schemaLoaded, ctx.explicit),
     ];
 
     if (options.length === 0) return null;
@@ -1188,12 +1188,20 @@ export function createDbSchemaCompletionSource(): CompletionSource {
  * Build a soft info-only completion that explains why tables are missing.
  * Rendered as a non-applicable "info row" so the user learns what to fix
  * without the option polluting the insertable list.
+ *
+ * Gated on `ctx.explicit`: these rows only appear when the user asked for
+ * the popup with Ctrl-Space. When they're just typing, injecting a no-op
+ * completion (`apply: () => {}`) causes CM6 to swallow Enter — the popup
+ * eats the key trying to accept the top option, but the no-op apply
+ * does nothing, and the user's newline never reaches the document.
  */
 function statusHint(
   connection: Connection | null,
   identifier: string | undefined,
   schemaLoaded: boolean,
+  explicit: boolean,
 ): Completion[] {
+  if (!explicit) return [];
   if (!identifier) {
     return [
       {
