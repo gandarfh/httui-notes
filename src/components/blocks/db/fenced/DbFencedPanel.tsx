@@ -570,8 +570,6 @@ export const DbFencedPanel = memo(function DbFencedPanel({
             metadata={block.metadata}
             activeConnection={activeConnection}
             executionState={executionState}
-            response={response}
-            query={block.body}
             onRun={runBlock}
             onCancel={cancelBlock}
             onOpenSettings={() => setDrawerOpen(true)}
@@ -602,6 +600,8 @@ export const DbFencedPanel = memo(function DbFencedPanel({
             executionState={executionState}
             response={response}
             cached={cached}
+            query={block.body}
+            alias={block.metadata.alias}
           />,
           statusbarNode,
         )}
@@ -636,8 +636,6 @@ interface DbToolbarProps {
   metadata: DbBlockMetadata;
   activeConnection: Connection | null;
   executionState: ExecutionState;
-  response: DbResponse | null;
-  query: string;
   onRun: () => void;
   onCancel: () => void;
   onOpenSettings: () => void;
@@ -647,8 +645,6 @@ function DbToolbar({
   metadata,
   activeConnection,
   executionState,
-  response,
-  query,
   onRun,
   onCancel,
   onOpenSettings,
@@ -772,7 +768,6 @@ function DbToolbar({
             <LuPlay />
           </IconButton>
         )}
-        <ExportMenu response={response} query={query} alias={metadata.alias} />
         <IconButton
           size="xs"
           variant="ghost"
@@ -1303,6 +1298,8 @@ interface DbStatusBarProps {
   executionState: ExecutionState;
   response: DbResponse | null;
   cached: boolean;
+  query: string;
+  alias: string | undefined;
 }
 
 function DbStatusBar({
@@ -1311,6 +1308,8 @@ function DbStatusBar({
   executionState,
   response,
   cached,
+  query,
+  alias,
 }: DbStatusBarProps) {
   const first = response?.results[0];
   const rowCount =
@@ -1398,7 +1397,7 @@ function DbStatusBar({
       {/* Filler so right-cluster pushes to the end */}
       <Flex flex={1} />
 
-      {/* Right cluster: timing + cache badge */}
+      {/* Right cluster: timing + cache badge + export */}
       {duration && (
         <>
           <Text>{duration}</Text>
@@ -1419,6 +1418,7 @@ function DbStatusBar({
           cached
         </Badge>
       )}
+      <ExportMenu response={response} query={query} alias={alias} />
     </Flex>
   );
 }
