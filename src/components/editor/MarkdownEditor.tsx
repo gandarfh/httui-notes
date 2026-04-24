@@ -323,8 +323,12 @@ const editorTheme = EditorView.theme({
     borderRight: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
     paddingLeft: "44px",
     paddingRight: "var(--chakra-spacing-3)",
-    paddingTop: "var(--chakra-spacing-1)",
-    paddingBottom: "var(--chakra-spacing-1)",
+    paddingTop: "2px",
+    paddingBottom: "2px",
+    // Code-editor feel: tight vertical rhythm (1.4 matches VS Code / most
+    // IDEs). The CM default line-height is much airier, which made the
+    // SQL body look like prose.
+    lineHeight: "1.4",
     position: "relative",
     counterIncrement: "db-line",
   },
@@ -335,7 +339,7 @@ const editorTheme = EditorView.theme({
     content: "counter(db-line)",
     position: "absolute",
     left: "var(--chakra-spacing-2)",
-    top: "var(--chakra-spacing-1)",
+    top: "2px",
     width: "20px",
     textAlign: "right",
     color: "var(--chakra-colors-fg-muted)",
@@ -348,14 +352,14 @@ const editorTheme = EditorView.theme({
     pointerEvents: "none",
   },
   ".cm-db-body-line-first": {
-    paddingTop: "var(--chakra-spacing-4)",
+    paddingTop: "var(--chakra-spacing-2)",
     counterReset: "db-line",
   },
   ".cm-db-body-line-first::before": {
-    top: "var(--chakra-spacing-4)",
+    top: "var(--chakra-spacing-2)",
   },
   ".cm-db-body-line-last": {
-    paddingBottom: "var(--chakra-spacing-4)",
+    paddingBottom: "var(--chakra-spacing-2)",
   },
   // Placeholder left in place of the close fence when reading.
   ".cm-db-fence-hidden": {
