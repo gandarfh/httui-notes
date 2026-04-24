@@ -896,7 +896,10 @@ export function createDbBlockExtension(): Extension {
   const navFilter = EditorState.transactionFilter.of((tr) => {
     const spec = fenceSkipFilter(tr, cachedBlocks);
     if (!spec) return tr;
-    return [tr, spec];
+    // Replace the transaction with our clamped selection. Filter only
+    // fires for cursor moves (no doc changes), so we're not dropping
+    // edits — just the selection the user's keystroke would've produced.
+    return spec;
   });
 
   // Prec.high ensures ⌘↵ / ⌘. win over @codemirror/commands' defaultKeymap,
