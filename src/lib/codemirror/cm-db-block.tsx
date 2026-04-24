@@ -856,19 +856,6 @@ export function createDbBlockExtension(): Extension {
     provide: (f) => EditorView.decorations.from(f),
   });
 
-  const atomicFenceLines = EditorView.atomicRanges.of(() => {
-    const builder = new RangeSetBuilder<Decoration>();
-    for (const block of cachedBlocks) {
-      builder.add(block.openLineFrom, block.openLineTo, Decoration.mark({}));
-      builder.add(
-        block.closeLineFrom,
-        block.closeLineTo,
-        Decoration.mark({}),
-      );
-    }
-    return builder.finish();
-  });
-
   const navFilter = EditorState.transactionFilter.of((tr) => {
     const spec = fenceSkipFilter(tr, cachedBlocks);
     if (!spec) return tr;
@@ -887,7 +874,7 @@ export function createDbBlockExtension(): Extension {
     (state) => buildErrorDecorations(state, cachedBlocks, state.field(dbErrorsField)),
   );
 
-  return [field, atomicFenceLines, navFilter, dbKeymap, dbErrorsField, errorDecos];
+  return [field, navFilter, dbKeymap, dbErrorsField, errorDecos];
 }
 
 // ───── Autocomplete source ─────
