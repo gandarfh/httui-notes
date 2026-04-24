@@ -33,11 +33,19 @@ import {
   type DecorationSet,
   type KeyBinding,
 } from "@codemirror/view";
+import type {
+  CompletionContext,
+  CompletionResult,
+  CompletionSource,
+} from "@codemirror/autocomplete";
 
 import {
   parseDbFenceInfo,
   type DbBlockMetadata,
 } from "@/lib/blocks/db-fence";
+import { createReferenceCompletionSource } from "@/lib/blocks/cm-autocomplete";
+import { collectBlocksAboveCM } from "@/lib/blocks/document";
+import { useEnvironmentStore } from "@/stores/environment";
 
 // ───── Types ─────
 
@@ -656,6 +664,49 @@ export function createDbBlockExtension(): Extension {
   const dbKeymap = keymap.of(makeKeymap(() => cachedBlocks));
 
   return [field, atomicFenceLines, navFilter, dbKeymap];
+}
+
+// ───── Autocomplete source ─────
+
+/**
+ * Returns a CompletionSource that offers {{ref}} completions inside a
+ * db block body. Off by default outside db blocks — safe to plug into
+ * the global autocompletion `override` list without clobbering the
+ * default slash / wikilink sources.
+ *
+ * Completes both block aliases (from blocks above the cursor) and
+ * non-secret env-variable keys. Inside an existing reference with a
+ * dot (`{{alias.…}}`), also completes path keys of the cached result.
+ */
+export function createDbBlockCompletionSource(
+  getFilePath: () => string | undefined,
+): CompletionSource {
+  return async (ctx: CompletionContext): Promise<CompletionResult | null> => {
+    const pos = ctx.pos;
+    // Scan current doc for db blocks; cheap enough at autocomplete time.
+    const blocks = findDbBlocks(ctx.state.doc);
+    const inside = blocks.find((b) => pos >= b.bodyFrom && pos <= b.bodyTo);
+    if (!inside) return null;
+
+    const filePath = getFilePath();
+    if (!filePath) return null;
+
+    const contexts = await collectBlocksAboveCM(
+      ctx.state.doc,
+      inside.from,
+      filePath,
+    );
+    const envVars = await useEnvironmentStore
+      .getState()
+      .getActiveVariables();
+    const envKeys = Object.keys(envVars);
+
+    const source = createReferenceCompletionSource(
+      () => contexts,
+      () => envKeys,
+    );
+    return source(ctx);
+  };
 }
 
 // ───── Exports for tests ─────

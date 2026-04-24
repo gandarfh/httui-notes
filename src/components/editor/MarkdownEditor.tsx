@@ -33,7 +33,10 @@ import { vim } from "@replit/codemirror-vim";
 import { hybridRendering } from "@/lib/codemirror/cm-hybrid-rendering";
 import { slashCommands, slashCompletionSource, slashIconOption } from "@/lib/codemirror/cm-slash-commands";
 import { createEditorBlockWidgets } from "@/lib/codemirror/cm-block-widgets";
-import { createDbBlockExtension } from "@/lib/codemirror/cm-db-block";
+import {
+  createDbBlockExtension,
+  createDbBlockCompletionSource,
+} from "@/lib/codemirror/cm-db-block";
 import { wikilinks, createWikilinkCompletion } from "@/lib/codemirror/cm-wikilinks";
 import { tables } from "@/lib/codemirror/cm-tables";
 import { moveBlocksKeymap } from "@/lib/codemirror/cm-move-blocks";
@@ -362,6 +365,9 @@ export function MarkdownEditor({
       override: [
         slashCompletionSource,
         createWikilinkCompletion(() => flattenFiles(entriesRef.current)),
+        // DB block {{ref}} autocomplete — activates only when the cursor
+        // sits inside a db-* fenced body.
+        createDbBlockCompletionSource(() => filePath),
       ],
       icons: false,
       addToOptions: [slashIconOption],

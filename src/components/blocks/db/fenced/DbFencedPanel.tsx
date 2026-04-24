@@ -536,27 +536,50 @@ function DbToolbar({
       gap={2}
       align="center"
       justify="space-between"
+      minW={0}
       onMouseDown={(e) => e.stopPropagation()}
     >
-      <HStack gap={2} align="center">
-        <Badge colorPalette="blue" variant="solid" size="xs">
+      {/* minW={0} lets the flex item shrink below its content, enabling
+          overflow:hidden + ellipsis on the children. Without it, long
+          aliases/connections would force the toolbar wider than the card
+          and the row would wrap onto two lines in a narrow pane. */}
+      <HStack gap={2} align="center" minW={0} flex="1" overflow="hidden">
+        <Badge colorPalette="blue" variant="solid" size="xs" flexShrink={0}>
           DB
         </Badge>
         {metadata.alias && (
-          <Text fontSize="sm" fontFamily="mono" fontWeight="bold">
+          <Text
+            fontSize="sm"
+            fontFamily="mono"
+            fontWeight="bold"
+            whiteSpace="nowrap"
+            overflow="hidden"
+            textOverflow="ellipsis"
+            flexShrink={1}
+            minW={0}
+          >
             {metadata.alias}
           </Text>
         )}
         {connLabel && (
-          <HStack gap={1} align="center">
+          <HStack gap={1} align="center" minW={0} flexShrink={1}>
             {/* Connection status dot — resolved = green, unresolved = gray */}
             <Box
               boxSize="1.5"
               borderRadius="full"
+              flexShrink={0}
               bg={activeConnection ? "green.500" : "gray.500"}
               title={activeConnection ? "connection resolved" : "connection not found"}
             />
-            <Text fontSize="xs" fontFamily="mono" color="fg.muted">
+            <Text
+              fontSize="xs"
+              fontFamily="mono"
+              color="fg.muted"
+              whiteSpace="nowrap"
+              overflow="hidden"
+              textOverflow="ellipsis"
+              minW={0}
+            >
               {connLabel}
             </Text>
           </HStack>
@@ -567,6 +590,8 @@ function DbToolbar({
           color="fg.muted"
           textTransform="uppercase"
           letterSpacing="0.05em"
+          whiteSpace="nowrap"
+          flexShrink={0}
         >
           {dialectLabel}
         </Text>
