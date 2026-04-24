@@ -16,7 +16,7 @@ import { StandaloneBlock } from "@/components/blocks/standalone/StandaloneBlock"
  */
 export const widgetTransaction = Annotation.define<boolean>();
 
-const BLOCK_OPEN_RE = /^```(http|db(?:-[\w:-]+)?|e2e)(.*)$/;
+const BLOCK_OPEN_RE = /^```(http|e2e)(.*)$/;
 const BLOCK_CLOSE_RE = /^```\s*$/;
 
 export interface FencedBlock {
@@ -78,15 +78,13 @@ export function extractAlias(info: string): string | undefined {
 function langToBlockType(lang: string): string {
   if (lang === "http") return "http";
   if (lang === "e2e") return "e2e";
-  if (lang === "db" || lang.startsWith("db-")) return "db";
   return lang;
 }
 
-/** Extract display content (e.g. query) from JSON-serialized block content */
+/** Extract display content (e.g. body/url) from JSON-serialized block content */
 function extractDisplayContent(blockType: string, raw: string): string {
   try {
     const data = JSON.parse(raw);
-    if (blockType === "db") return data.query ?? raw;
     if (blockType === "http") return data.body ?? data.url ?? raw;
     return JSON.stringify(data, null, 2);
   } catch {
@@ -244,7 +242,7 @@ export function getWidgetContainers() { return widgetContainers; }
 
 /**
  * Portal widget — a div in CM6's document flow.
- * React renders block components (HttpBlockView, DbBlockView, etc.)
+ * React renders block components (HttpBlockView, E2eBlockView)
  * directly into this div via createPortal. CM6 measures height naturally.
  * No overlay, no absolute positioning, no height cache.
  */

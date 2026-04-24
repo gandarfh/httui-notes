@@ -33,6 +33,9 @@ interface SettingsState {
   vimMode: string;
   editorEngine: EditorEngine;
 
+  // Layout
+  sidebarOpen: boolean;
+
   // Actions
   openSettings: () => void;
   closeSettings: () => void;
@@ -43,6 +46,8 @@ interface SettingsState {
   setVimMode: (mode: string) => void;
   setEditorEngine: (engine: EditorEngine) => void;
   setVimEnabled: (enabled: boolean) => void;
+  toggleSidebar: () => void;
+  setSidebarOpen: (open: boolean) => void;
   loadSettings: () => Promise<void>;
 }
 
@@ -58,6 +63,7 @@ export const useSettingsStore = create<SettingsState>()(
       vimEnabled: false,
       vimMode: "normal",
       editorEngine: "codemirror" as EditorEngine,
+      sidebarOpen: true,
 
       openSettings: () => set({ settingsOpen: true }),
       closeSettings: () => set({ settingsOpen: false }),
@@ -93,6 +99,8 @@ export const useSettingsStore = create<SettingsState>()(
       setVimMode: (mode) => set({ vimMode: mode }),
       setEditorEngine: (engine) => set({ editorEngine: engine }),
       setVimEnabled: (enabled) => set({ vimEnabled: enabled }),
+      toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
+      setSidebarOpen: (open) => set({ sidebarOpen: open }),
 
       loadSettings: async () => {
         const [autoSave, fontSize, fetchSize, themeJson] = await Promise.all([

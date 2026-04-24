@@ -115,7 +115,7 @@ export function resolveReference(
   }
 
   if (!block.cachedResult) {
-    throw new Error(`Alias "${ref.alias}" has no cached result. Run it first.`);
+    throw new Error(`Block "${ref.alias}" has no result yet — run it first.`);
   }
 
   let responseData: unknown;
@@ -125,9 +125,20 @@ export function resolveReference(
     throw new Error(`Alias "${ref.alias}" has invalid cached response`);
   }
 
-  // Build the navigation context: { response: parsedData, status: "success" }
+  // For db blocks with the stage-2 response shape (`{results, messages,
+  // stats}`), wrap the response in a view that supports two access patterns:
+  //   - {{alias.response.0.rows.0.id}} → results[0].rows[0].id (explicit)
+  //   - {{alias.response.id}}          → results[0].rows[0].id (legacy shim)
+  // Pre-stage-2 cached shapes are navigated as-is so old caches keep working.
+  const isDbBlock =
+    block.blockType === "db" || block.blockType.startsWith("db-");
+  const responseValue =
+    isDbBlock && isNewDbResponseShape(responseData)
+      ? makeDbResponseView(responseData)
+      : responseData;
+
   const context: Record<string, unknown> = {
-    response: responseData,
+    response: responseValue,
     status: block.cachedResult.status,
   };
 
@@ -137,6 +148,78 @@ export function resolveReference(
     return JSON.stringify(value);
   }
   return String(value);
+}
+
+function isNewDbResponseShape(value: unknown): value is { results: unknown[] } {
+  if (!value || typeof value !== "object") return false;
+  const obj = value as { results?: unknown };
+  return Array.isArray(obj.results);
+}
+
+/**
+ * Build a Proxy view over a stage-2 `DbResponse`. Three access patterns are
+ * supported, all mapping onto the same underlying object:
+ *   - Raw shape: `{{alias.response.results.0.rows.0.id}}` — passes through
+ *     `results` / `messages` / `stats` to the DbResponse fields directly.
+ *     This is what `{{` autocomplete guides users toward because it walks
+ *     the raw JSON shape.
+ *   - Numeric shortcut: `{{alias.response.0.rows.0.id}}` — `response.N`
+ *     indexes into `results[N]`.
+ *   - Legacy shim: `{{alias.response.id}}` — bare column names on the
+ *     response delegate to `results[0].rows[0]` so pre-redesign refs
+ *     keep resolving after the shape changed.
+ */
+const DB_RESPONSE_PASSTHROUGH_KEYS = new Set(["results", "messages", "stats"]);
+
+function makeDbResponseView(dbResponse: { results: unknown[] }): object {
+  const raw = dbResponse as Record<string, unknown>;
+
+  const firstRow = (): Record<string, unknown> | null => {
+    const first = dbResponse.results[0];
+    if (!first || typeof first !== "object") return null;
+    const rows = (first as { rows?: unknown }).rows;
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+    const row = rows[0];
+    if (!row || typeof row !== "object") return null;
+    return row as Record<string, unknown>;
+  };
+
+  return new Proxy(
+    {},
+    {
+      has(_target, key) {
+        if (typeof key !== "string") return false;
+        if (DB_RESPONSE_PASSTHROUGH_KEYS.has(key)) return key in raw;
+        if (/^\d+$/.test(key)) {
+          return parseInt(key, 10) < dbResponse.results.length;
+        }
+        const row = firstRow();
+        return row !== null && key in row;
+      },
+      get(_target, key) {
+        if (typeof key !== "string") return undefined;
+        if (DB_RESPONSE_PASSTHROUGH_KEYS.has(key)) return raw[key];
+        if (/^\d+$/.test(key)) {
+          return dbResponse.results[parseInt(key, 10)];
+        }
+        const row = firstRow();
+        return row ? row[key] : undefined;
+      },
+      ownKeys(_target) {
+        const keys: string[] = [];
+        for (const k of DB_RESPONSE_PASSTHROUGH_KEYS) {
+          if (k in raw) keys.push(k);
+        }
+        for (let i = 0; i < dbResponse.results.length; i++) keys.push(String(i));
+        const row = firstRow();
+        if (row) keys.push(...Object.keys(row));
+        return keys;
+      },
+      getOwnPropertyDescriptor(_target, _key) {
+        return { enumerable: true, configurable: true };
+      },
+    },
+  );
 }
 
 /**
@@ -197,4 +280,65 @@ export function resolveAllReferences(
   }
 
   return { resolved, errors, warnings };
+}
+
+/**
+ * Convert `{{ref}}` placeholders in SQL (or any textual payload) to bind-
+ * param markers (`?`) and collect the resolved values in order.
+ *
+ * Used by the DB block to safely pass user-referenced values into the
+ * driver without string interpolation (SQL-safety is the whole point).
+ *
+ * - Resolution priority: block ref > env var (same as `resolveAllReferences`).
+ * - Each resolved value is coerced: "true"/"false"/"null" become the
+ *   literal JS types; numeric strings become numbers; everything else
+ *   stays a string. The backend decides final typing per driver.
+ * - On error the `{{…}}` is kept verbatim in the returned `sql` and the
+ *   error is collected so callers can show a message.
+ */
+export function resolveRefsToBindParams(
+  query: string,
+  blocks: BlockContext[],
+  currentPos: number,
+  envVariables?: Record<string, string>,
+): { sql: string; bindValues: unknown[]; errors: string[]; warnings: string[] } {
+  const refs = parseReferences(query);
+  const bindValues: unknown[] = [];
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  let sql = query;
+
+  // Collect substitutions from end to start so positions stay valid.
+  for (let i = refs.length - 1; i >= 0; i--) {
+    const ref = refs[i];
+    const { resolved, errors: resolveErrors, warnings: resolveWarnings } =
+      resolveAllReferences(`{{${ref.raw.slice(2, -2).trim()}}}`, blocks, currentPos, envVariables);
+
+    for (const e of resolveErrors) errors.push(e.message);
+    for (const w of resolveWarnings) warnings.push(w.message);
+
+    if (resolveErrors.length > 0) {
+      continue; // keep original in sql
+    }
+
+    // Coerce scalar strings into JS primitives.
+    let value: unknown = resolved;
+    if (resolved === "true") value = true;
+    else if (resolved === "false") value = false;
+    else if (resolved === "null") value = null;
+    else if (resolved.trim() !== "") {
+      const num = Number(resolved);
+      if (!Number.isNaN(num) && String(num) === resolved.trim()) {
+        value = num;
+      }
+    }
+
+    // Prepend (since we iterate backwards, the natural push order is
+    // reverse-document; reverse at the end for execution-order stability).
+    bindValues.unshift(value);
+    sql = sql.slice(0, ref.start) + "?" + sql.slice(ref.end);
+  }
+
+  return { sql, bindValues, errors, warnings };
 }

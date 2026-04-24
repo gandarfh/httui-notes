@@ -13,3 +13,6 @@ pub mod fs {
 
 // Chat sidecar integration
 pub mod chat;
+
+// Cancel-aware DB execution plumbing (stage 3 of db block redesign)
+pub mod executions;

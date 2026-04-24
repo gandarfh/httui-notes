@@ -13,6 +13,7 @@ function createActions() {
     openSearchPanel: vi.fn(),
     forceSave: vi.fn(),
     toggleChat: vi.fn(),
+    toggleSchemaPanel: vi.fn(),
   };
 }
 
@@ -74,6 +75,13 @@ describe("useKeyboardShortcuts", () => {
     renderHook(() => useKeyboardShortcuts(actions));
     fireKey("s");
     expect(actions.forceSave).toHaveBeenCalledOnce();
+  });
+
+  it("Cmd+Shift+D calls toggleSchemaPanel", () => {
+    const actions = createActions();
+    renderHook(() => useKeyboardShortcuts(actions));
+    fireKey("d", { shiftKey: true });
+    expect(actions.toggleSchemaPanel).toHaveBeenCalledOnce();
   });
 
   it("does not trigger without modifier key", () => {

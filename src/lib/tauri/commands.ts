@@ -119,6 +119,7 @@ export interface SessionState {
   vaults: string[];
   active_vault: string | null;
   vim_enabled: boolean;
+  sidebar_open: boolean;
   pane_layout: string | null;
   active_pane_id: string | null;
   active_file: string | null;

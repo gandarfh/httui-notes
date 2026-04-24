@@ -10,6 +10,7 @@ interface KeyboardShortcutActions {
   openSearchPanel: () => void;
   forceSave: () => void;
   toggleChat: () => void;
+  toggleSchemaPanel: () => void;
 }
 
 export function useKeyboardShortcuts(actions: KeyboardShortcutActions): void {
@@ -50,6 +51,10 @@ export function useKeyboardShortcuts(actions: KeyboardShortcutActions): void {
       if (e.key === "l") {
         e.preventDefault();
         actions.toggleChat();
+      }
+      if (e.shiftKey && (e.key === "d" || e.key === "D")) {
+        e.preventDefault();
+        actions.toggleSchemaPanel();
       }
     };
     window.addEventListener("keydown", handler);

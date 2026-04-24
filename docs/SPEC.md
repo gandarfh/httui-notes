@@ -212,38 +212,50 @@ body:
 
 ### DB block
 
+Diferente de HTTP / E2E, o DB block é renderizado pela extensão nativa CM6 (`cm-db-block.tsx`) ao invés de TipTap NodeView — o body do bloco é SQL cru, o CodeMirror principal cuida do syntax highlighting e autocomplete, e o painel de resultado é montado como um widget lateral (ver `docs/db-block-redesign.md`).
+
 **UI de input:**
 
--   **Connection:** dropdown com as conexões disponíveis (da tabela connections). Mostra status (conectada/desconectada).
+-   **Connection:** definida no info string do fence (`connection=prod`). Resolve contra `connections` por nome ou UUID; UI de settings (ícone ⚙) permite trocar.
     
--   **Query:** CodeMirror instance com syntax highlighting SQL, autocomplete para variáveis `{{...}}`, e autocomplete para tabelas/colunas da conexão selecionada (via schema\_cache).
+-   **Query:** body do fence, editado diretamente no CodeMirror principal. Autocomplete para `{{...}}` (aliases de blocos acima + env vars), tabelas/colunas do schema cache (pós `FROM`/`JOIN`/`UPDATE`/`INTO`) e keywords do dialeto.
     
--   **Alias:** campo de texto no header do bloco.
+-   **Dialect:** herdado do fence token — `db-postgres`, `db-mysql`, `db-sqlite`, ou `db` (genérico → usa o driver da conexão).
     
--   **Timeout:** campo opcional (ms), override do default da conexão.
+-   **Alias, limit, timeout, display:** todos no info string (`alias=db1 limit=100 timeout=30000 display=split`).
     
 
 **UI de output:**
 
--   Status badge (ex: "247 rows"), tempo de execução.
+-   Status bar (footer): indicador de conexão, contagem de rows, tempo de execução, menu de export (CSV / JSON / Markdown / INSERT / clipboard / save).
     
--   Tabela paginada estilo DBeaver: cabeçalho com nomes das colunas, rows da página atual, barra de paginação (anterior, próxima, ir para página, total de rows). Page size default: 100 rows.
+-   Painel de resultado: tabs `Results`, `Messages`, `Plan`, `Stats`. Tabela virtualizada com colunas ordenáveis; page size default 100.
     
--   Para queries de mutação (INSERT, UPDATE, DELETE): mostra "N rows affected".
+-   Multi-result (`SELECT; SELECT;` na mesma query): cada result set vira uma sub-tab dentro do `Results`.
+    
+-   Errors com line/column: squiggle vermelho no token problemático + mensagem no `Messages`.
+    
+-   Para mutations: "N rows affected" + confirmação obrigatória quando a connection está flaggeada `is_readonly`.
     
 
 **Serialização no .md:**
 
-Language identifier carrega driver e conexão: `db-postgres:stage-pg`
+O info string do fence carrega toda a metadata — corpo fica 100% SQL, sem envelope JSON/YAML:
 
 ```
-alias: list_orders
-query: |
-  SELECT id, status, total
-  FROM orders
-  WHERE customer = {{create_order.response.customer}}
-  ORDER BY created_at DESC;
+```db-postgres alias=list_orders connection=stage-pg limit=100 display=split
+SELECT id, status, total
+FROM orders
+WHERE customer = {{create_order.response.customer}}
+ORDER BY created_at DESC;
 ```
+```
+
+Chaves reconhecidas no info string (ordem canônica no write): `alias → connection → limit → timeout → display`. Valores sem aspas (MVP); chaves desconhecidas ignoradas. Valores inválidos ignorados silenciosamente (não lançam erro de parse).
+
+**Cache de resultado:**
+
+A chave de hash inclui o body + o connection ID resolvido + um snapshot das env vars referenciadas pelo body (`{{KEY}}`). Isso isola o cache por ambiente ativo: mudar de env não reusa um row que rodou contra outra env. Queries sem refs a env vars têm hash estável entre ambientes. Ver `src/lib/blocks/hash.ts#computeDbCacheHash`.
 
 ### E2E block
 

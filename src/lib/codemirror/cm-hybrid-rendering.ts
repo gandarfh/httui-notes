@@ -450,7 +450,10 @@ function buildDecorations(view: EditorView): DecorationSet {
         const lang = codeInfo
           ? state.doc.sliceString(codeInfo.from, codeInfo.to).trim()
           : "";
-        const isExecutable = /^(http|db(?:-[\w:-]+)?|e2e)$/.test(lang);
+        // CodeInfo covers the entire info string (lang + key=value attrs).
+        // Only the first token is the dialect; use it for the executable check.
+        const langToken = lang.split(/\s+/)[0];
+        const isExecutable = /^(http|db(?:-[\w:-]+)?|e2e)$/.test(langToken);
         if (!isExecutable) {
           const startLine = state.doc.lineAt(node.from).number;
           const endLine = state.doc.lineAt(node.to).number;

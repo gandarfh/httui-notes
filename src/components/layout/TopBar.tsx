@@ -1,16 +1,15 @@
 import { HStack, Text, IconButton, Box, Badge, Menu, Portal } from "@chakra-ui/react";
-import { ColorModeButton } from "@/components/ui/color-mode";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { useEnvironmentStore } from "@/stores/environment";
 import { useSettingsStore } from "@/stores/settings";
 import {
   LuMenu,
-  LuSearch,
   LuPlus,
   LuChevronDown,
   LuGlobe,
   LuSettings,
   LuMessageSquare,
+  LuDatabase,
 } from "react-icons/lu";
 
 interface TopBarProps {
@@ -18,9 +17,11 @@ interface TopBarProps {
   onToggleSidebar: () => void;
   chatOpen: boolean;
   onToggleChat: () => void;
+  schemaPanelOpen: boolean;
+  onToggleSchemaPanel: () => void;
 }
 
-export function TopBar({ sidebarOpen, onToggleSidebar, chatOpen, onToggleChat }: TopBarProps) {
+export function TopBar({ sidebarOpen, onToggleSidebar, chatOpen, onToggleChat, schemaPanelOpen, onToggleSchemaPanel }: TopBarProps) {
   const { vaultPath, vaults, switchVault, openVault } = useWorkspace();
   const environments = useEnvironmentStore((s) => s.environments);
   const activeEnvironment = useEnvironmentStore((s) => s.activeEnvironment);
@@ -170,12 +171,13 @@ export function TopBar({ sidebarOpen, onToggleSidebar, chatOpen, onToggleChat }:
         <Box w="1px" h="16px" bg="border" mx={1} />
 
         <IconButton
-          aria-label="Search"
+          aria-label={schemaPanelOpen ? "Close schema panel" : "Open schema panel"}
           variant="ghost"
           size="sm"
-          disabled
+          onClick={onToggleSchemaPanel}
+          color={schemaPanelOpen ? "brand.400" : undefined}
         >
-          <LuSearch />
+          <LuDatabase />
         </IconButton>
         <IconButton
           aria-label={chatOpen ? "Close chat" : "Open chat"}
@@ -194,7 +196,6 @@ export function TopBar({ sidebarOpen, onToggleSidebar, chatOpen, onToggleChat }:
         >
           <LuSettings />
         </IconButton>
-        <ColorModeButton />
       </HStack>
     </HStack>
   );
