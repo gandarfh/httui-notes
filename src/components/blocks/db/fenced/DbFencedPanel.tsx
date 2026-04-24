@@ -71,11 +71,13 @@ import {
 } from "@/lib/tauri/commands";
 import {
   listConnections,
+  updateConnection,
   type Connection,
 } from "@/lib/tauri/connections";
 import { resolveRefsToBindParams } from "@/lib/blocks/references";
 import { collectBlocksAboveCM } from "@/lib/blocks/document";
 import { resolveConnectionIdentifier } from "@/lib/blocks/connection-resolve";
+import { describeDangerousQuery } from "@/lib/blocks/sql-mutation";
 import { useEnvironmentStore } from "@/stores/environment";
 import { useSchemaCacheStore } from "@/stores/schemaCache";
 
@@ -132,6 +134,12 @@ export const DbFencedPanel = memo(function DbFencedPanel({
   const [cached, setCached] = useState(false);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  /** When set, blocks execution behind a user confirmation. The stored
+   *  `continueRun` callback runs the query for real if the user accepts. */
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    reason: string;
+    continueRun: () => void;
+  } | null>(null);
   /** Milliseconds elapsed since the current run started; drives the live
    *  timer shown in the result panel during execution. Reset to 0 when
    *  not running. */
@@ -263,7 +271,9 @@ export const DbFencedPanel = memo(function DbFencedPanel({
   }, [filePath, block.body, activeConnection?.id, block.metadata.connection]);
 
   // ── Execution ──
-  const runBlock = useCallback(async () => {
+  // Internal: actually dispatches the backend call. `runBlock` (below)
+  // applies read-only / unscoped-mutation gating before calling this.
+  const executeRun = useCallback(async () => {
     if (executionState === "running") return;
     const connId = activeConnection?.id;
     if (!connId) {
@@ -387,6 +397,29 @@ export const DbFencedPanel = memo(function DbFencedPanel({
     filePath,
     view,
   ]);
+
+  /**
+   * Guard the execute with a confirmation prompt when the query is a
+   * mutation on a read-only connection, or an UPDATE/DELETE with no
+   * WHERE. The prompt UI is a Portal + Box rendered below.
+   */
+  const runBlock = useCallback(() => {
+    const reason = describeDangerousQuery(
+      block.body,
+      activeConnection?.is_readonly ?? false,
+    );
+    if (reason) {
+      setPendingConfirm({
+        reason,
+        continueRun: () => {
+          setPendingConfirm(null);
+          void executeRun();
+        },
+      });
+      return;
+    }
+    void executeRun();
+  }, [block.body, activeConnection?.is_readonly, executeRun]);
 
   const cancelBlock = useCallback(() => {
     const abort = abortRef.current;
@@ -565,10 +598,20 @@ export const DbFencedPanel = memo(function DbFencedPanel({
         <DbDrawer
           metadata={block.metadata}
           connections={connections}
+          activeConnection={activeConnection}
           resolvedBindings={resolvedBindings}
           onClose={() => setDrawerOpen(false)}
           onUpdate={updateMetadata}
           onDelete={deleteBlockFromDoc}
+          onConnectionsChanged={setConnections}
+        />
+      )}
+
+      {pendingConfirm && (
+        <ConfirmRunDialog
+          reason={pendingConfirm.reason}
+          onCancel={() => setPendingConfirm(null)}
+          onConfirm={pendingConfirm.continueRun}
         />
       )}
     </>
@@ -1236,19 +1279,25 @@ function DbStatusBar({
 interface DbDrawerProps {
   metadata: DbBlockMetadata;
   connections: Connection[];
+  /** Resolved active connection for the read-only toggle. */
+  activeConnection: Connection | null;
   resolvedBindings: { placeholder: string; raw: string; value: unknown }[];
   onClose: () => void;
   onUpdate: (patch: Partial<DbBlockMetadata>) => void;
   onDelete: () => void;
+  /** Callback to reflect a write-back after the user flips read-only. */
+  onConnectionsChanged: (next: Connection[]) => void;
 }
 
 function DbDrawer({
   metadata,
   connections,
+  activeConnection,
   resolvedBindings,
   onClose,
   onUpdate,
   onDelete,
+  onConnectionsChanged,
 }: DbDrawerProps) {
   // Close on ESC
   useEffect(() => {
@@ -1330,6 +1379,41 @@ function DbDrawer({
               </NativeSelectField>
             </NativeSelectRoot>
           </Box>
+
+          {activeConnection && (
+            <Flex align="center" justify="space-between">
+              <Box>
+                <Text fontSize="xs" color="fg.muted">
+                  Read-only
+                </Text>
+                <Text fontSize="2xs" color="fg.muted" opacity={0.7}>
+                  Confirm mutations before running (per-connection)
+                </Text>
+              </Box>
+              <Button
+                size="xs"
+                variant={activeConnection.is_readonly ? "solid" : "outline"}
+                colorPalette={activeConnection.is_readonly ? "orange" : "gray"}
+                onClick={async () => {
+                  const next = !activeConnection.is_readonly;
+                  try {
+                    const updated = await updateConnection(activeConnection.id, {
+                      is_readonly: next,
+                    });
+                    onConnectionsChanged(
+                      connections.map((c) =>
+                        c.id === updated.id ? updated : c,
+                      ),
+                    );
+                  } catch {
+                    // Silently fail — the toggle snaps back on next render.
+                  }
+                }}
+              >
+                {activeConnection.is_readonly ? "RO" : "RW"}
+              </Button>
+            </Flex>
+          )}
 
           <Box>
             <Text fontSize="xs" color="fg.muted" mb={1}>
@@ -1429,6 +1513,85 @@ function DbDrawer({
             </Button>
           </Box>
         </Box>
+      </Box>
+    </Portal>
+  );
+}
+
+// ───── Confirm dialog (read-only / unscoped write guard) ─────
+
+interface ConfirmRunDialogProps {
+  reason: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}
+
+function ConfirmRunDialog({ reason, onCancel, onConfirm }: ConfirmRunDialogProps) {
+  // Portal + Box (not Chakra Dialog) so closing the dialog doesn't steal
+  // focus from ProseMirror / CM6 when the user clicks Cancel.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel();
+      if (e.key === "Enter") onConfirm();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel, onConfirm]);
+
+  return (
+    <Portal>
+      {/* scrim */}
+      <Box
+        position="fixed"
+        top={0}
+        right={0}
+        bottom={0}
+        left={0}
+        bg="blackAlpha.600"
+        zIndex={2000}
+        onClick={onCancel}
+      />
+      {/* card */}
+      <Box
+        position="fixed"
+        top="50%"
+        left="50%"
+        transform="translate(-50%, -50%)"
+        w="420px"
+        maxW="calc(100vw - 32px)"
+        bg="bg"
+        borderWidth="1px"
+        borderColor="border"
+        borderRadius="md"
+        boxShadow="xl"
+        zIndex={2001}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <Box px={5} py={4} borderBottomWidth="1px" borderColor="border">
+          <Text fontWeight="semibold" fontSize="sm">
+            Run this query?
+          </Text>
+        </Box>
+        <Box px={5} py={4}>
+          <Text fontSize="sm" color="fg.muted">
+            {reason}
+          </Text>
+        </Box>
+        <Flex
+          px={5}
+          py={3}
+          borderTopWidth="1px"
+          borderColor="border"
+          justify="flex-end"
+          gap={2}
+        >
+          <Button size="sm" variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button size="sm" colorPalette="orange" onClick={onConfirm}>
+            Run anyway
+          </Button>
+        </Flex>
       </Box>
     </Portal>
   );

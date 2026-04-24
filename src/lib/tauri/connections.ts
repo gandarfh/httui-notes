@@ -14,6 +14,8 @@ export interface Connection {
   query_timeout_ms: number;
   ttl_seconds: number;
   max_pool_size: number;
+  /** When true, the frontend confirms every mutation before sending it. */
+  is_readonly: boolean;
   last_tested_at: string | null;
   created_at: string;
   updated_at: string;
@@ -32,6 +34,7 @@ export interface CreateConnectionInput {
   query_timeout_ms?: number;
   ttl_seconds?: number;
   max_pool_size?: number;
+  is_readonly?: boolean;
 }
 
 export interface UpdateConnectionInput {
@@ -47,6 +50,7 @@ export interface UpdateConnectionInput {
   query_timeout_ms?: number;
   ttl_seconds?: number;
   max_pool_size?: number;
+  is_readonly?: boolean;
 }
 
 export function listConnections(): Promise<Connection[]> {

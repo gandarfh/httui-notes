@@ -272,6 +272,7 @@ mod tests {
                 query_timeout_ms INTEGER DEFAULT 30000,
                 ttl_seconds INTEGER DEFAULT 300,
                 max_pool_size INTEGER DEFAULT 5,
+                is_readonly INTEGER NOT NULL DEFAULT 0,
                 last_tested_at TEXT,
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
                 updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -297,6 +298,7 @@ mod tests {
                 query_timeout_ms: None,
                 ttl_seconds: None,
                 max_pool_size: None,
+                is_readonly: None,
             },
         )
         .await

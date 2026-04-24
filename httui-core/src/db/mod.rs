@@ -18,6 +18,7 @@ const MIGRATION_003_SQL: &str = include_str!("../../migrations/003_chat.sql");
 const MIGRATION_004_SQL: &str = include_str!("../../migrations/004_permissions.sql");
 const MIGRATION_005_SQL: &str = include_str!("../../migrations/005_audit_log.sql");
 const MIGRATION_006_SQL: &str = include_str!("../../migrations/006_schema_cache_schema_name.sql");
+const MIGRATION_007_SQL: &str = include_str!("../../migrations/007_connection_readonly.sql");
 
 pub async fn init_db(app_data_dir: &Path) -> Result<SqlitePool, sqlx::Error> {
     std::fs::create_dir_all(app_data_dir).ok();
@@ -168,6 +169,14 @@ async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
 
     // Stage 7: schema_cache.schema_name (ALTER may fail if column exists — ok)
     for statement in MIGRATION_006_SQL.split(';') {
+        let trimmed = statement.trim();
+        if !trimmed.is_empty() {
+            let _ = sqlx::query(trimmed).execute(pool).await;
+        }
+    }
+
+    // Stage 8: connections.is_readonly (ALTER may fail if column exists — ok)
+    for statement in MIGRATION_007_SQL.split(';') {
         let trimmed = statement.trim();
         if !trimmed.is_empty() {
             let _ = sqlx::query(trimmed).execute(pool).await;

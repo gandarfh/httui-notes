@@ -66,6 +66,7 @@ pub struct Connection {
     pub query_timeout_ms: i64,
     pub ttl_seconds: i64,
     pub max_pool_size: i64,
+    pub is_readonly: bool,
     pub last_tested_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
@@ -87,6 +88,7 @@ pub struct ConnectionPublic {
     pub query_timeout_ms: i64,
     pub ttl_seconds: i64,
     pub max_pool_size: i64,
+    pub is_readonly: bool,
     pub last_tested_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
@@ -108,6 +110,7 @@ impl Connection {
             query_timeout_ms: self.query_timeout_ms,
             ttl_seconds: self.ttl_seconds,
             max_pool_size: self.max_pool_size,
+            is_readonly: self.is_readonly,
             last_tested_at: self.last_tested_at.clone(),
             created_at: self.created_at.clone(),
             updated_at: self.updated_at.clone(),
@@ -134,6 +137,7 @@ pub struct CreateConnection {
     pub query_timeout_ms: Option<i64>,
     pub ttl_seconds: Option<i64>,
     pub max_pool_size: Option<i64>,
+    pub is_readonly: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -150,6 +154,7 @@ pub struct UpdateConnection {
     pub query_timeout_ms: Option<i64>,
     pub ttl_seconds: Option<i64>,
     pub max_pool_size: Option<i64>,
+    pub is_readonly: Option<bool>,
 }
 
 // --- ConnectionManager ---
@@ -542,6 +547,8 @@ fn row_to_connection(row: &sqlx::sqlite::SqliteRow) -> Connection {
         query_timeout_ms: row.get("query_timeout_ms"),
         ttl_seconds: row.get("ttl_seconds"),
         max_pool_size: row.get("max_pool_size"),
+        // is_readonly stored as INTEGER (0/1) in SQLite
+        is_readonly: row.try_get::<i64, _>("is_readonly").map(|v| v != 0).unwrap_or(false),
         last_tested_at: row.get("last_tested_at"),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
@@ -555,6 +562,7 @@ pub async fn list_connections(pool: &SqlitePool) -> Result<Vec<Connection>, Stri
         r#"SELECT
             id, name, driver, host, port, database_name, username, password,
             ssl_mode, timeout_ms, query_timeout_ms, ttl_seconds, max_pool_size,
+            is_readonly,
             last_tested_at, created_at, updated_at
         FROM connections
         ORDER BY name"#,
@@ -574,6 +582,7 @@ pub async fn get_connection(
         r#"SELECT
             id, name, driver, host, port, database_name, username, password,
             ssl_mode, timeout_ms, query_timeout_ms, ttl_seconds, max_pool_size,
+            is_readonly,
             last_tested_at, created_at, updated_at
         FROM connections WHERE id = ?"#,
     )
@@ -612,11 +621,14 @@ pub async fn create_connection(
         None
     };
 
+    let is_readonly = input.is_readonly.unwrap_or(false);
+
     sqlx::query(
         r#"INSERT INTO connections
             (id, name, driver, host, port, database_name, username, password,
-             ssl_mode, timeout_ms, query_timeout_ms, ttl_seconds, max_pool_size)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+             ssl_mode, timeout_ms, query_timeout_ms, ttl_seconds, max_pool_size,
+             is_readonly)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
     )
     .bind(&id)
     .bind(&input.name)
@@ -631,6 +643,7 @@ pub async fn create_connection(
     .bind(query_timeout_ms)
     .bind(ttl_seconds)
     .bind(max_pool_size)
+    .bind(if is_readonly { 1i64 } else { 0i64 })
     .execute(pool)
     .await
     .map_err(|e| e.to_string())?;
@@ -685,6 +698,7 @@ pub async fn update_connection(
     let query_timeout_ms = input.query_timeout_ms.unwrap_or(existing.query_timeout_ms);
     let ttl_seconds = input.ttl_seconds.unwrap_or(existing.ttl_seconds);
     let max_pool_size = input.max_pool_size.unwrap_or(existing.max_pool_size);
+    let is_readonly = input.is_readonly.unwrap_or(existing.is_readonly);
 
     validate_connection_fields(&driver, &host, &port, &database_name)?;
 
@@ -693,6 +707,7 @@ pub async fn update_connection(
             name = ?, driver = ?, host = ?, port = ?, database_name = ?,
             username = ?, password = ?, ssl_mode = ?, timeout_ms = ?,
             query_timeout_ms = ?, ttl_seconds = ?, max_pool_size = ?,
+            is_readonly = ?,
             updated_at = datetime('now')
         WHERE id = ?"#,
     )
@@ -708,6 +723,7 @@ pub async fn update_connection(
     .bind(query_timeout_ms)
     .bind(ttl_seconds)
     .bind(max_pool_size)
+    .bind(if is_readonly { 1i64 } else { 0i64 })
     .bind(id)
     .execute(pool)
     .await
@@ -1637,6 +1653,7 @@ mod tests {
                 query_timeout_ms INTEGER DEFAULT 30000,
                 ttl_seconds INTEGER DEFAULT 300,
                 max_pool_size INTEGER DEFAULT 5,
+                is_readonly INTEGER NOT NULL DEFAULT 0,
                 last_tested_at TEXT,
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
                 updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -1668,6 +1685,7 @@ mod tests {
                 query_timeout_ms: None,
                 ttl_seconds: None,
                 max_pool_size: None,
+                is_readonly: None,
             },
         )
         .await
@@ -1701,6 +1719,7 @@ mod tests {
                 query_timeout_ms: None,
                 ttl_seconds: None,
                 max_pool_size: None,
+                is_readonly: None,
             },
         )
         .await
@@ -1722,6 +1741,7 @@ mod tests {
                 query_timeout_ms: None,
                 ttl_seconds: None,
                 max_pool_size: None,
+                is_readonly: None,
             },
         )
         .await
@@ -1750,6 +1770,7 @@ mod tests {
                 query_timeout_ms: None,
                 ttl_seconds: None,
                 max_pool_size: None,
+                is_readonly: None,
             },
         )
         .await
@@ -1807,6 +1828,7 @@ mod tests {
             query_timeout_ms: 30000,
             ttl_seconds: 300,
             max_pool_size: 5,
+            is_readonly: false,
             last_tested_at: None,
             created_at: String::new(),
             updated_at: String::new(),
@@ -2003,6 +2025,7 @@ mod tests {
             query_timeout_ms: 30000,
             ttl_seconds: 300,
             max_pool_size: 0,
+            is_readonly: false,
             last_tested_at: None,
             created_at: String::new(),
             updated_at: String::new(),
@@ -2026,6 +2049,7 @@ mod tests {
             query_timeout_ms: 30000,
             ttl_seconds: 300,
             max_pool_size: -5,
+            is_readonly: false,
             last_tested_at: None,
             created_at: String::new(),
             updated_at: String::new(),
@@ -2049,6 +2073,7 @@ mod tests {
             query_timeout_ms: 30000,
             ttl_seconds: 300,
             max_pool_size: 200,
+            is_readonly: false,
             last_tested_at: None,
             created_at: String::new(),
             updated_at: String::new(),
@@ -2072,6 +2097,7 @@ mod tests {
             query_timeout_ms: 30000,
             ttl_seconds: 300,
             max_pool_size: 5,
+            is_readonly: false,
             last_tested_at: None,
             created_at: String::new(),
             updated_at: String::new(),
@@ -2098,6 +2124,7 @@ mod tests {
             query_timeout_ms: 30000,
             ttl_seconds: 300,
             max_pool_size: 10,
+            is_readonly: false,
             last_tested_at: None,
             created_at: String::new(),
             updated_at: String::new(),
