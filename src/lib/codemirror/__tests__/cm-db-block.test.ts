@@ -281,16 +281,27 @@ describe("fenceSkipFilter", () => {
     expect(target).toBe(block.bodyFrom);
   });
 
-  it("skips past close fence when moving down out of body", () => {
+  it("clamps at body boundary on the first down-press that tries to exit", () => {
     const block = mkBlock(DOC);
-    const oldHead = DOC.line(3).to; // end of body
-    const newHead = DOC.line(4).from; // close fence line
+    // Cursor sits mid-body (col 3 of the only body line). Pressing down
+    // would exit, so the filter pins the cursor to bodyTo first.
+    const oldHead = DOC.line(3).from + 3;
+    const newHead = DOC.line(4).from;
     const tr = mkSelectionTr(DOC, oldHead, newHead);
     const spec = fenceSkipFilter(tr, [block]);
     expect(spec).not.toBeNull();
     const target = (spec!.selection as { head: number }).head;
-    // Must land past the close fence (start of "after" line or doc end).
-    expect(target).toBeGreaterThan(block.closeLineTo);
+    expect(target).toBe(block.bodyTo);
+  });
+
+  it("releases a second down-press once the cursor is already pinned at bodyTo", () => {
+    const block = mkBlock(DOC);
+    // Cursor already at bodyTo from the previous clamp; the second press
+    // should let CM6 handle the exit naturally (filter returns null).
+    const oldHead = block.bodyTo;
+    const newHead = DOC.line(4).from;
+    const tr = mkSelectionTr(DOC, oldHead, newHead);
+    expect(fenceSkipFilter(tr, [block])).toBeNull();
   });
 
   it("skips back into body when moving up from after", () => {

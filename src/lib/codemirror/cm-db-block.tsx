@@ -595,6 +595,43 @@ function fenceSkipFilter(
   const doc = tr.newDoc;
   const newLine = doc.lineAt(newSel.head);
 
+  // Was the user inside some block's body before this transaction?
+  // If yes and the new position would leave that body, trap them at the
+  // body edge so arrow-up / arrow-down don't eject them in a single
+  // keystroke. Exit still works via ↓ when already at `bodyTo` (since
+  // old=new position prevents the filter from firing twice in a row).
+  const sourceBody = blocks.find(
+    (b) => oldSel.head >= b.bodyFrom && oldSel.head <= b.bodyTo,
+  );
+  if (sourceBody) {
+    const stillInside =
+      newSel.head >= sourceBody.bodyFrom && newSel.head <= sourceBody.bodyTo;
+    if (!stillInside) {
+      const goingDown = newSel.head > oldSel.head;
+      // Two-press exit: first arrow clamps at the body boundary, second
+      // arrow (with cursor already at the boundary) lets CM6 exit
+      // naturally. Avoids a single keystroke ejecting the user while
+      // still allowing them to leave when they really mean to.
+      if (!goingDown && oldSel.head > sourceBody.bodyFrom) {
+        return {
+          selection: EditorSelection.cursor(sourceBody.bodyFrom),
+          scrollIntoView: tr.scrollIntoView,
+        };
+      }
+      if (goingDown && oldSel.head < sourceBody.bodyTo) {
+        return {
+          selection: EditorSelection.cursor(sourceBody.bodyTo),
+          scrollIntoView: tr.scrollIntoView,
+        };
+      }
+      // oldSel was already on the exact boundary — let the exit happen.
+      return null;
+    }
+  }
+
+  // The original "landed on a fence line" guard — still needed when the
+  // cursor *enters* a block from outside (e.g. arrow-down from the
+  // paragraph above lands on the open fence row).
   const block = blocks.find(
     (b) =>
       newLine.from === b.openLineFrom || newLine.from === b.closeLineFrom,
