@@ -10,6 +10,7 @@ import { EnvironmentManager } from "./environments/EnvironmentManager";
 import { SettingsDrawer } from "./settings/SettingsDrawer";
 import { SchemaPanel } from "./schema/SchemaPanel";
 import { usePaneStore } from "@/stores/pane";
+import { useSettingsStore } from "@/stores/settings";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { initTauriBridge } from "@/stores/tauri-bridge";
 import { useFileOperations } from "@/hooks/useFileOperations";
@@ -22,7 +23,8 @@ import { useAutoUpdate } from "@/hooks/useAutoUpdate";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 
 export function AppShell() {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const sidebarOpen = useSettingsStore((s) => s.sidebarOpen);
+  const toggleSidebar = useSettingsStore((s) => s.toggleSidebar);
   const [quickOpenOpen, setQuickOpenOpen] = useState(false);
   const [searchPanelOpen, setSearchPanelOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
@@ -30,7 +32,6 @@ export function AppShell() {
   const [schemaPanelOpen, setSchemaPanelOpen] = useState(false);
   const [schemaPanelWidth] = useState(300);
 
-  const toggleSidebar = useCallback(() => setSidebarOpen((prev) => !prev), []);
   const toggleChat = useCallback(() => setChatOpen((prev) => !prev), []);
   const toggleSchemaPanel = useCallback(() => setSchemaPanelOpen((prev) => !prev), []);
 

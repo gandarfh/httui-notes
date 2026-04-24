@@ -40,6 +40,7 @@ export function useSessionPersistence(): void {
 
         useWorkspaceStore.getState().setVaults(session.vaults);
         if (session.vim_enabled) useSettingsStore.getState().setVimEnabled(true);
+        useSettingsStore.getState().setSidebarOpen(session.sidebar_open);
 
         if (session.active_vault) {
           useWorkspaceStore.getState().setVaultPath(session.active_vault);
@@ -97,9 +98,8 @@ export function useSessionPersistence(): void {
 
   // Save pane layout on changes (only after session restore completes)
   useEffect(() => {
-    if (!sessionRestored.current) return;
-
     return usePaneStore.subscribe((state, prevState) => {
+      if (!sessionRestored.current) return;
       if (state.layout !== prevState.layout || state.activePaneId !== prevState.activePaneId) {
         setConfig("pane_layout", JSON.stringify(state.layout)).catch(() => {});
         setConfig("active_pane_id", state.activePaneId).catch(() => {});
@@ -110,11 +110,13 @@ export function useSessionPersistence(): void {
 
   // Save vim preference on changes (only after session restore completes)
   useEffect(() => {
-    if (!sessionRestored.current) return;
-
     return useSettingsStore.subscribe((state, prevState) => {
+      if (!sessionRestored.current) return;
       if (state.vimEnabled !== prevState.vimEnabled) {
         setConfig("vim_enabled", state.vimEnabled ? "true" : "false").catch(() => {});
+      }
+      if (state.sidebarOpen !== prevState.sidebarOpen) {
+        setConfig("sidebar_open", state.sidebarOpen ? "true" : "false").catch(() => {});
       }
     });
   }, []);
