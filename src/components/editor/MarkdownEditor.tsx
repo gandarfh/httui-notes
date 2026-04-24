@@ -27,7 +27,7 @@ const dbSqlLanguages: LanguageDescription[] = [
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { syntaxHighlighting, HighlightStyle, bracketMatching } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
-import { autocompletion, closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
+import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap, startCompletion } from "@codemirror/autocomplete";
 import { search, highlightSelectionMatches, searchKeymap } from "@codemirror/search";
 import { vim } from "@replit/codemirror-vim";
 import { hybridRendering } from "@/lib/codemirror/cm-hybrid-rendering";
@@ -390,6 +390,10 @@ export function MarkdownEditor({
     highlightSelectionMatches(),
     history(),
     keymap.of([
+      // Explicit Ctrl-Space for autocomplete — avoids relying on the Mac
+      // default (Alt-`) so the popup fires on every platform.
+      { key: "Ctrl-Space", run: startCompletion },
+      ...completionKeymap,
       ...closeBracketsKeymap,
       ...defaultKeymap,
       ...historyKeymap,

@@ -35,10 +35,18 @@ import {
   type KeyBinding,
 } from "@codemirror/view";
 import type {
+  Completion,
   CompletionContext,
   CompletionResult,
   CompletionSource,
 } from "@codemirror/autocomplete";
+import {
+  PostgreSQL,
+  MySQL,
+  SQLite,
+  StandardSQL,
+  type SQLDialect,
+} from "@codemirror/lang-sql";
 
 import {
   parseDbFenceInfo,
@@ -745,6 +753,56 @@ async function ensureConnections(): Promise<Connection[]> {
   return connectionsPromise;
 }
 
+// Cached keyword lists per dialect so we don't re-split on every keystroke.
+const KEYWORD_CACHE = new Map<string, Completion[]>();
+
+function dialectFor(dialect: string | undefined): SQLDialect {
+  switch (dialect) {
+    case "postgres":
+      return PostgreSQL;
+    case "mysql":
+      return MySQL;
+    case "sqlite":
+      return SQLite;
+    default:
+      return StandardSQL;
+  }
+}
+
+function keywordsFor(dialect: string | undefined): Completion[] {
+  const key = dialect ?? "generic";
+  const cached = KEYWORD_CACHE.get(key);
+  if (cached) return cached;
+
+  const spec = dialectFor(dialect).spec;
+  const keywords = (spec.keywords ?? "")
+    .split(/\s+/)
+    .filter((k) => k.length > 0);
+  const types = (spec.types ?? "").split(/\s+/).filter((k) => k.length > 0);
+  const builtins = (spec.builtin ?? "")
+    .split(/\s+/)
+    .filter((k) => k.length > 0);
+
+  const options: Completion[] = [
+    ...keywords.map((label) => ({
+      label: label.toUpperCase(),
+      type: "keyword",
+      boost: 1,
+    })),
+    ...types.map((label) => ({
+      label,
+      type: "type",
+    })),
+    ...builtins.map((label) => ({
+      label,
+      type: "variable",
+    })),
+  ];
+
+  KEYWORD_CACHE.set(key, options);
+  return options;
+}
+
 /**
  * Returns a CompletionSource that offers table + column completions inside
  * a db block body, driven by the shared SchemaCache store.
@@ -779,79 +837,83 @@ export function createDbSchemaCompletionSource(): CompletionSource {
     const word = ctx.matchBefore(/[\w.]*/);
     if (!word || (word.from === word.to && !ctx.explicit)) return null;
 
-    const identifier = block.metadata.connection;
-    if (!identifier) return null;
+    const text = word.text;
+    const dialect = block.metadata.dialect;
 
-    const connections = await ensureConnections();
-    const connection = resolveConnectionIdentifier(connections, identifier);
-    if (!connection) return null;
+    // Resolve the connection (if any). Missing / orphan connections just
+    // degrade the result set — we still offer SQL keywords so Ctrl-Space
+    // never produces an empty popup inside a db block.
+    const identifier = block.metadata.connection;
+    const connection = identifier
+      ? resolveConnectionIdentifier(await ensureConnections(), identifier)
+      : null;
 
     const store = useSchemaCacheStore.getState();
-    const schema = store.get(connection.id);
-    if (!schema) {
-      // Kick off lazy load; first keystroke returns null, next one will hit.
+    const schema = connection ? store.get(connection.id) : null;
+    const schemaLoaded = !!schema;
+    if (connection && !schema) {
+      // Kick off lazy load so the next invocation has data.
       void store.ensureLoaded(connection.id);
-      return null;
     }
 
-    // Build a lookup keyed by the label the user actually types. For Postgres
-    // with non-default schemas that's `schema.table`; for SQLite/MySQL/public
-    // it's the bare table name. Two tables with the same bare name living in
-    // different schemas therefore coexist as `auth.users` + `app.users`.
+    // Build table map only when schema is ready.
     const tableMap: Record<string, string[]> = {};
-    for (const table of schema.tables) {
-      const key =
-        table.schema && table.schema !== "public"
-          ? `${table.schema}.${table.name}`
-          : table.name;
-      tableMap[key] = table.columns.map((c) => c.name);
+    if (schema) {
+      for (const table of schema.tables) {
+        const key =
+          table.schema && table.schema !== "public"
+            ? `${table.schema}.${table.name}`
+            : table.name;
+        tableMap[key] = table.columns.map((c) => c.name);
+      }
     }
     const tableNames = Object.keys(tableMap);
 
-    const text = word.text;
-
     // ── `<table-key>.` → columns of that table ──
-    // `lastIndexOf` handles both `users.email` and `schema.table.col` — the
-    // prefix before the final dot is the table key, the suffix is the column
-    // being typed.
     if (text.includes(".")) {
       const lastDot = text.lastIndexOf(".");
       const tableKey = text.slice(0, lastDot);
       const cols = tableMap[tableKey];
-      if (!cols) return null;
-      return {
-        from: word.from + lastDot + 1,
-        to: word.to,
-        options: cols.map((col) => ({
-          label: col,
-          type: "property",
-          detail: tableKey,
-        })),
-        filter: true,
-      };
+      if (cols && cols.length > 0) {
+        return {
+          from: word.from + lastDot + 1,
+          to: word.to,
+          options: cols.map((col) => ({
+            label: col,
+            type: "property",
+            detail: tableKey,
+          })),
+          filter: true,
+        };
+      }
+      // Unknown table prefix — fall through to keyword completion instead of
+      // returning null (so Ctrl-Space after `some_alias.` still shows SQL).
     }
 
-    // ── After FROM/JOIN/UPDATE/INTO → tables only ──
+    const keywordOptions = keywordsFor(dialect);
+
+    // ── After FROM/JOIN/UPDATE/INTO → tables first, then keywords ──
     const before = ctx.state.doc.sliceString(
       Math.max(block.bodyFrom, word.from - 32),
       word.from,
     );
     const prevKeyword = before.match(/\b(FROM|JOIN|UPDATE|INTO)\s+$/i);
     if (prevKeyword) {
+      const tableOptions: Completion[] = tableNames.map((name) => ({
+        label: name,
+        type: "class",
+        detail: `${tableMap[name].length} cols`,
+        boost: 5,
+      }));
       return {
         from: word.from,
         to: word.to,
-        options: tableNames.map((name) => ({
-          label: name,
-          type: "class",
-          detail: `${tableMap[name].length} cols`,
-        })),
+        options: [...tableOptions, ...statusHint(connection, identifier, schemaLoaded)],
         filter: true,
       };
     }
 
-    // ── Default: tables + columns of tables referenced in the body ──
-    // Accept qualified identifiers (e.g. `vendas.pedidos`) as a single token.
+    // ── Default: keywords + tables + columns of tables referenced in body ──
     const referenced = new Set<string>();
     const refRe = /\b(?:FROM|JOIN|UPDATE|INTO)\s+([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)?)/gi;
     let m: RegExpExecArray | null;
@@ -859,24 +921,30 @@ export function createDbSchemaCompletionSource(): CompletionSource {
       if (tableMap[m[1]]) referenced.add(m[1]);
     }
 
-    const columnOptions =
+    const columnOptions: Completion[] =
       referenced.size > 0
         ? [...referenced].flatMap((name) =>
             (tableMap[name] ?? []).map((col) => ({
               label: col,
               type: "property" as const,
               detail: name,
+              boost: 3,
             })),
           )
         : [];
 
-    const options = [
-      ...tableNames.map((name) => ({
-        label: name,
-        type: "class" as const,
-        detail: `${tableMap[name].length} cols`,
-      })),
+    const tableOptions: Completion[] = tableNames.map((name) => ({
+      label: name,
+      type: "class",
+      detail: `${tableMap[name].length} cols`,
+      boost: 2,
+    }));
+
+    const options: Completion[] = [
       ...columnOptions,
+      ...tableOptions,
+      ...keywordOptions,
+      ...statusHint(connection, identifier, schemaLoaded),
     ];
 
     if (options.length === 0) return null;
@@ -888,6 +956,52 @@ export function createDbSchemaCompletionSource(): CompletionSource {
       filter: true,
     };
   };
+}
+
+/**
+ * Build a soft info-only completion that explains why tables are missing.
+ * Rendered as a non-applicable "info row" so the user learns what to fix
+ * without the option polluting the insertable list.
+ */
+function statusHint(
+  connection: Connection | null,
+  identifier: string | undefined,
+  schemaLoaded: boolean,
+): Completion[] {
+  if (!identifier) {
+    return [
+      {
+        label: "⋯ no connection set",
+        detail: "add `connection=<name>` to the fence",
+        type: "text",
+        boost: -99,
+        apply: () => {}, // non-insertable
+      },
+    ];
+  }
+  if (!connection) {
+    return [
+      {
+        label: `⋯ connection "${identifier}" not found`,
+        detail: "check the schema panel for the correct name",
+        type: "text",
+        boost: -99,
+        apply: () => {},
+      },
+    ];
+  }
+  if (!schemaLoaded) {
+    return [
+      {
+        label: "⋯ loading schema",
+        detail: "tables will appear shortly",
+        type: "text",
+        boost: -99,
+        apply: () => {},
+      },
+    ];
+  }
+  return [];
 }
 
 /** Test/hot-reload hook — clears the module-level connections cache. */

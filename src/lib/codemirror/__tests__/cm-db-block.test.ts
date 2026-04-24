@@ -456,10 +456,26 @@ describe("createDbSchemaCompletionSource", () => {
     expect(result).toBeNull();
   });
 
-  it("returns null when the block has no connection metadata", async () => {
+  it("offers SQL keywords + status hint when connection metadata is missing", async () => {
     const doc = "```db-postgres\nSELECT | FROM users\n```\n";
     const result = await runCompletion(doc);
-    expect(result).toBeNull();
+    expect(result).not.toBeNull();
+    const labels = result!.options.map((o) => o.label);
+    // Postgres keyword list is contributed even without a connection, so
+    // Ctrl-Space never yields an empty popup inside a db block.
+    expect(labels).toContain("SELECT");
+    expect(labels).toContain("⋯ no connection set");
+    // Tables / columns only appear once a connection resolves.
+    expect(labels).not.toContain("users");
+  });
+
+  it("offers SQL keywords + 'connection not found' hint for orphan connection", async () => {
+    const doc = "```db-postgres connection=ghost\nSELECT |\n```\n";
+    const result = await runCompletion(doc);
+    expect(result).not.toBeNull();
+    const labels = result!.options.map((o) => o.label);
+    expect(labels).toContain("SELECT");
+    expect(labels.some((l) => l.startsWith("⋯ connection \"ghost\""))).toBe(true);
   });
 
   it("offers table names after FROM", async () => {
