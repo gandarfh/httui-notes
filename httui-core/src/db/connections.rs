@@ -432,9 +432,14 @@ fn validate_pool_config(conn: &Connection) -> Result<(), String> {
             conn.query_timeout_ms
         ));
     }
-    if let Some(port) = conn.port {
-        if port < 1 || port > 65535 {
-            return Err(format!("port must be between 1 and 65535, got {port}"));
+    // SQLite connections have no TCP port; skip the range check entirely
+    // (older records may have been persisted with `port = 0` by an earlier
+    // bug in `update_connection`, and we don't want them stuck unusable).
+    if conn.driver != "sqlite" {
+        if let Some(port) = conn.port {
+            if !(1..=65535).contains(&port) {
+                return Err(format!("port must be between 1 and 65535, got {port}"));
+            }
         }
     }
     if conn.ttl_seconds < 10 || conn.ttl_seconds > 86400 {
