@@ -11,6 +11,7 @@ import {
   LuGlobe,
   LuSettings,
   LuMessageSquare,
+  LuDatabase,
 } from "react-icons/lu";
 
 interface TopBarProps {
@@ -18,9 +19,11 @@ interface TopBarProps {
   onToggleSidebar: () => void;
   chatOpen: boolean;
   onToggleChat: () => void;
+  schemaPanelOpen: boolean;
+  onToggleSchemaPanel: () => void;
 }
 
-export function TopBar({ sidebarOpen, onToggleSidebar, chatOpen, onToggleChat }: TopBarProps) {
+export function TopBar({ sidebarOpen, onToggleSidebar, chatOpen, onToggleChat, schemaPanelOpen, onToggleSchemaPanel }: TopBarProps) {
   const { vaultPath, vaults, switchVault, openVault } = useWorkspace();
   const environments = useEnvironmentStore((s) => s.environments);
   const activeEnvironment = useEnvironmentStore((s) => s.activeEnvironment);
@@ -176,6 +179,15 @@ export function TopBar({ sidebarOpen, onToggleSidebar, chatOpen, onToggleChat }:
           disabled
         >
           <LuSearch />
+        </IconButton>
+        <IconButton
+          aria-label={schemaPanelOpen ? "Close schema panel" : "Open schema panel"}
+          variant="ghost"
+          size="sm"
+          onClick={onToggleSchemaPanel}
+          color={schemaPanelOpen ? "brand.400" : undefined}
+        >
+          <LuDatabase />
         </IconButton>
         <IconButton
           aria-label={chatOpen ? "Close chat" : "Open chat"}

@@ -36,6 +36,7 @@ import { createEditorBlockWidgets } from "@/lib/codemirror/cm-block-widgets";
 import {
   createDbBlockExtension,
   createDbBlockCompletionSource,
+  createDbSchemaCompletionSource,
 } from "@/lib/codemirror/cm-db-block";
 import { wikilinks, createWikilinkCompletion } from "@/lib/codemirror/cm-wikilinks";
 import { tables } from "@/lib/codemirror/cm-tables";
@@ -418,6 +419,9 @@ export function MarkdownEditor({
         // DB block {{ref}} autocomplete — activates only when the cursor
         // sits inside a db-* fenced body.
         createDbBlockCompletionSource(() => filePath),
+        // Schema-aware SQL autocomplete (tables / columns) — same gating;
+        // reads from the shared SchemaCache store.
+        createDbSchemaCompletionSource(),
       ],
       icons: false,
       addToOptions: [slashIconOption],

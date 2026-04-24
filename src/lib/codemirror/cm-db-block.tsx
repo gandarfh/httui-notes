@@ -47,6 +47,9 @@ import {
 import { createReferenceCompletionSource } from "@/lib/blocks/cm-autocomplete";
 import { collectBlocksAboveCM } from "@/lib/blocks/document";
 import { useEnvironmentStore } from "@/stores/environment";
+import { useSchemaCacheStore } from "@/stores/schemaCache";
+import { resolveConnectionIdentifier } from "@/lib/blocks/connection-resolve";
+import { listConnections, type Connection } from "@/lib/tauri/connections";
 
 // ───── Types ─────
 
@@ -715,6 +718,169 @@ export function createDbBlockCompletionSource(
     );
     return source(ctx);
   };
+}
+
+// ───── Schema-aware SQL autocomplete ─────
+
+/**
+ * Lazy connections cache for the completion source. Refreshed on cache miss
+ * so newly-created connections become autocompleteable without a reload.
+ */
+let cachedConnections: Connection[] = [];
+let connectionsPromise: Promise<Connection[]> | null = null;
+
+async function ensureConnections(): Promise<Connection[]> {
+  if (cachedConnections.length > 0) return cachedConnections;
+  if (!connectionsPromise) {
+    connectionsPromise = listConnections()
+      .then((list) => {
+        cachedConnections = list;
+        return list;
+      })
+      .catch(() => {
+        connectionsPromise = null;
+        return [];
+      });
+  }
+  return connectionsPromise;
+}
+
+/**
+ * Returns a CompletionSource that offers table + column completions inside
+ * a db block body, driven by the shared SchemaCache store.
+ *
+ * Behavior:
+ *  - Off outside a db block body.
+ *  - Off inside an active `{{ref}}` expression (ref autocomplete owns that).
+ *  - After `FROM`/`JOIN`/`UPDATE`/`INTO` → tables.
+ *  - After `table.` → columns of that table.
+ *  - Elsewhere → tables + columns of tables already referenced in the body.
+ *
+ * Schema is pulled synchronously from the cache; on miss the store kicks
+ * off an introspection in the background so the next keystroke will have
+ * completions available.
+ */
+export function createDbSchemaCompletionSource(): CompletionSource {
+  return async (ctx: CompletionContext): Promise<CompletionResult | null> => {
+    const pos = ctx.pos;
+    const blocks = findDbBlocks(ctx.state.doc);
+    const block = blocks.find((b) => pos >= b.bodyFrom && pos <= b.bodyTo);
+    if (!block) return null;
+
+    // Skip when inside a `{{ref}}` expression — let the ref source handle it.
+    const bodyText = ctx.state.doc.sliceString(block.bodyFrom, block.bodyTo);
+    const offsetInBody = pos - block.bodyFrom;
+    const openIdx = bodyText.lastIndexOf("{{", offsetInBody);
+    if (openIdx !== -1) {
+      const closeIdx = bodyText.indexOf("}}", openIdx);
+      if (closeIdx === -1 || closeIdx >= offsetInBody) return null;
+    }
+
+    const word = ctx.matchBefore(/[\w.]*/);
+    if (!word || (word.from === word.to && !ctx.explicit)) return null;
+
+    const identifier = block.metadata.connection;
+    if (!identifier) return null;
+
+    const connections = await ensureConnections();
+    const connection = resolveConnectionIdentifier(connections, identifier);
+    if (!connection) return null;
+
+    const store = useSchemaCacheStore.getState();
+    const schema = store.get(connection.id);
+    if (!schema) {
+      // Kick off lazy load; first keystroke returns null, next one will hit.
+      void store.ensureLoaded(connection.id);
+      return null;
+    }
+
+    const tableMap: Record<string, string[]> = {};
+    for (const table of schema.tables) {
+      tableMap[table.name] = table.columns.map((c) => c.name);
+    }
+    const tableNames = Object.keys(tableMap);
+
+    const text = word.text;
+
+    // ── `table.` → columns of that table ──
+    if (text.includes(".")) {
+      const [tableName] = text.split(".");
+      const cols = tableMap[tableName];
+      if (!cols) return null;
+      return {
+        from: word.from + tableName.length + 1,
+        to: word.to,
+        options: cols.map((col) => ({
+          label: col,
+          type: "property",
+          detail: tableName,
+        })),
+        filter: true,
+      };
+    }
+
+    // ── After FROM/JOIN/UPDATE/INTO → tables only ──
+    const before = ctx.state.doc.sliceString(
+      Math.max(block.bodyFrom, word.from - 32),
+      word.from,
+    );
+    const prevKeyword = before.match(/\b(FROM|JOIN|UPDATE|INTO)\s+$/i);
+    if (prevKeyword) {
+      return {
+        from: word.from,
+        to: word.to,
+        options: tableNames.map((name) => ({
+          label: name,
+          type: "class",
+          detail: `${tableMap[name].length} cols`,
+        })),
+        filter: true,
+      };
+    }
+
+    // ── Default: tables + columns of tables referenced in the body ──
+    const referenced = new Set<string>();
+    const refRe = /\b(?:FROM|JOIN|UPDATE|INTO)\s+([A-Za-z_][\w]*)/gi;
+    let m: RegExpExecArray | null;
+    while ((m = refRe.exec(bodyText)) !== null) {
+      if (tableMap[m[1]]) referenced.add(m[1]);
+    }
+
+    const columnOptions =
+      referenced.size > 0
+        ? [...referenced].flatMap((name) =>
+            (tableMap[name] ?? []).map((col) => ({
+              label: col,
+              type: "property" as const,
+              detail: name,
+            })),
+          )
+        : [];
+
+    const options = [
+      ...tableNames.map((name) => ({
+        label: name,
+        type: "class" as const,
+        detail: `${tableMap[name].length} cols`,
+      })),
+      ...columnOptions,
+    ];
+
+    if (options.length === 0) return null;
+
+    return {
+      from: word.from,
+      to: word.to,
+      options,
+      filter: true,
+    };
+  };
+}
+
+/** Test/hot-reload hook — clears the module-level connections cache. */
+export function __resetDbSchemaCompletionCache(): void {
+  cachedConnections = [];
+  connectionsPromise = null;
 }
 
 // ───── Exports for tests ─────

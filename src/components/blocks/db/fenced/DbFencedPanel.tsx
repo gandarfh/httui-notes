@@ -75,7 +75,9 @@ import {
 } from "@/lib/tauri/connections";
 import { resolveRefsToBindParams } from "@/lib/blocks/references";
 import { collectBlocksAboveCM } from "@/lib/blocks/document";
+import { resolveConnectionIdentifier } from "@/lib/blocks/connection-resolve";
 import { useEnvironmentStore } from "@/stores/environment";
+import { useSchemaCacheStore } from "@/stores/schemaCache";
 
 interface DbFencedPanelProps {
   blockId: string;
@@ -111,26 +113,6 @@ async function computeDbCacheHash(
     ? `${body}\n__ENV__\n${usedEnvEntries}`
     : body;
   return hashBlockContent(keyed, connectionId);
-}
-
-// ───── Connection resolution ─────
-
-/**
- * Resolve a connection identifier from the info string (`connection=<x>`)
- * to the connection UUID used by the backend. Order: exact slug/name
- * match → exact UUID match → null.
- */
-function resolveConnection(
-  connections: Connection[],
-  identifier: string | undefined,
-): Connection | null {
-  if (!identifier) return null;
-  // Slug first — but our connection model has only `name`, not a separate
-  // slug column. Treat name as the slug for now.
-  const byName = connections.find((c) => c.name === identifier);
-  if (byName) return byName;
-  const byId = connections.find((c) => c.id === identifier);
-  return byId ?? null;
 }
 
 // ───── Main panel ─────
@@ -169,7 +151,7 @@ export const DbFencedPanel = memo(function DbFencedPanel({
   const abortRef = useRef<AbortController | null>(null);
 
   const activeConnection = useMemo(
-    () => resolveConnection(connections, block.metadata.connection),
+    () => resolveConnectionIdentifier(connections, block.metadata.connection),
     [connections, block.metadata.connection],
   );
 
@@ -177,6 +159,13 @@ export const DbFencedPanel = memo(function DbFencedPanel({
   useEffect(() => {
     listConnections().then(setConnections).catch(() => {});
   }, []);
+
+  // Warm the schema cache so SQL autocomplete (tables/columns) is ready
+  // without the user having to wait for the first keystroke to fire.
+  useEffect(() => {
+    if (!activeConnection?.id) return;
+    void useSchemaCacheStore.getState().ensureLoaded(activeConnection.id);
+  }, [activeConnection?.id]);
 
   // Live elapsed timer for running state. Ticks every 100ms; stops when
   // the execution leaves the running state. Cheap since only one block

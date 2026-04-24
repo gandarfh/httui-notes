@@ -1,12 +1,47 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { EditorSelection, EditorState, Text } from "@codemirror/state";
+import type { CompletionContext, CompletionResult } from "@codemirror/autocomplete";
 
 import {
   createDbBlockExtension,
+  createDbSchemaCompletionSource,
   findDbBlocks,
   __internal,
+  __resetDbSchemaCompletionCache,
   type DbFencedBlock,
 } from "../cm-db-block";
+import { useSchemaCacheStore } from "@/stores/schemaCache";
+
+vi.mock("@/lib/tauri/connections", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/tauri/connections")>(
+    "@/lib/tauri/connections",
+  );
+  return {
+    ...actual,
+    listConnections: vi.fn(async () => [
+      {
+        id: "conn-123",
+        name: "prod",
+        driver: "postgres" as const,
+        host: "localhost",
+        port: 5432,
+        database_name: "app",
+        username: "app",
+        has_password: false,
+        ssl_mode: "disable",
+        timeout_ms: 10000,
+        query_timeout_ms: 30000,
+        ttl_seconds: 300,
+        max_pool_size: 5,
+        last_tested_at: null,
+        created_at: "",
+        updated_at: "",
+      },
+    ]),
+    introspectSchema: vi.fn(async () => []),
+    getCachedSchema: vi.fn(async () => null),
+  };
+});
 
 const { DB_OPEN_RE, FENCE_CLOSE_RE, countDbBlocks, fenceSkipFilter } =
   __internal;
@@ -332,5 +367,115 @@ describe("fenceSkipFilter", () => {
     const spec = fenceSkipFilter(tr, [block]);
     expect(spec).not.toBeNull();
     expect((spec!.selection as { head: number }).head).toBe(block.bodyTo);
+  });
+});
+
+// ─────────────────────────────────────────────
+// Schema-aware SQL autocomplete
+// ─────────────────────────────────────────────
+
+describe("createDbSchemaCompletionSource", () => {
+  beforeEach(() => {
+    __resetDbSchemaCompletionCache();
+    useSchemaCacheStore.setState({
+      byConnection: {
+        "conn-123": {
+          schema: {
+            fetchedAt: Date.now(),
+            tables: [
+              {
+                name: "users",
+                columns: [
+                  { name: "id", dataType: "integer" },
+                  { name: "email", dataType: "text" },
+                  { name: "created_at", dataType: "timestamp" },
+                ],
+              },
+              {
+                name: "posts",
+                columns: [
+                  { name: "id", dataType: "integer" },
+                  { name: "user_id", dataType: "integer" },
+                  { name: "title", dataType: "text" },
+                ],
+              },
+            ],
+          },
+          loading: false,
+          error: null,
+          inflight: null,
+        },
+      },
+    });
+  });
+
+  function makeCtx(doc: string, pos: number): CompletionContext {
+    const state = EditorState.create({ doc });
+    // Minimal CompletionContext shim — the fields the source reads.
+    return {
+      state,
+      pos,
+      explicit: true,
+      matchBefore: (re: RegExp) => {
+        const before = state.doc.sliceString(0, pos);
+        const match = before.match(re);
+        if (!match) return null;
+        const text = match[0];
+        const from = pos - text.length;
+        return { from, to: pos, text };
+      },
+      aborted: false,
+    } as unknown as CompletionContext;
+  }
+
+  async function runCompletion(
+    doc: string,
+    cursorMarker = "|",
+  ): Promise<CompletionResult | null> {
+    const pos = doc.indexOf(cursorMarker);
+    if (pos === -1) throw new Error("cursor marker missing");
+    const cleaned = doc.slice(0, pos) + doc.slice(pos + cursorMarker.length);
+    const source = createDbSchemaCompletionSource();
+    const ctx = makeCtx(cleaned, pos);
+    const result = source(ctx);
+    return (await result) as CompletionResult | null;
+  }
+
+  it("returns null outside a db block", async () => {
+    const result = await runCompletion("hello |world");
+    expect(result).toBeNull();
+  });
+
+  it("returns null when the block has no connection metadata", async () => {
+    const doc = "```db-postgres\nSELECT | FROM users\n```\n";
+    const result = await runCompletion(doc);
+    expect(result).toBeNull();
+  });
+
+  it("offers table names after FROM", async () => {
+    const doc = "```db-postgres connection=prod\nSELECT * FROM |\n```\n";
+    const result = await runCompletion(doc);
+    expect(result).not.toBeNull();
+    const labels = result!.options.map((o) => o.label);
+    expect(labels).toContain("users");
+    expect(labels).toContain("posts");
+  });
+
+  it("offers columns after `table.`", async () => {
+    const doc = "```db-postgres connection=prod\nSELECT users.| FROM users\n```\n";
+    const result = await runCompletion(doc);
+    expect(result).not.toBeNull();
+    const labels = result!.options.map((o) => o.label);
+    expect(labels).toEqual(
+      expect.arrayContaining(["id", "email", "created_at"]),
+    );
+    // Does not offer posts columns.
+    expect(labels).not.toContain("title");
+  });
+
+  it("returns null inside an active {{ref}} expression", async () => {
+    const doc = "```db-postgres connection=prod\nSELECT * WHERE id = {{|}}\n```\n";
+    const result = await runCompletion(doc);
+    expect(result).toBeNull();
   });
 });
