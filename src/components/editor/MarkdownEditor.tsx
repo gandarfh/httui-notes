@@ -328,28 +328,36 @@ const editorTheme = EditorView.theme({
     position: "relative",
     counterIncrement: "db-line",
   },
+  // Number sits at the top of the line box and is nudged down by whatever
+  // padding-top the line currently has — so it rides the text baseline on
+  // both the regular rows AND the "first-line-of-card" row that carries
+  // extra breathing room.
   ".cm-db-body-line::before": {
     content: "counter(db-line)",
     position: "absolute",
     left: "var(--chakra-spacing-2)",
-    top: 0,
-    bottom: 0,
+    top: "var(--chakra-spacing-1)",
     width: "20px",
     display: "flex",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "flex-end",
     color: "var(--chakra-colors-fg-muted)",
     opacity: 0.4,
     fontSize: "var(--chakra-font-sizes-xs)",
     fontFamily: "var(--chakra-fonts-mono)",
     fontVariantNumeric: "tabular-nums",
-    lineHeight: "inherit",
+    // Matches the body font so the digit vertically aligns with the text
+    // cap height instead of picking up the editor's larger line-height.
+    lineHeight: "1.5",
     userSelect: "none",
     pointerEvents: "none",
   },
   ".cm-db-body-line-first": {
     paddingTop: "var(--chakra-spacing-4)",
     counterReset: "db-line",
+  },
+  ".cm-db-body-line-first::before": {
+    top: "var(--chakra-spacing-4)",
   },
   ".cm-db-body-line-last": {
     paddingBottom: "var(--chakra-spacing-4)",
