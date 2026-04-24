@@ -29,7 +29,15 @@ import { syntaxHighlighting, HighlightStyle, bracketMatching } from "@codemirror
 import { tags } from "@lezer/highlight";
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap, startCompletion } from "@codemirror/autocomplete";
 import { search, highlightSelectionMatches, searchKeymap } from "@codemirror/search";
-import { vim } from "@replit/codemirror-vim";
+import {
+  vim,
+  Vim,
+  getCM,
+  type CodeMirrorV,
+  type MotionArgs,
+  type Pos,
+  type vimState,
+} from "@replit/codemirror-vim";
 import { hybridRendering } from "@/lib/codemirror/cm-hybrid-rendering";
 import { slashCommands, slashCompletionSource, slashIconOption } from "@/lib/codemirror/cm-slash-commands";
 import { createEditorBlockWidgets } from "@/lib/codemirror/cm-block-widgets";
@@ -71,18 +79,29 @@ interface MarkdownEditorProps {
 
 // Compartment for toggling vim mode without recreating the editor
 const vimCompartment = new Compartment();
-// Separate compartment for the doc-line arrow-up/down keymap. We turn it
-// off while vim mode is active — vim owns cursor motion (h/j/k/l, arrow
-// keys, visual mode) and our keymap would shadow those bindings.
-const docLineNavCompartment = new Compartment();
 
-// The actual arrow-up / arrow-down doc-line handlers. Defined outside the
-// component so both compartments share the same instance.
+// Vim-aware guard: bail out when vim is active in a non-insert mode so vim
+// keeps ownership of h/j/k/l / arrow motion / visual selection. In insert
+// mode and when vim is off, we take over ArrowUp/Down to navigate by doc
+// line (see rationale below).
+function vimOwnsMotion(view: EditorView): boolean {
+  const cm = getCM(view);
+  const vimState = cm?.state.vim;
+  if (!vimState) return false;
+  return !vimState.insertMode;
+}
+
+// Doc-line ArrowUp/Down. CM6's default cursorLineUp/Down is pixel-based —
+// it teleports to "Ln 1, Col 1" when there's a tall block widget (like
+// DbClosePanelWidget) in between because moveVertically can't find a text
+// line at the target y. This keymap walks by document lines instead and
+// only fires outside of vim normal/visual mode.
 const docLineNavKeymap = Prec.high(
   keymap.of([
     {
       key: "ArrowUp",
       run: (view) => {
+        if (vimOwnsMotion(view)) return false;
         const sel = view.state.selection.main;
         if (!sel.empty) return false;
         const doc = view.state.doc;
@@ -101,6 +120,7 @@ const docLineNavKeymap = Prec.high(
     {
       key: "ArrowDown",
       run: (view) => {
+        if (vimOwnsMotion(view)) return false;
         const sel = view.state.selection.main;
         if (!sel.empty) return false;
         const doc = view.state.doc;
@@ -118,6 +138,62 @@ const docLineNavKeymap = Prec.high(
     },
   ]),
 );
+
+// Replace vim's built-in `moveByLines` motion with a doc-line variant.
+// The upstream implementation uses `cm.findPosV(..., 'line', ...)` which
+// the CM5→CM6 bridge routes through `moveVertically` — pixel-based motion
+// that teleports through tall block widgets (DbClosePanelWidget, result
+// panels, etc.). Because the vim dispatcher looks motions up by name, a
+// single defineMotion call here transparently fixes j, k, <Up>, <Down>,
+// +, -, _ in normal and visual mode.
+//
+// Why: keeps normal/visual vim state intact (HPos stickiness, visual
+// selection extension) while replacing only the vertical-motion compute.
+let vimMotionsInstalled = false;
+function installDocLineVimMotions() {
+  if (vimMotionsInstalled) return;
+  vimMotionsInstalled = true;
+  const docMoveByLines = function (
+    cm: CodeMirrorV,
+    head: Pos,
+    motionArgs: MotionArgs,
+    vimState: vimState,
+  ): Pos {
+    let endCh = head.ch;
+    // HPos stickiness: for j/k/j/k chains we can detect ourselves. Any
+    // other motion (h/l, word, gj, etc.) resets the goal column — a
+    // minor regression vs. vanilla vim that we accept in exchange for
+    // not teleporting through widgets.
+    if (vimState.lastMotion === docMoveByLines) {
+      endCh = vimState.lastHPos ?? head.ch;
+    } else {
+      vimState.lastHPos = endCh;
+    }
+    const repeat = motionArgs.repeat + (motionArgs.repeatOffset || 0);
+    const first = cm.firstLine();
+    const last = cm.lastLine();
+    let line = motionArgs.forward ? head.line + repeat : head.line - repeat;
+    if (line < first) line = first;
+    if (line > last) line = last;
+    if (motionArgs.toFirstChar) {
+      const text: string = cm.getLine(line) ?? "";
+      const match = /^\s*/.exec(text);
+      endCh = match ? match[0].length : 0;
+      vimState.lastHPos = endCh;
+    }
+    const lineText: string = cm.getLine(line) ?? "";
+    if (endCh > lineText.length) endCh = lineText.length;
+    try {
+      vimState.lastHSPos = cm.charCoords({ line, ch: endCh }, "div").left;
+    } catch {
+      // charCoords can throw before the view is laid out; HSPos is only
+      // used by gj/gk, which we don't override. Safe to ignore.
+    }
+    return { line, ch: endCh };
+  };
+  Vim.defineMotion("moveByLines", docMoveByLines);
+}
+installDocLineVimMotions();
 
 // Custom highlight style — Chakra-token driven so the editor follows the app theme.
 const markdownHighlightStyle = HighlightStyle.define([
@@ -509,10 +585,11 @@ export function MarkdownEditor({
     search({ top: false }),
     highlightSelectionMatches(),
     history(),
-    // Doc-line ArrowUp/Down lives in a compartment so we can swap it out
-    // when vim turns on — vim owns all motion and our handler collided
-    // with its normal-mode / visual-mode state.
-    docLineNavCompartment.of(vimEnabled ? [] : docLineNavKeymap),
+    // Doc-line ArrowUp/Down. The handlers bail out when vim is in a
+    // non-insert mode so vim keeps ownership of normal/visual motion; in
+    // insert mode and when vim is off, they run and avoid the pixel-based
+    // teleport through tall DB block widgets.
+    docLineNavKeymap,
     keymap.of([
       // Explicit Ctrl-Space for autocomplete — avoids relying on the Mac
       // default (Alt-`) so the popup fires on every platform.
@@ -564,23 +641,18 @@ export function MarkdownEditor({
     setEditorReady(true);
     if (vimEnabled) {
       view.dispatch({
-        effects: [
-          vimCompartment.reconfigure(vim()),
-          docLineNavCompartment.reconfigure([]),
-        ],
+        effects: vimCompartment.reconfigure(vim()),
       });
     }
     queueMicrotask(() => view.focus());
   }, [vimEnabled]);
 
-  // Vim toggle (after initial creation). Keeps the doc-line nav compartment
-  // in sync: vim owns motion when on; we resume control when it's off.
+  // Vim toggle after initial creation. The doc-line ArrowUp/Down keymap
+  // no longer moves with this toggle — its handlers inspect the live vim
+  // state and bail when vim owns motion.
   useEffect(() => {
     viewRef.current?.dispatch({
-      effects: [
-        vimCompartment.reconfigure(vimEnabled ? vim() : []),
-        docLineNavCompartment.reconfigure(vimEnabled ? [] : docLineNavKeymap),
-      ],
+      effects: vimCompartment.reconfigure(vimEnabled ? vim() : []),
     });
   }, [vimEnabled]);
 
