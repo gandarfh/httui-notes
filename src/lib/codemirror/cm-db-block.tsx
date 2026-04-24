@@ -322,12 +322,12 @@ class DbToolbarPortalWidget extends WidgetType {
     super();
   }
 
-  toDOM(): HTMLElement {
+  toDOM(view: EditorView): HTMLElement {
     const div = document.createElement("div");
     div.className = "cm-db-toolbar-portal";
     div.contentEditable = "false";
     registerSlot(this.blockId, this.block, "toolbar", div);
-    observeWidgetHeight(div, this.blockId, "toolbar");
+    observeWidgetHeight(div, this.blockId, "toolbar", view);
     return div;
   }
 
@@ -375,15 +375,24 @@ function observeWidgetHeight(
   dom: HTMLElement,
   blockId: string,
   slot: DbWidgetSlot,
+  view: EditorView,
 ): void {
   if (typeof ResizeObserver === "undefined") return;
   // Seed immediately with the current measurement so the first
   // `estimatedHeight` read after mount reflects reality.
   widgetHeightCache.set(cacheKey(blockId, slot), dom.offsetHeight);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ro = new ResizeObserver((entries) => {
     for (const e of entries) {
-      widgetHeightCache.set(cacheKey(blockId, slot), e.contentRect.height);
+      const prev = widgetHeightCache.get(cacheKey(blockId, slot));
+      const next = e.contentRect.height;
+      if (prev !== next) {
+        widgetHeightCache.set(cacheKey(blockId, slot), next);
+        // Tell CM6 to re-measure so its internal block info reflects
+        // the new height. Without this, `moveVertically` keeps using
+        // the stale 80-px (or other fallback) estimate and arrow-up
+        // lands in the wrong doc position.
+        view.requestMeasure();
+      }
     }
   });
   ro.observe(dom);
@@ -408,12 +417,12 @@ class DbResultPortalWidget extends WidgetType {
     super();
   }
 
-  toDOM(): HTMLElement {
+  toDOM(view: EditorView): HTMLElement {
     const div = document.createElement("div");
     div.className = "cm-db-result-portal";
     div.contentEditable = "false";
     registerSlot(this.blockId, this.block, "result", div);
-    observeWidgetHeight(div, this.blockId, "result");
+    observeWidgetHeight(div, this.blockId, "result", view);
     return div;
   }
 
@@ -450,12 +459,12 @@ class DbStatusBarPortalWidget extends WidgetType {
     super();
   }
 
-  toDOM(): HTMLElement {
+  toDOM(view: EditorView): HTMLElement {
     const div = document.createElement("div");
     div.className = "cm-db-statusbar-portal";
     div.contentEditable = "false";
     registerSlot(this.blockId, this.block, "statusbar", div);
-    observeWidgetHeight(div, this.blockId, "statusbar");
+    observeWidgetHeight(div, this.blockId, "statusbar", view);
     return div;
   }
 
