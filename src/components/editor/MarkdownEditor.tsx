@@ -205,26 +205,28 @@ const editorTheme = EditorView.theme({
   // Editing mode: fence lines show up as subtle text; toolbar inline is
   // hidden (spec §5.2), body keeps borders.
 
+  // All spacing uses --chakra-space-* tokens (1 = 4px, 1.5 = 6px,
+  // 2 = 8px, 3 = 12px, 4 = 16px); borders use --chakra-radii-md (8px).
   ".cm-db-fence-line": {
     color: "var(--chakra-colors-fg-muted)",
     fontFamily: "var(--chakra-fonts-mono)",
-    fontSize: "11px",
+    fontSize: "var(--chakra-font-sizes-xs)",
     opacity: 0.55,
     position: "relative",
     borderLeft: "1px solid var(--chakra-colors-border)",
     borderRight: "1px solid var(--chakra-colors-border)",
     background: "var(--chakra-colors-bg-subtle)",
-    paddingLeft: "12px",
-    paddingRight: "12px",
+    paddingLeft: "var(--chakra-space-3)",
+    paddingRight: "var(--chakra-space-3)",
   },
   ".cm-db-fence-line-open": {
     borderTop: "1px solid var(--chakra-colors-border)",
-    borderTopLeftRadius: "8px",
-    borderTopRightRadius: "8px",
-    paddingTop: "4px",
+    borderTopLeftRadius: "var(--chakra-radii-md)",
+    borderTopRightRadius: "var(--chakra-radii-md)",
+    paddingTop: "var(--chakra-space-1)",
   },
   ".cm-db-fence-line-close": {
-    paddingBottom: "4px",
+    paddingBottom: "var(--chakra-space-1)",
     borderBottom: "1px solid var(--chakra-colors-border)",
   },
 
@@ -233,14 +235,14 @@ const editorTheme = EditorView.theme({
     background: "var(--chakra-colors-bg-canvas, var(--chakra-colors-bg))",
     borderLeft: "1px solid var(--chakra-colors-border)",
     borderRight: "1px solid var(--chakra-colors-border)",
-    paddingLeft: "16px",
-    paddingRight: "16px",
+    paddingLeft: "var(--chakra-space-4)",
+    paddingRight: "var(--chakra-space-4)",
   },
   ".cm-db-body-line-first": {
-    paddingTop: "8px",
+    paddingTop: "var(--chakra-space-2)",
   },
   ".cm-db-body-line-last": {
-    paddingBottom: "8px",
+    paddingBottom: "var(--chakra-space-2)",
   },
   // Placeholder left in place of the close fence when reading.
   ".cm-db-fence-hidden": {
@@ -259,9 +261,9 @@ const editorTheme = EditorView.theme({
     borderLeft: "1px solid var(--chakra-colors-border)",
     borderRight: "1px solid var(--chakra-colors-border)",
     borderTop: "1px solid var(--chakra-colors-border)",
-    borderTopLeftRadius: "8px",
-    borderTopRightRadius: "8px",
-    padding: "6px 12px",
+    borderTopLeftRadius: "var(--chakra-radii-md)",
+    borderTopRightRadius: "var(--chakra-radii-md)",
+    padding: "var(--chakra-space-1-5) var(--chakra-space-3)",
     userSelect: "none",
     pointerEvents: "auto",
   },
@@ -274,20 +276,20 @@ const editorTheme = EditorView.theme({
     borderLeft: "1px solid var(--chakra-colors-border)",
     borderRight: "1px solid var(--chakra-colors-border)",
     borderTop: "1px solid var(--chakra-colors-border)",
-    minHeight: "40px",
+    minHeight: "var(--chakra-space-10)",
   },
 
   ".cm-db-statusbar-portal": {
-    margin: "0 0 12px 0",
-    padding: "4px 12px",
+    margin: "0 0 var(--chakra-space-3) 0",
+    padding: "var(--chakra-space-1) var(--chakra-space-3)",
     background: "var(--chakra-colors-blackAlpha-100)",
     border: "1px solid var(--chakra-colors-border)",
     borderTop: "1px solid var(--chakra-colors-border)",
-    borderBottomLeftRadius: "8px",
-    borderBottomRightRadius: "8px",
-    minHeight: "20px",
+    borderBottomLeftRadius: "var(--chakra-radii-md)",
+    borderBottomRightRadius: "var(--chakra-radii-md)",
+    minHeight: "var(--chakra-space-5)",
     fontFamily: "var(--chakra-fonts-mono)",
-    fontSize: "11px",
+    fontSize: "var(--chakra-font-sizes-xs)",
   },
 }, { dark: true });
 

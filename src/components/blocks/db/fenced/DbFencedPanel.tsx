@@ -551,8 +551,7 @@ function DbToolbar({
           <HStack gap={1} align="center">
             {/* Connection status dot — resolved = green, unresolved = gray */}
             <Box
-              w="6px"
-              h="6px"
+              boxSize="1.5"
               borderRadius="full"
               bg={activeConnection ? "green.500" : "gray.500"}
               title={activeConnection ? "connection resolved" : "connection not found"}
@@ -563,7 +562,7 @@ function DbToolbar({
           </HStack>
         )}
         <Text
-          fontSize="9px"
+          fontSize="2xs"
           fontFamily="mono"
           color="fg.muted"
           textTransform="uppercase"
@@ -751,7 +750,7 @@ function DbResult({
           borderBottom="1px solid"
           borderColor="border"
           fontFamily="mono"
-          fontSize="11px"
+          fontSize="xs"
           color="fg.muted"
         >
           <Text>
@@ -842,7 +841,7 @@ function DbStatusBar({
       align="center"
       gap={2}
       fontFamily="mono"
-      fontSize="11px"
+      fontSize="xs"
       color="fg.muted"
     >
       {connection && (
@@ -1066,7 +1065,7 @@ function DbDrawer({
             ) : (
               <Box
                 fontFamily="mono"
-                fontSize="11px"
+                fontSize="xs"
                 display="flex"
                 flexDirection="column"
                 gap={1}
