@@ -2,7 +2,7 @@ import { useRef, useEffect, useMemo, useCallback, useState } from "react";
 import { Box } from "@chakra-ui/react";
 import CodeMirror, { type ReactCodeMirrorRef } from "@uiw/react-codemirror";
 import { EditorView, keymap } from "@codemirror/view";
-import { Compartment } from "@codemirror/state";
+import { Compartment, EditorSelection, Prec } from "@codemirror/state";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages as cmLanguages } from "@codemirror/language-data";
 import { LanguageDescription } from "@codemirror/language";
@@ -366,9 +366,7 @@ const editorTheme = EditorView.theme({
     padding: 0,
   },
   // Wrapper that groups the closing widgets (hidden fence + result +
-  // statusbar) into a SINGLE block widget. CM6's vertical motion behaves
-  // much better when it sees one widget between Text lines rather than
-  // three stacked block widgets.
+  // statusbar) into a SINGLE block widget.
   ".cm-db-close-panel": {
     display: "block",
   },
@@ -464,6 +462,53 @@ export function MarkdownEditor({
     search({ top: false }),
     highlightSelectionMatches(),
     history(),
+    // Doc-line navigation for ArrowUp / ArrowDown. CM6's default
+    // `cursorLineUp`/`cursorLineDown` use pixel-based motion, which
+    // breaks when the document contains tall `block: true` widgets
+    // (result panels, images, etc.) — the probe coordinate can
+    // overshoot past the document top/bottom and teleport the cursor
+    // to line 1. Walking by doc line instead keeps navigation
+    // predictable regardless of how the line renders.
+    Prec.high(
+      keymap.of([
+        {
+          key: "ArrowUp",
+          run: (view) => {
+            const sel = view.state.selection.main;
+            if (!sel.empty) return false;
+            const doc = view.state.doc;
+            const line = doc.lineAt(sel.head);
+            if (line.number === 1) return false;
+            const prev = doc.line(line.number - 1);
+            const col = sel.head - line.from;
+            const target = Math.min(prev.from + col, prev.to);
+            view.dispatch({
+              selection: EditorSelection.cursor(target),
+              scrollIntoView: true,
+            });
+            return true;
+          },
+        },
+        {
+          key: "ArrowDown",
+          run: (view) => {
+            const sel = view.state.selection.main;
+            if (!sel.empty) return false;
+            const doc = view.state.doc;
+            const line = doc.lineAt(sel.head);
+            if (line.number === doc.lines) return false;
+            const next = doc.line(line.number + 1);
+            const col = sel.head - line.from;
+            const target = Math.min(next.from + col, next.to);
+            view.dispatch({
+              selection: EditorSelection.cursor(target),
+              scrollIntoView: true,
+            });
+            return true;
+          },
+        },
+      ]),
+    ),
     keymap.of([
       // Explicit Ctrl-Space for autocomplete — avoids relying on the Mac
       // default (Alt-`) so the popup fires on every platform.
