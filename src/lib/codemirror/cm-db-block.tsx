@@ -327,6 +327,7 @@ class DbToolbarPortalWidget extends WidgetType {
     div.className = "cm-db-toolbar-portal";
     div.contentEditable = "false";
     registerSlot(this.blockId, this.block, "toolbar", div);
+    observeWidgetHeight(div, this.blockId, "toolbar");
     return div;
   }
 
@@ -335,7 +336,8 @@ class DbToolbarPortalWidget extends WidgetType {
     return true;
   }
 
-  destroy(): void {
+  destroy(dom: HTMLElement): void {
+    disconnectWidgetObserver(dom, this.blockId, "toolbar");
     unregisterSlot(this.blockId, "toolbar");
   }
 
@@ -343,11 +345,62 @@ class DbToolbarPortalWidget extends WidgetType {
     return this.blockId === other.blockId;
   }
 
+  get estimatedHeight(): number {
+    const cached = widgetHeightCache.get(cacheKey(this.blockId, "toolbar"));
+    return cached ?? 44;
+  }
+
   ignoreEvent(): boolean {
     // Toolbar handles its own clicks via React. Do not let them bubble
     // into CM6 as cursor-positioning.
     return true;
   }
+}
+
+/**
+ * Module-level cache of the most recently observed DOM height for each
+ * widget slot, keyed by `${blockId}:${slot}`. `estimatedHeight` reads
+ * from here so CM6's `moveVertically` math stays consistent with the
+ * widget's actual rendered size — critical when a result panel expands
+ * from ~80px (empty) to ~400px (success) between arrow-key presses,
+ * which otherwise confuses cursor navigation and teleports the caret.
+ */
+const widgetHeightCache = new Map<string, number>();
+
+function cacheKey(blockId: string, slot: DbWidgetSlot): string {
+  return `${blockId}:${slot}`;
+}
+
+function observeWidgetHeight(
+  dom: HTMLElement,
+  blockId: string,
+  slot: DbWidgetSlot,
+): void {
+  if (typeof ResizeObserver === "undefined") return;
+  // Seed immediately with the current measurement so the first
+  // `estimatedHeight` read after mount reflects reality.
+  widgetHeightCache.set(cacheKey(blockId, slot), dom.offsetHeight);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ro = new ResizeObserver((entries) => {
+    for (const e of entries) {
+      widgetHeightCache.set(cacheKey(blockId, slot), e.contentRect.height);
+    }
+  });
+  ro.observe(dom);
+  // Stash on the DOM so `destroy` can disconnect.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (dom as any).__cmWidgetResizeObserver = ro;
+}
+
+function disconnectWidgetObserver(
+  dom: HTMLElement | undefined,
+  blockId: string,
+  slot: DbWidgetSlot,
+): void {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ro = (dom as any)?.__cmWidgetResizeObserver as ResizeObserver | undefined;
+  ro?.disconnect();
+  widgetHeightCache.delete(cacheKey(blockId, slot));
 }
 
 class DbResultPortalWidget extends WidgetType {
@@ -360,6 +413,7 @@ class DbResultPortalWidget extends WidgetType {
     div.className = "cm-db-result-portal";
     div.contentEditable = "false";
     registerSlot(this.blockId, this.block, "result", div);
+    observeWidgetHeight(div, this.blockId, "result");
     return div;
   }
 
@@ -368,7 +422,8 @@ class DbResultPortalWidget extends WidgetType {
     return true;
   }
 
-  destroy(): void {
+  destroy(dom: HTMLElement): void {
+    disconnectWidgetObserver(dom, this.blockId, "result");
     unregisterSlot(this.blockId, "result");
   }
 
@@ -377,11 +432,12 @@ class DbResultPortalWidget extends WidgetType {
   }
 
   get estimatedHeight(): number {
-    // -1 means "don't reserve any guessed space — let CM6 measure the DOM
-    // before placing the widget." This prevents a reflow every time the
-    // widget transitions between empty (~80px) and success (~380px)
-    // states, which was yanking the editor's scroll position on every run.
-    return -1;
+    // Read the cached height from the ResizeObserver hook above. Default
+    // to the empty-panel height (tabs + status) when nothing's been
+    // rendered yet — better than -1 (which makes CM6's vertical motion
+    // guess wildly and teleport the cursor on arrow-up).
+    const cached = widgetHeightCache.get(cacheKey(this.blockId, "result"));
+    return cached ?? 80;
   }
 
   ignoreEvent(): boolean {
@@ -399,6 +455,7 @@ class DbStatusBarPortalWidget extends WidgetType {
     div.className = "cm-db-statusbar-portal";
     div.contentEditable = "false";
     registerSlot(this.blockId, this.block, "statusbar", div);
+    observeWidgetHeight(div, this.blockId, "statusbar");
     return div;
   }
 
@@ -407,7 +464,8 @@ class DbStatusBarPortalWidget extends WidgetType {
     return true;
   }
 
-  destroy(): void {
+  destroy(dom: HTMLElement): void {
+    disconnectWidgetObserver(dom, this.blockId, "statusbar");
     unregisterSlot(this.blockId, "statusbar");
   }
 
@@ -416,7 +474,8 @@ class DbStatusBarPortalWidget extends WidgetType {
   }
 
   get estimatedHeight(): number {
-    return 20;
+    const cached = widgetHeightCache.get(cacheKey(this.blockId, "statusbar"));
+    return cached ?? 28;
   }
 
   ignoreEvent(): boolean {
