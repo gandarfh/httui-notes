@@ -4,6 +4,13 @@
 
 **Open/Closed** — cada novo bloco e uma pasta nova, sem tocar no codigo existente.
 
+> **Estado atual:** o frontend esta em migracao TipTap → CodeMirror 6. HTTP e E2E
+> blocks ainda sao renderizados via TipTap NodeView (encapsulados pelo sistema de
+> portal `cm-block-widgets.tsx`). DB blocks sao **100% nativos CM6**: extensao
+> `cm-db-block.tsx` + painel React `DbFencedPanel` montado em portais widget. As
+> secoes abaixo descrevem o pattern TipTap original; ver `## 6. DB block — caminho
+> nativo CM6` para o caminho especifico do bloco DB.
+
 ---
 
 ## Visao geral das camadas
@@ -264,6 +271,77 @@ O `Channel` permite streaming em tempo real (progresso de queries longas, chunks
 | Self-register  | `blocks/novo/index.ts`   | nada                                         |
 | Rust executor  | `executor/novo.rs`       | `main.rs` — uma linha: `registry.register()` |
 | Slash command  | —                        | `slash-commands.ts` — uma entrada no array   |
+
+---
+
+## 6. DB block — caminho nativo CM6
+
+O DB block foge do pattern TipTap + registry e vive inteiramente no CodeMirror 6.
+Razoes: (a) o body do bloco e SQL puro, e faz mais sentido deixa-lo no mesmo
+buffer CM6 que o resto do markdown — vim mode, undo/redo, search, autocomplete
+de `{{refs}}` e schema cache tudo compartilham o mesmo state; (b) o painel de
+resultado e grande e dinamico (tabela virtualizada, multi-result, export), o que
+fica desajeitado dentro de um NodeView TipTap.
+
+```
+┌───────────────── CM6 MarkdownEditor ─────────────────────┐
+│                                                          │
+│  ```db-postgres alias=db1 connection=prod  ← fence-open  │
+│    ↳ substituido por DbToolbarPortalWidget               │
+│                                                          │
+│  SELECT * FROM t WHERE id = {{ref.response.id}}          │
+│    ↳ linha regular do doc com `.cm-db-body-line` +       │
+│      SQL highlighter + autocomplete de tabelas/envs      │
+│                                                          │
+│  ```                                        ← fence-close│
+│    ↳ substituido por DbClosePanelWidget                  │
+│      (result tabs + status bar)                          │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+                          │
+         registrySlot(blockId, slot, dom) — React portals
+                          │
+                          ▼
+            DbFencedPanel monta no widget DOM
+            (Chakra UI v3, ResultTable virtualizada)
+```
+
+**Extensao CM6 (`src/lib/codemirror/cm-db-block.tsx`):**
+
+- `findDbBlocks(doc)` escaneia o doc por fences `db`, `db-postgres`, `db-mysql`,
+  `db-sqlite` e retorna ranges + metadata (alias, connection, limit, timeout,
+  display) via `parseDbFenceInfo`.
+- StateField de decoracoes: em reading mode, substitui as linhas de fence por
+  `DbToolbarPortalWidget` (header) e `DbClosePanelWidget` (result + statusbar);
+  em editing mode (cursor dentro do bloco), mostra as fence lines com styling
+  sutil e mantem o close panel como widget `side: 1` depois do close fence.
+- `createDbBlockCompletionSource` + `createDbSchemaCompletionSource` alimentam
+  o autocomplete global do editor (`{{refs}}` de blocos acima + env vars; tabelas
+  e colunas do schema cache pos-FROM/JOIN).
+
+**Painel React (`src/components/blocks/db/fenced/DbFencedPanel.tsx`):**
+
+- Mount via portal no slot registrado pela extensao; um componente por bloco, re-
+  renderiza quando `entry.block` muda (via `syncRegistryBlocks`).
+- Lifecycle de execucao: resolve refs via `resolveRefsToBindParams` (converte
+  `{{ref}}` em bind params `?`/`$N` para evitar SQL injection), streaming via
+  Tauri `Channel`, cache local pelo hash.
+
+**Hash de cache (`src/lib/blocks/hash.ts#computeDbCacheHash`):**
+
+Compartilhado entre o writer (`DbFencedPanel`) e o reader (`document.ts#
+populateCachedResults`). Formula: `hashBlockContent(body + env_snapshot,
+connectionId)`, onde `env_snapshot` junta so as env vars que aparecem como
+`{{KEY}}` no body. Isso isola o cache por environment ativo e mantem hash
+estavel para queries sem ref a env.
+
+**Por que widgets separados (toolbar + close panel), nao 1 so?**
+
+Motion vertical do CM6 se confunde quando ha cadeia de widgets `block: true`
+adjacentes — o probe Y atravessa varios e o cursor teleporta. Com **um** widget
+substituindo **um** range doc, `moveVertically` comporta-se. Por isso o close
+panel consolida fence-close + result + statusbar num unico widget ao inves de
+tres em sequencia.
 
 ---
 
