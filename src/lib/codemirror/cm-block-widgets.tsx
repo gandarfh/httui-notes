@@ -16,18 +16,8 @@ import { StandaloneBlock } from "@/components/blocks/standalone/StandaloneBlock"
  */
 export const widgetTransaction = Annotation.define<boolean>();
 
-const BLOCK_OPEN_RE = /^```(http|db(?:-[\w:-]+)?|e2e)(.*)$/;
+const BLOCK_OPEN_RE = /^```(http|e2e)(.*)$/;
 const BLOCK_CLOSE_RE = /^```\s*$/;
-
-/**
- * db-* blocks are rendered natively by cm-db-block.tsx (stage 4 redesign).
- * The DiffViewer path (BlockWidget below) still needs to see them via
- * findFencedBlocks, so we match them in the regex but the editor's
- * decoration builder filters them out.
- */
-function isDbLang(lang: string): boolean {
-  return lang === "db" || lang.startsWith("db-");
-}
 
 export interface FencedBlock {
   from: number;
@@ -88,15 +78,13 @@ export function extractAlias(info: string): string | undefined {
 function langToBlockType(lang: string): string {
   if (lang === "http") return "http";
   if (lang === "e2e") return "e2e";
-  if (lang === "db" || lang.startsWith("db-")) return "db";
   return lang;
 }
 
-/** Extract display content (e.g. query) from JSON-serialized block content */
+/** Extract display content (e.g. body/url) from JSON-serialized block content */
 function extractDisplayContent(blockType: string, raw: string): string {
   try {
     const data = JSON.parse(raw);
-    if (blockType === "db") return data.query ?? raw;
     if (blockType === "http") return data.body ?? data.url ?? raw;
     return JSON.stringify(data, null, 2);
   } catch {
@@ -254,7 +242,7 @@ export function getWidgetContainers() { return widgetContainers; }
 
 /**
  * Portal widget — a div in CM6's document flow.
- * React renders block components (HttpBlockView, DbBlockView, etc.)
+ * React renders block components (HttpBlockView, E2eBlockView)
  * directly into this div via createPortal. CM6 measures height naturally.
  * No overlay, no absolute positioning, no height cache.
  */
@@ -367,8 +355,6 @@ function buildEditorDecorations(state: import("@codemirror/state").EditorState):
 
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i];
-    // db-* blocks are rendered by cm-db-block.tsx — don't double-render them.
-    if (isDbLang(block.lang)) continue;
     // Portal widget — React renders block UI directly into this div
     decorations.push({
       from: block.from,
@@ -449,9 +435,6 @@ export function createEditorBlockWidgets() {
   const atomicBlocks = EditorView.atomicRanges.of(() => {
     const builder = new RangeSetBuilder<Decoration>();
     for (const block of cachedBlocks) {
-      // db-* blocks define their own (line-level) atomic ranges in
-      // cm-db-block.tsx so the SQL body remains editable.
-      if (isDbLang(block.lang)) continue;
       builder.add(block.from, block.to, Decoration.mark({}));
     }
     return builder.finish();

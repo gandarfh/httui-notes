@@ -1,21 +1,12 @@
-import { registry } from "../registry";
-import { DbBlock } from "./node";
-import { DbBlockView } from "./DbBlockView";
+/**
+ * DB block public exports.
+ *
+ * The legacy TipTap NodeView (`DbBlockView` + `node.ts`) was removed after
+ * stage 9 of the db-block-redesign — the current fenced-block path owns
+ * rendering via `cm-db-block.tsx` and `DbFencedPanel`. The registry-based
+ * flow lived on for HTTP / E2E blocks only; `db-*` bypasses it entirely.
+ */
 
-registry.register({
-  type: "db",
-  node: DbBlock,
-  component: DbBlockView,
-  defaultAttrs: {
-    blockType: "db",
-    content: JSON.stringify({
-      connectionId: "",
-      query: "",
-    }),
-  },
-});
-
-export { DbBlock } from "./node";
 export type {
   DbBlockData,
   DbResponse,

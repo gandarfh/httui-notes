@@ -26,7 +26,6 @@ import { registry } from "@/components/blocks/registry";
 import { usePaneStore } from "@/stores/pane";
 import { BlockContextProvider } from "@/components/blocks/BlockContext";
 import "@/components/blocks/http";
-import "@/components/blocks/db";
 import "@/components/blocks/e2e";
 import "./editor.css";
 import { createWikilinkSuggest } from "./extensions/WikilinkSuggest";

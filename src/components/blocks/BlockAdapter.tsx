@@ -2,7 +2,10 @@
  * BlockAdapter — bridges BlockWidgetContext (CM6) to TipTap NodeViewProps.
  *
  * Creates a fake `node` and `updateAttributes` that the existing block views
- * (DbBlockView, HttpBlockView, E2eBlockView) can consume without modification.
+ * (HttpBlockView, E2eBlockView) can consume without modification.
+ *
+ * db-* blocks are owned by `cm-db-block.tsx` + `DbFencedPanel` and don't
+ * flow through this adapter.
  *
  * Rendered via React Portal OUTSIDE the CM6 editor DOM — no focus/scroll hacks needed.
  */
@@ -10,7 +13,6 @@ import { memo, useCallback, useMemo, useRef, useState } from "react";
 import type { BlockWidgetContext } from "@/lib/codemirror/block-widget-context";
 import { extractAlias, extractDisplayMode, buildInfoString } from "@/lib/codemirror/block-widget-context";
 import { findFencedBlocks } from "@/lib/codemirror/cm-block-widgets";
-import { DbBlockView } from "./db/DbBlockView";
 import { HttpBlockView } from "./http/HttpBlockView";
 import { E2eBlockView } from "./e2e/E2eBlockView";
 import { BlockContextProvider } from "./BlockContext";
@@ -115,8 +117,6 @@ function BlockAdapterInner({ ctx }: BlockAdapterProps) {
 
   return (
     <BlockContextProvider value={{ filePath: ctx.filePath }}>
-      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-      {blockType === "db" && <DbBlockView {...(fakeNodeViewProps as any)} />}
       {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
       {blockType === "http" && <HttpBlockView {...(fakeNodeViewProps as any)} />}
       {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
