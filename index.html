@@ -6,6 +6,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@800;900&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <title>Notes</title>
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("theme");
+          var pref = stored === "light" || stored === "dark"
+            ? stored
+            : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+          document.documentElement.classList.add(pref);
+          document.documentElement.style.colorScheme = pref;
+          document.documentElement.style.backgroundColor = pref === "dark" ? "#0a0a0a" : "#ffffff";
+        } catch (e) {
+          document.documentElement.classList.add("light");
+        }
+      })();
+    </script>
+    <style>
+      html { background-color: #ffffff; }
+      html.dark { background-color: #0a0a0a; }
+    </style>
   </head>
   <body>
     <div id="root"></div>
