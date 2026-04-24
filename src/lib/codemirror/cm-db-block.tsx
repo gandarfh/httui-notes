@@ -378,21 +378,29 @@ function observeWidgetHeight(
   view: EditorView,
 ): void {
   if (typeof ResizeObserver === "undefined") return;
-  // Seed immediately with the current measurement so the first
-  // `estimatedHeight` read after mount reflects reality.
-  widgetHeightCache.set(cacheKey(blockId, slot), dom.offsetHeight);
-  const ro = new ResizeObserver((entries) => {
-    for (const e of entries) {
-      const prev = widgetHeightCache.get(cacheKey(blockId, slot));
-      const next = e.contentRect.height;
-      if (prev !== next) {
-        widgetHeightCache.set(cacheKey(blockId, slot), next);
-        // Tell CM6 to re-measure so its internal block info reflects
-        // the new height. Without this, `moveVertically` keeps using
-        // the stale 80-px (or other fallback) estimate and arrow-up
-        // lands in the wrong doc position.
-        view.requestMeasure();
-      }
+  // Seed with `offsetHeight` (border-box incl. padding + border) so the
+  // cached value matches what CM6 measures via `getBoundingClientRect`
+  // when laying out block widgets. `ResizeObserver.contentRect` is
+  // content-box by default, which drops the 9px of chrome on
+  // `.cm-db-toolbar-portal` — caching that shorter value made every
+  // click below the block land one line too low.
+  //
+  // Skip the seed when `offsetHeight` is 0 — that happens when `toDOM`
+  // runs before CM6 has attached the widget to the document. Caching 0
+  // would poison `estimatedHeight` (since `0 ?? fallback` keeps 0 and
+  // doesn't fall through). Leaving the cache empty lets the fallback
+  // (44 / 120) stand in until the first real measurement.
+  const seed = dom.offsetHeight;
+  if (seed > 0) widgetHeightCache.set(cacheKey(blockId, slot), seed);
+  const ro = new ResizeObserver(() => {
+    const prev = widgetHeightCache.get(cacheKey(blockId, slot));
+    const next = dom.offsetHeight;
+    if (next > 0 && prev !== next) {
+      widgetHeightCache.set(cacheKey(blockId, slot), next);
+      // Tell CM6 to re-measure so its internal block info reflects the
+      // new height. Without this, `moveVertically` keeps using the stale
+      // estimate and cursor navigation + click-to-position drift.
+      view.requestMeasure();
     }
   });
   ro.observe(dom);

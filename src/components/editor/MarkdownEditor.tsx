@@ -355,11 +355,16 @@ const editorTheme = EditorView.theme({
   // Subtle color code per completion `type` — only visible on the selected
   // row via the leading strip so the list doesn't look like a Christmas tree.
   ".cm-completionIcon": { display: "none" },
+  // `padding: 8px 0` (not `margin`) so the gap around http/e2e block
+  // widgets is part of the element's border-box height — CM6 measures
+  // widgets via `getBoundingClientRect().height` (padding counted, margin
+  // not), so a margin here accumulated as drift between CM6's heightMap
+  // and the real DOM, shifting every click below a block by one line.
   ".cm-block-portal": {
     overflowAnchor: "none",
     width: "100%",
     background: "var(--chakra-colors-bg)",
-    margin: "8px 0",
+    padding: "8px 0",
     borderRadius: "8px",
   },
   ".cm-hidden-block-line": {
@@ -494,9 +499,17 @@ const editorTheme = EditorView.theme({
     padding: 0,
   },
   // Wrapper that groups the closing widgets (hidden fence + result +
-  // statusbar) into a SINGLE block widget.
+  // statusbar) into a SINGLE block widget. `paddingBottom` (instead of
+  // a `marginBottom` on the inner statusbar) buys breathing room BETWEEN
+  // the block and the next doc line while keeping the measured height
+  // accurate: CM6 uses `getBoundingClientRect().height` to size the
+  // block in its heightMap, and that includes padding but not margin.
+  // Pushing the gap via margin made CM6 think the block ended ~16px
+  // sooner than it actually did, shifting every click below the block
+  // one line too low.
   ".cm-db-close-panel": {
     display: "block",
+    paddingBottom: "var(--chakra-spacing-4)",
   },
 
   // ── Toolbar widget (card header) ──
@@ -530,7 +543,6 @@ const editorTheme = EditorView.theme({
   },
 
   ".cm-db-statusbar-portal": {
-    marginBottom: "var(--chakra-spacing-4)",
     paddingTop: "var(--chakra-spacing-3)",
     paddingBottom: "var(--chakra-spacing-3)",
     paddingLeft: "var(--chakra-spacing-4)",
