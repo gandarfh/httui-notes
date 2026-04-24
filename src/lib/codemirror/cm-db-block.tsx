@@ -16,7 +16,6 @@
  */
 
 import {
-  EditorSelection,
   EditorState,
   Prec,
   RangeSetBuilder,
@@ -24,8 +23,6 @@ import {
   StateField,
   type Extension,
   type Text as CMText,
-  type Transaction,
-  type TransactionSpec,
 } from "@codemirror/state";
 import {
   Decoration,
@@ -579,89 +576,6 @@ function countDbBlocks(doc: CMText): number {
   return count;
 }
 
-// ───── Navigation: transaction filter ─────
-
-function fenceSkipFilter(
-  tr: Transaction,
-  blocks: DbFencedBlock[],
-): TransactionSpec | null {
-  if (!tr.selection || blocks.length === 0) return null;
-
-  const oldSel = tr.startState.selection.main;
-  const newSel = tr.selection.main;
-
-  if (!newSel.empty || !oldSel.empty) return null;
-
-  const doc = tr.newDoc;
-  const newLine = doc.lineAt(newSel.head);
-
-  // Was the user inside some block's body before this transaction?
-  // If yes and the new position would leave that body, trap them at the
-  // body edge so arrow-up / arrow-down don't eject them in a single
-  // keystroke. Exit still works via ↓ when already at `bodyTo` (since
-  // old=new position prevents the filter from firing twice in a row).
-  const sourceBody = blocks.find(
-    (b) => oldSel.head >= b.bodyFrom && oldSel.head <= b.bodyTo,
-  );
-  if (sourceBody) {
-    const stillInside =
-      newSel.head >= sourceBody.bodyFrom && newSel.head <= sourceBody.bodyTo;
-    if (!stillInside) {
-      const goingDown = newSel.head > oldSel.head;
-      // Two-press exit: first arrow clamps at the body boundary, second
-      // arrow (with cursor already at the boundary) lets CM6 exit
-      // naturally. Avoids a single keystroke ejecting the user while
-      // still allowing them to leave when they really mean to.
-      if (!goingDown && oldSel.head > sourceBody.bodyFrom) {
-        return {
-          selection: EditorSelection.cursor(sourceBody.bodyFrom),
-          scrollIntoView: tr.scrollIntoView,
-        };
-      }
-      if (goingDown && oldSel.head < sourceBody.bodyTo) {
-        return {
-          selection: EditorSelection.cursor(sourceBody.bodyTo),
-          scrollIntoView: tr.scrollIntoView,
-        };
-      }
-      // oldSel was already on the exact boundary — let the exit happen.
-      return null;
-    }
-  }
-
-  // The original "landed on a fence line" guard — still needed when the
-  // cursor *enters* a block from outside (e.g. arrow-down from the
-  // paragraph above lands on the open fence row).
-  const block = blocks.find(
-    (b) =>
-      newLine.from === b.openLineFrom || newLine.from === b.closeLineFrom,
-  );
-  if (!block) return null;
-
-  const goingDown = newSel.head > oldSel.head;
-  const onOpen = newLine.from === block.openLineFrom;
-
-  let target: number;
-  if (onOpen) {
-    target = goingDown ? block.bodyFrom : block.openLineFrom;
-    if (!goingDown) {
-      const prevPos = block.openLineFrom - 1;
-      target = prevPos >= 0 ? prevPos : 0;
-    }
-  } else {
-    if (goingDown) {
-      target = Math.min(block.closeLineTo + 1, doc.length);
-    } else {
-      target = block.bodyTo;
-    }
-  }
-
-  return {
-    selection: EditorSelection.cursor(target),
-    scrollIntoView: tr.scrollIntoView,
-  };
-}
-
 // ───── Keymap ─────
 
 /**
@@ -684,88 +598,8 @@ function blockAtCursor(
   return null;
 }
 
-/**
- * Vertical-motion helper for the custom arrow-up / arrow-down bindings.
- * Returns the target cursor position, or `null` when the default CM6
- * behavior should run instead (cursor is outside every db block).
- *
- * Strategy:
- *  - Inside a body and the body has another line in the requested
- *    direction → move one line within the body, keeping the visual
- *    column.
- *  - At the top / bottom edge of the body → clamp to `bodyFrom` /
- *    `bodyTo` (first press stops at the edge; second press lets CM6
- *    exit naturally).
- *
- * Computing the target by text offset (line.from + column) sidesteps
- * CM6's pixel-based `cursorLineUp`, which was getting confused by
- * replaced fence widgets and skipping lines.
- */
-function verticalMoveInBody(
-  view: EditorView,
-  direction: "up" | "down",
-  blocks: DbFencedBlock[],
-): number | null {
-  const doc = view.state.doc;
-  const head = view.state.selection.main.head;
-  const body = blocks.find((b) => head >= b.bodyFrom && head <= b.bodyTo);
-  if (!body) return null;
-
-  const currentLine = doc.lineAt(head);
-  const column = head - currentLine.from;
-
-  if (direction === "up") {
-    // Already sitting on the first body line — don't eject on the first
-    // press; clamp to bodyFrom. From there the next up-press has
-    // `head === bodyFrom`, which we detect and return null so CM6's
-    // default handling takes the user out of the block.
-    const bodyFirstLine = doc.lineAt(body.bodyFrom);
-    if (currentLine.from === bodyFirstLine.from) {
-      if (head === body.bodyFrom) return null;
-      return body.bodyFrom;
-    }
-    const prevLine = doc.line(currentLine.number - 1);
-    return Math.min(prevLine.from + column, prevLine.to);
-  }
-
-  // down
-  const bodyLastLine = doc.lineAt(body.bodyTo);
-  if (currentLine.from === bodyLastLine.from) {
-    if (head === body.bodyTo) return null;
-    return body.bodyTo;
-  }
-  const nextLine = doc.line(currentLine.number + 1);
-  return Math.min(nextLine.from + column, nextLine.to);
-}
-
 function makeKeymap(getBlocks: () => DbFencedBlock[]): KeyBinding[] {
   return [
-    {
-      key: "ArrowUp",
-      run: (view) => {
-        const blocks = getBlocks();
-        const target = verticalMoveInBody(view, "up", blocks);
-        if (target === null) return false;
-        view.dispatch({
-          selection: EditorSelection.cursor(target),
-          scrollIntoView: true,
-        });
-        return true;
-      },
-    },
-    {
-      key: "ArrowDown",
-      run: (view) => {
-        const blocks = getBlocks();
-        const target = verticalMoveInBody(view, "down", blocks);
-        if (target === null) return false;
-        view.dispatch({
-          selection: EditorSelection.cursor(target),
-          scrollIntoView: true,
-        });
-        return true;
-      },
-    },
     {
       key: "Mod-Enter",
       run: (view) => {
@@ -973,20 +807,6 @@ export function createDbBlockExtension(): Extension {
     provide: (f) => EditorView.decorations.from(f),
   });
 
-  const navFilter = EditorState.transactionFilter.of((tr) => {
-    if (!tr.selection) return tr;
-    // Compute blocks from the incoming doc instead of relying on the
-    // `cachedBlocks` closure. That closure is updated by the StateField's
-    // `update`, which runs AFTER transaction filters, so during the very
-    // first cursor move after a doc edit it lags behind and the filter
-    // uses stale offsets — showing up as arrow-up skipping lines.
-    // `findDbBlocks` is O(lines); cheap enough for an occasional keypress.
-    const blocks = findDbBlocks(tr.newDoc);
-    const spec = fenceSkipFilter(tr, blocks);
-    if (!spec) return tr;
-    return spec;
-  });
-
   // Prec.high ensures ⌘↵ / ⌘. win over @codemirror/commands' defaultKeymap,
   // which binds `Mod-Enter` → `insertBlankLine`. Without this, the default
   // binding consumes the event before our handler runs.
@@ -999,7 +819,7 @@ export function createDbBlockExtension(): Extension {
     (state) => buildErrorDecorations(state, cachedBlocks, state.field(dbErrorsField)),
   );
 
-  return [field, navFilter, dbKeymap, dbErrorsField, errorDecos];
+  return [field, dbKeymap, dbErrorsField, errorDecos];
 }
 
 // ───── Autocomplete source ─────
@@ -1363,5 +1183,4 @@ export const __internal = {
   FENCE_CLOSE_RE,
   countDbBlocks,
   buildDbDecorations,
-  fenceSkipFilter,
 };

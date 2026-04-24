@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { EditorSelection, EditorState, Text } from "@codemirror/state";
+import { EditorState, Text } from "@codemirror/state";
 import type { CompletionContext, CompletionResult } from "@codemirror/autocomplete";
 
 import {
@@ -8,7 +8,6 @@ import {
   findDbBlocks,
   __internal,
   __resetDbSchemaCompletionCache,
-  type DbFencedBlock,
 } from "../cm-db-block";
 import { useSchemaCacheStore } from "@/stores/schemaCache";
 
@@ -43,8 +42,7 @@ vi.mock("@/lib/tauri/connections", async () => {
   };
 });
 
-const { DB_OPEN_RE, FENCE_CLOSE_RE, countDbBlocks, fenceSkipFilter } =
-  __internal;
+const { DB_OPEN_RE, FENCE_CLOSE_RE, countDbBlocks } = __internal;
 
 // ─────────────────────────────────────────────
 // findDbBlocks
@@ -240,194 +238,11 @@ describe("createDbBlockExtension", () => {
   });
 });
 
-// ─────────────────────────────────────────────
-// Navigation — fenceSkipFilter
-// ─────────────────────────────────────────────
-
-function mkBlock(doc: Text): DbFencedBlock {
-  const [b] = findDbBlocks(doc);
-  if (!b) throw new Error("no db block in fixture");
-  return b;
-}
-
-/** Build a fake transaction that moves the cursor from `oldHead` to `newHead`. */
-function mkSelectionTr(doc: Text, oldHead: number, newHead: number) {
-  const startState = EditorState.create({
-    doc,
-    selection: EditorSelection.cursor(oldHead),
-  });
-  return startState.update({ selection: EditorSelection.cursor(newHead) });
-}
-
-describe("fenceSkipFilter", () => {
-  const DOC_LINES = [
-    "before",              // line 1, offsets 0-6
-    "```db-postgres",      // line 2 — open fence
-    "SELECT 1",            // line 3 — body
-    "```",                 // line 4 — close fence
-    "after",               // line 5
-  ];
-  const DOC = Text.of(DOC_LINES);
-
-  it("skips past open fence when moving down from before", () => {
-    const block = mkBlock(DOC);
-    // Moving cursor from end of "before" (line 1) onto the open fence.
-    const oldHead = DOC.line(1).to;
-    const newHead = DOC.line(2).from;
-    const tr = mkSelectionTr(DOC, oldHead, newHead);
-    const spec = fenceSkipFilter(tr, [block]);
-    expect(spec).not.toBeNull();
-    const target = (spec!.selection as { head: number }).head;
-    expect(target).toBe(block.bodyFrom);
-  });
-
-  it("clamps at body boundary on the first down-press that tries to exit", () => {
-    const block = mkBlock(DOC);
-    // Cursor sits mid-body (col 3 of the only body line). Pressing down
-    // would exit, so the filter pins the cursor to bodyTo first.
-    const oldHead = DOC.line(3).from + 3;
-    const newHead = DOC.line(4).from;
-    const tr = mkSelectionTr(DOC, oldHead, newHead);
-    const spec = fenceSkipFilter(tr, [block]);
-    expect(spec).not.toBeNull();
-    const target = (spec!.selection as { head: number }).head;
-    expect(target).toBe(block.bodyTo);
-  });
-
-  it("releases a second down-press once the cursor is already pinned at bodyTo", () => {
-    const block = mkBlock(DOC);
-    // Cursor already at bodyTo from the previous clamp; the second press
-    // should let CM6 handle the exit naturally (filter returns null).
-    const oldHead = block.bodyTo;
-    const newHead = DOC.line(4).from;
-    const tr = mkSelectionTr(DOC, oldHead, newHead);
-    expect(fenceSkipFilter(tr, [block])).toBeNull();
-  });
-
-  it("staying-within-body: multi-line body, up from L2 lands on L1 untouched", () => {
-    // Body has two lines; cursor starts on L2 col 3 and presses up. CM6
-    // default lands the cursor on L1 col 3 — both positions are inside
-    // the body, so the filter must NOT interfere.
-    const lines = [
-      "before",
-      "```db-postgres",
-      "SELECT 1",   // body L1
-      "FROM users", // body L2
-      "```",
-      "after",
-    ];
-    const doc = Text.of(lines);
-    const [block] = findDbBlocks(doc);
-    const l2Offset = doc.line(4).from + 3; // body L2 col 3
-    const l1Offset = doc.line(3).from + 3; // body L1 col 3
-    const tr = mkSelectionTr(doc, l2Offset, l1Offset);
-    // Selection stays inside body → filter should pass through.
-    expect(fenceSkipFilter(tr, [block])).toBeNull();
-  });
-
-  it("two-block hop: up from block2 body L1 clamps at block2.bodyFrom, not block1", () => {
-    // Two adjacent db blocks. User in block2 body L1 col 3 presses up.
-    // CM6 skips the replaced open-fence widget and lands OUTSIDE block2
-    // (inside block1 or in the text between). Filter must clamp to
-    // block2.bodyFrom so the cursor doesn't teleport into block1.
-    const lines = [
-      "```db-postgres alias=one",
-      "SELECT 1",
-      "```",
-      "middle",
-      "```db-postgres alias=two",
-      "SELECT 2",
-      "```",
-    ];
-    const doc = Text.of(lines);
-    const blocks = findDbBlocks(doc);
-    expect(blocks).toHaveLength(2);
-    const [_one, two] = blocks;
-    const fromInside = two.bodyFrom + 3; // mid L1 of block2 body
-    const somewhereOutside = doc.line(1).from + 2; // inside block1 range
-    const tr = mkSelectionTr(doc, fromInside, somewhereOutside);
-    const spec = fenceSkipFilter(tr, blocks);
-    expect(spec).not.toBeNull();
-    const target = (spec!.selection as { head: number }).head;
-    expect(target).toBe(two.bodyFrom);
-  });
-
-  it("skips back into body when moving up from after", () => {
-    const block = mkBlock(DOC);
-    const oldHead = DOC.line(5).from; // start of "after"
-    const newHead = DOC.line(4).from; // close fence line
-    const tr = mkSelectionTr(DOC, oldHead, newHead);
-    const spec = fenceSkipFilter(tr, [block]);
-    expect(spec).not.toBeNull();
-    const target = (spec!.selection as { head: number }).head;
-    expect(target).toBe(block.bodyTo);
-  });
-
-  it("returns null when selection did not land on a fence line", () => {
-    const block = mkBlock(DOC);
-    const oldHead = 0;
-    const newHead = DOC.line(3).from; // inside the body
-    const tr = mkSelectionTr(DOC, oldHead, newHead);
-    expect(fenceSkipFilter(tr, [block])).toBeNull();
-  });
-
-  it("returns null when there are no db blocks", () => {
-    const doc = Text.of(["hello", "world"]);
-    const state = EditorState.create({ doc });
-    const tr = state.update({ selection: EditorSelection.cursor(5) });
-    expect(fenceSkipFilter(tr, [])).toBeNull();
-  });
-
-  it("returns null for non-empty selections (user is extending a range)", () => {
-    const block = mkBlock(DOC);
-    const state = EditorState.create({
-      doc: DOC,
-      selection: EditorSelection.range(0, 0),
-    });
-    const tr = state.update({
-      selection: EditorSelection.range(0, DOC.line(2).from),
-    });
-    expect(fenceSkipFilter(tr, [block])).toBeNull();
-  });
-
-  // ── Vim / keymap origin-agnostic behavior ──
-  // The filter inspects only `tr.startState.selection` and `tr.selection`,
-  // not the originating keymap or userEvent. Any selection-change
-  // transaction — whether from the default keymap's ArrowDown, vim's `j`,
-  // a mouse click, or a programmatic dispatch — must go through it.
-
-  it("applies to transactions marked userEvent: select (vim-style)", () => {
-    const block = mkBlock(DOC);
-    const startState = EditorState.create({
-      doc: DOC,
-      selection: EditorSelection.cursor(DOC.line(1).to),
-    });
-    // Vim dispatches with a userEvent annotation. Confirm the filter
-    // still fires; nothing in its logic discriminates by userEvent.
-    const tr = startState.update({
-      selection: EditorSelection.cursor(DOC.line(2).from),
-      userEvent: "select",
-    });
-    const spec = fenceSkipFilter(tr, [block]);
-    expect(spec).not.toBeNull();
-    expect((spec!.selection as { head: number }).head).toBe(block.bodyFrom);
-  });
-
-  it("applies to transactions marked userEvent: select.pointer (mouse)", () => {
-    const block = mkBlock(DOC);
-    const startState = EditorState.create({
-      doc: DOC,
-      selection: EditorSelection.cursor(DOC.line(5).from),
-    });
-    const tr = startState.update({
-      selection: EditorSelection.cursor(DOC.line(4).from),
-      userEvent: "select.pointer",
-    });
-    const spec = fenceSkipFilter(tr, [block]);
-    expect(spec).not.toBeNull();
-    expect((spec!.selection as { head: number }).head).toBe(block.bodyTo);
-  });
-});
+// Navigation over db blocks is now fully delegated to CM6's default
+// handling — the replaced fence widgets already make the fence rows
+// non-selectable, so cursor arrow keys and mouse clicks land naturally
+// without any custom transaction filter. The old `fenceSkipFilter`
+// test suite was removed along with the filter itself.
 
 // ─────────────────────────────────────────────
 // Schema-aware SQL autocomplete
