@@ -48,7 +48,6 @@ import {
   LuTrash2,
   LuX,
 } from "react-icons/lu";
-import type { EditorView } from "@codemirror/view";
 
 import {
   setHttpBlockActions,
@@ -85,6 +84,209 @@ import {
 } from "@/lib/blocks/http-codegen";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
+import { common, createLowlight } from "lowlight";
+import { EditorView } from "@codemirror/view";
+import CodeMirror from "@uiw/react-codemirror";
+import { json } from "@codemirror/lang-json";
+import { referenceHighlight } from "@/lib/blocks/cm-references";
+import {
+  createReferenceAutocomplete,
+  type EnvKeyInfo,
+} from "@/lib/blocks/cm-autocomplete";
+import type { BlockContext } from "@/lib/blocks/references";
+
+const lowlight = createLowlight(common);
+
+// Static themes — extracted so Emotion doesn't recreate them per render.
+const cmTransparentBg = EditorView.theme({
+  "&": { backgroundColor: "transparent !important" },
+  "& .cm-gutters": {
+    backgroundColor: "transparent !important",
+    border: "none",
+  },
+  "& .cm-activeLineGutter, & .cm-activeLine": {
+    backgroundColor: "transparent !important",
+  },
+});
+
+const cmInlineTheme = EditorView.theme({
+  "&": { backgroundColor: "transparent !important", fontSize: "12px" },
+  "&.cm-focused": { outline: "none" },
+  "& .cm-gutters": { display: "none" },
+  "& .cm-activeLineGutter, & .cm-activeLine": {
+    backgroundColor: "transparent !important",
+  },
+  "& .cm-scroller": {
+    overflow: "auto hidden",
+    scrollbarWidth: "none",
+    lineHeight: "26px",
+  },
+  "& .cm-scroller::-webkit-scrollbar": { display: "none" },
+  "& .cm-content": { padding: "0 8px", minHeight: "auto" },
+  "& .cm-line": { padding: 0 },
+  "& .cm-placeholder": {
+    color: "var(--chakra-colors-fg-muted)",
+    opacity: 0.5,
+  },
+  "& .cm-cursor": { borderLeftColor: "var(--chakra-colors-fg)" },
+});
+
+const cmBodyTheme = EditorView.theme({
+  "&": { backgroundColor: "transparent !important", fontSize: "12px" },
+  "&.cm-focused": { outline: "none" },
+  "& .cm-gutters": { display: "none" },
+  "& .cm-content": {
+    fontFamily: "var(--chakra-fonts-mono)",
+    padding: "8px",
+    minHeight: "120px",
+  },
+  "& .cm-activeLineGutter, & .cm-activeLine": {
+    backgroundColor: "transparent !important",
+  },
+});
+
+/**
+ * Single-line CodeMirror replacing `<Input>` for the form-mode KV rows.
+ * Supports `{{ref}}` highlight + autocomplete. Commits on blur (matches
+ * the existing form pattern — see `CommitOnBlurInput`).
+ */
+const HttpInlineCM = memo(function HttpInlineCM({
+  value,
+  placeholder,
+  onCommit,
+  refsGetters,
+}: {
+  value: string;
+  placeholder?: string;
+  onCommit: (next: string) => void;
+  refsGetters?: {
+    getBlocks: () => BlockContext[];
+    getEnvKeys: () => (string | EnvKeyInfo)[];
+  };
+}) {
+  const [draft, setDraft] = useState(value);
+  // Re-sync from prop when the canonical value changes (e.g. raw edit, mode
+  // flip). The user's in-flight typing is preserved while focused — the
+  // committed `value` prop only updates after blur.
+  useEffect(() => setDraft(value), [value]);
+
+  const extensions = useMemo(() => {
+    const exts = [cmInlineTheme, cmTransparentBg, ...referenceHighlight];
+    if (refsGetters) {
+      exts.push(
+        createReferenceAutocomplete(
+          refsGetters.getBlocks,
+          refsGetters.getEnvKeys,
+        ),
+      );
+    }
+    return exts;
+  }, [refsGetters]);
+
+  return (
+    <Box
+      flex={1}
+      borderWidth="1px"
+      borderColor="border.muted"
+      borderRadius="sm"
+      bg="bg.canvas"
+      _focusWithin={{ borderColor: "border.emphasized" }}
+      overflow="hidden"
+    >
+      <CodeMirror
+        value={draft}
+        onChange={(v) => setDraft(v)}
+        onBlur={() => {
+          if (draft !== value) onCommit(draft);
+        }}
+        extensions={extensions}
+        basicSetup={{
+          lineNumbers: false,
+          foldGutter: false,
+          autocompletion: !!refsGetters,
+          highlightActiveLine: false,
+          highlightActiveLineGutter: false,
+          indentOnInput: false,
+          bracketMatching: false,
+          closeBrackets: false,
+          history: true,
+        }}
+        height="auto"
+        placeholder={placeholder}
+        style={{ fontFamily: "var(--chakra-fonts-mono)" }}
+      />
+    </Box>
+  );
+});
+
+/**
+ * Multi-line CodeMirror for the body in form mode. Adds JSON highlight
+ * when the body looks like JSON, plus `{{ref}}` highlight + autocomplete.
+ */
+const HttpBodyCM = memo(function HttpBodyCM({
+  value,
+  onCommit,
+  refsGetters,
+}: {
+  value: string;
+  onCommit: (next: string) => void;
+  refsGetters?: {
+    getBlocks: () => BlockContext[];
+    getEnvKeys: () => (string | EnvKeyInfo)[];
+  };
+}) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+
+  const extensions = useMemo(() => {
+    const exts = [cmBodyTheme, cmTransparentBg, ...referenceHighlight];
+    const trimmed = value.trimStart();
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+      exts.push(json());
+    }
+    if (refsGetters) {
+      exts.push(
+        createReferenceAutocomplete(
+          refsGetters.getBlocks,
+          refsGetters.getEnvKeys,
+        ),
+      );
+    }
+    return exts;
+  }, [refsGetters, value]);
+
+  return (
+    <Box
+      borderWidth="1px"
+      borderColor="border.muted"
+      borderRadius="sm"
+      bg="bg.canvas"
+      overflow="hidden"
+    >
+      <CodeMirror
+        value={draft}
+        onChange={(v) => setDraft(v)}
+        onBlur={() => {
+          if (draft !== value) onCommit(draft);
+        }}
+        extensions={extensions}
+        basicSetup={{
+          lineNumbers: false,
+          foldGutter: false,
+          autocompletion: !!refsGetters,
+          highlightActiveLine: false,
+          highlightActiveLineGutter: false,
+          indentOnInput: false,
+          bracketMatching: true,
+          closeBrackets: true,
+          history: true,
+        }}
+        placeholder="Request body (raw)"
+        style={{ fontFamily: "var(--chakra-fonts-mono)" }}
+      />
+    </Box>
+  );
+});
 import {
   getBlockResult,
   insertBlockHistory,
@@ -393,98 +595,10 @@ function bodyAsText(body: unknown): string {
 }
 
 // ─────────────────────── Form mode panel ───────────────────────
-
-/**
- * Local-state input committed on blur — mirrors the `EnvironmentManager`
- * pattern. Typing into the form must not pay the round-trip cost of
- * (1) re-stringify the whole body, (2) dispatch a CM6 change, (3) scanner
- * re-runs, (4) `parsed` re-derives, (5) the panel re-mounts. Without local
- * state every keystroke would land that pipeline and the input would feel
- * laggy + lose focus / cursor.
- */
-const CommitOnBlurInput = memo(function CommitOnBlurInput({
-  value,
-  placeholder,
-  flex,
-  ariaLabel,
-  onCommit,
-}: {
-  value: string;
-  placeholder: string;
-  flex: number;
-  ariaLabel?: string;
-  onCommit: (next: string) => void;
-}) {
-  const [draft, setDraft] = useState(value);
-  // Re-sync when the canonical value changes (e.g. raw edit, mode flip,
-  // row reorder/delete) and the user is NOT actively editing this field.
-  // We treat "actively editing" as "draft differs from the committed
-  // value" — the input keeps its in-flight text instead of being reset.
-  useEffect(() => {
-    setDraft(value);
-  }, [value]);
-
-  const commit = () => {
-    if (draft !== value) onCommit(draft);
-  };
-
-  return (
-    <Input
-      size="xs"
-      fontFamily="mono"
-      placeholder={placeholder}
-      value={draft}
-      aria-label={ariaLabel}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          (e.target as HTMLInputElement).blur();
-        } else if (e.key === "Escape") {
-          setDraft(value);
-          (e.target as HTMLInputElement).blur();
-        }
-      }}
-      flex={flex}
-    />
-  );
-});
-
-const CommitOnBlurTextarea = memo(function CommitOnBlurTextarea({
-  value,
-  onCommit,
-}: {
-  value: string;
-  onCommit: (next: string) => void;
-}) {
-  const [draft, setDraft] = useState(value);
-  useEffect(() => {
-    setDraft(value);
-  }, [value]);
-
-  return (
-    <textarea
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={() => {
-        if (draft !== value) onCommit(draft);
-      }}
-      placeholder="Request body (raw)"
-      style={{
-        width: "100%",
-        minHeight: "120px",
-        padding: "8px",
-        fontFamily: "var(--chakra-fonts-mono)",
-        fontSize: "12px",
-        background: "var(--chakra-colors-bg)",
-        border:
-          "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
-        borderRadius: "var(--chakra-radii-sm)",
-        resize: "vertical",
-      }}
-    />
-  );
-});
+// (Form-mode inputs use the `HttpInlineCM` / `HttpBodyCM` CodeMirror-based
+// components defined above. They commit on blur, support `{{ref}}`
+// highlight + autocomplete, and avoid the per-keystroke re-emit pipeline
+// that would make the form feel laggy.)
 
 /**
  * Tabular Params/Headers editor shown when `mode=form` and the cursor is
@@ -496,9 +610,14 @@ const CommitOnBlurTextarea = memo(function CommitOnBlurTextarea({
 function HttpFormPanel({
   parsed,
   onChange,
+  refsGetters,
 }: {
   parsed: HttpMessageParsed;
   onChange: (next: HttpMessageParsed) => void;
+  refsGetters?: {
+    getBlocks: () => BlockContext[];
+    getEnvKeys: () => (string | EnvKeyInfo)[];
+  };
 }) {
   const updateRow = useCallback(
     (
@@ -565,29 +684,32 @@ function HttpFormPanel({
                 updateRow(kind, i, { enabled: e.target.checked })
               }
             />
-            <CommitOnBlurInput
-              ariaLabel={`${kind} key ${i}`}
-              placeholder="key"
-              value={row.key}
-              flex={1}
-              onCommit={(next) => updateRow(kind, i, { key: next })}
-            />
-            <CommitOnBlurInput
-              ariaLabel={`${kind} value ${i}`}
-              placeholder="value"
-              value={row.value}
-              flex={2}
-              onCommit={(next) => updateRow(kind, i, { value: next })}
-            />
-            <CommitOnBlurInput
-              ariaLabel={`${kind} description ${i}`}
-              placeholder="description"
-              value={row.description ?? ""}
-              flex={1}
-              onCommit={(next) =>
-                updateRow(kind, i, { description: next || undefined })
-              }
-            />
+            <Box flex={1}>
+              <HttpInlineCM
+                placeholder="key"
+                value={row.key}
+                onCommit={(next) => updateRow(kind, i, { key: next })}
+                refsGetters={refsGetters}
+              />
+            </Box>
+            <Box flex={2}>
+              <HttpInlineCM
+                placeholder="value"
+                value={row.value}
+                onCommit={(next) => updateRow(kind, i, { value: next })}
+                refsGetters={refsGetters}
+              />
+            </Box>
+            <Box flex={1}>
+              <HttpInlineCM
+                placeholder="description"
+                value={row.description ?? ""}
+                onCommit={(next) =>
+                  updateRow(kind, i, { description: next || undefined })
+                }
+                refsGetters={refsGetters}
+              />
+            </Box>
             <IconButton
               aria-label={`Delete ${kind} row ${i}`}
               size="xs"
@@ -613,6 +735,16 @@ function HttpFormPanel({
 
   return (
     <Box px={2} py={2}>
+      <Text
+        fontSize="2xs"
+        fontWeight="semibold"
+        color="fg.muted"
+        textTransform="uppercase"
+        letterSpacing="wider"
+        mb={1}
+      >
+        Request
+      </Text>
       <Tabs.Root defaultValue="params" size="sm" variant="line">
         <Tabs.List>
           <Tabs.Trigger value="params">
@@ -630,7 +762,11 @@ function HttpFormPanel({
           {renderTable("headers")}
         </Tabs.Content>
         <Tabs.Content value="body" px={0} pt={2}>
-          <CommitOnBlurTextarea value={parsed.body} onCommit={onBodyCommit} />
+          <HttpBodyCM
+            value={parsed.body}
+            onCommit={onBodyCommit}
+            refsGetters={refsGetters}
+          />
         </Tabs.Content>
       </Tabs.Root>
     </Box>
@@ -638,6 +774,41 @@ function HttpFormPanel({
 }
 
 // ─────────────────────── Body pretty/raw view ───────────────────────
+
+// Lightweight syntax highlighting via `lowlight` (highlight.js core) → hast
+// → HTML with `.hljs-*` classes. Same approach the legacy HttpBlockView
+// used; CSS for the classes lives below as `httpHljsCss` and is scoped to
+// `.cm-http-result-portal` so it doesn't leak to other panels.
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function hastToHtml(nodes: any[]): string {
+  return nodes
+    .map((node) => {
+      if (node.type === "text") return escapeHtml(node.value);
+      if (node.type === "element") {
+        const cls = node.properties?.className?.join(" ") ?? "";
+        const inner = hastToHtml(node.children ?? []);
+        return cls ? `<span class="${cls}">${inner}</span>` : inner;
+      }
+      return "";
+    })
+    .join("");
+}
+
+function highlightToHtml(text: string, lang: string | null): string {
+  if (!lang) return escapeHtml(text);
+  try {
+    return hastToHtml(lowlight.highlight(lang, text).children);
+  } catch {
+    return escapeHtml(text);
+  }
+}
 
 function HttpBodyView({
   rawBody,
@@ -684,19 +855,48 @@ function HttpBodyView({
           <LuClipboard />
         </IconButton>
       </HStack>
-      <Box
-        as="pre"
-        fontFamily="mono"
-        fontSize="xs"
-        whiteSpace="pre-wrap"
-        wordBreak="break-word"
-        maxH="320px"
-        overflowY="auto"
-      >
-        {text || "(empty body)"}
-      </Box>
+      {text ? (
+        <Box
+          as="pre"
+          className="hljs"
+          fontFamily="mono"
+          fontSize="xs"
+          whiteSpace="pre-wrap"
+          wordBreak="break-word"
+          maxH="320px"
+          overflowY="auto"
+          // Keep wheel/touch scrolls inside this pane — without `contain`,
+          // hitting the top/bottom chains the scroll up to the document
+          // and the user accidentally scrolls past the block.
+          overscrollBehavior="contain"
+          dangerouslySetInnerHTML={{
+            __html: highlightToHtml(text, detectLang(text, view)),
+          }}
+        />
+      ) : (
+        <Box as="pre" fontFamily="mono" fontSize="xs" color="fg.muted">
+          (empty body)
+        </Box>
+      )}
     </>
   );
+}
+
+function detectLang(text: string, view: "pretty" | "raw"): string | null {
+  // Pretty mode: try JSON first (most common), fall back to xml/html on
+  // angle-bracket starts. Raw mode: trust the bytes — same heuristic.
+  void view;
+  const trimmed = text.trimStart();
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    try {
+      JSON.parse(trimmed);
+      return "json";
+    } catch {
+      // fall through
+    }
+  }
+  if (trimmed.startsWith("<")) return "xml";
+  return null;
 }
 
 // ─────────────────────── Cookies + Timing tabs ───────────────────────
@@ -829,13 +1029,11 @@ function HttpResult({
   response,
   error,
   cached,
-  onSaveBodyAsVariable,
 }: {
   executionState: ExecutionState;
   response: HttpResponseFull | null;
   error: string | null;
   cached: boolean;
-  onSaveBodyAsVariable: () => void;
 }) {
   if (executionState === "running") {
     return (
@@ -883,16 +1081,21 @@ function HttpResult({
 
   return (
     <Box px={2} py={2}>
-      <Flex align="center" gap={2} mb={2}>
+      <Flex align="center" gap={2} mb={1}>
+        <Text
+          fontSize="2xs"
+          fontWeight="semibold"
+          color="fg.muted"
+          textTransform="uppercase"
+          letterSpacing="wider"
+        >
+          Response
+        </Text>
         {cached && (
-          <Badge colorPalette="purple" variant="subtle">
+          <Badge colorPalette="purple" variant="subtle" size="xs">
             cached
           </Badge>
         )}
-        <Box flex={1} />
-        <Button size="2xs" variant="ghost" onClick={onSaveBodyAsVariable}>
-          Save body as variable
-        </Button>
       </Flex>
       <Tabs.Root defaultValue="body" size="sm" variant="line">
         <Tabs.List>
@@ -1295,6 +1498,48 @@ export const HttpFencedPanel = memo(function HttpFencedPanel({
 
   const abortRef = useRef<AbortController | null>(null);
 
+  // Cached refs context (blocks above + env keys) for `{{ref}}` autocomplete
+  // inside the form-mode inputs. Refreshed when the doc changes structure
+  // (block.from moves, env switches). Stored in a ref so the autocomplete
+  // extension reads always-fresh data without the panel re-rendering for
+  // every doc transaction.
+  const refsCtxRef = useRef<{
+    blocks: BlockContext[];
+    envKeys: (string | EnvKeyInfo)[];
+  }>({ blocks: [], envKeys: [] });
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const blocks = await collectBlocksAboveCM(
+          view.state.doc,
+          block.from,
+          filePath,
+        );
+        const env = await useEnvironmentStore.getState().getActiveVariables();
+        if (cancelled) return;
+        refsCtxRef.current = {
+          blocks,
+          envKeys: Object.keys(env),
+        };
+      } catch {
+        /* best-effort */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [block.from, filePath, view.state.doc]);
+
+  const refsGetters = useMemo(
+    () => ({
+      getBlocks: () => refsCtxRef.current.blocks,
+      getEnvKeys: () => refsCtxRef.current.envKeys,
+    }),
+    [],
+  );
+
   // Hydrate from cache on mount / body change. Mutations are skipped:
   // re-running a destructive POST without a fresh user click is unsafe.
   useEffect(() => {
@@ -1696,34 +1941,10 @@ export const HttpFencedPanel = memo(function HttpFencedPanel({
     setDrawerOpen(false);
   }, [block.from, block.to, view]);
 
-  /** Save the current response body as a variable in the active environment.
-   * Uses `window.prompt` to ask for a key; default suggestion is the block
-   * alias + `_response`. Body is stringified — JSON values become indented
-   * JSON, scalars become their text. No-op if there's no active env. */
-  const saveBodyAsVariable = useCallback(async () => {
-    if (!response) return;
-    const env = useEnvironmentStore.getState().activeEnvironment;
-    if (!env) {
-      window.alert(
-        "No active environment. Create or activate one before saving.",
-      );
-      return;
-    }
-    const suggested = `${block.metadata.alias ?? "response"}_body`;
-    const key = window.prompt("Variable name:", suggested);
-    if (!key) return;
-    const value =
-      typeof response.body === "string"
-        ? response.body
-        : JSON.stringify(response.body);
-    try {
-      await useEnvironmentStore.getState().setVariable(env.id, key, value);
-    } catch (e) {
-      window.alert(
-        `Failed to save variable: ${e instanceof Error ? e.message : String(e)}`,
-      );
-    }
-  }, [block.metadata.alias, response]);
+  // "Save body as variable" was removed — block references
+  // (`{{alias.response.path}}`) cover the same use case more cleanly. A
+  // proper context-menu-on-JSON-value with path-aware "Save as variable"
+  // is reserved for a follow-up (see http-block-redesign §2.5).
 
   // ── Form-mode editing: re-emit raw body whenever the form changes ──
   const replaceBody = useCallback(
@@ -1810,7 +2031,11 @@ export const HttpFencedPanel = memo(function HttpFencedPanel({
 
       {formNode &&
         createPortal(
-          <HttpFormPanel parsed={parsed} onChange={onFormChange} />,
+          <HttpFormPanel
+            parsed={parsed}
+            onChange={onFormChange}
+            refsGetters={refsGetters}
+          />,
           formNode,
         )}
 
@@ -1821,7 +2046,6 @@ export const HttpFencedPanel = memo(function HttpFencedPanel({
             response={response}
             error={error}
             cached={cached}
-            onSaveBodyAsVariable={saveBodyAsVariable}
           />,
           resultNode,
         )}

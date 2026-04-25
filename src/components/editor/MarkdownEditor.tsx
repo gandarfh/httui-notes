@@ -581,6 +581,53 @@ const editorTheme = EditorView.theme({
     userSelect: "none",
     pointerEvents: "auto",
   },
+  ".cm-http-result-portal": {
+    overflowAnchor: "none",
+    margin: 0,
+    background: "var(--chakra-colors-bg)",
+    borderLeft: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
+    borderRight: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
+    borderTop: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
+    minHeight: "var(--chakra-spacing-12)",
+    // Stop scrolls inside the response from chaining into the document
+    // when the user reaches the end of the inner pane.
+    overscrollBehavior: "contain",
+    "& [data-overflow='auto'], & pre, & .cm-scroller": {
+      overscrollBehavior: "contain",
+    },
+    // Syntax highlighting tokens for the response body (lowlight + hljs).
+    // JSON keys (hljs-attr) take a key color distinct from string values
+    // (hljs-string) so the structure reads at a glance.
+    "& .hljs-attr": {
+      color: "var(--chakra-colors-blue-500)",
+    },
+    "& .hljs-string": {
+      color: "var(--chakra-colors-green-500)",
+    },
+    "& .hljs-number": {
+      color: "var(--chakra-colors-orange-500)",
+    },
+    "& .hljs-literal, & .hljs-built_in": {
+      color: "var(--chakra-colors-red-400)",
+    },
+    "& .hljs-keyword, & .hljs-selector-tag": {
+      color: "var(--chakra-colors-purple-500)",
+    },
+    "& .hljs-punctuation, & .hljs-meta": {
+      color: "var(--chakra-colors-fg-muted)",
+    },
+    "& .hljs-comment": {
+      color: "var(--chakra-colors-fg-muted)",
+      fontStyle: "italic",
+    },
+    "& .hljs-type, & .hljs-class .hljs-title": {
+      color: "var(--chakra-colors-cyan-500)",
+    },
+    "& .hljs-tag, & .hljs-name, & .hljs-selector-id, & .hljs-selector-class": {
+      color: "var(--chakra-colors-purple-400)",
+    },
+    "& .hljs-title": { color: "var(--chakra-colors-yellow-500)" },
+  },
   ".cm-http-statusbar-portal": {
     background: "color-mix(in srgb, var(--chakra-colors-fg) 1.5%, transparent)",
     borderLeft: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
@@ -593,22 +640,64 @@ const editorTheme = EditorView.theme({
   },
   ".cm-http-form-portal": {
     display: "block",
-    background: "var(--chakra-colors-bg)",
+    background: "var(--chakra-colors-bg-canvas, var(--chakra-colors-bg))",
     borderLeft: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
     borderRight: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
     minHeight: "var(--chakra-spacing-12)",
   },
   ".cm-http-fence-hidden": { display: "none" },
+  // Body lines hold the HTTP-message text. Each gets a left gutter
+  // (`::before`) showing the in-block line number via CSS counters —
+  // reset on the first body line of each block, incremented on every
+  // body line. Pure CSS, no JS widget bookkeeping per line.
+  // Layout:
+  //   [ 8px card-internal pad ][ 20px number (right-aligned) ][ 16px gap ][ HTTP text ]
+  //    = paddingLeft of 44px total, with ::before occupying 8-28px.
   ".cm-http-body-line": {
-    paddingLeft: "var(--chakra-spacing-3)",
+    paddingLeft: "44px",
     paddingRight: "var(--chakra-spacing-3)",
-    background: "var(--chakra-colors-bg)",
+    paddingTop: 0,
+    paddingBottom: 0,
+    background: "var(--chakra-colors-bg-canvas, var(--chakra-colors-bg))",
     borderLeft: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
     borderRight: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
     fontFamily: "var(--chakra-fonts-mono)",
+    fontSize: "13px",
+    lineHeight: "20px",
+    position: "relative",
+    counterIncrement: "http-line",
+    // Reset the generic markdown highlighter — without this the body lines
+    // inherit colors from `setext heading`, `list-item`, and other markdown
+    // tokens that happen to match HTTP-message line shapes.
+    color: "var(--chakra-colors-fg)",
+    "& .tok-heading, & .tok-heading1, & .tok-heading2, & .tok-list, & .tok-strong, & .tok-emphasis, & .ͼ8, & .ͼ9, & .ͼa, & .ͼb, & .ͼc, & .ͼd, & .ͼe, & .ͼf": {
+      color: "inherit",
+      fontWeight: "inherit",
+      fontStyle: "normal",
+      textDecoration: "none",
+    },
   },
-  ".cm-http-body-line-first": { paddingTop: "var(--chakra-spacing-2)" },
-  ".cm-http-body-line-last": { paddingBottom: "var(--chakra-spacing-2)" },
+  // Number matches the body text's font-size + line-height exactly so the
+  // two share a baseline. Hierarchy comes from colour + opacity, not size.
+  ".cm-http-body-line::before": {
+    content: "counter(http-line)",
+    position: "absolute",
+    left: "var(--chakra-spacing-2)",
+    top: 0,
+    width: "20px",
+    textAlign: "right",
+    color: "var(--chakra-colors-fg-muted)",
+    opacity: 0.5,
+    fontSize: "inherit",
+    lineHeight: "inherit",
+    fontFamily: "var(--chakra-fonts-mono)",
+    fontVariantNumeric: "tabular-nums",
+    userSelect: "none",
+    pointerEvents: "none",
+  },
+  // First body line only seeds the counter — no padding override (variable
+  // line heights confuse CM6's pixel-based `cursorLineUp`).
+  ".cm-http-body-line-first": { counterReset: "http-line" },
   // Method coloring on the first request line.
   ".cm-http-method": { fontWeight: 600 },
   ".cm-http-method-get": { color: "var(--chakra-colors-green-500)" },
@@ -618,12 +707,52 @@ const editorTheme = EditorView.theme({
   ".cm-http-method-delete": { color: "var(--chakra-colors-red-500)" },
   ".cm-http-method-head": { color: "var(--chakra-colors-purple-500)" },
   ".cm-http-method-options": { color: "var(--chakra-colors-gray-500)" },
-  // Editing-mode fence lines: keep visible but muted.
+  // Per-line semantics that override the generic markdown highlighter.
+  ".cm-http-line-comment": {
+    color: "var(--chakra-colors-fg-muted)",
+    opacity: 0.7,
+  },
+  ".cm-http-line-desc": {
+    color: "var(--chakra-colors-teal-500)",
+    fontStyle: "italic",
+    opacity: 0.85,
+  },
+  ".cm-http-line-query": {
+    color: "var(--chakra-colors-cyan-600)",
+  },
+  ".cm-http-line-header": {
+    color: "var(--chakra-colors-fg)",
+  },
+  ".cm-http-header-key": {
+    color: "var(--chakra-colors-purple-500)",
+    fontWeight: 500,
+  },
+  // Editing-mode fence lines: muted text + side borders + subtle background
+  // (matches the DB block treatment so the open/close fences read as the
+  // top/bottom rim of the card while the cursor is inside the block).
   ".cm-http-fence-line": {
     color: "var(--chakra-colors-fg-muted)",
     fontFamily: "var(--chakra-fonts-mono)",
     fontSize: "var(--chakra-font-sizes-xs)",
-    opacity: 0.6,
+    opacity: 0.3,
+    position: "relative",
+    background: "var(--chakra-colors-bg-subtle)",
+    borderLeft: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
+    borderRight: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
+    paddingLeft: "var(--chakra-spacing-3)",
+    paddingRight: "var(--chakra-spacing-3)",
+  },
+  ".cm-http-fence-line-open": {
+    borderTop: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
+    borderTopLeftRadius: "var(--chakra-radii-md)",
+    borderTopRightRadius: "var(--chakra-radii-md)",
+    paddingTop: "var(--chakra-spacing-2)",
+  },
+  ".cm-http-fence-line-close": {
+    paddingBottom: "var(--chakra-spacing-2)",
+    borderBottom: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
+    borderBottomLeftRadius: "var(--chakra-radii-md)",
+    borderBottomRightRadius: "var(--chakra-radii-md)",
   },
 }, { dark: true });
 

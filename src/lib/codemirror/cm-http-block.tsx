@@ -606,12 +606,56 @@ function buildHttpDecorations(
         if (editing) classes.push("cm-http-body-editing");
         if (n === firstBodyLine) classes.push("cm-http-body-line-first");
         if (n === lastBodyLine) classes.push("cm-http-body-line-last");
+
+        // Per-line syntax classification — overrides the generic markdown
+        // highlighter (which colors `?`/`#`/`-` lines unpredictably) with
+        // semantics that match the HTTP-message format. Order:
+        //   1. comment + desc:  → cm-http-line-desc
+        //   2. comment generic  → cm-http-line-comment
+        //   3. query continuation (`^[?&]`) → cm-http-line-query
+        //   4. header (`Key: Value`)        → cm-http-line-header
+        //   5. body (after first blank)     → cm-http-line-body
+        const text = line.text;
+        const trimmed = text.trim();
+        if (trimmed.startsWith("# desc:")) {
+          classes.push("cm-http-line-desc");
+        } else if (trimmed.startsWith("#")) {
+          classes.push("cm-http-line-comment");
+        } else if (/^\s*[?&]/.test(text)) {
+          classes.push("cm-http-line-query");
+        } else if (n > firstBodyLine && /^\s*[A-Za-z][\w-]*:/.test(text)) {
+          // First body line is `METHOD URL` — never a header. From the second
+          // body line on, a `Key:` start signals a header (until the first
+          // blank line; we don't track that here, but `cm-http-line-body`
+          // overrides for body lines below).
+          classes.push("cm-http-line-header");
+        }
+
         items.push({
           from: line.from,
           to: line.from,
           deco: Decoration.line({ class: classes.join(" ") }),
           order: 0,
         });
+
+        // Mark the header KEY (everything before the first `:`) on header
+        // lines so CSS can color it independently from the value.
+        if (
+          n > firstBodyLine &&
+          !trimmed.startsWith("#") &&
+          /^\s*[A-Za-z][\w-]*:/.test(text)
+        ) {
+          const colonIdx = text.indexOf(":");
+          if (colonIdx > 0) {
+            const indent = text.length - text.trimStart().length;
+            items.push({
+              from: line.from + indent,
+              to: line.from + colonIdx,
+              deco: Decoration.mark({ class: "cm-http-header-key" }),
+              order: 2,
+            });
+          }
+        }
       }
 
       // Method coloring on the first request line
