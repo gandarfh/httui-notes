@@ -529,3 +529,148 @@ export function legacyToHttpMessage(legacy: LegacyHttpBody): HttpMessageParsed {
     body: legacy.body,
   };
 }
+
+// ─────────────────────── Body mode ↔ Content-Type ───────────────────────
+
+/**
+ * Body mode pill values. `none` means no `Content-Type` header is set.
+ *
+ * The pill is a *view* over the `Content-Type` header — selecting a mode
+ * rewrites only that header value (or removes it for `none`); the body
+ * itself is never touched. See `setContentTypeForMode` and
+ * `isCompatibleSwitch` for the read-modify-write contract.
+ */
+export type HttpBodyMode =
+  | "none"
+  | "json"
+  | "xml"
+  | "text"
+  | "form-urlencoded"
+  | "multipart"
+  | "binary";
+
+const BODY_MODE_TO_CT: Record<Exclude<HttpBodyMode, "none">, string> = {
+  json: "application/json",
+  xml: "application/xml",
+  text: "text/plain",
+  "form-urlencoded": "application/x-www-form-urlencoded",
+  multipart: "multipart/form-data",
+  binary: "application/octet-stream",
+};
+
+const TEXTUAL_MODES: ReadonlySet<HttpBodyMode> = new Set([
+  "json",
+  "xml",
+  "text",
+]);
+
+const STRUCTURED_MODES: ReadonlySet<HttpBodyMode> = new Set([
+  "form-urlencoded",
+  "multipart",
+  "binary",
+]);
+
+const CONTENT_TYPE_HEADER = "Content-Type";
+
+function findContentTypeIndex(headers: HttpKVRow[]): number {
+  return headers.findIndex(
+    (h) => h.key.toLowerCase() === "content-type",
+  );
+}
+
+/**
+ * Map a `Content-Type` value (without parameters like `; charset=utf-8`) to a
+ * pill mode. Unknown types fall back to `text` so the user can still
+ * reformat; absence of the header yields `none`.
+ */
+export function deriveBodyMode(headers: HttpKVRow[]): HttpBodyMode {
+  const idx = findContentTypeIndex(headers);
+  if (idx === -1) return "none";
+  const row = headers[idx];
+  if (!row.enabled) return "none";
+  // Strip parameters (`; charset=utf-8`, `; boundary=...`) and lowercase.
+  const mime = row.value.split(";")[0].trim().toLowerCase();
+  if (mime === "") return "none";
+  if (mime === "application/json" || mime.endsWith("+json")) return "json";
+  if (mime === "application/xml" || mime === "text/xml" || mime.endsWith("+xml"))
+    return "xml";
+  if (mime === "text/plain") return "text";
+  if (mime === "application/x-www-form-urlencoded") return "form-urlencoded";
+  if (mime.startsWith("multipart/")) return "multipart";
+  if (
+    mime === "application/octet-stream" ||
+    mime.startsWith("image/") ||
+    mime.startsWith("audio/") ||
+    mime.startsWith("video/") ||
+    mime === "application/pdf"
+  )
+    return "binary";
+  if (mime.startsWith("text/")) return "text";
+  // Default for unknown types: keep as text so the user can edit cleanly.
+  return "text";
+}
+
+/**
+ * Set the `Content-Type` header so it matches the desired body mode. Idempotent
+ * and surgical — body, params, URL and other headers are never touched.
+ *
+ * - `none` removes any existing `Content-Type` header (case-insensitive).
+ * - Any other mode replaces the value of an existing header (preserving
+ *   description/disabled flag) or appends a new enabled header at the end of
+ *   the headers list.
+ */
+export function setContentTypeForMode(
+  parsed: HttpMessageParsed,
+  next: HttpBodyMode,
+): HttpMessageParsed {
+  const idx = findContentTypeIndex(parsed.headers);
+  const headers = parsed.headers.slice();
+
+  if (next === "none") {
+    if (idx === -1) return parsed;
+    headers.splice(idx, 1);
+    return { ...parsed, headers };
+  }
+
+  const value = BODY_MODE_TO_CT[next];
+  if (idx === -1) {
+    headers.push({ key: CONTENT_TYPE_HEADER, value, enabled: true });
+  } else {
+    const prev = headers[idx];
+    if (prev.value === value && prev.enabled) return parsed;
+    headers[idx] = { ...prev, value, enabled: true };
+  }
+  return { ...parsed, headers };
+}
+
+/**
+ * Decide whether switching from `prev` to `next` is "compatible" with the
+ * current body. Used to surface a warning toast — the switch is *never*
+ * blocked, the user just gets a heads-up that the body shape no longer
+ * matches the declared `Content-Type`.
+ *
+ * Compatibility rules (intentionally loose):
+ * - If the body is empty → always compatible (nothing to misinterpret).
+ * - Same mode → compatible.
+ * - Toggling between textual modes (json/xml/text) → compatible (the user
+ *   is just changing the declared subtype; payload may still need editing
+ *   but it's not a structural mismatch).
+ * - Going from a textual body to a structured mode (form-urlencoded /
+ *   multipart / binary) → **incompatible** (current text won't parse).
+ * - Going from `none` → anything is compatible (we're only adding a
+ *   declaration).
+ */
+export function isCompatibleSwitch(
+  prev: HttpBodyMode,
+  next: HttpBodyMode,
+  body: string,
+): boolean {
+  if (prev === next) return true;
+  if (body.trim().length === 0) return true;
+  if (prev === "none") return true;
+  if (TEXTUAL_MODES.has(prev) && TEXTUAL_MODES.has(next)) return true;
+  if (TEXTUAL_MODES.has(prev) && STRUCTURED_MODES.has(next)) return false;
+  // Structured → textual or structured → structured: textual content is
+  // unlikely to live there anyway; allow with no warning.
+  return true;
+}

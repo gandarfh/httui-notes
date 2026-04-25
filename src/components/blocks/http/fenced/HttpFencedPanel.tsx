@@ -54,16 +54,24 @@ import {
   type HttpPortalEntry,
 } from "@/lib/codemirror/cm-http-block";
 import {
+  deriveBodyMode,
+  isCompatibleSwitch,
   parseHttpMessageBody,
   parseLegacyHttpBody,
   legacyToHttpMessage,
+  setContentTypeForMode,
   stringifyHttpFenceInfo,
   stringifyHttpMessageBody,
   type HttpBlockMetadata,
+  type HttpBodyMode,
   type HttpDisplayMode,
   type HttpMessageParsed,
   type HttpMethod,
 } from "@/lib/blocks/http-fence";
+import type { HttpBlockSettings } from "@/lib/tauri/commands";
+import { useBlockSettings } from "./useBlockSettings";
+import { toaster } from "@/components/ui/toaster";
+import { Switch } from "@/components/ui/switch";
 import {
   cancelBlockExecution,
   executeHttpStreamed,
@@ -396,6 +404,7 @@ function buildExecutorParams(
   parsed: HttpMessageParsed,
   resolveText: (s: string) => string,
   timeoutMs: number | undefined,
+  settings: HttpBlockSettings = {},
 ): { params: Record<string, unknown>; errors: string[] } {
   const errors: string[] = [];
 
@@ -438,6 +447,13 @@ function buildExecutorParams(
     body: parsed.body ? resolveText(parsed.body) : "",
   };
   if (timeoutMs !== undefined) params.timeout_ms = timeoutMs;
+  // Per-block transport flags (Onda 1). We forward only explicit overrides
+  // so the backend's defaults (true / true / true / true) stay in charge
+  // when the row is absent.
+  if (settings.followRedirects === false) params.follow_redirects = false;
+  if (settings.verifySsl === false) params.verify_ssl = false;
+  if (settings.encodeUrl === false) params.encode_url = false;
+  if (settings.trimWhitespace === false) params.trim_whitespace = false;
   return { params, errors };
 }
 
@@ -450,21 +466,25 @@ function HttpToolbar({
   method,
   host,
   mode,
+  bodyMode,
   executionState,
   onRun,
   onCancel,
   onOpenSettings,
   onToggleMode,
+  onPickBodyMode,
 }: {
   alias: string | undefined;
   method: HttpMethod;
   host: string | null;
   mode: "raw" | "form";
+  bodyMode: HttpBodyMode;
   executionState: ExecutionState;
   onRun: () => void;
   onCancel: () => void;
   onOpenSettings: () => void;
   onToggleMode: (next: "raw" | "form") => void;
+  onPickBodyMode: (next: HttpBodyMode) => void;
 }) {
   const running = executionState === "running";
   return (
@@ -543,6 +563,45 @@ function HttpToolbar({
           form
         </Button>
       </HStack>
+      <Menu.Root positioning={{ placement: "bottom-end" }}>
+        <Menu.Trigger asChild>
+          <Button
+            size="2xs"
+            variant="outline"
+            aria-label={`Body mode: ${bodyMode}`}
+            title="Set Content-Type for request body"
+            fontFamily="mono"
+          >
+            {bodyMode}
+          </Button>
+        </Menu.Trigger>
+        <Portal>
+          <Menu.Positioner>
+            <Menu.Content minW="180px" py={1}>
+              {(
+                [
+                  "none",
+                  "json",
+                  "xml",
+                  "text",
+                  "form-urlencoded",
+                  "multipart",
+                  "binary",
+                ] as HttpBodyMode[]
+              ).map((m) => (
+                <Menu.Item
+                  key={m}
+                  value={m}
+                  onSelect={() => onPickBodyMode(m)}
+                  fontFamily="mono"
+                >
+                  {m}
+                </Menu.Item>
+              ))}
+            </Menu.Content>
+          </Menu.Positioner>
+        </Portal>
+      </Menu.Root>
       {running ? (
         <IconButton
           aria-label="Cancel request"
@@ -1271,15 +1330,19 @@ function HttpStatusBar({
 function HttpDrawer({
   metadata,
   history,
+  settings,
   onClose,
   onUpdateMetadata,
+  onUpdateSettings,
   onDelete,
   onPurgeHistory,
 }: {
   metadata: HttpBlockMetadata;
   history: HistoryEntry[];
+  settings: HttpBlockSettings;
   onClose: () => void;
   onUpdateMetadata: (patch: Partial<HttpBlockMetadata>) => void;
+  onUpdateSettings: (patch: Partial<HttpBlockSettings>) => void;
   onDelete: () => void;
   onPurgeHistory: () => void;
 }) {
@@ -1389,6 +1452,74 @@ function HttpDrawer({
             />
           </Field.Root>
 
+          {/* ── Per-block flags (Onda 1) ── */}
+          {(
+            [
+              {
+                key: "followRedirects" as const,
+                label: "Follow redirects",
+                hint: "Disable to inspect 3xx responses directly.",
+                defaultOn: true,
+              },
+              {
+                key: "verifySsl" as const,
+                label: "Verify SSL",
+                hint: "Disable to accept self-signed certificates.",
+                defaultOn: true,
+              },
+              {
+                key: "encodeUrl" as const,
+                label: "Encode URL",
+                hint: "Auto-encode query values. Disable when values are pre-encoded.",
+                defaultOn: true,
+              },
+              {
+                key: "trimWhitespace" as const,
+                label: "Trim whitespace",
+                hint: "Strip whitespace from headers, params, and body.",
+                defaultOn: true,
+              },
+              {
+                key: "historyDisabled" as const,
+                label: "Disable history",
+                hint: "Stop logging runs in this block's history.",
+                defaultOn: false,
+              },
+            ]
+          ).map(({ key, label, hint, defaultOn }) => {
+            const value = settings[key];
+            // `historyDisabled` defaults OFF (i.e. checked=false), all others
+            // default ON. `value === undefined` means "use default".
+            const checked =
+              value === undefined ? defaultOn : value;
+            return (
+              <Flex
+                key={key}
+                align="center"
+                justify="space-between"
+                gap={2}
+                mb={2}
+              >
+                <Box>
+                  <Text fontSize="xs" fontWeight="medium">
+                    {label}
+                  </Text>
+                  <Text fontSize="2xs" color="fg.muted">
+                    {hint}
+                  </Text>
+                </Box>
+                <Switch
+                  size="sm"
+                  checked={checked}
+                  onCheckedChange={(e: { checked: boolean }) =>
+                    onUpdateSettings({ [key]: e.checked })
+                  }
+                  aria-label={label}
+                />
+              </Flex>
+            );
+          })}
+
           <Text
             fontSize="xs"
             color="fg.muted"
@@ -1491,6 +1622,7 @@ export const HttpFencedPanel = memo(function HttpFencedPanel({
   const [lastRunAt, setLastRunAt] = useState<Date | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
+  const [settings, setSettings] = useBlockSettings(filePath, block.metadata.alias);
   // Tick incremented on every successful insert + on drawer-open so the
   // drawer's `useEffect` re-fetches without us coupling its dependency
   // array to a fast-changing array reference.
@@ -1603,6 +1735,8 @@ export const HttpFencedPanel = memo(function HttpFencedPanel({
     }) => {
       const alias = block.metadata.alias;
       if (!alias) return; // No alias → no stable key to bucket history under.
+      // User opt-out (Onda 1) — drawer toggle persisted in `block_settings`.
+      if (settings.historyDisabled === true) return;
       try {
         await insertBlockHistory({
           file_path: filePath,
@@ -1620,7 +1754,7 @@ export const HttpFencedPanel = memo(function HttpFencedPanel({
         /* Best-effort. */
       }
     },
-    [block.metadata.alias, filePath],
+    [block.metadata.alias, filePath, settings.historyDisabled],
   );
 
   const runBlock = useCallback(async () => {
@@ -1657,6 +1791,7 @@ export const HttpFencedPanel = memo(function HttpFencedPanel({
         parsed,
         resolveText,
         block.metadata.timeoutMs,
+        settings,
       );
 
       if (paramErrors.length > 0) {
@@ -1763,6 +1898,7 @@ export const HttpFencedPanel = memo(function HttpFencedPanel({
     filePath,
     parsed,
     recordHistory,
+    settings,
     view,
   ]);
 
@@ -2005,11 +2141,29 @@ export const HttpFencedPanel = memo(function HttpFencedPanel({
     ],
   );
 
+  const onPickBodyMode = useCallback(
+    (next: HttpBodyMode) => {
+      const prev = deriveBodyMode(parsed.headers);
+      if (prev === next) return;
+      if (!isCompatibleSwitch(prev, next, parsed.body)) {
+        toaster.create({
+          type: "warning",
+          title: "Body may be incompatible",
+          description: `Switched to ${next}. Existing body still looks like ${prev}; clear or replace it if it doesn't match.`,
+        });
+      }
+      const updated = setContentTypeForMode(parsed, next);
+      replaceBody(stringifyHttpMessageBody(updated));
+    },
+    [parsed, replaceBody],
+  );
+
   const toolbarNode = entry.toolbar;
   const formNode = entry.form;
   const resultNode = entry.result;
   const statusbarNode = entry.statusbar;
   const currentMode: "raw" | "form" = block.metadata.mode === "form" ? "form" : "raw";
+  const currentBodyMode = deriveBodyMode(parsed.headers);
 
   return (
     <>
@@ -2020,11 +2174,13 @@ export const HttpFencedPanel = memo(function HttpFencedPanel({
             method={parsed.method}
             host={host}
             mode={currentMode}
+            bodyMode={currentBodyMode}
             executionState={executionState}
             onRun={() => void runBlock()}
             onCancel={cancelBlock}
             onOpenSettings={onOpenSettings}
             onToggleMode={onToggleMode}
+            onPickBodyMode={onPickBodyMode}
           />,
           toolbarNode,
         )}
@@ -2069,8 +2225,10 @@ export const HttpFencedPanel = memo(function HttpFencedPanel({
         <HttpDrawer
           metadata={block.metadata}
           history={historyEntries}
+          settings={settings}
           onClose={() => setDrawerOpen(false)}
           onUpdateMetadata={updateMetadata}
+          onUpdateSettings={setSettings}
           onDelete={deleteBlockFromDoc}
           onPurgeHistory={async () => {
             const alias = block.metadata.alias;

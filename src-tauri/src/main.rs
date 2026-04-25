@@ -169,6 +169,42 @@ async fn purge_block_history(
         .map_err(|e| e.to_string())
 }
 
+// --- Per-block settings (Onda 1) ---
+
+#[tauri::command]
+async fn get_block_settings(
+    pool: tauri::State<'_, SqlitePool>,
+    file_path: String,
+    block_alias: String,
+) -> Result<httui_notes::block_settings::BlockSettings, String> {
+    httui_notes::block_settings::get_settings(&pool, &file_path, &block_alias)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn upsert_block_settings(
+    pool: tauri::State<'_, SqlitePool>,
+    file_path: String,
+    block_alias: String,
+    settings: httui_notes::block_settings::BlockSettings,
+) -> Result<(), String> {
+    httui_notes::block_settings::upsert_settings(&pool, &file_path, &block_alias, settings)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn purge_block_settings(
+    pool: tauri::State<'_, SqlitePool>,
+    file_path: String,
+    block_alias: String,
+) -> Result<u64, String> {
+    httui_notes::block_settings::purge_settings(&pool, &file_path, &block_alias)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// T31/T35: Server-side hash computation including environment + connection context.
 #[tauri::command]
 async fn compute_block_hash(
@@ -732,6 +768,9 @@ fn main() {
             list_block_history,
             insert_block_history,
             purge_block_history,
+            get_block_settings,
+            upsert_block_settings,
+            purge_block_settings,
             get_block_result,
             save_block_result,
             compute_block_hash,

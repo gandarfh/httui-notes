@@ -330,3 +330,43 @@ export function purgeBlockHistory(
 ): Promise<number> {
   return invoke("purge_block_history", { filePath, blockAlias });
 }
+
+// --- Per-block settings (Onda 1) ---
+//
+// Stored in the SQLite `block_settings` table keyed by (file_path, alias).
+// All flags are `undefined` when the user never overrode the default — the
+// frontend treats absent values as defaults (true for follow_redirects,
+// verify_ssl, encode_url, trim_whitespace; false for history_disabled).
+
+export interface HttpBlockSettings {
+  followRedirects?: boolean;
+  verifySsl?: boolean;
+  encodeUrl?: boolean;
+  trimWhitespace?: boolean;
+  historyDisabled?: boolean;
+}
+
+/** Reads settings; missing row → all-undefined object (use defaults). */
+export function getBlockSettings(
+  filePath: string,
+  blockAlias: string,
+): Promise<HttpBlockSettings> {
+  return invoke("get_block_settings", { filePath, blockAlias });
+}
+
+/** Upserts settings. Pass `undefined` for any flag to revert it to default. */
+export function upsertBlockSettings(
+  filePath: string,
+  blockAlias: string,
+  settings: HttpBlockSettings,
+): Promise<void> {
+  return invoke("upsert_block_settings", { filePath, blockAlias, settings });
+}
+
+/** Removes the row entirely. Used as cascade when a block is deleted. */
+export function purgeBlockSettings(
+  filePath: string,
+  blockAlias: string,
+): Promise<number> {
+  return invoke("purge_block_settings", { filePath, blockAlias });
+}
