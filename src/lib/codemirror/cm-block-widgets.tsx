@@ -16,7 +16,13 @@ import { StandaloneBlock } from "@/components/blocks/standalone/StandaloneBlock"
  */
 export const widgetTransaction = Annotation.define<boolean>();
 
+// Scanner still detects both http + e2e so cross-block resolvers
+// (cm-references, document.ts dependency walker, DiffViewer) keep working
+// for legacy http content. The editor widget builder, however, only mounts
+// the BlockAdapter pipeline for e2e — http blocks are rendered by
+// `cm-http-block.tsx` instead. See `EDITOR_WIDGET_LANGS` below.
 const BLOCK_OPEN_RE = /^```(http|e2e)(.*)$/;
+const EDITOR_WIDGET_LANGS: ReadonlySet<string> = new Set(["e2e"]);
 const BLOCK_CLOSE_RE = /^```\s*$/;
 
 export interface FencedBlock {
@@ -242,9 +248,12 @@ export function getWidgetContainers() { return widgetContainers; }
 
 /**
  * Portal widget — a div in CM6's document flow.
- * React renders block components (HttpBlockView, E2eBlockView)
- * directly into this div via createPortal. CM6 measures height naturally.
- * No overlay, no absolute positioning, no height cache.
+ * React renders the e2e block component (E2eBlockView) directly into this
+ * div via createPortal. CM6 measures height naturally. No overlay, no
+ * absolute positioning, no height cache.
+ *
+ * (Pre-redesign this also rendered HTTP blocks; those now live in
+ * `cm-http-block.tsx` + `HttpFencedPanel`.)
  */
 // Height cache keyed by blockId — stores last measured DOM height so CM6's
 // estimatedHeight returns a stable value even across widget rebuilds.
@@ -351,7 +360,11 @@ const hiddenLineDecoration = Decoration.line({ class: "cm-hidden-block-line" });
 
 function buildEditorDecorations(state: import("@codemirror/state").EditorState): DecorationSet {
   const decorations: { from: number; to: number; deco: Decoration }[] = [];
-  const blocks = findFencedBlocks(state.doc);
+  // Filter to languages this adapter still handles. http blocks render via
+  // `cm-http-block.tsx` and would clash if both extensions decorated them.
+  const blocks = findFencedBlocks(state.doc).filter((b) =>
+    EDITOR_WIDGET_LANGS.has(b.lang),
+  );
 
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i];
@@ -388,11 +401,12 @@ function buildEditorDecorations(state: import("@codemirror/state").EditorState):
   return builder.finish();
 }
 
-/** Count blocks in a document (lightweight structural change check) */
+/** Count adapter-routed blocks in a document (only e2e today). */
 function countBlocks(doc: CMText): number {
   let count = 0;
   for (let i = 1; i <= doc.lines; i++) {
-    if (BLOCK_OPEN_RE.test(doc.line(i).text)) count++;
+    const m = doc.line(i).text.match(BLOCK_OPEN_RE);
+    if (m && EDITOR_WIDGET_LANGS.has(m[1])) count++;
   }
   return count;
 }
@@ -408,7 +422,9 @@ export function createEditorBlockWidgets() {
 
   const field = StateField.define<DecorationSet>({
     create(state) {
-      cachedBlocks = findFencedBlocks(state.doc);
+      cachedBlocks = findFencedBlocks(state.doc).filter((b) =>
+        EDITOR_WIDGET_LANGS.has(b.lang),
+      );
       lastBlockCount = cachedBlocks.length;
       return buildEditorDecorations(state);
     },
@@ -420,7 +436,9 @@ export function createEditorBlockWidgets() {
         const newCount = countBlocks(tr.state.doc);
         if (newCount !== lastBlockCount) {
           lastBlockCount = newCount;
-          cachedBlocks = findFencedBlocks(tr.state.doc);
+          cachedBlocks = findFencedBlocks(tr.state.doc).filter((b) =>
+            EDITOR_WIDGET_LANGS.has(b.lang),
+          );
           return buildEditorDecorations(tr.state);
         }
         return decos.map(tr.changes);

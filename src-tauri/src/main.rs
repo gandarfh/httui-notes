@@ -75,6 +75,30 @@ impl httui_notes::executor::Executor for SharedDbExecutor {
     }
 }
 
+/// Same pattern as `SharedDbExecutor` for the HTTP executor. The streamed
+/// command lives in `executions.rs` and pulls the `Arc<HttpExecutor>` from
+/// Tauri state; the legacy `execute_block` path continues through the
+/// registry via this wrapper.
+struct SharedHttpExecutor(Arc<httui_notes::executor::http::HttpExecutor>);
+
+#[async_trait::async_trait]
+impl httui_notes::executor::Executor for SharedHttpExecutor {
+    fn block_type(&self) -> &str {
+        self.0.block_type()
+    }
+
+    async fn validate(&self, params: &serde_json::Value) -> Result<(), String> {
+        self.0.validate(params).await
+    }
+
+    async fn execute(
+        &self,
+        params: serde_json::Value,
+    ) -> Result<httui_notes::executor::BlockResult, httui_notes::executor::ExecutorError> {
+        self.0.execute(params).await
+    }
+}
+
 // --- Block result cache commands ---
 
 #[tauri::command]
@@ -109,6 +133,40 @@ async fn save_block_result(
     )
     .await
     .map_err(|e| e.to_string())
+}
+
+// --- Block run history (Story 24.6) ---
+
+#[tauri::command]
+async fn list_block_history(
+    pool: tauri::State<'_, SqlitePool>,
+    file_path: String,
+    block_alias: String,
+) -> Result<Vec<httui_notes::block_history::HistoryEntry>, String> {
+    httui_notes::block_history::list_history(&pool, &file_path, &block_alias)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn insert_block_history(
+    pool: tauri::State<'_, SqlitePool>,
+    entry: httui_notes::block_history::InsertEntry,
+) -> Result<(), String> {
+    httui_notes::block_history::insert_history_entry(&pool, entry)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn purge_block_history(
+    pool: tauri::State<'_, SqlitePool>,
+    file_path: String,
+    block_alias: String,
+) -> Result<u64, String> {
+    httui_notes::block_history::purge_history(&pool, &file_path, &block_alias)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// T31/T35: Server-side hash computation including environment + connection context.
@@ -634,10 +692,14 @@ fn main() {
             app.manage(db_executor.clone());
             app.manage(httui_notes::executions::ExecutionRegistry::new());
 
+            // HTTP executor is held as Arc<…> so the cancel-aware streamed
+            // command can share a single instance with the legacy `execute_block`.
+            let http_executor =
+                Arc::new(httui_notes::executor::http::HttpExecutor::new());
+            app.manage(http_executor.clone());
+
             let mut executor_registry = httui_notes::executor::ExecutorRegistry::new();
-            executor_registry.register(Box::new(
-                httui_notes::executor::http::HttpExecutor::new(),
-            ));
+            executor_registry.register(Box::new(SharedHttpExecutor(http_executor)));
             executor_registry.register(Box::new(SharedDbExecutor(db_executor)));
             executor_registry.register(Box::new(
                 httui_notes::executor::e2e::E2eExecutor::new(),
@@ -665,7 +727,11 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             execute_block,
             httui_notes::executions::execute_db_streamed,
+            httui_notes::executions::execute_http_streamed,
             httui_notes::executions::cancel_block,
+            list_block_history,
+            insert_block_history,
+            purge_block_history,
             get_block_result,
             save_block_result,
             compute_block_hash,

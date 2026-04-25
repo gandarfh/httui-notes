@@ -82,8 +82,21 @@ const COMMANDS: SlashCommand[] = [
   { label: "Mermaid diagram", type: "diagram", insert: "```mermaid\ngraph TD\n  A --> B\n```\n", section: FORMAT },
 
   // Executable
-  { label: "Database Query", type: "database", insert: '```db alias=db1\n{"connectionId":"","query":""}\n```\n', section: EXEC },
-  { label: "HTTP Request", type: "http", insert: '```http alias=req1\n{"method":"GET","url":"","params":[],"headers":[],"body":""}\n```\n', section: EXEC },
+  // DB blocks use the post-redesign fenced-SQL format (see docs/db-block-redesign.md §2.1).
+  // cursorOffset lands the caret on the empty body line so the user can start typing SQL
+  // immediately; the drawer (⚙) is the preferred way to pick a connection, so we leave
+  // `connection=` off the canonical info string when no default is known.
+  { label: "PostgreSQL Query", type: "database", insert: "```db-postgres alias=db1\n\n```\n", cursorOffset: -5, section: EXEC },
+  { label: "MySQL Query", type: "database", insert: "```db-mysql alias=db1\n\n```\n", cursorOffset: -5, section: EXEC },
+  { label: "SQLite Query", type: "database", insert: "```db-sqlite alias=db1\n\n```\n", cursorOffset: -5, section: EXEC },
+  // HTTP blocks use the post-redesign HTTP-message body format
+  // (see docs/http-block-redesign.md §2.1). cursorOffset lands the caret on
+  // the request line so the user can start typing immediately.
+  { label: "HTTP Request", type: "http", insert: "```http alias=req1\nGET \n```\n", cursorOffset: -5, section: EXEC },
+  { label: "HTTP GET", type: "http", insert: "```http alias=req1\nGET \n```\n", cursorOffset: -5, section: EXEC },
+  { label: "HTTP POST", type: "http", insert: "```http alias=req1\nPOST \nContent-Type: application/json\n\n{}\n```\n", cursorOffset: -23, section: EXEC },
+  { label: "HTTP PUT", type: "http", insert: "```http alias=req1\nPUT \nContent-Type: application/json\n\n{}\n```\n", cursorOffset: -23, section: EXEC },
+  { label: "HTTP DELETE", type: "http", insert: "```http alias=req1\nDELETE \n```\n", cursorOffset: -5, section: EXEC },
   { label: "E2E Test", type: "e2e", insert: '```e2e alias=e2e1\n{"baseUrl":"","headers":[],"steps":[]}\n```\n', section: EXEC },
 ];
 

@@ -1,11 +1,10 @@
 /**
- * Cancel-aware DB block execution over a Tauri Channel.
+ * Cancel-aware block execution over a Tauri Channel.
  *
- * Stage 3 of the DB block redesign: this module wires the new
- * `execute_db_streamed` / `cancel_block` Rust commands. Today's UI
- * still uses the synchronous `execute_block` path; the streamed API
- * lands here so stage 5 can swap it in without landing plumbing at
- * the same time as toolbar/drawer work.
+ * Wires the `execute_db_streamed` / `execute_http_streamed` / `cancel_block`
+ * Rust commands. Today's UI still uses the synchronous `execute_block` path
+ * for HTTP blocks; the streamed API lands here so the toolbar/drawer work
+ * can swap it in without re-doing plumbing.
  */
 
 import { Channel, invoke } from "@tauri-apps/api/core";
@@ -104,4 +103,167 @@ export async function executeDbStreamed(
  */
 export function cancelBlockExecution(executionId: string): Promise<boolean> {
   return invoke<boolean>("cancel_block", { executionId });
+}
+
+// ─────────────────────── HTTP streaming ───────────────────────
+
+/** Per-execution timing breakdown emitted by the HTTP executor. */
+export interface HttpTimingBreakdown {
+  total_ms: number;
+  dns_ms?: number | null;
+  connect_ms?: number | null;
+  tls_ms?: number | null;
+  ttfb_ms?: number | null;
+}
+
+/** Cookie captured from a `Set-Cookie` response header. */
+export interface HttpCookieRaw {
+  name: string;
+  value: string;
+  domain?: string | null;
+  path?: string | null;
+  expires?: string | null;
+  secure: boolean;
+  http_only: boolean;
+}
+
+/**
+ * Full HTTP response shape emitted by the streamed backend (`HttpChunk::Complete`).
+ * Note: `body` is `unknown` — callers must narrow (parsed JSON, string, or
+ * `{ encoding: "base64", data: string }` for binary).
+ */
+export interface HttpResponseFull {
+  status_code: number;
+  status_text: string;
+  headers: Record<string, string>;
+  body: unknown;
+  size_bytes: number;
+  elapsed_ms: number;
+  timing: HttpTimingBreakdown;
+  cookies: HttpCookieRaw[];
+}
+
+/** Backend-emitted chunk on the HTTP execution channel. */
+export type HttpChunk =
+  | ({ kind: "complete" } & HttpResponseFull)
+  | { kind: "error"; message: string }
+  | { kind: "cancelled" };
+
+/** Terminal outcome of a streamed HTTP execution. */
+export type StreamedHttpOutcome =
+  | { status: "success"; response: HttpResponseFull }
+  | { status: "error"; message: string }
+  | { status: "cancelled" };
+
+export interface ExecuteHttpStreamedOptions {
+  /** Arbitrary string unique across in-flight executions. */
+  executionId: string;
+  /** Validated HTTP block params (method, url, headers, body, etc.). */
+  params: Record<string, unknown>;
+  /** Optional abort signal — sends `cancel_block(executionId)` when fired. */
+  signal?: AbortSignal;
+}
+
+/**
+ * Run an HTTP request against the cancel-aware backend. Resolves with the
+ * terminal outcome. HTTP-level errors (4xx/5xx) come back as `success` with
+ * the status code preserved — only transport / cancel failures map to other
+ * outcomes.
+ */
+export async function executeHttpStreamed(
+  options: ExecuteHttpStreamedOptions,
+): Promise<StreamedHttpOutcome> {
+  const { executionId, params, signal } = options;
+
+  if (signal?.aborted) {
+    return { status: "cancelled" };
+  }
+
+  const channel = new Channel<HttpChunk>();
+
+  const outcome = new Promise<StreamedHttpOutcome>((resolve) => {
+    channel.onmessage = (chunk) => {
+      switch (chunk.kind) {
+        case "complete":
+          resolve({
+            status: "success",
+            response: normalizeHttpResponse(chunk),
+          });
+          break;
+        case "error":
+          resolve({ status: "error", message: chunk.message });
+          break;
+        case "cancelled":
+          resolve({ status: "cancelled" });
+          break;
+      }
+    };
+  });
+
+  const onAbort = () => {
+    void cancelBlockExecution(executionId);
+  };
+  signal?.addEventListener("abort", onAbort, { once: true });
+
+  try {
+    await invoke<void>("execute_http_streamed", {
+      params,
+      executionId,
+      onChunk: channel,
+    });
+  } catch (e) {
+    signal?.removeEventListener("abort", onAbort);
+    return { status: "error", message: e instanceof Error ? e.message : String(e) };
+  }
+
+  const result = await outcome;
+  signal?.removeEventListener("abort", onAbort);
+  return result;
+}
+
+/**
+ * Normalize a raw HTTP backend response into a stable `HttpResponseFull`.
+ * Accepts both the new shape (with `timing` + `cookies`) and the legacy
+ * cached shape (`{status_code, status_text, headers, body, size_bytes}`),
+ * so cached results from older app versions keep working.
+ */
+export function normalizeHttpResponse(raw: unknown): HttpResponseFull {
+  const obj = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+
+  const status_code = typeof obj.status_code === "number" ? obj.status_code : 0;
+  const status_text =
+    typeof obj.status_text === "string" ? obj.status_text : "";
+  const headers =
+    obj.headers && typeof obj.headers === "object"
+      ? (obj.headers as Record<string, string>)
+      : {};
+  const body = obj.body;
+  const size_bytes =
+    typeof obj.size_bytes === "number" ? obj.size_bytes : 0;
+  const elapsed_ms =
+    typeof obj.elapsed_ms === "number"
+      ? obj.elapsed_ms
+      : typeof obj.duration_ms === "number"
+        ? obj.duration_ms
+        : 0;
+
+  const timing: HttpTimingBreakdown =
+    obj.timing && typeof obj.timing === "object"
+      ? (obj.timing as HttpTimingBreakdown)
+      : { total_ms: elapsed_ms };
+
+  const cookies: HttpCookieRaw[] = Array.isArray(obj.cookies)
+    ? (obj.cookies as HttpCookieRaw[])
+    : [];
+
+  return {
+    status_code,
+    status_text,
+    headers,
+    body,
+    size_bytes,
+    elapsed_ms,
+    timing,
+    cookies,
+  };
 }

@@ -1,5 +1,3 @@
-asdlkjasdkljasd
-
 # Notes — Spec de produto
 
 ## Visão geral
@@ -169,46 +167,42 @@ Cada bloco executável tem um toggle com três estados:
 
 ### HTTP block
 
-**UI de input:**
+Como o DB block, o HTTP block é **fenced-native CM6** (epic 24 — `docs/http-block-redesign.md`). O body do fence é texto HTTP-message; o painel React orbita o texto via portais widget e nunca substitui a edição direta.
 
--   **Method:** dropdown (GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS).
-    
--   **URL:** input de texto com autocomplete para variáveis `{{...}}`.
-    
--   **Headers:** lista editável de key-value pairs. Cada header é uma row com input de key, input de value, e botão de remover. Botão "+ add header" no final. Autocomplete para variáveis nos values.
-    
--   **Body:** CodeMirror instance com syntax highlighting JSON e autocomplete para variáveis `{{...}}`. Visível apenas para methods que aceitam body (POST, PUT, PATCH).
-    
--   **Alias:** campo de texto no header do bloco.
-    
--   **Timeout:** campo opcional (ms), override do default da config.
-    
-
-**UI de output:**
-
--   Status badge (ex: "201 Created"), tempo de resposta, tamanho.
-    
--   Response body com syntax highlighting (JSON formatado, HTML, texto plain).
-    
--   Response headers (colapsável).
-    
--   Para responses binários (imagens, PDFs): preview inline com botão de maximizar para fullscreen.
-    
-
-**Serialização no .md:**
+**Formato no .md (fonte de verdade):**
 
 ```
-alias: create_order
-method: POST
-url: "{{base_url}}/api/v1/orders"
-headers:
-  Content-Type: application/json
-  Authorization: "Bearer {{token}}"
-body:
-  product_id: abc-123
-  quantity: 2
-  customer: "{{customer_id}}"
+\`\`\`http alias=create_order timeout=30000 display=split
+POST {{base_url}}/api/v1/orders
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "product_id": "abc-123",
+  "quantity": 2,
+  "customer": "{{customer_id}}"
+}
+\`\`\`
 ```
+
+Tokens do info string: `alias`, `timeout`, `display` (`input`|`split`|`output`), `mode` (`raw`|`form`). Default `mode=raw` quando omitido. Vault pré-redesign (body JSON) é detectado pelo parser e reformatado on-read.
+
+**UI (cursor fora do bloco):**
+
+-   **Toolbar (top):** badge `HTTP` · alias · método colorido · host (derivado da URL) · toggle `[raw│form]` · ▶/⏹ run/cancel · ⚙ settings.
+-   **Body area:** texto cru em modo `raw` (com método colorido na primeira linha); tabular Params/Headers/Body em modo `form`.
+-   **Result tabs:** Body (sub-toggle `pretty│raw`) · Headers · Cookies · Timing · Raw.
+-   **Status bar (footer):** dot por status class (2xx green, 3xx blue, 4xx orange, 5xx red), host, elapsed, size, "ran X ago", alias, hint de atalho, e menu `⤓` Send-as.
+
+**Cursor dentro do bloco:** cercas reveladas, body editável como texto puro. Vim, multi-cursor, undo/redo unificados via CM6.
+
+**Atalhos:** `⌘↵` run, `⌘.` cancel, `⌘⇧C` copy as cURL.
+
+**Send-as (⤓ no status bar):** Copy as cURL · fetch (JS) · Python requests · HTTPie · Save as `.http` file… Refs `{{...}}` resolvidas antes do output.
+
+**History:** SQLite `block_run_history` armazena últimos N runs (metadata only — método, URL canônica, status, sizes, elapsed, timestamp). Drawer expõe via section "History (last N)" com botão "Clear history".
+
+**Cache:** `sha256(method + URL com sorted-encoded params + sorted headers + body + env-snapshot dos vars referenciados)`. Mutações (POST/PUT/PATCH/DELETE) **nunca** servem do cache.
 
 ### DB block
 

@@ -25,7 +25,7 @@ import { useBlockContext } from "../BlockContext";
 import type { DisplayMode, ExecutionState } from "../ExecutableBlock";
 import type { E2eBlockData, E2eStep, E2eStepResult, E2eResult } from "./types";
 import { DEFAULT_E2E_DATA, DEFAULT_STEP } from "./types";
-import type { HttpMethod } from "../http/types";
+import type { HttpMethod } from "@/lib/blocks/http-fence";
 import { executeBlock, getBlockResult, saveBlockResult } from "@/lib/tauri/commands";
 import { hashBlockContent } from "@/lib/blocks/hash";
 import { resolveAllReferences, type BlockContext } from "@/lib/blocks/references";

@@ -1,19 +1,18 @@
 /**
  * BlockAdapter — bridges BlockWidgetContext (CM6) to TipTap NodeViewProps.
  *
- * Creates a fake `node` and `updateAttributes` that the existing block views
- * (HttpBlockView, E2eBlockView) can consume without modification.
+ * Creates a fake `node` and `updateAttributes` that the existing E2e block
+ * view can consume without modification.
  *
- * db-* blocks are owned by `cm-db-block.tsx` + `DbFencedPanel` and don't
- * flow through this adapter.
- *
- * Rendered via React Portal OUTSIDE the CM6 editor DOM — no focus/scroll hacks needed.
+ * db-* blocks are owned by `cm-db-block.tsx` + `DbFencedPanel`; http blocks
+ * are owned by `cm-http-block.tsx` + `HttpFencedPanel` (since stage 3 of
+ * the HTTP redesign). Neither flows through this adapter anymore — only
+ * `e2e` does, until that block is migrated.
  */
 import { memo, useCallback, useMemo, useRef, useState } from "react";
 import type { BlockWidgetContext } from "@/lib/codemirror/block-widget-context";
 import { extractAlias, extractDisplayMode, buildInfoString } from "@/lib/codemirror/block-widget-context";
 import { findFencedBlocks } from "@/lib/codemirror/cm-block-widgets";
-import { HttpBlockView } from "./http/HttpBlockView";
 import { E2eBlockView } from "./e2e/E2eBlockView";
 import { BlockContextProvider } from "./BlockContext";
 import type { DisplayMode, ExecutionState } from "./ExecutableBlock";
@@ -36,7 +35,7 @@ function createFakeEditor(ctx: BlockWidgetContext) {
 function BlockAdapterInner({ ctx }: BlockAdapterProps) {
   const alias = extractAlias(ctx.info) ?? "";
   const initialDisplayMode = extractDisplayMode(ctx.info) ?? "input";
-  const blockType = ctx.lang === "http" ? "http" : ctx.lang === "e2e" ? "e2e" : "db";
+  const blockType = ctx.lang === "e2e" ? "e2e" : "db";
 
   const [displayMode, setDisplayMode] = useState<DisplayMode>(initialDisplayMode as DisplayMode);
   const [executionState, setExecutionState] = useState<ExecutionState>("idle");
@@ -117,8 +116,6 @@ function BlockAdapterInner({ ctx }: BlockAdapterProps) {
 
   return (
     <BlockContextProvider value={{ filePath: ctx.filePath }}>
-      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-      {blockType === "http" && <HttpBlockView {...(fakeNodeViewProps as any)} />}
       {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
       {blockType === "e2e" && <E2eBlockView {...(fakeNodeViewProps as any)} />}
     </BlockContextProvider>

@@ -1,22 +1,25 @@
-//! Cancel-aware execution plumbing for the DB block.
+//! Cancel-aware execution plumbing for executable blocks (DB + HTTP).
 //!
-//! Stage 3 of the DB block redesign introduces two pieces:
+//! Provides three pieces:
 //! 1. `ExecutionRegistry` — maps `execution_id` strings to a
 //!    `CancellationToken` so a separate invocation can cancel an in-flight
-//!    query by id.
+//!    query/request by id.
 //! 2. Tauri commands:
 //!    - `execute_db_streamed(params, execution_id, on_chunk)` runs a DB
 //!      query and emits its final `DbChunk` on a `tauri::Channel`.
+//!    - `execute_http_streamed(params, execution_id, on_chunk)` mirrors the
+//!      same pattern for HTTP requests, emitting `HttpChunk`.
 //!    - `cancel_block(execution_id)` signals the stored token.
 //!
-//! The existing synchronous `execute_block` command stays intact for
-//! stage 4's UI work; nothing in the current UI invokes the new commands
-//! yet. This module is plumbing, not a behavior change.
+//! The existing synchronous `execute_block` command stays intact; the
+//! streamed paths are plumbing for the UI redesign work and don't change
+//! current behavior.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use httui_core::executor::db::{types::DbChunk, DbExecutor};
+use httui_core::executor::http::{types::HttpChunk, HttpExecutor};
 use httui_core::executor::Executor;
 use tauri::ipc::Channel;
 use tokio_util::sync::CancellationToken;
@@ -108,6 +111,52 @@ pub async fn execute_db_streamed(
 
     // Channel send can only fail if the frontend dropped the receiver,
     // which is expected behavior (e.g., component unmounted). Swallow.
+    let _ = on_chunk.send(chunk);
+
+    Ok(())
+}
+
+/// Run an HTTP request and emit its terminal chunk on the provided channel.
+///
+/// On success emits `HttpChunk::Complete(response)` (including 4xx/5xx —
+/// HTTP-level error statuses are still successful executions). On cancel
+/// emits `HttpChunk::Cancelled`. Transport / encoding failures emit
+/// `HttpChunk::Error`.
+///
+/// Mirrors `execute_db_streamed` shape so the frontend has a single pattern
+/// for cancel-aware block execution. The legacy synchronous `execute_block`
+/// path remains available via the executor registry until the UI swaps over.
+#[tauri::command]
+pub async fn execute_http_streamed(
+    http_executor: tauri::State<'_, Arc<HttpExecutor>>,
+    executions: tauri::State<'_, ExecutionRegistry>,
+    params: serde_json::Value,
+    execution_id: String,
+    on_chunk: Channel<HttpChunk>,
+) -> Result<(), String> {
+    http_executor
+        .validate(&params)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let token = executions.register(&execution_id);
+    let result = http_executor
+        .execute_with_cancel(params, token.clone())
+        .await;
+    executions.unregister(&execution_id);
+
+    let chunk = match result {
+        Ok(response) => HttpChunk::Complete(response),
+        Err(e) => {
+            let msg = e.to_string();
+            if msg == "Request cancelled" {
+                HttpChunk::Cancelled
+            } else {
+                HttpChunk::Error { message: msg }
+            }
+        }
+    };
+
     let _ = on_chunk.send(chunk);
 
     Ok(())

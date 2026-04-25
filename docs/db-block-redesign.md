@@ -77,12 +77,12 @@ Ancorada com `position: absolute; top: 4px; right: 8px` dentro de `.cm-fenced-co
 
 1. **Badge `DB`** + alias + connection + modo (`RO`/`RW`).
 2. **▶ / ⏹** — run quando idle, cancel quando executando.
-3. **⚡** — AI assist (abre painel schema-aware, ver visão).
-4. **▦** — EXPLAIN (envolve a query em `EXPLAIN ANALYZE` e renderiza plan na tab Plan).
-5. **⤓** — export do resultado (CSV / JSON / Markdown table / INSERT / clipboard / save file).
-6. **⚙** — abre drawer.
+3. **▦** — EXPLAIN (envolve a query em `EXPLAIN`/`EXPLAIN QUERY PLAN` por dialeto e renderiza plan na tab Plan).
+4. **⚙** — abre drawer.
 
-Toolbar some quando cursor está dentro do bloco. Atalhos tomam o lugar: `⌘↵` run, `⌘.` cancel, `⌘⇧F` format (quando sql-formatter entrar), `⌘⇧E` EXPLAIN, `⌘⇧X` export menu.
+Export do resultado (CSV / JSON / Markdown / INSERT) fica no footer/status bar do bloco, não na toolbar.
+
+Toolbar some quando cursor está dentro do bloco. Atalhos tomam o lugar: `⌘↵` run, `⌘.` cancel, `⌘⇧F` format (quando sql-formatter entrar), `⌘⇧E` EXPLAIN.
 
 ### 2.4 Drawer
 
@@ -108,17 +108,15 @@ Toolbar some quando cursor está dentro do bloco. Atalhos tomam o lugar: `⌘↵
 - **Stats**: elapsed, rows streamed, bytes, cache status.
 - Visível sempre — não depende da posição do cursor.
 - Display mode: `input` esconde result; `output` colapsa query em uma linha (clique expande); `split` mostra ambos.
-- Paginação: botão `[ load N more ]` reenvia a query com `OFFSET` (quando safe — detectamos via existência de `ORDER BY`; sem ORDER BY, aviso).
+- Paginação: botão `[ load N more ]` reenvia a query com `OFFSET`.
 
 ### 2.6 Schema panel
 
 - Painel persistente à direita do app (terceiro zone, ao lado da file tree). Toggle `Cmd+\`.
 - Conteúdo: árvore connection → schema → tabela → colunas, com badges de tipo, PK, FK, índice.
-- Busca inline (`Cmd+K` dentro do panel).
+- Busca inline (input de filtro no topo do panel).
 - Interações:
   - Duplo-clique em tabela → insere `SELECT * FROM <tabela> LIMIT 100` no bloco DB ativo (ou cria um).
-  - Clique direito em coluna → "copiar nome", "gerar WHERE …".
-  - Hover em tabela → mostra row count aproximado (de `pg_class.reltuples` / equivalente).
 - Dados: schema cache compartilhado (ver 3.1). Atualização manual via botão refresh ou automática com TTL configurável.
 
 ### 2.7 Status bar do bloco
@@ -168,7 +166,7 @@ type SchemaCache = {
   refresh: (connectionId) => Promise<Schema>;
 };
 ```
-Consumidores: autocomplete do CM6, schema panel, AI assist, futuros (FK nav, full-scan warning). Um único lugar para invalidar quando conexão muda.
+Consumidores: autocomplete do CM6, schema panel, futuros (FK nav, full-scan warning). Um único lugar para invalidar quando conexão muda.
 
 **Autocomplete schema-aware:**
 - `SQLConfig.schema` do `@codemirror/lang-sql` alimentado pelo `SchemaCache.get(connectionId)`.
@@ -266,8 +264,8 @@ async fn execute_query(
 
 ### 4.4 Slash commands
 
-- `/db-postgres`, `/db-mysql`, `/db-sqlite` (existentes em `slashCommands.ts`).
-- Template atualizado: insere fence nova com query vazia + `alias=` placeholder + `connection=` preenchido com última conexão usada do mesmo dialeto.
+- `/db-postgres`, `/db-mysql`, `/db-sqlite` em `cm-slash-commands.ts`.
+- Template: insere fence nova com query vazia + `alias=db1` placeholder. `connection=` fica omitido — o usuário escolhe via drawer (⚙).
 
 ---
 
@@ -380,7 +378,7 @@ Entrega **ponta-a-ponta**, sem fases de PoC. Em ordem de execução com invarian
 
 ### Etapa 5 — Toolbar, drawer, execução
 
-- `DbToolbarWidget` com todos os botões (▶ ⚡ ▦ ⤓ ⚙). AI e EXPLAIN podem chegar como stubs que abrem "em breve".
+- `DbToolbarWidget` com botões ▶ ▦ ⚙ (run/explain/settings). Export ⤓ vai pro footer/status bar.
 - `DbDrawer` (portal) com alias/connection/limit/timeout/display + resolved bindings + readonly toggle.
 - ▶ conecta ao executor streamed da Etapa 3. Cancel via ⏹ ou `⌘.`.
 - Status bar ao vivo.
@@ -390,7 +388,7 @@ Entrega **ponta-a-ponta**, sem fases de PoC. Em ordem de execução com invarian
 
 - `ResultPanel` com `Result(s) · Messages · Plan · Stats`.
 - Suporte a múltiplos result sets (sub-tabs numeradas).
-- Paginação "load N more" com detecção de `ORDER BY` safe.
+- Paginação "load N more" reenvia com `OFFSET` + `fetch_size`.
 - `ResultTable` virtualizado.
 - **Invariante:** multi-statement começa a funcionar (query `BEGIN; UPDATE; SELECT; ROLLBACK;` retorna os N result sets).
 

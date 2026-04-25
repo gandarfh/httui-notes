@@ -1,5 +1,5 @@
+use httui_core::blocks::parser;
 use httui_core::executor::ExecutorRegistry;
-use httui_core::parser;
 use httui_core::runner::BlockRunner;
 use serde_json::json;
 use sqlx::sqlite::SqlitePool;

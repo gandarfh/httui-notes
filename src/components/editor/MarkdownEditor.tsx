@@ -46,6 +46,10 @@ import {
   createDbBlockCompletionSource,
   createDbSchemaCompletionSource,
 } from "@/lib/codemirror/cm-db-block";
+import {
+  createHttpBlockExtension,
+  createHttpBlockCompletionSource,
+} from "@/lib/codemirror/cm-http-block";
 import { wikilinks, createWikilinkCompletion } from "@/lib/codemirror/cm-wikilinks";
 import { tables } from "@/lib/codemirror/cm-tables";
 import { moveBlocksKeymap } from "@/lib/codemirror/cm-move-blocks";
@@ -57,6 +61,11 @@ import { useEnvironmentStore } from "@/stores/environment";
 import { BlockContextProvider } from "@/components/blocks/BlockContext";
 import { WidgetPortals } from "./WidgetPortals";
 import { DbWidgetPortals } from "./DbWidgetPortals";
+import { HttpWidgetPortals } from "./HttpWidgetPortals";
+import {
+  registerActiveEditor,
+  unregisterActiveEditor,
+} from "@/lib/codemirror/active-editor";
 import { useWorkspaceStore } from "@/stores/workspace";
 import type { FileEntry } from "@/lib/tauri/commands";
 import { listen } from "@tauri-apps/api/event";
@@ -558,6 +567,64 @@ const editorTheme = EditorView.theme({
     fontFamily: "var(--chakra-fonts-mono)",
     fontSize: "var(--chakra-font-sizes-xs)",
   },
+
+  // ── HTTP block portals (mirror DB block styling) ──
+  ".cm-http-toolbar-portal": {
+    display: "block",
+    background: "color-mix(in srgb, var(--chakra-colors-fg) 2.5%, var(--chakra-colors-bg-subtle))",
+    borderLeft: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
+    borderRight: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
+    borderTop: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
+    borderTopLeftRadius: "var(--chakra-radii-md)",
+    borderTopRightRadius: "var(--chakra-radii-md)",
+    minHeight: "var(--chakra-spacing-8)",
+    userSelect: "none",
+    pointerEvents: "auto",
+  },
+  ".cm-http-statusbar-portal": {
+    background: "color-mix(in srgb, var(--chakra-colors-fg) 1.5%, transparent)",
+    borderLeft: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
+    borderRight: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
+    borderBottom: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
+    borderTop: "1px solid color-mix(in srgb, var(--chakra-colors-border) 40%, transparent)",
+    borderBottomLeftRadius: "var(--chakra-radii-md)",
+    borderBottomRightRadius: "var(--chakra-radii-md)",
+    minHeight: "var(--chakra-spacing-7)",
+  },
+  ".cm-http-form-portal": {
+    display: "block",
+    background: "var(--chakra-colors-bg)",
+    borderLeft: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
+    borderRight: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
+    minHeight: "var(--chakra-spacing-12)",
+  },
+  ".cm-http-fence-hidden": { display: "none" },
+  ".cm-http-body-line": {
+    paddingLeft: "var(--chakra-spacing-3)",
+    paddingRight: "var(--chakra-spacing-3)",
+    background: "var(--chakra-colors-bg)",
+    borderLeft: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
+    borderRight: "1px solid color-mix(in srgb, var(--chakra-colors-border) 55%, transparent)",
+    fontFamily: "var(--chakra-fonts-mono)",
+  },
+  ".cm-http-body-line-first": { paddingTop: "var(--chakra-spacing-2)" },
+  ".cm-http-body-line-last": { paddingBottom: "var(--chakra-spacing-2)" },
+  // Method coloring on the first request line.
+  ".cm-http-method": { fontWeight: 600 },
+  ".cm-http-method-get": { color: "var(--chakra-colors-green-500)" },
+  ".cm-http-method-post": { color: "var(--chakra-colors-blue-500)" },
+  ".cm-http-method-put": { color: "var(--chakra-colors-orange-500)" },
+  ".cm-http-method-patch": { color: "var(--chakra-colors-yellow-500)" },
+  ".cm-http-method-delete": { color: "var(--chakra-colors-red-500)" },
+  ".cm-http-method-head": { color: "var(--chakra-colors-purple-500)" },
+  ".cm-http-method-options": { color: "var(--chakra-colors-gray-500)" },
+  // Editing-mode fence lines: keep visible but muted.
+  ".cm-http-fence-line": {
+    color: "var(--chakra-colors-fg-muted)",
+    fontFamily: "var(--chakra-fonts-mono)",
+    fontSize: "var(--chakra-font-sizes-xs)",
+    opacity: 0.6,
+  },
 }, { dark: true });
 
 // Static CSS for the container — @uiw/react-codemirror wraps the editor
@@ -621,6 +688,7 @@ export function MarkdownEditor({
     moveBlocksKeymap(),
     hybridRendering(),
     createDbBlockExtension(),
+    createHttpBlockExtension(),
     createEditorBlockWidgets(),
     tables(),
     slashCommands(),
@@ -644,6 +712,9 @@ export function MarkdownEditor({
         // Schema-aware SQL autocomplete (tables / columns) — same gating;
         // reads from the shared SchemaCache store.
         createDbSchemaCompletionSource(),
+        // HTTP block {{ref}} autocomplete — activates only inside an http
+        // fenced body.
+        createHttpBlockCompletionSource(() => filePath),
       ],
       icons: false,
       addToOptions: [slashIconOption],
@@ -673,6 +744,19 @@ export function MarkdownEditor({
         effects: vimCompartment.reconfigure(vim()),
       });
     }
+    // Register as the active editor so out-of-editor components (schema
+    // panel, etc.) can dispatch edits into the currently-focused pane.
+    // Focus wins here: the last-focused editor is authoritative. The
+    // focus/blur listeners on the DOM keep this accurate across panes.
+    const onFocus = () => registerActiveEditor(view);
+    const onBlur = () => unregisterActiveEditor(view);
+    view.dom.addEventListener("focusin", onFocus);
+    view.dom.addEventListener("focusout", onBlur);
+    // Seed as active immediately — queueMicrotask below will focus it, but
+    // the first `focusin` fires before we've attached the listener above
+    // when there's only one pane, so we're-registering here avoids losing
+    // the first registration to the race.
+    registerActiveEditor(view);
     queueMicrotask(() => view.focus());
   }, [vimEnabled]);
 
@@ -688,6 +772,8 @@ export function MarkdownEditor({
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      const view = viewRef.current;
+      if (view) unregisterActiveEditor(view);
       viewRef.current = null;
       setEditorReady(false);
     };
@@ -738,6 +824,7 @@ export function MarkdownEditor({
           <>
             <WidgetPortals view={viewRef.current} filePath={filePath} />
             <DbWidgetPortals view={viewRef.current} filePath={filePath} />
+            <HttpWidgetPortals view={viewRef.current} filePath={filePath} />
           </>
         )}
       </Box>

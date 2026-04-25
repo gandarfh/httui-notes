@@ -145,6 +145,8 @@ export interface DbPortalActions {
   onCancel?: () => void;
   /** Open the settings drawer. Called by the ⚙ button. */
   onOpenSettings?: () => void;
+  /** Run the query wrapped in EXPLAIN. Called by ⌘⇧E or the ▦ button. */
+  onExplain?: () => void;
 }
 
 export interface DbPortalEntry {
@@ -666,6 +668,15 @@ function makeKeymap(getBlocks: () => DbFencedBlock[]): KeyBinding[] {
         const found = blockAtCursor(view, getBlocks());
         if (!found) return false;
         found.entry.actions.onCancel?.();
+        return true;
+      },
+    },
+    {
+      key: "Mod-Shift-e",
+      run: (view) => {
+        const found = blockAtCursor(view, getBlocks());
+        if (!found || !found.entry.actions.onExplain) return false;
+        found.entry.actions.onExplain();
         return true;
       },
     },

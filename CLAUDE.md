@@ -129,13 +129,34 @@ Full details in `docs/ARCHITECTURE.md`. Key concepts:
 
 ## HTTP block
 
-- Block type `http` in `src/components/blocks/http/`. Methods: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS.
-- Input: method selector (color-coded), URL field, tabs for Params/Headers/Body/Settings. All value fields use `InlineCM` (single-line CodeMirror) with `{{ref}}` autocomplete, highlighting, and hover tooltip showing resolved values.
-- Output: status badge (granular colors by status class), elapsed time, response size, syntax-highlighted body (JSON/HTML/XML/plain), collapsible response headers, copy button.
-- Binary responses: backend returns `{ encoding: "base64", data: "..." }` for image/video/audio/PDF/zip. Frontend renders images inline, PDFs in iframe, others as info + download button. Maximize button opens fullscreen overlay.
-- Execution flow: resolve dependencies (execute referenced blocks first, with dedup lock for shared deps) → fetch env variables → resolve `{{...}}` in URL/headers/params/body → execute via Tauri → cache result by content hash.
-- Timeout: 30s client default, per-request override via `timeout_ms` field in Settings tab.
-- Backend executor: `src-tauri/src/executor/http.rs` — uses reqwest, classifies errors (timeout, connection_failed, too_many_redirects, body_error).
+The HTTP block is a fenced-code-native CM6 implementation (epic 24 — `docs/http-block-redesign.md`). Methods: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS.
+
+**Storage format** — body is HTTP-message text inside a ```http fence:
+```
+```http alias=req1 timeout=30000 display=split mode=raw
+GET https://api.example.com/users?page=1
+Authorization: Bearer {{TOKEN}}
+```
+```
+Info-string tokens: `alias`, `timeout`, `display`, `mode` (`raw|form`). Canonical write order is `alias → timeout → display → mode`. Pre-redesign blocks with a JSON body (`{"method":"...","url":"..."}`) are detected by the parser and converted on read — vault stays compatible.
+
+**Architecture:**
+- `src/lib/blocks/http-fence.ts` — parser/serializer for both info string and HTTP-message body. `parseHttpMessageBody` / `stringifyHttpMessageBody` are idempotent (canonical reformat). `parseLegacyHttpBody` + `legacyToHttpMessage` handle the JSON shim.
+- `src/lib/codemirror/cm-http-block.tsx` — CM6 extension: scanner, decorations, atomic-on-fences-only, transactionFilter, method coloring on the first body line, keymap (⌘↵ run, ⌘. cancel, ⌘⇧C copy as cURL). Holds a portal registry (toolbar / form / result / statusbar slots) so React mounts inside the widget DOM.
+- `src/components/blocks/http/fenced/HttpFencedPanel.tsx` — React panel mounted via `createPortal` into each registered slot. Toolbar (badge / alias / method / host / `[raw│form]` toggle / ▶ / ⚙), result tabs (Body / Headers / Cookies / Timing / Raw with `pretty│raw` sub-toggle), status bar (status dot, host, elapsed, size, "ran X ago", `⤓` Send-as menu), settings drawer (Chakra `Portal` + `Box`, NEVER `Dialog` — preserves CM6 focus). Form mode replaces the body lines with a tabular Params/Headers/Body editor; each input uses local state + commit-on-blur to avoid the round-trip lag of re-emitting raw on every keystroke.
+- `src/components/editor/HttpWidgetPortals.tsx` — subscribes to the portal registry and renders panels.
+
+**Execution:**
+- Streamed via `executeHttpStreamed` (`src/lib/tauri/streamedExecution.ts`) — `Tauri::Channel<HttpChunk>` mirrors the DB stage-3 pattern. Cancel via `cancelBlockExecution(executionId)`.
+- Refs `{{...}}` resolved in URL, header keys + values, param keys + values, body before dispatch. Header names that resolve to invalid HTTP tokens (e.g. value with spaces) produce a clear error instead of reqwest's generic `builder error`.
+- Cache hash: `sha256(method + URL with sorted-encoded params + sorted headers + body + env-snapshot of *only* referenced vars)`. Mutation methods (POST/PUT/PATCH/DELETE) are NEVER served from cache — they always re-execute.
+- Backend executor: `httui-core/src/executor/http/` — `mod.rs` has `HttpExecutor` (sync `execute` + cancel-aware `execute_with_cancel`); `types.rs` has `HttpResponse`, `Cookie`, `TimingBreakdown`, `HttpChunk`. Captures `Set-Cookie` via `parse_set_cookie`. V1 timing is `total_ms` only; sub-fields (DNS/Connect/TLS/TTFB) reserved for a follow-up.
+
+**Run history (Story 24.6):** `block_run_history` SQLite table (migration `009`) stores **metadata only** (method, URL canonical, status, sizes, elapsed, outcome, timestamp) — never request/response bodies. Trim: 10 rows per (file_path, alias). Drawer shows last N. Tauri commands: `list_block_history`, `insert_block_history`, `purge_block_history`.
+
+**Code generation (Story 24.7):** `src/lib/blocks/http-codegen.ts` exports `toCurl`, `toFetch`, `toPython`, `toHTTPie`, `toHttpFile`. Snippets are pre-computed in panel state (resolved refs included) so the clipboard write happens synchronously inside the user-gesture window — avoid the gotcha where `await` between click and `clipboard.writeText` silently denies. Status-bar `⤓` menu offers all 5; `Mod-Shift-c` shortcuts directly to cURL.
+
+**Slash commands:** `/HTTP Request`, `/HTTP GET`, `/HTTP POST`, `/HTTP PUT`, `/HTTP DELETE` insert templates in the new HTTP-message format with cursor on the request line.
 
 ## E2E block
 

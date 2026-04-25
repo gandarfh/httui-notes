@@ -41,3 +41,56 @@ export async function computeDbCacheHash(
     : body;
   return hashBlockContent(keyed, connectionId);
 }
+
+/**
+ * Build the cache hash key for an http block run.
+ *
+ * Inputs canonicalized:
+ *   - method (uppercase)
+ *   - URL (path + canonical-merged query string from params, sorted)
+ *   - headers (sorted by lowercased key)
+ *   - body (verbatim)
+ *   - env-var snapshot of *only* the env keys referenced anywhere in the
+ *     hashed text — same shape as the DB cache so different active
+ *     environments don't share cache entries when they actually differ.
+ *
+ * Mutation methods (POST/PUT/PATCH/DELETE) should still be hashed for
+ * deterministic equality checks, but callers are expected to skip cache
+ * reads/writes for them. The hash itself is method-aware so a `GET` and a
+ * `POST` to the same URL never collide.
+ */
+export async function computeHttpCacheHash(
+  parts: {
+    method: string;
+    url: string;
+    params: Array<{ key: string; value: string }>;
+    headers: Array<{ key: string; value: string }>;
+    body: string;
+  },
+  envVars: Record<string, string>,
+): Promise<string> {
+  const method = parts.method.toUpperCase();
+  const sortedParams = [...parts.params]
+    .sort((a, b) => a.key.localeCompare(b.key))
+    .map((p) => `${encodeURIComponent(p.key)}=${encodeURIComponent(p.value)}`)
+    .join("&");
+  const canonicalUrl = sortedParams ? `${parts.url}?${sortedParams}` : parts.url;
+  const sortedHeaders = [...parts.headers]
+    .sort((a, b) => a.key.toLowerCase().localeCompare(b.key.toLowerCase()))
+    .map((h) => `${h.key.toLowerCase()}: ${h.value}`)
+    .join("\n");
+
+  const fullText = [method, canonicalUrl, sortedHeaders, parts.body].join(
+    "\n__SEP__\n",
+  );
+
+  const usedEnvEntries = Object.entries(envVars)
+    .filter(([k]) => fullText.includes(`{{${k}}}`))
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k}=${v}`)
+    .join("\n");
+  const keyed = usedEnvEntries
+    ? `${fullText}\n__ENV__\n${usedEnvEntries}`
+    : fullText;
+  return hashBlockContent(keyed, null);
+}

@@ -45,6 +45,7 @@ import {
   LuDownload,
   LuFileText,
   LuHardDriveDownload,
+  LuListTree,
   LuPlay,
   LuSettings,
   LuSquare,
@@ -70,6 +71,7 @@ import {
 } from "@/lib/tauri/streamedExecution";
 import {
   firstSelectResult,
+  type CellValue,
   type DbResponse,
 } from "@/components/blocks/db/types";
 import { ResultTable } from "@/components/blocks/db/ResultTable";
@@ -457,6 +459,173 @@ export const DbFencedPanel = memo(function DbFencedPanel({
     void cancelBlockExecution(`db_${blockId}`);
   }, [blockId]);
 
+  // ── EXPLAIN ──
+  // Runs ONLY the first SQL statement wrapped in an EXPLAIN prefix, as a
+  // one-off (no cache), and folds the plan rows into the current
+  // response's `plan` field so the Plan tab lights up.
+  //
+  // Why only the first statement: backend splits on `;` and treats each
+  // chunk as its own driver call. If we prefix the whole body with
+  // `EXPLAIN ` only the first chunk is explained — the rest run for real.
+  // That's a footgun on multi-statement bodies, so we drop everything
+  // after the first `;` for the EXPLAIN run only. Body is unchanged.
+  //
+  // ANALYZE is intentionally omitted: in Postgres it executes the query
+  // for real, which would make clicking ▦ on an UPDATE/DELETE a latent
+  // footgun. The non-analyze plan is enough for 90% of debugging.
+  const runExplain = useCallback(async () => {
+    if (executionState === "running") return;
+    const connId = activeConnection?.id;
+    if (!connId) return;
+    const body = block.body.trim();
+    if (!body) return;
+
+    // First non-empty statement only. Naive `;` split is good enough for
+    // EXPLAIN — strings/identifiers containing `;` are vanishingly rare in
+    // a query someone is debugging.
+    const firstStatement =
+      body.split(";").map((s) => s.trim()).find((s) => s.length > 0) ?? body;
+
+    // Pick the EXPLAIN flavour from the actual driver, falling back to
+    // the fence dialect, then to plain `EXPLAIN`. The fence dialect alone
+    // is unreliable: a `db` (generic) fence pointing at a SQLite
+    // connection would otherwise emit `EXPLAIN <sql>` and return raw VDBE
+    // bytecode, which is useless for 99% of users debugging a query.
+    // For SQLite we want `EXPLAIN QUERY PLAN` (SCAN/SEARCH/USING INDEX).
+    // Postgres/MySQL plain `EXPLAIN` returns the human plan already.
+    const dialect = block.metadata.dialect;
+    const driver = activeConnection?.driver;
+    const isSqlite = driver === "sqlite" || dialect === "sqlite";
+    const prefix = isSqlite ? "EXPLAIN QUERY PLAN " : "EXPLAIN ";
+    // Skip wrapping if the user already typed EXPLAIN themselves — double
+    // EXPLAIN is a syntax error everywhere.
+    const alreadyExplain = /^\s*EXPLAIN\b/i.test(firstStatement);
+
+    setError(null);
+    setExecutionState("running");
+    const abort = new AbortController();
+    abortRef.current = abort;
+    const executionId = `db_${blockId}_explain_${Date.now()}`;
+    const startedAt = performance.now();
+
+    try {
+      const blocksAbove = await collectBlocksAboveCM(
+        view.state.doc,
+        block.from,
+        filePath,
+      );
+      const envVars = await useEnvironmentStore
+        .getState()
+        .getActiveVariables();
+      const { sql: resolvedBody, bindValues, errors: refErrors } =
+        resolveRefsToBindParams(
+          firstStatement,
+          blocksAbove,
+          block.from,
+          envVars,
+        );
+      if (refErrors.length > 0) {
+        setError(`Reference errors:\n${refErrors.join("\n")}`);
+        setExecutionState("error");
+        return;
+      }
+      const finalSql = alreadyExplain ? resolvedBody : prefix + resolvedBody;
+
+      const params: Record<string, unknown> = {
+        connection_id: connId,
+        query: finalSql,
+        bind_values: bindValues,
+        offset: 0,
+        fetch_size: 1000,
+      };
+      if (block.metadata.timeoutMs !== undefined) {
+        params.timeout_ms = block.metadata.timeoutMs;
+      }
+
+      const outcome = await executeDbStreamed({
+        executionId,
+        params,
+        signal: abort.signal,
+      });
+      const elapsed = Math.round(performance.now() - startedAt);
+
+      if (outcome.status === "cancelled") {
+        setExecutionState("cancelled");
+        setDurationMs(elapsed);
+        return;
+      }
+      if (outcome.status === "error") {
+        setError(outcome.message);
+        setExecutionState("error");
+        setDurationMs(elapsed);
+        return;
+      }
+
+      // Surface SQL-level errors (kind: "error" inside a result) the same
+      // way as a regular run — they belong in the error state, not stuffed
+      // into the Plan tab as JSON noise.
+      const firstResult = outcome.response.results[0];
+      if (firstResult && firstResult.kind === "error") {
+        setError(firstResult.message);
+        setExecutionState("error");
+        setDurationMs(outcome.response.stats.elapsed_ms || elapsed);
+        return;
+      }
+
+      // Only populate plan when we actually have plan rows to show.
+      // SELECT result with rows = real plan output (sqlite EXPLAIN returns
+      // bytecode rows, postgres EXPLAIN returns a single text-column
+      // table, etc — all selectable). Anything else (mutation? empty?)
+      // means the driver didn't return a plan; fall through to "no plan".
+      const explainResult =
+        firstResult && firstResult.kind === "select" ? firstResult : null;
+      if (!explainResult || explainResult.rows.length === 0) {
+        setError(
+          "EXPLAIN didn't return a plan — the driver may not support EXPLAIN for this query.",
+        );
+        setExecutionState("error");
+        setDurationMs(outcome.response.stats.elapsed_ms || elapsed);
+        return;
+      }
+
+      setResponse((prev) => {
+        const base: DbResponse =
+          prev ?? {
+            results: [],
+            messages: [],
+            stats: { elapsed_ms: 0 },
+          };
+        return {
+          ...base,
+          plan: explainResult.rows,
+          stats: {
+            ...base.stats,
+            elapsed_ms: outcome.response.stats.elapsed_ms || elapsed,
+          },
+        };
+      });
+      setDurationMs(outcome.response.stats.elapsed_ms || elapsed);
+      setCached(false);
+      setExecutionState("success");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setExecutionState("error");
+    } finally {
+      abortRef.current = null;
+    }
+  }, [
+    activeConnection?.id,
+    activeConnection?.driver,
+    block.body,
+    block.from,
+    block.metadata.dialect,
+    block.metadata.timeoutMs,
+    blockId,
+    executionState,
+    filePath,
+    view,
+  ]);
+
   // ── Load more: append the next page of rows to the current select
   // result. Uses the same query + bindings as the initial run, but with
   // offset = rows already fetched. The in-flight guard is a ref (not
@@ -535,14 +704,15 @@ export const DbFencedPanel = memo(function DbFencedPanel({
     view,
   ]);
 
-  // Register actions with the registry so ⌘↵ / ⌘. can dispatch
+  // Register actions with the registry so ⌘↵ / ⌘. / ⌘⇧E can dispatch
   useEffect(() => {
     setDbBlockActions(blockId, {
       onRun: runBlock,
       onCancel: cancelBlock,
       onOpenSettings: () => setDrawerOpen(true),
+      onExplain: runExplain,
     });
-  }, [blockId, runBlock, cancelBlock]);
+  }, [blockId, runBlock, cancelBlock, runExplain]);
 
   // ── Info-string editing (drawer) ──
   const updateMetadata = useCallback(
@@ -588,6 +758,7 @@ export const DbFencedPanel = memo(function DbFencedPanel({
             executionState={executionState}
             onRun={runBlock}
             onCancel={cancelBlock}
+            onExplain={runExplain}
             onOpenSettings={() => setDrawerOpen(true)}
           />,
           toolbarNode,
@@ -612,6 +783,8 @@ export const DbFencedPanel = memo(function DbFencedPanel({
         createPortal(
           <DbStatusBar
             connection={activeConnection?.name ?? block.metadata.connection}
+            isReadonly={activeConnection?.is_readonly ?? false}
+            hasActiveConnection={!!activeConnection}
             durationMs={durationMs}
             executionState={executionState}
             response={response}
@@ -654,6 +827,7 @@ interface DbToolbarProps {
   executionState: ExecutionState;
   onRun: () => void;
   onCancel: () => void;
+  onExplain: () => void;
   onOpenSettings: () => void;
 }
 
@@ -663,12 +837,14 @@ function DbToolbar({
   executionState,
   onRun,
   onCancel,
+  onExplain,
   onOpenSettings,
 }: DbToolbarProps) {
   const running = executionState === "running";
   const dialectLabel = metadata.dialect.toLowerCase();
   const connLabel =
     activeConnection?.name ?? metadata.connection ?? undefined;
+  const isReadonly = activeConnection?.is_readonly ?? false;
 
   return (
     <Flex
@@ -679,10 +855,12 @@ function DbToolbar({
       minW={0}
       onMouseDown={(e) => e.stopPropagation()}
     >
-      {/* Identity row — [DB] alias / connection [dialect-pill]. Text stays
-          at 14/13px so it never competes with the SQL below; the visual
-          hierarchy (alias > connection > dialect) comes from colour +
-          weight, not font size. */}
+      {/* Identity row — [DB] alias / connection [RO|RW] [dialect-pill].
+          Text stays at 14/13px so it never competes with the SQL below;
+          the visual hierarchy (alias > connection > mode/dialect) comes
+          from colour + weight, not font size. The RO/RW pill is only
+          rendered when a connection is resolved — an un-set connection
+          would make the pill meaningless. */}
       <HStack gap={3} align="center" minW={0} flex="1" overflow="hidden">
         <Badge
           colorPalette="blue"
@@ -739,6 +917,27 @@ function DbToolbar({
             </Text>
           </>
         )}
+        {activeConnection && (
+          <Badge
+            size="xs"
+            variant="subtle"
+            colorPalette={isReadonly ? "orange" : "green"}
+            flexShrink={0}
+            fontFamily="mono"
+            fontWeight="600"
+            letterSpacing="0.04em"
+            px={2}
+            py={0.5}
+            rounded="md"
+            title={
+              isReadonly
+                ? "Read-only: mutations prompt for confirmation"
+                : "Read-write: mutations run without confirmation"
+            }
+          >
+            {isReadonly ? "RO" : "RW"}
+          </Badge>
+        )}
         <Badge
           size="xs"
           variant="subtle"
@@ -757,8 +956,10 @@ function DbToolbar({
       </HStack>
 
       {/* Actions — icon-only ghost buttons matching the HTTP block pattern.
-          Run is colour-only (green icon), cancel inherits red. Settings
-          uses the muted fg pair so it recedes visually. */}
+          Order (left → right): Run/Cancel · AI · EXPLAIN · Export · Settings
+          (spec §2.3). Run is colour-only (green icon), cancel inherits red.
+          The remaining actions use the muted fg pair so they recede
+          visually while the query is idle. */}
       <HStack gap={0} flexShrink={0}>
         {running ? (
           <IconButton
@@ -784,6 +985,17 @@ function DbToolbar({
             <LuPlay />
           </IconButton>
         )}
+        <IconButton
+          size="xs"
+          variant="ghost"
+          colorPalette="gray"
+          aria-label="EXPLAIN"
+          onClick={onExplain}
+          title="EXPLAIN (⌘⇧E)"
+          disabled={!activeConnection || running}
+        >
+          <LuListTree />
+        </IconButton>
         <IconButton
           size="xs"
           variant="ghost"
@@ -1152,9 +1364,21 @@ function DbResultTabs({
   const plan = response.plan;
   const hasResults = response.results.length > 0;
 
+  // Auto-switch to Plan when a fresh EXPLAIN fills it in, and back to
+  // Results when a regular run clears the plan. Controlled tabs so the
+  // user can still click freely — the effect only fires when `plan`
+  // changes reference, not on every render.
+  const [activeTab, setActiveTab] = useState<string>(
+    plan !== undefined ? "plan" : "results",
+  );
+  useEffect(() => {
+    setActiveTab(plan !== undefined ? "plan" : "results");
+  }, [plan]);
+
   return (
     <Tabs.Root
-      defaultValue="results"
+      value={activeTab}
+      onValueChange={(e) => setActiveTab(e.value)}
       size="sm"
       variant="line"
       className="cm-db-result"
@@ -1234,26 +1458,8 @@ function DbResultTabs({
         )}
       </Tabs.Content>
 
-      <Tabs.Content value="plan" px={3} py={3}>
-        {plan === null || plan === undefined ? (
-          <Text fontSize="xs" color="fg.muted" fontFamily="mono">
-            Use the EXPLAIN button to populate this panel.
-          </Text>
-        ) : (
-          <Box
-            as="pre"
-            m={0}
-            p={2}
-            bg="bg.subtle"
-            rounded="sm"
-            fontSize="xs"
-            fontFamily="mono"
-            whiteSpace="pre-wrap"
-            overflowX="auto"
-          >
-            {JSON.stringify(plan, null, 2)}
-          </Box>
-        )}
+      <Tabs.Content value="plan" p={0}>
+        <DbPlanView plan={plan} />
       </Tabs.Content>
 
       <Tabs.Content value="stats" px={3} py={3}>
@@ -1328,6 +1534,60 @@ function DbSingleResultView({
   );
 }
 
+/**
+ * Render the plan payload populated by `runExplain`. Falls into three shapes:
+ *  - Empty (null/undefined) → "use EXPLAIN" hint.
+ *  - Array of row objects (the common case — sqlite EXPLAIN, postgres
+ *    EXPLAIN, mysql EXPLAIN all return rows) → reuse `ResultTable` so the
+ *    plan inherits the same column layout / virtualisation as a SELECT.
+ *  - Anything else → JSON dump as fallback so we never lose information.
+ */
+function DbPlanView({ plan }: { plan: unknown }) {
+  if (plan === null || plan === undefined) {
+    return (
+      <Box px={3} py={3}>
+        <Text fontSize="xs" color="fg.muted" fontFamily="mono">
+          Use the EXPLAIN button to populate this panel.
+        </Text>
+      </Box>
+    );
+  }
+
+  if (Array.isArray(plan) && plan.length > 0 && plan.every(isPlainObject)) {
+    // Derive a stable column order from the union of keys across rows.
+    // First-seen wins so the natural order of the driver's output sticks
+    // (sqlite: id, parent, notused, detail; postgres: QUERY PLAN; mysql:
+    // id, select_type, table, …).
+    const columnSet = new Set<string>();
+    for (const row of plan as Record<string, unknown>[]) {
+      for (const key of Object.keys(row)) columnSet.add(key);
+    }
+    const columns = Array.from(columnSet).map((name) => ({ name, type: "" }));
+    const rows = plan as Record<string, CellValue>[];
+    return <ResultTable columns={columns} rows={rows} hasMore={false} />;
+  }
+
+  return (
+    <Box
+      as="pre"
+      m={3}
+      p={2}
+      bg="bg.subtle"
+      rounded="sm"
+      fontSize="xs"
+      fontFamily="mono"
+      whiteSpace="pre-wrap"
+      overflowX="auto"
+    >
+      {JSON.stringify(plan, null, 2)}
+    </Box>
+  );
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === "object" && !Array.isArray(v);
+}
+
 /** Sub-tabs numbered by statement index for multi-result responses. */
 function DbMultiResultView({
   results,
@@ -1377,16 +1637,44 @@ function DbMultiResultView({
 
 interface DbStatusBarProps {
   connection: string | undefined;
+  /** Connection's `is_readonly` flag — used to tint the connection label. */
+  isReadonly: boolean;
+  /** Whether we resolved an actual Connection object (as opposed to just a
+   *  raw identifier typed in the fence that doesn't match any record). */
+  hasActiveConnection: boolean;
   durationMs: number | null;
   executionState: ExecutionState;
   response: DbResponse | null;
   cached: boolean;
+  /** Raw query body — fed through the export menu for INSERT generation. */
   query: string;
+  /** Alias — fallback filename when saving an export. */
   alias: string | undefined;
+}
+
+/**
+ * Human-friendly relative timestamp: "just now", "3m ago", "2h ago", "1d ago".
+ * Used to render the "last run" hint in the status bar without a dependency
+ * on a date library. Capped at days — anything older is suspiciously stale
+ * and we render the ISO date instead.
+ */
+function formatRelativeTime(from: number, now: number): string {
+  const delta = Math.max(0, Math.floor((now - from) / 1000)); // seconds
+  if (delta < 5) return "just now";
+  if (delta < 60) return `${delta}s ago`;
+  const minutes = Math.floor(delta / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(from).toISOString().slice(0, 10);
 }
 
 function DbStatusBar({
   connection,
+  isReadonly,
+  hasActiveConnection,
   durationMs,
   executionState,
   response,
@@ -1406,6 +1694,40 @@ function DbStatusBar({
     durationMs !== null && durationMs !== undefined
       ? formatElapsed(durationMs)
       : null;
+
+  // Capture "when the latest run finished" so we can show a relative
+  // timestamp that drifts as the user leaves the block idle. Seeded with a
+  // per-mount clock so the `n seconds ago` only starts once a run
+  // actually succeeds — otherwise we'd claim pre-run cached data was
+  // "just now".
+  const [lastRunAt, setLastRunAt] = useState<number | null>(null);
+  useEffect(() => {
+    if (executionState === "success" || executionState === "error") {
+      setLastRunAt(Date.now());
+    }
+  }, [executionState, response]);
+
+  // Ticking clock so the relative label stays fresh without prop pressure.
+  // 30s cadence — anything faster is visual noise for a "X minutes ago" line.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    if (lastRunAt === null) return;
+    const id = window.setInterval(() => setNowTick(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, [lastRunAt]);
+
+  const relativeRan =
+    lastRunAt !== null ? formatRelativeTime(lastRunAt, nowTick) : null;
+
+  // Contextual shortcut hint — varies by execution state. Spec §2.7 asks
+  // for one hint that updates as the state changes, rather than a static
+  // tooltip.
+  const hint: string | null =
+    executionState === "running"
+      ? "⌘. to cancel"
+      : hasActiveConnection
+        ? "⌘↵ to run"
+        : null;
 
   // State → user-facing label. Shown alongside the dot so the status reads
   // without needing colour-vision. Idle shows just the connection.
@@ -1430,6 +1752,11 @@ function DbStatusBar({
         : executionState === "cancelled"
           ? "orange.400"
           : "green.400";
+
+  // RO/RW tint on the connection label — subtle but present. Orange for
+  // read-only so it reads "be careful, writes will prompt"; default fg for
+  // read-write so it disappears in the normal flow.
+  const connectionColor = isReadonly ? "orange.400" : "fg.muted";
 
   // Vertical pipe separator — inlined rather than componentised to avoid the
   // react-hooks/static-components lint (component defined during render).
@@ -1467,9 +1794,35 @@ function DbStatusBar({
             {stateLabel}
           </Text>
         )}
+        {connection && (
+          <>
+            <Box
+              as="span"
+              color="fg.muted"
+              opacity={0.5}
+              fontWeight="300"
+            >
+              ·
+            </Box>
+            <Text color={connectionColor} fontWeight="500">
+              {connection}
+              {hasActiveConnection && (
+                <Text
+                  as="span"
+                  ml={1}
+                  fontSize="2xs"
+                  opacity={0.7}
+                  letterSpacing="0.04em"
+                >
+                  {isReadonly ? "(ro)" : "(rw)"}
+                </Text>
+              )}
+            </Text>
+          </>
+        )}
       </HStack>
 
-      {/* Centre cluster: data counts + load more hint */}
+      {/* Centre cluster: data counts */}
       {rowCount && (
         <>
           {pipe}
@@ -1480,12 +1833,8 @@ function DbStatusBar({
       {/* Filler so right-cluster pushes to the end */}
       <Flex flex={1} />
 
-      {/* Right cluster: timing + cache badge + export */}
-      {duration && (
-        <>
-          <Text>{duration}</Text>
-        </>
-      )}
+      {/* Right cluster: duration · cached · last run · hint */}
+      {duration && <Text>{duration}</Text>}
       {cached && duration && pipe}
       {cached && (
         <Badge
@@ -1500,6 +1849,26 @@ function DbStatusBar({
         >
           cached
         </Badge>
+      )}
+      {relativeRan && (
+        <>
+          {(duration || cached) && pipe}
+          <Text opacity={0.8}>ran {relativeRan}</Text>
+        </>
+      )}
+      {hint && (
+        <>
+          {(relativeRan || duration || cached) && pipe}
+          <Text
+            color="fg.muted"
+            opacity={0.6}
+            fontFamily="mono"
+            fontSize="2xs"
+            letterSpacing="0.04em"
+          >
+            {hint}
+          </Text>
+        </>
       )}
       <ExportMenu response={response} query={query} alias={alias} />
     </Flex>

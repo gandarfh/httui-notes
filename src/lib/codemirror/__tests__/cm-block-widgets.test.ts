@@ -12,8 +12,11 @@ import {
 } from "../cm-block-widgets";
 import { Text } from "@codemirror/state";
 
-// db-* blocks are handled by cm-db-block.tsx (stage 4 redesign) so this
-// suite exercises only the non-db paths: http and e2e.
+// db-* blocks are handled by cm-db-block.tsx (stage 4 redesign) and http
+// blocks by cm-http-block.tsx (stage 3 of the http redesign). This suite
+// exercises only the adapter-routed paths — only `e2e` today. The fixture
+// keeps an http block around so we can prove the widget builder filters it
+// out and routes it to the http extension instead.
 const SAMPLE_DOC = `# Notes
 
 Some text here
@@ -26,6 +29,12 @@ More text
 
 \`\`\`http {alias=h1, displayMode=split}
 GET /api/users
+\`\`\`
+
+Trailing text
+
+\`\`\`e2e {alias=q2}
+step2
 \`\`\`
 `;
 
@@ -41,9 +50,10 @@ describe("findFencedBlocks", () => {
   it("finds all executable blocks", () => {
     const doc = Text.of(SAMPLE_DOC.split("\n"));
     const blocks = findFencedBlocks(doc);
-    expect(blocks).toHaveLength(2);
+    expect(blocks).toHaveLength(3);
     expect(blocks[0].lang).toBe("e2e");
     expect(blocks[1].lang).toBe("http");
+    expect(blocks[2].lang).toBe("e2e");
   });
 
   it("extracts info string correctly", () => {
@@ -158,6 +168,8 @@ describe("block count changes", () => {
 
   it("rebuilds decorations when a block is added", () => {
     const view = createView(SAMPLE_DOC);
+    // Two e2e blocks routed through this adapter; the http block is owned
+    // by cm-http-block and excluded from this registry.
     expect(getWidgetContainers().size).toBe(2);
 
     // Add a new block at the end
@@ -166,7 +178,7 @@ describe("block count changes", () => {
       changes: {
         from: end,
         to: end,
-        insert: "\n```e2e {alias=e1}\nstep1\n```",
+        insert: "\n```e2e {alias=e3}\nstep3\n```",
       },
     });
 
@@ -184,7 +196,16 @@ describe("block count changes", () => {
       changes: { from: firstBlockStart, to: firstBlockEnd, insert: "" },
     });
 
+    // One e2e block remains (the http block was never registered).
     expect(getWidgetContainers().size).toBe(1);
+    view.destroy();
+  });
+
+  it("never registers http blocks (they go through cm-http-block)", () => {
+    const view = createView(
+      "```http alias=req1\nGET https://example.com\n```\n",
+    );
+    expect(getWidgetContainers().size).toBe(0);
     view.destroy();
   });
 });

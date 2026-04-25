@@ -39,6 +39,8 @@ import {
   type Connection,
 } from "@/lib/tauri/connections";
 import { useSchemaCacheStore, type SchemaTable } from "@/stores/schemaCache";
+import { insertDbSnippetIntoActiveEditor } from "@/lib/codemirror/active-editor";
+import type { DbDialect } from "@/lib/blocks/db-fence";
 
 interface SchemaPanelProps {
   width: number;
@@ -107,21 +109,50 @@ export function SchemaPanel({ width, onClose }: SchemaPanelProps) {
     });
   }, []);
 
-  const handleDoubleClickTable = useCallback(async (table: SchemaTable) => {
-    // Qualify with schema when it's not the Postgres default; plain name
-    // otherwise (SQLite has no schemas; MySQL tables live in the active DB
-    // so the USE implicit qualifier is enough).
-    const qualified =
-      table.schema && table.schema !== "public"
-        ? `${table.schema}.${table.name}`
-        : table.name;
-    const snippet = `SELECT * FROM ${qualified} LIMIT 100;`;
-    try {
-      await navigator.clipboard.writeText(snippet);
-    } catch {
-      // Clipboard unavailable — no-op.
-    }
-  }, []);
+  // Hoisted above handleDoubleClickTable so the callback's closure + dep
+  // array see it without hitting the TDZ.
+  const selectedConnection = connections.find((c) => c.id === connectionId);
+
+  const handleDoubleClickTable = useCallback(
+    async (table: SchemaTable) => {
+      // Qualify with schema when it's not the Postgres default; plain name
+      // otherwise (SQLite has no schemas; MySQL tables live in the active DB
+      // so the USE implicit qualifier is enough).
+      const qualified =
+        table.schema && table.schema !== "public"
+          ? `${table.schema}.${table.name}`
+          : table.name;
+      const snippet = `SELECT * FROM ${qualified} LIMIT 100;`;
+
+      // Pick the fence dialect from the connection driver so a fresh block
+      // uses the right SQL dialect. `generic` is reserved for unrecognised
+      // drivers — still parseable but loses driver-specific highlighting.
+      const driverToDialect: Record<string, DbDialect> = {
+        postgres: "postgres",
+        mysql: "mysql",
+        sqlite: "sqlite",
+      };
+      const dialect: DbDialect =
+        (selectedConnection && driverToDialect[selectedConnection.driver]) ??
+        "generic";
+
+      const inserted = insertDbSnippetIntoActiveEditor({
+        snippet,
+        dialect,
+        connection: selectedConnection?.name,
+      });
+      if (inserted) return;
+
+      // Fall back to clipboard when no editor is focused (e.g. user opened
+      // the panel before opening a file). Keeps the snippet one paste away.
+      try {
+        await navigator.clipboard.writeText(snippet);
+      } catch {
+        // Clipboard unavailable — no-op.
+      }
+    },
+    [selectedConnection],
+  );
 
   const groupedBySchema = useMemo(() => {
     const groups = new Map<string, SchemaTable[]>();
@@ -148,8 +179,6 @@ export function SchemaPanel({ width, onClose }: SchemaPanelProps) {
     if (!connectionId) return;
     void refresh(connectionId);
   }, [connectionId, refresh]);
-
-  const selectedConnection = connections.find((c) => c.id === connectionId);
 
   return (
     <Box

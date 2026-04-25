@@ -1,8 +1,22 @@
-.PHONY: dev build install install-deps install-app uninstall lint check clean test test-rust test-front front icons sidecar
+.PHONY: dev build install install-deps install-app uninstall lint check clean test test-rust test-front test-tui front icons sidecar tui tui-build tui-help
 
 # Development — frontend (Vite HMR) + backend (Rust rebuild on change)
 dev: sidecar
 	npm run tauri dev
+
+# Run the terminal binary. Opens the active vault from the database;
+# prompts on first run.
+tui:
+	cargo run -p httui-tui
+
+tui-help:
+	cargo run -p httui-tui -- --help
+
+tui-build:
+	cargo build -p httui-tui --release
+
+test-tui:
+	cargo test -p httui-tui
 
 # Frontend only (sem janela desktop)
 front:
@@ -57,10 +71,10 @@ lint:
 	./node_modules/.bin/tsc --noEmit
 
 # Testes
-test: test-rust test-front
+test: test-rust test-tui test-front
 
 test-rust:
-	cd src-tauri && cargo test
+	cargo test --workspace
 
 test-front:
 	npm run test 2>/dev/null || echo "No frontend tests configured yet"

@@ -1,4 +1,9 @@
-import type { HttpMethod, KeyValue } from "../http/types";
+import type { HttpMethod } from "@/lib/blocks/http-fence";
+
+export interface KeyValue {
+  key: string;
+  value: string;
+}
 
 export interface E2eExtraction {
   name: string;

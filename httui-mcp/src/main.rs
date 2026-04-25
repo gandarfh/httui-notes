@@ -33,7 +33,8 @@ async fn main() -> Result<()> {
     let db_path = if let Some(ref db) = args.db {
         PathBuf::from(db)
     } else {
-        default_db_dir()?
+        httui_core::paths::default_data_dir()
+            .map_err(|e| anyhow::anyhow!("resolve data dir: {e}"))?
     };
 
     // Initialize core services
@@ -65,12 +66,3 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn default_db_dir() -> Result<PathBuf> {
-    let home = std::env::var("HOME").map_err(|_| anyhow::anyhow!("HOME not set"))?;
-    #[cfg(target_os = "macos")]
-    let path = PathBuf::from(&home)
-        .join("Library/Application Support/com.httui.notes");
-    #[cfg(not(target_os = "macos"))]
-    let path = PathBuf::from(&home).join(".local/share/com.httui.notes");
-    Ok(path)
-}

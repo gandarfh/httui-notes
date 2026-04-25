@@ -4,12 +4,14 @@
 
 **Open/Closed** — cada novo bloco e uma pasta nova, sem tocar no codigo existente.
 
-> **Estado atual:** o frontend esta em migracao TipTap → CodeMirror 6. HTTP e E2E
-> blocks ainda sao renderizados via TipTap NodeView (encapsulados pelo sistema de
-> portal `cm-block-widgets.tsx`). DB blocks sao **100% nativos CM6**: extensao
-> `cm-db-block.tsx` + painel React `DbFencedPanel` montado em portais widget. As
-> secoes abaixo descrevem o pattern TipTap original; ver `## 6. DB block — caminho
-> nativo CM6` para o caminho especifico do bloco DB.
+> **Estado atual:** o frontend migrou TipTap → CodeMirror 6 progressivamente.
+> **DB blocks** (epic do redesign do DB) e **HTTP blocks** (epic 24) são **100%
+> nativos CM6** — extensão `cm-{db,http}-block.tsx` + painel React
+> (`DbFencedPanel` / `HttpFencedPanel`) montado em portais widget. **E2E** ainda
+> é o último bloco TipTap NodeView, encapsulado pelo `cm-block-widgets.tsx` +
+> `BlockAdapter`. As seções abaixo descrevem o pattern TipTap original (vale para
+> E2E hoje); ver `## 6. DB block — caminho nativo CM6` para o pattern novo, que é
+> o template para futuros blocos.
 
 ---
 
@@ -70,20 +72,20 @@ const ExecutableBlock = Node.create({
   },
 })
 
-// Novo bloco = novo .extend(), zero mudancas no base
-const HttpBlock = ExecutableBlock.extend({
-  name: 'httpBlock',
+// Novo bloco TipTap = novo .extend(), zero mudancas no base
+// (Hoje só E2e usa esse pattern; HTTP/DB são fenced-native CM6 — ver §6.)
+const E2eBlock = ExecutableBlock.extend({
+  name: 'e2eBlock',
   addAttributes() {
     return {
       ...this.parent?.(),  // herda displayMode, state, alias...
-      method: { default: 'GET' },
-      url: { default: '' },
-      headers: { default: {} },
-      body: { default: '' },
+      baseUrl: { default: '' },
+      headers: { default: [] },
+      steps: { default: [] },
     }
   },
   addNodeView() {
-    return ReactNodeViewRenderer(HttpBlockView)
+    return ReactNodeViewRenderer(E2eBlockView)
   },
 })
 ```
@@ -125,23 +127,21 @@ function ExecutableBlockShell({ children, node }) {
 
 ```
 src/components/blocks/
-├── registry.ts                 # BlockRegistry (shared)
-├── executable-block-shell.tsx  # Shell UI (shared)
+├── registry.ts                 # BlockRegistry (shared, hoje só e2e)
+├── executable-block-shell.tsx  # Shell UI (shared, hoje só e2e)
 ├── http/
+│   └── fenced/
+│       └── HttpFencedPanel.tsx # CM6 fenced-native panel (epic 24)
+├── db/
+│   └── fenced/
+│       └── DbFencedPanel.tsx   # CM6 fenced-native panel
+├── e2e/
 │   ├── index.ts                # registry.register(...)
 │   ├── node.ts                 # ExecutableBlock.extend(...)
-│   └── view.tsx                # HttpBlockView (input + output panels)
-├── db/
-│   ├── index.ts
-│   ├── node.ts
-│   └── view.tsx
-├── e2e/
-│   ├── index.ts
-│   ├── node.ts
-│   └── view.tsx
-└── [futuro-bloco]/             # adicionar pasta = adicionar feature
-    ├── index.ts
-    ├── node.ts
+│   └── view.tsx                # E2eBlockView (input + output panels)
+└── [futuro-bloco]/             # use o pattern fenced-native (§6)
+    └── fenced/
+        └── ...Panel.tsx
     └── view.tsx
 ```
 

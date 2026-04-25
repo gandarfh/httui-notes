@@ -284,3 +284,49 @@ export function saveBlockResult(
     totalRows: totalRows ?? null,
   });
 }
+
+// --- Block run history (Story 24.6) ---
+
+export interface HistoryEntry {
+  id: number;
+  file_path: string;
+  block_alias: string;
+  method: string;
+  url_canonical: string;
+  status: number | null;
+  request_size: number | null;
+  response_size: number | null;
+  elapsed_ms: number | null;
+  outcome: string;
+  ran_at: string;
+}
+
+export interface InsertHistoryEntry {
+  file_path: string;
+  block_alias: string;
+  method: string;
+  url_canonical: string;
+  status: number | null;
+  request_size: number | null;
+  response_size: number | null;
+  elapsed_ms: number | null;
+  outcome: string;
+}
+
+export function listBlockHistory(
+  filePath: string,
+  blockAlias: string,
+): Promise<HistoryEntry[]> {
+  return invoke("list_block_history", { filePath, blockAlias });
+}
+
+export function insertBlockHistory(entry: InsertHistoryEntry): Promise<void> {
+  return invoke("insert_block_history", { entry });
+}
+
+export function purgeBlockHistory(
+  filePath: string,
+  blockAlias: string,
+): Promise<number> {
+  return invoke("purge_block_history", { filePath, blockAlias });
+}
