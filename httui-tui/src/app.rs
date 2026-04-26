@@ -114,6 +114,11 @@ pub struct RunningQuery {
     pub cancel: CancellationToken,
     pub started_at: Instant,
     pub kind: RunningKind,
+    /// Cache key for save-on-success: `(file_path, hash)`. Populated
+    /// by `apply_run_block` only for cacheable queries (SELECT-ish)
+    /// and only when the active pane has a file path. `None` for
+    /// mutations and load-more pages — they never write to the cache.
+    pub cache_key: Option<(String, String)>,
 }
 
 #[derive(Debug, Clone, Copy)]

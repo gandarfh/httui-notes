@@ -258,6 +258,153 @@ fn rebuild_completion_popup(app: &mut App, allow_empty_prefix: bool) {
     });
 }
 
+/// Build the cache hash for a DB block run. Mirrors desktop's
+/// `computeDbCacheHash`: the hashed text is the raw SQL body plus,
+/// when any env vars are referenced via `{{KEY}}`, a sorted
+/// `KEY=VALUE` snapshot of just those vars. Connection id goes in
+/// as a separate field so the same query against two connections
+/// can't collide. Hash recipe stays in lockstep with the desktop so
+/// both apps' caches share entries when querying the same vault.
+fn compute_db_cache_hash(
+    body: &str,
+    conn_id: Option<&str>,
+    env_vars: &std::collections::HashMap<String, String>,
+) -> String {
+    let mut used: Vec<(&String, &String)> = env_vars
+        .iter()
+        .filter(|(k, _)| body.contains(&format!("{{{{{k}}}}}")))
+        .collect();
+    used.sort_by(|a, b| a.0.cmp(b.0));
+    let env_block: String = used
+        .iter()
+        .map(|(k, v)| format!("{k}={v}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let keyed = if env_block.is_empty() {
+        body.to_string()
+    } else {
+        format!("{body}\n__ENV__\n{env_block}")
+    };
+    httui_core::block_results::compute_block_hash(&keyed, None, conn_id)
+}
+
+/// Decide whether a query is safe to serve from cache. Read-only
+/// statements (SELECT/EXPLAIN/WITH/SHOW/PRAGMA/DESC) cache; anything
+/// else (UPDATE/DELETE/INSERT/DDL) bypasses the cache and always
+/// re-executes — matching desktop semantics. Walks past leading
+/// whitespace and `--` / `/* */` comments so a query that opens
+/// with a comment header is classified by its real first statement.
+///
+/// V1 only inspects the first non-comment word — multi-statement
+/// queries are classified by the first one. If the first is a
+/// SELECT but a later statement is a mutation, V1 may still cache.
+/// Story 04.2's multi-statement support hands us all results in one
+/// shot, so caching the whole bundle is what desktop does too.
+fn is_cacheable_query(query: &str) -> bool {
+    let mut s = query.trim_start();
+    loop {
+        if let Some(rest) = s.strip_prefix("--") {
+            s = match rest.find('\n') {
+                Some(idx) => rest[idx + 1..].trim_start(),
+                None => "",
+            };
+        } else if let Some(rest) = s.strip_prefix("/*") {
+            s = match rest.find("*/") {
+                Some(idx) => rest[idx + 2..].trim_start(),
+                None => "",
+            };
+        } else {
+            break;
+        }
+    }
+    let first_word: String =
+        s.chars().take_while(|c| c.is_ascii_alphabetic()).collect();
+    matches!(
+        first_word.to_ascii_uppercase().as_str(),
+        "SELECT" | "WITH" | "EXPLAIN" | "SHOW" | "PRAGMA" | "DESC" | "DESCRIBE"
+    )
+}
+
+/// Format the same one-liner `db_summary` produces in the renderer
+/// — but driven by an arbitrary `Value` (the deserialized cache
+/// row) rather than a `BlockNode`. Used to paint the `⛁ cached · …`
+/// status when a cache hit short-circuits the run.
+fn db_summary_from_value(value: Option<&serde_json::Value>, elapsed: u64) -> String {
+    let Some(v) = value else { return format!("ok · {elapsed}ms") };
+    let results = v.get("results").and_then(|r| r.as_array());
+    let extras = match results.map(|r| r.len()).unwrap_or(0) {
+        0 | 1 => String::new(),
+        n => format!(" (+{} more)", n - 1),
+    };
+    let first = results.and_then(|r| r.first());
+    let kind = first.and_then(|f| f.get("kind")).and_then(|k| k.as_str());
+    match kind {
+        Some("select") => {
+            let rows = first
+                .and_then(|f| f.get("rows"))
+                .and_then(|r| r.as_array())
+                .map(|r| r.len())
+                .unwrap_or(0);
+            let has_more = first
+                .and_then(|f| f.get("has_more"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let suffix = if has_more { "+" } else { "" };
+            format!("{rows}{suffix} rows · {elapsed}ms{extras}")
+        }
+        Some("mutation") => {
+            let affected = first
+                .and_then(|f| f.get("rows_affected"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            format!("{affected} affected · {elapsed}ms{extras}")
+        }
+        Some("error") => first
+            .and_then(|f| f.get("message"))
+            .and_then(|v| v.as_str())
+            .map(|m| format!("error: {m}{extras}"))
+            .unwrap_or_else(|| format!("error · {elapsed}ms")),
+        _ => format!("ok · {elapsed}ms{extras}"),
+    }
+}
+
+/// Fire-and-forget save to the on-disk cache. Spawned because the
+/// SQLite write would otherwise block the dispatcher; failure is
+/// logged but never surfaces to the user (cache writes are
+/// best-effort, exactly like the desktop). Pulls `total_rows` from
+/// the first SELECT result so the cached row matches desktop's
+/// shape.
+fn save_db_cache_async(
+    pool: sqlx::SqlitePool,
+    file_path: String,
+    hash: String,
+    value: serde_json::Value,
+    elapsed_ms: u64,
+    results: &[httui_core::executor::db::types::DbResult],
+) {
+    use httui_core::executor::db::types::DbResult;
+    let total_rows: Option<i64> = results.first().and_then(|r| match r {
+        DbResult::Select { rows, .. } => Some(rows.len() as i64),
+        _ => None,
+    });
+    let response_str = match serde_json::to_string(&value) {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    tokio::spawn(async move {
+        let _ = httui_core::block_results::save_block_result(
+            &pool,
+            &file_path,
+            &hash,
+            "success",
+            &response_str,
+            elapsed_ms as i64,
+            total_rows,
+        )
+        .await;
+    });
+}
+
 /// Resolve a fence's `connection=` value (UUID or slug) to the
 /// canonical UUID using the in-memory `connection_names` map. The
 /// async `resolve_connection_id` (used by the executor) hits the
@@ -1388,6 +1535,70 @@ fn apply_run_block(app: &mut App) {
         }
     };
 
+    // Cache check — only for read queries; mutations always
+    // re-execute. Pulls the active pane's file path (cache is
+    // per-file) and computes the same hash recipe the desktop uses
+    // (`raw_query` + only the env vars referenced in the body, then
+    // `compute_block_hash`). Hit → set state to `Cached`, paint the
+    // ⛁ summary, skip the spawn entirely. Miss → keep `cache_key`
+    // so `handle_db_block_result` writes on success.
+    let file_path: Option<String> = app
+        .active_pane()
+        .and_then(|p| p.document_path.as_ref())
+        .map(|p| p.to_string_lossy().to_string());
+    let cache_key: Option<(String, String)> =
+        if is_cacheable_query(&raw_query) {
+            file_path.as_deref().map(|fp| {
+                let hash = compute_db_cache_hash(
+                    &raw_query,
+                    Some(&connection_id),
+                    &env_vars,
+                );
+                (fp.to_string(), hash)
+            })
+        } else {
+            None
+        };
+    if let Some((fp, hash)) = cache_key.as_ref() {
+        let app_pool = app.pool_manager.app_pool().clone();
+        let fp_owned = fp.clone();
+        let hash_owned = hash.clone();
+        let cached = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(
+                httui_core::block_results::get_block_result(
+                    &app_pool,
+                    &fp_owned,
+                    &hash_owned,
+                ),
+            )
+        })
+        .ok()
+        .flatten();
+        if let Some(row) = cached {
+            if row.status == "success" {
+                if let Ok(value) =
+                    serde_json::from_str::<serde_json::Value>(&row.response)
+                {
+                    let summary = db_summary_from_value(
+                        Some(&value),
+                        row.elapsed_ms as u64,
+                    );
+                    if let Some(doc) = app.tabs.active_document_mut() {
+                        if let Some(b) = doc.block_at_mut(segment_idx) {
+                            b.state = ExecutionState::Cached;
+                            b.cached_result = Some(value);
+                        }
+                    }
+                    app.set_status(
+                        StatusKind::Info,
+                        format!("⛁ cached · {summary}"),
+                    );
+                    return;
+                }
+            }
+        }
+    }
+
     // Mark the block Running so the renderer paints the spinner /
     // yellow border on the next frame.
     if let Some(doc) = app.tabs.active_document_mut() {
@@ -1407,6 +1618,7 @@ fn apply_run_block(app: &mut App) {
         bind_values,
         limit,
         0,
+        cache_key,
     );
 }
 
@@ -1428,6 +1640,7 @@ fn spawn_db_query(
     bind_values: Vec<serde_json::Value>,
     limit: u64,
     offset: u64,
+    cache_key: Option<(String, String)>,
 ) {
     let Some(sender) = app.event_sender.clone() else {
         app.set_status(
@@ -1466,6 +1679,7 @@ fn spawn_db_query(
         cancel: token,
         started_at: std::time::Instant::now(),
         kind,
+        cache_key,
     });
 }
 
@@ -1480,7 +1694,14 @@ pub fn handle_db_block_result(
     kind: crate::event::DbBlockResultKind,
     outcome: Result<httui_core::executor::db::types::DbResponse, String>,
 ) {
-    app.running_query = None;
+    // Cache key was stored on the running-query handle when
+    // `apply_run_block` decided this was a cacheable read. Take it
+    // *before* clearing the slot so the success branch below can
+    // write back without re-deriving the hash.
+    let cache_key = app
+        .running_query
+        .take()
+        .and_then(|q| q.cache_key);
     use crate::event::DbBlockResultKind;
     use httui_core::executor::db::types::DbResult;
     match kind {
@@ -1499,7 +1720,25 @@ pub fn handle_db_block_result(
                         } else {
                             ExecutionState::Success
                         };
-                        b.cached_result = value;
+                        b.cached_result = value.clone();
+                    }
+                }
+                // Save to cache only on success — error responses
+                // shouldn't poison subsequent runs (user fixes the
+                // query and re-runs; we don't want to serve the old
+                // error). Mirrors desktop behavior.
+                if !first_was_error {
+                    if let (Some((file_path, hash)), Some(value)) =
+                        (cache_key, value)
+                    {
+                        save_db_cache_async(
+                            app.pool_manager.app_pool().clone(),
+                            file_path,
+                            hash,
+                            value,
+                            response.stats.elapsed_ms,
+                            &response.results,
+                        );
                     }
                 }
                 if first_was_error {
@@ -1760,6 +1999,11 @@ fn load_more_db_block(app: &mut App, segment_idx: usize) -> Result<(), String> {
     })?;
 
     let token = CancellationToken::new();
+    // Pagination doesn't write to the cache — the on-disk entry is
+    // keyed by the original query+conn+env, not by `(query, offset)`.
+    // Bumping cache on every load-more page would either bloat with
+    // partial responses or, worse, overwrite the canonical entry
+    // with a partial one.
     spawn_db_query(
         app,
         segment_idx,
@@ -1770,6 +2014,7 @@ fn load_more_db_block(app: &mut App, segment_idx: usize) -> Result<(), String> {
         bind_values,
         limit,
         current_offset,
+        None,
     );
     Ok(())
 }
@@ -3098,5 +3343,158 @@ mod tests {
         )
         .expect("resolves via legacy dot-nav");
         assert_eq!(binds, vec![serde_json::json!(42)]);
+    }
+
+    // ───────────── Cache (Story 04.6) ─────────────
+    //
+    // Pure-function tests only — the SQLite I/O paths
+    // (`get_block_result`/`save_block_result`) live in
+    // `httui-core::block_results` and have their own integration
+    // tests there.
+
+    fn env_map(pairs: &[(&str, &str)]) -> std::collections::HashMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn cacheable_query_recognizes_select_family() {
+        // The classic safe-to-cache statements. SHOW/PRAGMA are
+        // read-only too even though they don't return rows the
+        // typical way — desktop caches them, we match.
+        for q in &[
+            "SELECT 1",
+            "select 1",
+            "  SELECT * FROM foo",
+            "WITH x AS (...) SELECT 1",
+            "EXPLAIN SELECT 1",
+            "PRAGMA table_info('users')",
+            "SHOW TABLES",
+            "DESC users",
+        ] {
+            assert!(is_cacheable_query(q), "expected cacheable: {q}");
+        }
+    }
+
+    #[test]
+    fn cacheable_query_rejects_mutations() {
+        // Anything that writes — never serve from cache.
+        for q in &[
+            "UPDATE users SET x = 1",
+            "DELETE FROM users",
+            "INSERT INTO users VALUES (1)",
+            "REPLACE INTO users VALUES (1)",
+            "CREATE TABLE x (id INT)",
+            "DROP TABLE x",
+            "ALTER TABLE x ADD COLUMN y INT",
+            "TRUNCATE TABLE x",
+        ] {
+            assert!(!is_cacheable_query(q), "expected mutation: {q}");
+        }
+    }
+
+    #[test]
+    fn cacheable_query_strips_leading_comments() {
+        // A header comment shouldn't fool the classifier — desktop
+        // notes commonly start with a `-- description` line above
+        // the SELECT.
+        assert!(is_cacheable_query("-- daily report\nSELECT 1"));
+        assert!(is_cacheable_query(
+            "/* multi\n   line */\nSELECT 1"
+        ));
+        // Mutation behind a comment is still a mutation.
+        assert!(!is_cacheable_query("-- cleanup job\nDELETE FROM users"));
+    }
+
+    #[test]
+    fn cache_hash_is_deterministic_for_same_inputs() {
+        // Identical body / conn / env → identical hash. The cache
+        // contract relies on this being stable across processes.
+        let env = env_map(&[("TOKEN", "abc")]);
+        let h1 = compute_db_cache_hash(
+            "SELECT 1 WHERE x = {{TOKEN}}",
+            Some("conn-1"),
+            &env,
+        );
+        let h2 = compute_db_cache_hash(
+            "SELECT 1 WHERE x = {{TOKEN}}",
+            Some("conn-1"),
+            &env,
+        );
+        assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn cache_hash_changes_when_referenced_env_value_changes() {
+        // The recipe folds in only env vars referenced via
+        // `{{KEY}}`. Bump the value of a referenced var and the
+        // hash must shift so the next run sees a miss.
+        let body = "SELECT 1 WHERE x = {{TOKEN}}";
+        let h_old = compute_db_cache_hash(
+            body,
+            Some("conn-1"),
+            &env_map(&[("TOKEN", "old")]),
+        );
+        let h_new = compute_db_cache_hash(
+            body,
+            Some("conn-1"),
+            &env_map(&[("TOKEN", "new")]),
+        );
+        assert_ne!(h_old, h_new);
+    }
+
+    #[test]
+    fn cache_hash_ignores_unreferenced_env_vars() {
+        // Env vars NOT referenced in the body don't affect the
+        // hash — same desktop guarantee. A query that doesn't read
+        // `{{X}}` should hit cache regardless of `X`'s current
+        // value, so users switching environments don't pay for
+        // every cached query.
+        let body = "SELECT 1";
+        let h1 = compute_db_cache_hash(body, Some("conn-1"), &env_map(&[]));
+        let h2 = compute_db_cache_hash(
+            body,
+            Some("conn-1"),
+            &env_map(&[("UNRELATED", "v")]),
+        );
+        assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn cache_hash_changes_with_connection_id() {
+        // Same body against two connections must hash differently
+        // — they could be pointing at different schemas.
+        let body = "SELECT 1";
+        let env = env_map(&[]);
+        let h1 = compute_db_cache_hash(body, Some("conn-a"), &env);
+        let h2 = compute_db_cache_hash(body, Some("conn-b"), &env);
+        assert_ne!(h1, h2);
+    }
+
+    #[test]
+    fn db_summary_from_value_handles_select_with_extras() {
+        // Multi-statement select → the summary describes results[0]
+        // and appends `(+N more)`. Same wording the renderer uses.
+        let value = serde_json::json!({
+            "results": [
+                { "kind": "select", "rows": [{}, {}, {}], "has_more": false },
+                { "kind": "select", "rows": [{}], "has_more": false },
+            ],
+            "stats": { "elapsed_ms": 0 }
+        });
+        let s = db_summary_from_value(Some(&value), 12);
+        assert_eq!(s, "3 rows · 12ms (+1 more)");
+    }
+
+    #[test]
+    fn db_summary_from_value_describes_mutation() {
+        let value = serde_json::json!({
+            "results": [{ "kind": "mutation", "rows_affected": 7 }],
+            "stats": { "elapsed_ms": 0 }
+        });
+        let s = db_summary_from_value(Some(&value), 4);
+        assert_eq!(s, "7 affected · 4ms");
     }
 }

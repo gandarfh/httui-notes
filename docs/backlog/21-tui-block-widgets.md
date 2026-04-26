@@ -210,18 +210,39 @@ Desktop tem `timeout=30000` no fence + executor wrap em `tokio::time::timeout`. 
 
 ---
 
-### Story 04.6 — Cache hash validation 🚧 P1
+### Story 04.6 — Cache hash validation ✅ P1
 
-Hoje TUI sempre re-executa em `r`. Desktop calcula `SHA256(query + connection_id + limit + env_snapshot)` e serve cache em hit (com badge `cached`). Cache fica em SQLite via `httui-core`.
+Hoje TUI sempre re-executava em `r`. Agora consulta cache primeiro (per-file SQLite, mesma tabela `block_results` do desktop). Hit → ⛁ badge azul, sem rodar query.
 
-**Tasks:**
-- [ ] Calcular hash em `apply_run_block` antes de spawn task
-- [ ] Lookup no cache (`httui-core::cache::get_block_result`?) antes de executar
-- [ ] Hit → emit `AppEvent::DbBlockResult` com flag `from_cache=true`, badge muda
-- [ ] `:run!` (ou `R` em normal) força bypass do cache (P2 — já listado em Story 09)
-- [ ] Mutation methods (UPDATE/INSERT/DELETE/etc.) **nunca** servem de cache (espelhar comportamento desktop)
-- [ ] Testes: query idempotente roda, segundo `r` é cache hit
-- [ ] Testes: UPDATE sempre re-executa
+**Entregue:**
+- [x] `compute_db_cache_hash(body, conn_id, env_vars)` — espelha exatamente desktop `computeDbCacheHash`: hash SHA-256 sobre `body + "\n__ENV__\n" + sorted(KEY=VALUE)` apenas das env vars **referenciadas no body**. Conn id como segundo input pra `compute_block_hash`. **Cross-app cacheable**: desktop e TUI compartilham entries no mesmo vault.
+- [x] `is_cacheable_query(query)` — strip leading whitespace + `--` line comments + `/* */` block comments, classifica primeiro statement. Cacheable: `SELECT/WITH/EXPLAIN/SHOW/PRAGMA/DESC/DESCRIBE`. Mutation (sempre re-exec): `UPDATE/DELETE/INSERT/REPLACE/CREATE/ALTER/DROP/TRUNCATE`.
+- [x] `apply_run_block` cache check antes de spawn:
+  - Lê `app.active_pane().document_path` (cache é per-file)
+  - Se `is_cacheable_query` AND tem path: computa hash, faz `block_in_place` lookup `httui-core::block_results::get_block_result`
+  - Hit `status=success`: deserialize response → `b.state = ExecutionState::Cached`, `b.cached_result = value`, status bar mostra `⛁ cached · N rows · Xms`, **return sem spawn**
+  - Miss: continua spawn normal, `cache_key = Some((path, hash))` propaga via `RunningQuery`
+- [x] `RunningQuery.cache_key: Option<(String, String)>` — novo campo, threading pra save-on-success
+- [x] `handle_db_block_result` Run+success: se `cache_key` presente, dispara `save_db_cache_async` (`tokio::spawn` fire-and-forget, status `success`, total_rows do primeiro SELECT)
+- [x] **Mutation never caches**: `is_cacheable_query` retorna false → `cache_key = None` → nunca lê nem escreve
+- [x] **Errors never cache**: handler só salva quando primeiro result não é Error
+- [x] **Load-more never caches**: spawn passa `cache_key=None` (paginação tem offset, não combina com hash do body)
+- [x] **Renderer já paint Cached**: `db_result_line` em `ui::blocks` já tinha branch `Cached` com `⛁ cached · …` em azul. Só faltava setar.
+- [x] 10 testes novos em `dispatch::tests::{cacheable_query_*, cache_hash_*, db_summary_from_value_*}`:
+  - Cacheable reconhece SELECT/WITH/EXPLAIN/SHOW/PRAGMA/DESC
+  - Cacheable rejeita UPDATE/DELETE/INSERT/REPLACE/CREATE/ALTER/DROP/TRUNCATE
+  - Strip comments (-- e /* */) — header + statement real
+  - Hash determinístico mesmo input
+  - Hash muda quando env value referenciado muda
+  - Hash ignora env vars não-referenciadas
+  - Hash muda com connection_id diferente
+  - Summary multi-statement com `(+N more)`
+  - Summary mutation rows_affected
+
+**Pendente (futuro):**
+- `:run!` / `R` — force bypass cache (story 09 mencionou; quando precisar de "sempre fresco" sem editar query)
+- Cache TTL: hoje cache nunca expira; desktop também não. Quando ficar problemático, adicionar `cached_at < datetime('now', '-1 hour')` filter no get.
+- Visual "ran X ago" no status — desktop tem; pode entrar em Story 11 (inline fence edit) ou separada.
 
 ---
 
