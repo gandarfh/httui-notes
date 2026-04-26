@@ -1,4 +1,3 @@
-import type { Editor } from "@tiptap/core";
 import type { Text as CMText } from "@codemirror/state";
 import type { BlockContext } from "./references";
 import { getBlockResult } from "@/lib/tauri/commands";
@@ -10,94 +9,13 @@ import { resolveConnectionIdentifier } from "./connection-resolve";
 import { listConnections, type Connection } from "@/lib/tauri/connections";
 import { useEnvironmentStore } from "@/stores/environment";
 
-const EXECUTABLE_BLOCK_TYPES = ["httpBlock", "dbBlock"];
 const EXECUTABLE_LANGS = ["http", "db"];
 
-/**
- * Collect all executable blocks above a given position in the TipTap document.
- * For each block with an alias, fetches its cached result from SQLite.
- * Also accepts a fake editor with __cmView for CM6 compatibility.
- */
-export async function collectBlocksAbove(
-  editor: Editor,
-  beforePos: number,
-  filePath: string,
-): Promise<BlockContext[]> {
-  // Detect CM6 fake editor and route to CM6 version
-  const cmView = (editor as unknown as { __cmView?: import("@codemirror/view").EditorView }).__cmView;
-  if (cmView) {
-    return collectBlocksAboveCM(cmView.state.doc, beforePos, filePath);
-  }
-
-  const { doc } = editor.state;
-  const blocks: BlockContext[] = [];
-
-  doc.descendants((node, pos) => {
-    if (pos >= beforePos) return false;
-
-    if (EXECUTABLE_BLOCK_TYPES.includes(node.type.name)) {
-      const alias = (node.attrs.alias as string) ?? "";
-      if (alias) {
-        blocks.push({
-          alias,
-          blockType: (node.attrs.blockType as string) ?? "",
-          pos,
-          content: (node.attrs.content as string) ?? "",
-          cachedResult: null,
-        });
-      }
-    }
-
-    return false; // don't descend into children (blocks are top-level)
-  });
-
-  // Fetch cached results in parallel
-  await populateCachedResults(blocks, filePath);
-
-  return blocks;
-}
-
-/**
- * Collect ALL executable blocks in the document (for dependency resolution).
- * Unlike collectBlocksAbove, this has no position filter.
- * Also accepts a fake editor with __cmView for CM6 compatibility.
- */
-export async function collectAllBlocks(
-  editor: Editor,
-  filePath: string,
-): Promise<BlockContext[]> {
-  // Detect CM6 fake editor and route to CM6 version
-  const cmView = (editor as unknown as { __cmView?: import("@codemirror/view").EditorView }).__cmView;
-  if (cmView) {
-    return collectAllBlocksCM(cmView.state.doc, filePath);
-  }
-
-  const { doc } = editor.state;
-  const blocks: BlockContext[] = [];
-
-  doc.descendants((node, pos) => {
-    if (EXECUTABLE_BLOCK_TYPES.includes(node.type.name)) {
-      const alias = (node.attrs.alias as string) ?? "";
-      if (alias) {
-        blocks.push({
-          alias,
-          blockType: (node.attrs.blockType as string) ?? "",
-          pos,
-          content: (node.attrs.content as string) ?? "",
-          cachedResult: null,
-        });
-      }
-    }
-    return false;
-  });
-
-  await populateCachedResults(blocks, filePath);
-
-  return blocks;
-}
-
 // ---------------------------------------------------------------------------
-// CodeMirror 6 variants — work on CM Text (markdown) instead of ProseMirror doc
+// CodeMirror 6 — walks CM Text (markdown) to find executable fenced blocks.
+// (The TipTap variants `collectBlocksAbove`/`collectAllBlocks` were removed
+// when TipTap was retired; the CM6 versions below are the only callers
+// across the app.)
 // ---------------------------------------------------------------------------
 
 /** Check if a fenced block language tag is an executable block type */

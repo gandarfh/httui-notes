@@ -1,3 +1,15 @@
 [workspace]
 members = ["src-tauri", "httui-core", "httui-mcp", "httui-tui"]
 resolver = "2"
+
+# Slimmer dev-time artifacts. `line-tables-only` keeps panic backtraces
+# pointing at file:line but drops the heavy DWARF type info that pushes
+# `target/debug/deps` past 15 GB on this workspace. Backtraces stay
+# usable; step-debugging in lldb / rust-gdb loses variable inspection.
+[profile.dev]
+debug = "line-tables-only"
+
+# Same trick for compiled deps — they dominate `target/debug/deps` and
+# almost never get debugged at the source level.
+[profile.dev.package."*"]
+debug = "line-tables-only"

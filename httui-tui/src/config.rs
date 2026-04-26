@@ -1,0 +1,170 @@
+use directories::ProjectDirs;
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
+
+use crate::error::{TuiError, TuiResult};
+
+/// Persisted user configuration. Mirrors `docs/tui-design.md` §11.2.
+///
+/// Every field is `#[serde(default)]`, so partial files (or future
+/// additions) load gracefully — missing keys take the default.
+///
+/// Vault state (registered vaults + active selection) lives in the
+/// shared SQLite app_config (see `httui_core::vaults`), not here —
+/// that's how the desktop and the TUI converge on the same workspace.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Config {
+    pub theme: String,
+    pub sidebar_default_visible: bool,
+    pub sidebar_width: u16,
+    pub auto_save_debounce_ms: u64,
+    pub mouse_enabled: bool,
+
+    pub ui: UiConfig,
+    pub blocks: BlocksConfig,
+    pub chat: ChatConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct UiConfig {
+    pub show_line_numbers: bool,
+    pub show_relative_numbers: bool,
+    pub font_features: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BlocksConfig {
+    pub default_display_mode: String,
+    pub auto_run_on_cached_miss: bool,
+    /// How navigation flows between a block's SQL body and its result
+    /// table. Accepted values:
+    /// - `"flow"` (default) — `j`/`k` cross from the last SQL line
+    ///   into the first result row and back, like prose.
+    /// - `"tab"` — `Tab` key alternates focus; `j`/`k` stay in the
+    ///   active section (planned, currently behaves like `flow`).
+    /// - `"scroll-key"` — `Ctrl+J`/`Ctrl+K` scroll the result while
+    ///   `j`/`k` skip past the result entirely (planned, currently
+    ///   behaves like `flow`).
+    pub result_nav: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ChatConfig {
+    pub enabled: bool,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            theme: "auto".into(),
+            sidebar_default_visible: true,
+            sidebar_width: 28,
+            auto_save_debounce_ms: 1000,
+            mouse_enabled: false,
+            ui: UiConfig::default(),
+            blocks: BlocksConfig::default(),
+            chat: ChatConfig::default(),
+        }
+    }
+}
+
+impl Default for UiConfig {
+    fn default() -> Self {
+        Self {
+            show_line_numbers: true,
+            show_relative_numbers: false,
+            font_features: true,
+        }
+    }
+}
+
+impl Default for BlocksConfig {
+    fn default() -> Self {
+        Self {
+            default_display_mode: "split".into(),
+            auto_run_on_cached_miss: false,
+            result_nav: "flow".into(),
+        }
+    }
+}
+
+/// Path to the canonical config file under XDG.
+pub fn default_config_path() -> TuiResult<PathBuf> {
+    let dirs = ProjectDirs::from("com", "httui", "notes-tui").ok_or_else(|| {
+        TuiError::Config("could not resolve project dirs (no $HOME?)".into())
+    })?;
+    Ok(dirs.config_dir().join("config.toml"))
+}
+
+/// Load config from `path`, creating it with defaults on first run.
+pub fn load_or_init(path: &Path) -> TuiResult<Config> {
+    if !path.exists() {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let cfg = Config::default();
+        let body = toml::to_string_pretty(&cfg)
+            .map_err(|e| TuiError::Config(format!("serialize defaults: {e}")))?;
+        std::fs::write(path, body)?;
+        return Ok(cfg);
+    }
+
+    let raw = std::fs::read_to_string(path)?;
+    toml::from_str(&raw).map_err(|e| TuiError::Config(format!("parse {path:?}: {e}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn defaults_roundtrip_through_toml() {
+        let cfg = Config::default();
+        let s = toml::to_string_pretty(&cfg).unwrap();
+        let back: Config = toml::from_str(&s).unwrap();
+        assert_eq!(back.theme, cfg.theme);
+        assert_eq!(back.sidebar_width, cfg.sidebar_width);
+        assert_eq!(
+            back.blocks.default_display_mode,
+            cfg.blocks.default_display_mode
+        );
+    }
+
+    #[test]
+    fn partial_toml_falls_back_to_defaults() {
+        let raw = "theme = \"dark\"\nsidebar_width = 40\n";
+        let cfg: Config = toml::from_str(raw).unwrap();
+        assert_eq!(cfg.theme, "dark");
+        assert_eq!(cfg.sidebar_width, 40);
+        assert_eq!(cfg.auto_save_debounce_ms, 1000); // default preserved
+        assert!(cfg.ui.show_line_numbers); // nested default preserved
+    }
+
+    #[test]
+    fn load_or_init_creates_file_on_first_run() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("nested").join("config.toml");
+        let cfg = load_or_init(&path).unwrap();
+        assert_eq!(cfg.theme, "auto");
+        assert!(path.exists());
+
+        // Second call reads what was written.
+        let cfg2 = load_or_init(&path).unwrap();
+        assert_eq!(cfg2.theme, cfg.theme);
+    }
+
+    #[test]
+    fn load_or_init_preserves_user_edits() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("config.toml");
+        std::fs::write(&path, "theme = \"dark\"\nsidebar_width = 50\n").unwrap();
+        let cfg = load_or_init(&path).unwrap();
+        assert_eq!(cfg.theme, "dark");
+        assert_eq!(cfg.sidebar_width, 50);
+    }
+}
