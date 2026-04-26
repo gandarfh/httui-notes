@@ -205,6 +205,59 @@ async fn purge_block_settings(
         .map_err(|e| e.to_string())
 }
 
+// --- Pinned response examples (Onda 3) ---
+
+#[tauri::command]
+async fn save_block_example(
+    pool: tauri::State<'_, SqlitePool>,
+    file_path: String,
+    block_alias: String,
+    name: String,
+    response_json: String,
+) -> Result<i64, String> {
+    httui_notes::block_examples::save_example(
+        &pool,
+        &file_path,
+        &block_alias,
+        &name,
+        &response_json,
+    )
+    .await
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn list_block_examples(
+    pool: tauri::State<'_, SqlitePool>,
+    file_path: String,
+    block_alias: String,
+) -> Result<Vec<httui_notes::block_examples::BlockExample>, String> {
+    httui_notes::block_examples::list_examples(&pool, &file_path, &block_alias)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn delete_block_example(
+    pool: tauri::State<'_, SqlitePool>,
+    id: i64,
+) -> Result<u64, String> {
+    httui_notes::block_examples::delete_example(&pool, id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn purge_block_examples(
+    pool: tauri::State<'_, SqlitePool>,
+    file_path: String,
+    block_alias: String,
+) -> Result<u64, String> {
+    httui_notes::block_examples::purge_examples_for_block(&pool, &file_path, &block_alias)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// T31/T35: Server-side hash computation including environment + connection context.
 #[tauri::command]
 async fn compute_block_hash(
@@ -316,8 +369,27 @@ fn create_note(vault_path: String, file_path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn delete_note(vault_path: String, file_path: String) -> Result<(), String> {
-    httui_notes::fs::delete_note(&vault_path, &file_path)
+async fn delete_note(
+    vault_path: String,
+    file_path: String,
+    pool: tauri::State<'_, SqlitePool>,
+) -> Result<(), String> {
+    // Move the file to trash first; only purge SQLite state if the FS
+    // operation succeeded so we don't drop history/examples for a file
+    // that's still on disk.
+    httui_notes::fs::delete_note(&vault_path, &file_path)?;
+
+    // Cascade purge across every per-block table (Onda 1-3). Each call is
+    // best-effort — a failure here doesn't undo the trash operation.
+    let absolute = format!("{vault_path}/{file_path}");
+    for path_variant in [&file_path, &absolute] {
+        let _ = httui_notes::block_history::purge_history_for_file(&pool, path_variant).await;
+        let _ = httui_notes::block_settings::purge_settings_for_file(&pool, path_variant).await;
+        let _ = httui_notes::block_examples::purge_examples_for_file(&pool, path_variant).await;
+        let _ =
+            httui_notes::block_results::delete_block_results_for_file(&pool, path_variant).await;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -771,6 +843,10 @@ fn main() {
             get_block_settings,
             upsert_block_settings,
             purge_block_settings,
+            save_block_example,
+            list_block_examples,
+            delete_block_example,
+            purge_block_examples,
             get_block_result,
             save_block_result,
             compute_block_hash,

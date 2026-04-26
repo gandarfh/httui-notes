@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { Flex, Text, Separator, Box, VStack } from "@chakra-ui/react";
+import { Flex, Input, Text, Separator, Box, VStack } from "@chakra-ui/react";
 import { NativeSelectRoot, NativeSelectField } from "@chakra-ui/react";
 import { useColorMode } from "@/components/ui/color-mode";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
@@ -83,6 +83,39 @@ export function GeneralSection() {
             </Text>
           </Box>
         )}
+      </Box>
+
+      <Separator />
+
+      {/* HTTP block — history retention */}
+      <Box>
+        <Text fontWeight="semibold" fontSize="sm" mb={3}>
+          HTTP block — history retention
+        </Text>
+        <Flex align="center" justify="space-between" gap={4}>
+          <Flex direction="column" gap={0} flex={1}>
+            <Text fontSize="sm">Runs kept per block</Text>
+            <Text fontSize="xs" color="fg.muted">
+              How many recent runs the drawer history shows. Older runs are
+              dropped on every new run. Each block can disable history
+              individually via the block&apos;s settings drawer.
+            </Text>
+          </Flex>
+          <Input
+            size="sm"
+            w="100px"
+            type="number"
+            min={1}
+            max={100}
+            value={String(settings.historyRetention)}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              if (Number.isFinite(n) && n > 0 && n <= 100) {
+                updateSetting("historyRetention", n);
+              }
+            }}
+          />
+        </Flex>
       </Box>
 
       <Separator />

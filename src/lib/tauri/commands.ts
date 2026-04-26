@@ -370,3 +370,50 @@ export function purgeBlockSettings(
 ): Promise<number> {
   return invoke("purge_block_settings", { filePath, blockAlias });
 }
+
+// --- Pinned response examples (Onda 3) ---
+
+export interface BlockExample {
+  id: number;
+  file_path: string;
+  block_alias: string;
+  name: string;
+  response_json: string;
+  saved_at: string;
+}
+
+/** Save (or replace by `name`) a response snapshot as an example. */
+export function saveBlockExample(
+  filePath: string,
+  blockAlias: string,
+  name: string,
+  responseJson: string,
+): Promise<number> {
+  return invoke("save_block_example", {
+    filePath,
+    blockAlias,
+    name,
+    responseJson,
+  });
+}
+
+/** List examples for a (file, alias), most recent first. */
+export function listBlockExamples(
+  filePath: string,
+  blockAlias: string,
+): Promise<BlockExample[]> {
+  return invoke("list_block_examples", { filePath, blockAlias });
+}
+
+/** Delete a single example by id. */
+export function deleteBlockExample(id: number): Promise<number> {
+  return invoke("delete_block_example", { id });
+}
+
+/** Cascade-delete all examples for a (file, alias). Used when removing a block. */
+export function purgeBlockExamples(
+  filePath: string,
+  blockAlias: string,
+): Promise<number> {
+  return invoke("purge_block_examples", { filePath, blockAlias });
+}

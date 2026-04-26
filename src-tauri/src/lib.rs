@@ -1,4 +1,5 @@
 // Re-export shared core modules
+pub use httui_core::block_examples;
 pub use httui_core::block_history;
 pub use httui_core::block_results;
 pub use httui_core::block_settings;

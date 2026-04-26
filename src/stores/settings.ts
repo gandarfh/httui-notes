@@ -13,12 +13,15 @@ export interface AppSettings {
   autoSaveMs: number;
   editorFontSize: number;
   defaultFetchSize: number;
+  /** Cap for HTTP block run history (per file/alias). Onda 3. */
+  historyRetention: number;
 }
 
 const DEFAULTS: AppSettings = {
   autoSaveMs: 1000,
   editorFontSize: 12,
   defaultFetchSize: 80,
+  historyRetention: 10,
 };
 
 interface SettingsState {
@@ -72,11 +75,14 @@ export const useSettingsStore = create<SettingsState>()(
         set((state) => ({
           settings: { ...state.settings, [key]: value },
         }));
-        const configKey = key === "autoSaveMs"
-          ? "auto_save_ms"
-          : key === "editorFontSize"
-            ? "editor_font_size"
-            : "default_fetch_size";
+        const configKey =
+          key === "autoSaveMs"
+            ? "auto_save_ms"
+            : key === "editorFontSize"
+              ? "editor_font_size"
+              : key === "defaultFetchSize"
+                ? "default_fetch_size"
+                : "history_retention";
         setConfig(configKey, String(value)).catch(() => {});
       },
 
@@ -103,12 +109,14 @@ export const useSettingsStore = create<SettingsState>()(
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
 
       loadSettings: async () => {
-        const [autoSave, fontSize, fetchSize, themeJson] = await Promise.all([
-          getConfig("auto_save_ms"),
-          getConfig("editor_font_size"),
-          getConfig("default_fetch_size"),
-          getConfig("theme"),
-        ]);
+        const [autoSave, fontSize, fetchSize, retention, themeJson] =
+          await Promise.all([
+            getConfig("auto_save_ms"),
+            getConfig("editor_font_size"),
+            getConfig("default_fetch_size"),
+            getConfig("history_retention"),
+            getConfig("theme"),
+          ]);
 
         let themeConfig = DEFAULT_THEME;
         if (themeJson) {
@@ -123,6 +131,9 @@ export const useSettingsStore = create<SettingsState>()(
             autoSaveMs: autoSave ? Number(autoSave) : DEFAULTS.autoSaveMs,
             editorFontSize: fontSize ? Number(fontSize) : DEFAULTS.editorFontSize,
             defaultFetchSize: fetchSize ? Number(fetchSize) : DEFAULTS.defaultFetchSize,
+            historyRetention: retention
+              ? Number(retention)
+              : DEFAULTS.historyRetention,
           },
           theme: themeConfig,
           loaded: true,

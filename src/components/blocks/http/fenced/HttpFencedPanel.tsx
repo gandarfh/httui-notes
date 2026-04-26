@@ -336,11 +336,15 @@ const HttpBodyCM = memo(function HttpBodyCM({
   );
 });
 import {
+  deleteBlockExample,
   getBlockResult,
   insertBlockHistory,
+  listBlockExamples,
   listBlockHistory,
   purgeBlockHistory,
+  saveBlockExample,
   saveBlockResult,
+  type BlockExample,
   type HistoryEntry,
 } from "@/lib/tauri/commands";
 import { useEnvironmentStore } from "@/stores/environment";
@@ -1500,14 +1504,25 @@ function highlightToHtml(text: string, lang: string | null): string {
   }
 }
 
+type BodyViewMode = "pretty" | "raw" | "preview" | "visualize";
+
 function HttpBodyView({
   rawBody,
   prettyBody,
+  response,
 }: {
   rawBody: string;
   prettyBody: string;
+  response: HttpResponseFull;
 }) {
-  const [view, setView] = useState<"pretty" | "raw">("pretty");
+  const [view, setView] = useState<BodyViewMode>("pretty");
+
+  const previewMeta = useMemo(() => detectPreview(response), [response]);
+  const visualizeData = useMemo(
+    () => parseJsonForVisualize(prettyBody),
+    [prettyBody],
+  );
+
   const text = view === "pretty" ? prettyBody : rawBody;
 
   const onCopy = async () => {
@@ -1535,41 +1550,405 @@ function HttpBodyView({
         >
           raw
         </Button>
+        {previewMeta.kind !== "none" && (
+          <Button
+            size="2xs"
+            variant={view === "preview" ? "solid" : "ghost"}
+            onClick={() => setView("preview")}
+          >
+            preview
+          </Button>
+        )}
+        {visualizeData !== null && (
+          <Button
+            size="2xs"
+            variant={view === "visualize" ? "solid" : "ghost"}
+            onClick={() => setView("visualize")}
+          >
+            ⊞ visualize
+          </Button>
+        )}
         <Box flex={1} />
-        <IconButton
-          aria-label="Copy body"
-          size="2xs"
-          variant="ghost"
-          onClick={onCopy}
-        >
-          <LuClipboard />
-        </IconButton>
+        {(view === "pretty" || view === "raw") && (
+          <IconButton
+            aria-label="Copy body"
+            size="2xs"
+            variant="ghost"
+            onClick={onCopy}
+          >
+            <LuClipboard />
+          </IconButton>
+        )}
       </HStack>
-      {text ? (
-        <Box
-          as="pre"
-          className="hljs"
-          fontFamily="mono"
-          fontSize="xs"
-          whiteSpace="pre-wrap"
-          wordBreak="break-word"
-          maxH="320px"
-          overflowY="auto"
-          // Keep wheel/touch scrolls inside this pane — without `contain`,
-          // hitting the top/bottom chains the scroll up to the document
-          // and the user accidentally scrolls past the block.
-          overscrollBehavior="contain"
-          dangerouslySetInnerHTML={{
-            __html: highlightToHtml(text, detectLang(text, view)),
-          }}
-        />
-      ) : (
-        <Box as="pre" fontFamily="mono" fontSize="xs" color="fg.muted">
-          (empty body)
-        </Box>
+      {view === "preview" && previewMeta.kind !== "none" && (
+        <HttpBodyPreview meta={previewMeta} />
+      )}
+      {view === "visualize" && visualizeData !== null && (
+        <HttpJsonVisualizer data={visualizeData} />
+      )}
+      {(view === "pretty" || view === "raw") && (
+        text ? (
+          <Box
+            as="pre"
+            className="hljs"
+            fontFamily="mono"
+            fontSize="xs"
+            whiteSpace="pre-wrap"
+            wordBreak="break-word"
+            maxH="320px"
+            overflowY="auto"
+            // Keep wheel/touch scrolls inside this pane — without `contain`,
+            // hitting the top/bottom chains the scroll up to the document
+            // and the user accidentally scrolls past the block.
+            overscrollBehavior="contain"
+            dangerouslySetInnerHTML={{
+              __html: highlightToHtml(text, detectLang(text, view)),
+            }}
+          />
+        ) : (
+          <Box as="pre" fontFamily="mono" fontSize="xs" color="fg.muted">
+            (empty body)
+          </Box>
+        )
       )}
     </>
   );
+}
+
+// ─────────────────────── Preview (image/PDF/HTML) ───────────────────────
+
+type PreviewMeta =
+  | { kind: "none" }
+  | { kind: "image"; dataUrl: string; alt: string }
+  | { kind: "pdf"; dataUrl: string }
+  | { kind: "html"; html: string };
+
+function detectPreview(response: HttpResponseFull): PreviewMeta {
+  const ctRaw = response.headers["content-type"] ?? response.headers["Content-Type"] ?? "";
+  const ct = ctRaw.split(";")[0].trim().toLowerCase();
+  const body = response.body;
+
+  // Binary base64 — image or PDF
+  if (
+    typeof body === "object" &&
+    body !== null &&
+    "encoding" in body &&
+    (body as Record<string, unknown>).encoding === "base64"
+  ) {
+    const data = String((body as Record<string, unknown>).data ?? "");
+    if (ct.startsWith("image/")) {
+      return { kind: "image", dataUrl: `data:${ct};base64,${data}`, alt: ct };
+    }
+    if (ct === "application/pdf") {
+      return { kind: "pdf", dataUrl: `data:application/pdf;base64,${data}` };
+    }
+    return { kind: "none" };
+  }
+
+  // HTML — rendered in a sandboxed iframe (no scripts).
+  if (ct === "text/html" && typeof body === "string") {
+    return { kind: "html", html: body };
+  }
+
+  return { kind: "none" };
+}
+
+function HttpBodyPreview({ meta }: { meta: PreviewMeta }) {
+  // Lifecycle: HTML preview uses a blob URL we must revoke on unmount.
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (meta.kind !== "html") {
+      setBlobUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(
+      new Blob([meta.html], { type: "text/html" }),
+    );
+    setBlobUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [meta]);
+
+  if (meta.kind === "image") {
+    return (
+      <Box
+        bg="bg.subtle"
+        p={2}
+        borderRadius="sm"
+        display="flex"
+        justifyContent="center"
+      >
+        <img
+          src={meta.dataUrl}
+          alt={meta.alt}
+          style={{
+            maxWidth: "100%",
+            maxHeight: "400px",
+            objectFit: "contain",
+          }}
+        />
+      </Box>
+    );
+  }
+  if (meta.kind === "pdf") {
+    return (
+      <embed
+        src={meta.dataUrl}
+        type="application/pdf"
+        style={{
+          width: "100%",
+          height: "500px",
+          border: "1px solid var(--chakra-colors-border-muted)",
+          borderRadius: "var(--chakra-radii-sm)",
+        }}
+      />
+    );
+  }
+  if (meta.kind === "html" && blobUrl) {
+    return (
+      <iframe
+        src={blobUrl}
+        // `sandbox=""` (empty value) is the strictest policy: no scripts,
+        // no forms, no same-origin, no popups. Layout-only rendering.
+        sandbox=""
+        title="HTML preview"
+        style={{
+          width: "100%",
+          height: "500px",
+          border: "1px solid var(--chakra-colors-border-muted)",
+          borderRadius: "var(--chakra-radii-sm)",
+          background: "white",
+        }}
+      />
+    );
+  }
+  return (
+    <Text fontSize="xs" color="fg.muted">
+      Preview not available for this response.
+    </Text>
+  );
+}
+
+// ─────────────────────── Visualize (JSON tree) ───────────────────────
+
+function parseJsonForVisualize(prettyBody: string): unknown {
+  const trimmed = prettyBody.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return null;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * JSON tree viewer with right-click context menu. Each node carries its
+ * dot-path; the menu surfaces "Copy path" (`response.body.users.0.id`) and
+ * "Copy value" (raw or `JSON.stringify`).
+ */
+function HttpJsonVisualizer({ data }: { data: unknown }) {
+  const [menu, setMenu] = useState<{
+    x: number;
+    y: number;
+    path: string;
+    value: unknown;
+  } | null>(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
+
+  const onCopy = useCallback(async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      /* noop */
+    }
+  }, []);
+
+  return (
+    <Box
+      maxH="400px"
+      overflow="auto"
+      overscrollBehavior="contain"
+      fontFamily="mono"
+      fontSize="xs"
+      onClick={closeMenu}
+    >
+      <JsonNode
+        value={data}
+        path=""
+        onContextMenu={(e, path, value) => {
+          e.preventDefault();
+          setMenu({ x: e.clientX, y: e.clientY, path, value });
+        }}
+      />
+      {menu && (
+        <Portal>
+          <Box
+            position="fixed"
+            left={`${menu.x}px`}
+            top={`${menu.y}px`}
+            zIndex={2000}
+            bg="bg.panel"
+            borderWidth="1px"
+            borderColor="border"
+            borderRadius="sm"
+            boxShadow="md"
+            py={1}
+            minW="160px"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Box
+              as="button"
+              w="100%"
+              textAlign="left"
+              px={3}
+              py={1.5}
+              fontSize="xs"
+              _hover={{ bg: "bg.muted" }}
+              onClick={() => {
+                void onCopy(`response.body.${menu.path}`.replace(/\.$/, ""));
+                closeMenu();
+              }}
+            >
+              Copy path
+            </Box>
+            <Box
+              as="button"
+              w="100%"
+              textAlign="left"
+              px={3}
+              py={1.5}
+              fontSize="xs"
+              _hover={{ bg: "bg.muted" }}
+              onClick={() => {
+                const text =
+                  typeof menu.value === "string"
+                    ? menu.value
+                    : JSON.stringify(menu.value);
+                void onCopy(text);
+                closeMenu();
+              }}
+            >
+              Copy value
+            </Box>
+          </Box>
+        </Portal>
+      )}
+    </Box>
+  );
+}
+
+/** One node in the JSON tree. Recursive. Object/array values are
+ *  expandable; primitives are leaves. */
+function JsonNode({
+  value,
+  path,
+  label,
+  onContextMenu,
+}: {
+  value: unknown;
+  path: string;
+  label?: string;
+  onContextMenu: (
+    e: React.MouseEvent,
+    path: string,
+    value: unknown,
+  ) => void;
+}) {
+  const [expanded, setExpanded] = useState(path.split(".").length <= 2);
+  const isObject = value !== null && typeof value === "object";
+  const isArray = Array.isArray(value);
+
+  const summary = useMemo(() => {
+    if (Array.isArray(value)) return `Array(${value.length})`;
+    if (value !== null && typeof value === "object") {
+      const keys = Object.keys(value as Record<string, unknown>);
+      return `Object{${keys.length}}`;
+    }
+    return "";
+  }, [value]);
+
+  const onCtx = (e: React.MouseEvent) => onContextMenu(e, path, value);
+
+  if (!isObject) {
+    return (
+      <Box pl={4} onContextMenu={onCtx} _hover={{ bg: "bg.subtle" }}>
+        {label !== undefined && (
+          <Text as="span" color="purple.fg">
+            {label}
+            {": "}
+          </Text>
+        )}
+        <Text as="span" color={primitiveColor(value)}>
+          {primitiveDisplay(value)}
+        </Text>
+      </Box>
+    );
+  }
+
+  return (
+    <Box>
+      <Box
+        as="button"
+        textAlign="left"
+        onClick={() => setExpanded(!expanded)}
+        onContextMenu={onCtx}
+        display="flex"
+        alignItems="center"
+        gap={1}
+        px={1}
+        _hover={{ bg: "bg.subtle" }}
+      >
+        <Text as="span" color="fg.muted" w="12px">
+          {expanded ? "▾" : "▸"}
+        </Text>
+        {label !== undefined && (
+          <Text as="span" color="purple.fg">
+            {label}:
+          </Text>
+        )}
+        <Text as="span" color="fg.muted" fontSize="2xs">
+          {summary}
+        </Text>
+      </Box>
+      {expanded && (
+        <Box pl={3} borderLeftWidth="1px" borderColor="border.muted" ml={2}>
+          {isArray
+            ? (value as unknown[]).map((v, i) => (
+                <JsonNode
+                  key={i}
+                  value={v}
+                  path={path ? `${path}.${i}` : String(i)}
+                  label={String(i)}
+                  onContextMenu={onContextMenu}
+                />
+              ))
+            : Object.entries(value as Record<string, unknown>).map(([k, v]) => (
+                <JsonNode
+                  key={k}
+                  value={v}
+                  path={path ? `${path}.${k}` : k}
+                  label={k}
+                  onContextMenu={onContextMenu}
+                />
+              ))}
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+function primitiveDisplay(v: unknown): string {
+  if (v === null) return "null";
+  if (v === undefined) return "undefined";
+  if (typeof v === "string") return `"${v}"`;
+  return String(v);
+}
+
+function primitiveColor(v: unknown): string {
+  if (v === null || v === undefined) return "fg.muted";
+  if (typeof v === "string") return "green.fg";
+  if (typeof v === "number") return "blue.fg";
+  if (typeof v === "boolean") return "orange.fg";
+  return "fg";
 }
 
 function detectLang(text: string, view: "pretty" | "raw"): string | null {
@@ -1800,7 +2179,11 @@ function HttpResult({
           <Tabs.Trigger value="raw">Raw</Tabs.Trigger>
         </Tabs.List>
         <Tabs.Content value="body" px={0} pt={2}>
-          <HttpBodyView rawBody={rawBody} prettyBody={prettyBody} />
+          <HttpBodyView
+            rawBody={rawBody}
+            prettyBody={prettyBody}
+            response={response}
+          />
         </Tabs.Content>
         <Tabs.Content value="headers" px={0} pt={2}>
           {headerEntries.length === 0 ? (
@@ -1961,21 +2344,31 @@ function HttpStatusBar({
 function HttpDrawer({
   metadata,
   history,
+  examples,
   settings,
+  canSaveExample,
   onClose,
   onUpdateMetadata,
   onUpdateSettings,
   onDelete,
   onPurgeHistory,
+  onSaveExample,
+  onRestoreExample,
+  onDeleteExample,
 }: {
   metadata: HttpBlockMetadata;
   history: HistoryEntry[];
+  examples: BlockExample[];
   settings: HttpBlockSettings;
+  canSaveExample: boolean;
   onClose: () => void;
   onUpdateMetadata: (patch: Partial<HttpBlockMetadata>) => void;
   onUpdateSettings: (patch: Partial<HttpBlockSettings>) => void;
   onDelete: () => void;
   onPurgeHistory: () => void;
+  onSaveExample: (name: string) => void;
+  onRestoreExample: (ex: BlockExample) => void;
+  onDeleteExample: (id: number) => void;
 }) {
   return (
     <Portal>
@@ -2216,6 +2609,86 @@ function HttpDrawer({
             </>
           )}
 
+          {/* ── Examples (Onda 3) ── */}
+          <Text
+            fontSize="xs"
+            color="fg.muted"
+            textTransform="uppercase"
+            letterSpacing="wide"
+            mt={4}
+            mb={2}
+          >
+            Examples ({examples.length})
+          </Text>
+          {!metadata.alias ? (
+            <Text fontSize="xs" color="fg.subtle">
+              Set an alias to pin response examples.
+            </Text>
+          ) : (
+            <>
+              {examples.length > 0 && (
+                <Box>
+                  {examples.map((ex) => (
+                    <Flex
+                      key={ex.id}
+                      align="center"
+                      gap={2}
+                      py={1}
+                      fontSize="xs"
+                      borderBottomWidth="1px"
+                      borderColor="border.muted"
+                      _last={{ borderBottomWidth: 0 }}
+                    >
+                      <Box
+                        as="button"
+                        flex={1}
+                        textAlign="left"
+                        onClick={() => onRestoreExample(ex)}
+                        _hover={{ color: "fg" }}
+                        color="fg.muted"
+                      >
+                        <Text fontFamily="mono" truncate>
+                          {ex.name}
+                        </Text>
+                        <Text fontSize="2xs" color="fg.subtle">
+                          {relativeTimeAgo(new Date(ex.saved_at)) ?? ""}
+                        </Text>
+                      </Box>
+                      <IconButton
+                        aria-label={`Delete example ${ex.name}`}
+                        size="2xs"
+                        variant="ghost"
+                        onClick={() => onDeleteExample(ex.id)}
+                      >
+                        <LuX />
+                      </IconButton>
+                    </Flex>
+                  ))}
+                </Box>
+              )}
+              <Box mt={2}>
+                <Button
+                  size="2xs"
+                  variant="ghost"
+                  disabled={!canSaveExample}
+                  onClick={() => {
+                    const name = window.prompt(
+                      "Name this example (e.g. 'happy path 200'):",
+                    );
+                    if (name && name.trim()) onSaveExample(name.trim());
+                  }}
+                >
+                  + Pin current response
+                </Button>
+                {!canSaveExample && (
+                  <Text fontSize="2xs" color="fg.subtle" mt={1}>
+                    Run the request first to pin a response.
+                  </Text>
+                )}
+              </Box>
+            </>
+          )}
+
           <Box mt={6} pt={4} borderTopWidth="1px" borderColor="border.muted">
             <Button
               size="sm"
@@ -2253,6 +2726,8 @@ export const HttpFencedPanel = memo(function HttpFencedPanel({
   const [lastRunAt, setLastRunAt] = useState<Date | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
+  const [examples, setExamples] = useState<BlockExample[]>([]);
+  const [examplesRefreshTick, setExamplesRefreshTick] = useState(0);
   const [settings, setSettings] = useBlockSettings(filePath, block.metadata.alias);
   // Tick incremented on every successful insert + on drawer-open so the
   // drawer's `useEffect` re-fetches without us coupling its dependency
@@ -2565,6 +3040,28 @@ export const HttpFencedPanel = memo(function HttpFencedPanel({
     };
   }, [drawerOpen, filePath, block.metadata.alias, historyRefreshTick]);
 
+  // Load examples on drawer open (Onda 3) — same pattern as history.
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const alias = block.metadata.alias;
+    if (!alias) {
+      setExamples([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const rows = await listBlockExamples(filePath, alias);
+        if (!cancelled) setExamples(rows);
+      } catch {
+        if (!cancelled) setExamples([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [drawerOpen, filePath, block.metadata.alias, examplesRefreshTick]);
+
   /**
    * Pre-computed snippets per format, refreshed whenever the parsed body
    * or environment context changes. We have to pre-compute because the
@@ -2870,7 +3367,9 @@ export const HttpFencedPanel = memo(function HttpFencedPanel({
         <HttpDrawer
           metadata={block.metadata}
           history={historyEntries}
+          examples={examples}
           settings={settings}
+          canSaveExample={!!response && !!block.metadata.alias}
           onClose={() => setDrawerOpen(false)}
           onUpdateMetadata={updateMetadata}
           onUpdateSettings={setSettings}
@@ -2881,6 +3380,42 @@ export const HttpFencedPanel = memo(function HttpFencedPanel({
             try {
               await purgeBlockHistory(filePath, alias);
               setHistoryRefreshTick((t) => t + 1);
+            } catch {
+              /* Best-effort. */
+            }
+          }}
+          onSaveExample={async (name) => {
+            const alias = block.metadata.alias;
+            if (!alias || !response) return;
+            try {
+              await saveBlockExample(
+                filePath,
+                alias,
+                name,
+                JSON.stringify(response),
+              );
+              setExamplesRefreshTick((t) => t + 1);
+            } catch {
+              /* Best-effort. */
+            }
+          }}
+          onRestoreExample={(ex) => {
+            try {
+              const restored = JSON.parse(ex.response_json) as HttpResponseFull;
+              setResponse(restored);
+              setExecutionState("success");
+              setError(null);
+              setCached(true);
+              setLastRunAt(new Date(ex.saved_at));
+              setDrawerOpen(false);
+            } catch {
+              /* Bad JSON in stored example — ignore. */
+            }
+          }}
+          onDeleteExample={async (id) => {
+            try {
+              await deleteBlockExample(id);
+              setExamplesRefreshTick((t) => t + 1);
             } catch {
               /* Best-effort. */
             }
