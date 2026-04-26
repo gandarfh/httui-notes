@@ -99,7 +99,7 @@
 - [x] Update `last_used` on every `get_pool()` cache hit, not only on cache miss
 - [x] Invalidate cached pool when `update_connection()` is called (already implemented in main.rs Tauri command)
 - [x] Validate pool config ranges: max_pool_size 1-100, timeout_ms 100-300000, port 1-65535
-- [ ] Add test: update connection config, verify next query uses new pool
+- [x] Add test: update connection config, verify next query uses new pool
 
 ### Story 16.7 — Bind Parameter Safety ✅
 > Fix T13, T22, T23
