@@ -522,14 +522,16 @@ pub fn detect_ref_context(body: &str, line: usize, cursor_offset: usize) -> Opti
 
 /// Build the candidate list for the ref popup. When `detect.path`
 /// is `None`, surfaces aliases of blocks above `current_segment`
-/// (with type + cached/no-result hint) plus env vars from the
-/// active environment. When the path is set to a single alias,
-/// surfaces the navigable keys of that block's cached result.
+/// plus env vars from the active environment.
 ///
-/// V1 limits: multi-segment paths (`q1.response.something.|`) drop
-/// to a JSON-walk of the cached result; non-objects yield no
-/// suggestions. No support yet for HTTP/E2E result shapes (TUI
-/// editing of those blocks is paused — Story 02/03/06/07).
+/// When `detect.path` is set, walks a synthetic
+/// `{response: <cached>, status: "..."}` envelope — same shape the
+/// desktop builds in `references.ts:140-143` — and emits the keys
+/// of whatever value the path lands on. Pure JSON walk: arrays
+/// contribute their numeric indices, objects their keys, primitives
+/// nothing (popup closes). The legacy `{{alias.col}}` first-row
+/// shim is *not* surfaced here — it's a runtime resolver shim, not
+/// an autocomplete suggestion.
 pub fn complete_refs(
     detect: &RefDetect,
     segments: &[crate::buffer::Segment],
@@ -573,12 +575,9 @@ pub fn complete_refs(
         return out;
     };
 
-    // Path is set — walk it against the matching block's cache and
-    // emit the value's child keys. For DB blocks this also exposes
-    // the legacy `response.<col>` shim so users can complete column
-    // names off the first row without spelling out `response.0.rows.0.`.
+    // Path is set — first segment is the alias.
     let path_segs: Vec<&str> = path.split('.').collect();
-    let head = match path_segs.first() {
+    let alias = match path_segs.first() {
         Some(h) => *h,
         None => return out,
     };
@@ -589,83 +588,112 @@ pub fn complete_refs(
             crate::buffer::Segment::Block(b) => Some(b),
             _ => None,
         })
-        .find(|b| b.alias.as_deref() == Some(head));
+        .find(|b| b.alias.as_deref() == Some(alias));
     let Some(block) = block else { return out };
     let Some(cached) = block.cached_result.as_ref() else {
         return out;
     };
 
-    // Walk the rest of the path through the cached JSON.
-    let mut cursor_value: &serde_json::Value = cached;
-    for seg in path_segs.iter().skip(1) {
-        // Skip a literal `response` token for the legacy shim — same
-        // semantics as `resolve_one_ref` in the dispatch layer.
-        if *seg == "response"
-            && cursor_value.get("results").is_some()
-        {
-            continue;
-        }
-        match cursor_value
-            .get(seg)
-            .or_else(|| seg.parse::<usize>().ok().and_then(|i| cursor_value.as_array().and_then(|a| a.get(i))))
-        {
-            Some(v) => cursor_value = v,
+    // Synthesize the navigation envelope — matches desktop's
+    // `references.ts:140-143`. The autocomplete walks *this* shape,
+    // not `cached_result` directly, so `{{alias.|}}` shows
+    // `response` + `status` (the envelope's keys), not the keys of
+    // the underlying response.
+    let status_str = match &block.state {
+        crate::buffer::block::ExecutionState::Success
+        | crate::buffer::block::ExecutionState::Cached => "success",
+        crate::buffer::block::ExecutionState::Error(_) => "error",
+        crate::buffer::block::ExecutionState::Running => "running",
+        crate::buffer::block::ExecutionState::Idle => "idle",
+    };
+    let synthetic_root = serde_json::json!({
+        "response": cached,
+        "status": status_str,
+    });
+
+    // Walk every path segment after the alias against the synthetic
+    // root. Arrays support both string-key (`.results`) and numeric
+    // index (`.0`) navigation.
+    let mut cursor: &serde_json::Value = &synthetic_root;
+    for seg in &path_segs[1..] {
+        let next = cursor.get(seg).or_else(|| {
+            seg.parse::<usize>().ok().and_then(|i| {
+                cursor.as_array().and_then(|a| a.get(i))
+            })
+        });
+        match next {
+            Some(v) => cursor = v,
             None => return out,
         }
     }
 
-    // For DB-shaped values, expose passthrough fields + the legacy
-    // shim (first row's columns). For everything else just dump
-    // top-level keys.
-    let is_db_response =
-        cursor_value.get("results").map(|r| r.is_array()).unwrap_or(false);
-    if is_db_response {
-        for key in &["results", "messages", "stats", "plan"] {
-            if cursor_value.get(*key).is_some()
-                && key.to_ascii_lowercase().starts_with(&prefix_lower)
-            {
-                out.push(CompletionItem {
-                    label: (*key).to_string(),
-                    kind: CompletionKind::Reference,
-                    detail: Some("response field".into()),
-                });
-            }
-        }
-        // Legacy shim: surface columns of `results[0].rows[0]`.
-        if let Some(first_row) = cursor_value
-            .get("results")
-            .and_then(|r| r.as_array())
-            .and_then(|a| a.first())
-            .and_then(|r| r.get("rows"))
-            .and_then(|r| r.as_array())
-            .and_then(|a| a.first())
-            .and_then(|r| r.as_object())
-        {
-            for key in first_row.keys() {
-                if key.to_ascii_lowercase().starts_with(&prefix_lower) {
-                    out.push(CompletionItem {
-                        label: key.clone(),
-                        kind: CompletionKind::Reference,
-                        detail: Some("first row".into()),
-                    });
-                }
-            }
-        }
-    } else if let Some(obj) = cursor_value.as_object() {
-        for key in obj.keys() {
+    // Emit the children of `cursor` based on its shape. Detail
+    // mirrors desktop's hint format (`Array(N)`, `{N keys}`,
+    // `"string"`, `42`, etc.) so the popup feels familiar.
+    if let Some(obj) = cursor.as_object() {
+        for (key, val) in obj {
             if key.to_ascii_lowercase().starts_with(&prefix_lower) {
                 out.push(CompletionItem {
                     label: key.clone(),
                     kind: CompletionKind::Reference,
-                    detail: None,
+                    detail: Some(value_hint(val)),
+                });
+            }
+        }
+    } else if let Some(arr) = cursor.as_array() {
+        for (i, val) in arr.iter().enumerate() {
+            let label = i.to_string();
+            if label.starts_with(&detect.prefix) {
+                out.push(CompletionItem {
+                    label,
+                    kind: CompletionKind::Reference,
+                    detail: Some(value_hint(val)),
                 });
             }
         }
     }
+    // Primitives have no children — `out` stays empty and the
+    // dispatcher closes the popup on its own.
 
-    out.sort_by(|a, b| a.label.cmp(&b.label));
+    // Numeric labels (array indices) sort numerically so `9` comes
+    // before `10`; mixed / text labels fall back to alpha.
+    out.sort_by(|a, b| {
+        match (a.label.parse::<usize>(), b.label.parse::<usize>()) {
+            (Ok(n), Ok(m)) => n.cmp(&m),
+            _ => a.label.cmp(&b.label),
+        }
+    });
     out.dedup_by(|a, b| a.label == b.label);
     out
+}
+
+/// Compact one-liner describing a JSON value's shape — used as the
+/// `detail` field for ref completion items so the popup shows
+/// `Array(12)`, `{3 keys}`, `"select"`, `42`, etc. Mirrors the
+/// strings shown in the desktop popup; long strings get truncated
+/// so a row-text column doesn't blow up the popup width.
+fn value_hint(v: &serde_json::Value) -> String {
+    match v {
+        serde_json::Value::Null => "null".into(),
+        serde_json::Value::Bool(b) => b.to_string(),
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::String(s) => {
+            if s.chars().count() > 40 {
+                let trimmed: String = s.chars().take(37).collect();
+                format!("\"{trimmed}...\"")
+            } else {
+                format!("\"{s}\"")
+            }
+        }
+        serde_json::Value::Array(a) => format!("Array({})", a.len()),
+        serde_json::Value::Object(o) => {
+            if o.len() == 1 {
+                "{1 key}".into()
+            } else {
+                format!("{{{} keys}}", o.len())
+            }
+        }
+    }
 }
 
 /// Walk back from `(line, offset)` in `body` and return the start
@@ -1203,29 +1231,52 @@ mod tests {
         assert_eq!(items[0].detail.as_deref(), Some("env"));
     }
 
-    #[test]
-    fn complete_refs_path_alias_with_db_response_lists_passthrough_and_columns() {
-        // `{{q1.|}}` against a DB-shaped cached_result — popup
-        // surfaces both passthrough fields (results/messages/stats)
-        // and the legacy shim of first-row columns.
-        let md = "```db-postgres alias=q1\nSELECT 1\n```\n\n```db-postgres alias=cur\nSELECT 1\n```\n";
-        let mut doc = make_ref_doc(md);
-        let blocks = refs_doc_blocks(&doc);
-        let cached = serde_json::json!({
+    /// Helper: build a fully-fleshed `cached_result` matching what
+    /// `handle_db_block_result` would store after a SELECT — used
+    /// across the JSON-walk tests below.
+    fn fake_db_cache() -> serde_json::Value {
+        serde_json::json!({
             "results": [
                 {
                     "kind": "select",
-                    "columns": [],
-                    "rows": [{ "id": 7, "name": "alice" }],
+                    "columns": [
+                        { "name": "id", "type": "int4" },
+                        { "name": "name", "type": "text" }
+                    ],
+                    "rows": [
+                        { "id": 7, "name": "alice" },
+                        { "id": 8, "name": "bob" }
+                    ],
                     "has_more": false
                 }
             ],
             "messages": [],
             "stats": { "elapsed_ms": 12 }
-        });
+        })
+    }
+
+    fn doc_with_cached_q1(md: &str) -> (crate::buffer::Document, Vec<usize>) {
+        let mut doc = make_ref_doc(md);
+        let blocks = refs_doc_blocks(&doc);
         if let Some(b) = doc.block_at_mut(blocks[0]) {
-            b.cached_result = Some(cached);
+            b.cached_result = Some(fake_db_cache());
+            b.state = crate::buffer::block::ExecutionState::Success;
         }
+        (doc, blocks)
+    }
+
+    const TWO_BLOCK_MD: &str =
+        "```db-postgres alias=q1\nSELECT 1\n```\n\n```db-postgres alias=cur\nSELECT 1\n```\n";
+
+    #[test]
+    fn complete_refs_alias_only_lists_synthetic_envelope() {
+        // `{{q1.|}}` — the synthetic root that the autocomplete
+        // walks against is `{response, status}`, *not* the raw
+        // cached_result. Matches desktop's `references.ts:140-143`
+        // behavior: top-level shows `response` and `status`, the
+        // legacy first-row column shim is NOT exposed here (it's
+        // only a runtime resolver shim, see `resolve_one_ref`).
+        let (doc, blocks) = doc_with_cached_q1(TWO_BLOCK_MD);
         let detect = RefDetect {
             anchor_offset: 0,
             prefix: "".to_string(),
@@ -1238,10 +1289,110 @@ mod tests {
             &std::collections::HashMap::new(),
         );
         let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
-        assert!(labels.contains(&"results"), "missing passthrough: {labels:?}");
-        assert!(labels.contains(&"stats"), "missing passthrough: {labels:?}");
-        assert!(labels.contains(&"id"), "missing first-row column: {labels:?}");
-        assert!(labels.contains(&"name"), "missing first-row column: {labels:?}");
+        assert_eq!(labels, vec!["response", "status"]);
+        // Detail carries the value-shape hint, like the desktop popup.
+        let response_item = items.iter().find(|i| i.label == "response").unwrap();
+        assert_eq!(response_item.detail.as_deref(), Some("{3 keys}"));
+        let status_item = items.iter().find(|i| i.label == "status").unwrap();
+        assert_eq!(status_item.detail.as_deref(), Some("\"success\""));
+    }
+
+    #[test]
+    fn complete_refs_path_response_lists_db_top_keys() {
+        // `{{q1.response.|}}` — now we're inside the actual cached
+        // response, so popup shows its real top-level keys
+        // (results/messages/stats) with shape hints.
+        let (doc, blocks) = doc_with_cached_q1(TWO_BLOCK_MD);
+        let detect = RefDetect {
+            anchor_offset: 0,
+            prefix: "".to_string(),
+            path: Some("q1.response".to_string()),
+        };
+        let items = complete_refs(
+            &detect,
+            doc.segments(),
+            blocks[1],
+            &std::collections::HashMap::new(),
+        );
+        let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+        assert!(labels.contains(&"results"), "got: {labels:?}");
+        assert!(labels.contains(&"messages"), "got: {labels:?}");
+        assert!(labels.contains(&"stats"), "got: {labels:?}");
+        // No legacy `first row` shim anymore — `id`/`name` should
+        // NOT appear at this level.
+        assert!(!labels.contains(&"id"));
+        assert!(!labels.contains(&"name"));
+    }
+
+    #[test]
+    fn complete_refs_path_response_results_lists_array_indices() {
+        // `{{q1.response.results.|}}` — popup walks into the array
+        // and lists its numeric indices (just `0` for a single
+        // result set). Each carries a `{N keys}` detail hint.
+        let (doc, blocks) = doc_with_cached_q1(TWO_BLOCK_MD);
+        let detect = RefDetect {
+            anchor_offset: 0,
+            prefix: "".to_string(),
+            path: Some("q1.response.results".to_string()),
+        };
+        let items = complete_refs(
+            &detect,
+            doc.segments(),
+            blocks[1],
+            &std::collections::HashMap::new(),
+        );
+        let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+        assert_eq!(labels, vec!["0"]);
+        let zero = items.iter().find(|i| i.label == "0").unwrap();
+        assert!(
+            zero.detail
+                .as_deref()
+                .map(|d| d.contains("keys"))
+                .unwrap_or(false)
+        );
+    }
+
+    #[test]
+    fn complete_refs_path_response_results_0_lists_result_keys() {
+        // `{{q1.response.results.0.|}}` — popup lists the keys of
+        // that result set (matches the desktop screenshot:
+        // `columns`, `has_more`, `kind`, `rows`).
+        let (doc, blocks) = doc_with_cached_q1(TWO_BLOCK_MD);
+        let detect = RefDetect {
+            anchor_offset: 0,
+            prefix: "".to_string(),
+            path: Some("q1.response.results.0".to_string()),
+        };
+        let items = complete_refs(
+            &detect,
+            doc.segments(),
+            blocks[1],
+            &std::collections::HashMap::new(),
+        );
+        let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+        assert!(labels.contains(&"columns"));
+        assert!(labels.contains(&"rows"));
+        assert!(labels.contains(&"kind"));
+        assert!(labels.contains(&"has_more"));
+    }
+
+    #[test]
+    fn complete_refs_path_into_primitive_returns_empty() {
+        // `{{q1.status.|}}` — `status` is a string primitive, no
+        // children. Popup is empty; dispatcher closes it.
+        let (doc, blocks) = doc_with_cached_q1(TWO_BLOCK_MD);
+        let detect = RefDetect {
+            anchor_offset: 0,
+            prefix: "".to_string(),
+            path: Some("q1.status".to_string()),
+        };
+        let items = complete_refs(
+            &detect,
+            doc.segments(),
+            blocks[1],
+            &std::collections::HashMap::new(),
+        );
+        assert!(items.is_empty(), "got: {items:?}");
     }
 
     #[test]
