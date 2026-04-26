@@ -143,11 +143,13 @@ Infra de popup + Sources 1 (keywords) e 2 (builtin functions) entregues. Schema 
   - `prefix_at_cursor` end-of-word, mid-word, after-non-word, underscore-as-word, multi-line
   - `Dialect::from_block` mapping
 
+**Refinamentos pós-merge inicial:**
+- [x] `<C-Space>` (Insert mode em DB block) — manual force-open, aceita prefix vazio (lista tudo do dialeto). Útil pra abrir popup logo após espaço, ou re-abrir após Esc.
+- [x] Popup cursor-anchored — drop-down sai logo abaixo da palavra que está sendo completada (slide pra esquerda se passar do edge direito; fallback acima se sem headroom). Antes ancorava abaixo do bloco inteiro, longe do cursor.
+
 **Não cobre (próximas stories):**
 - Schema-aware completion (tables/columns) — Story 04.4b plugando 3rd source na mesma engine
 - Refs `{{...}}` autocomplete — Story 04.7
-- `<C-Space>` manual force-open — fácil de adicionar quando precisarmos; auto-trigger basta pra V1
-- Cursor-anchored popup positioning (campos `anchor_line`/`anchor_offset` reservados)
 
 ---
 

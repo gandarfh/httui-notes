@@ -167,11 +167,9 @@ pub struct CompletionPopupState {
     pub items: Vec<crate::sql_completion::CompletionItem>,
     pub selected: usize,
     /// `(line, offset)` where the prefix word starts in the block
-    /// body. Reserved for cursor-anchored popup positioning later;
-    /// the V1 renderer just anchors below the block.
-    #[allow(dead_code)]
+    /// body — the renderer drops the popup right below this cell so
+    /// the dropdown tracks the cursor as the user types.
     pub anchor_line: usize,
-    #[allow(dead_code)]
     pub anchor_offset: usize,
     /// What the user has typed so far — drives the popup header and
     /// gets replaced on Accept.

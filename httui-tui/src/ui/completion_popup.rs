@@ -89,43 +89,63 @@ pub fn render(
     frame.render_stateful_widget(list, inner, &mut list_state);
 }
 
-/// Compute the popup rect: prefer below the anchored block, fall
-/// back above when there's no headroom. Centered fallback when the
-/// block is off-screen (anchor is `None`). Width clamps to
-/// `POPUP_WIDTH` or the editor area, whichever is smaller.
+/// Compute the popup rect: anchor it just below the cursor's
+/// current screen line so it tracks where the user is typing — same
+/// pattern as `lang-sql` autocomplete on the desktop. Falls back
+/// above the cursor when there's no room below; centered fallback
+/// when the block is off-screen.
+///
+/// Block geometry: the block paints full-width in `editor_area`,
+/// with a 1-cell border. The cursor's prefix starts at
+/// `(block.x + 1 + anchor_offset, block.y + 1 + anchor_line)` —
+/// `+1` accounts for the border on each side. Popup top sits one
+/// row below that, x-aligned to the prefix start so the dropdown
+/// "drops from" the word being completed.
 fn compute_popup_rect(
     editor_area: Rect,
     state: &CompletionPopupState,
     anchor: Option<BlockAnchor>,
 ) -> Rect {
-    // Body rows = items capped at MAX, plus 2 for the borders.
     let body_rows =
         state.items.len().clamp(1, MAX_VISIBLE_ROWS) as u16;
     let popup_height = body_rows.saturating_add(2);
     let width = POPUP_WIDTH.min(editor_area.width.saturating_sub(2)).max(20);
-    let x = editor_area
-        .x
-        .saturating_add((editor_area.width.saturating_sub(width)) / 2);
+    let editor_right = editor_area.x.saturating_add(editor_area.width);
+    let editor_bottom = editor_area.y.saturating_add(editor_area.height);
 
     if let Some(anchor) = anchor {
-        let block_bottom = anchor
+        // Cursor cell inside the block (1-cell border on every side).
+        // `anchor_line` and `anchor_offset` are body-relative; clamp
+        // x so the popup never spills past the editor's right edge
+        // (slides left), and so wide labels stay readable.
+        let cursor_x = editor_area
+            .x
+            .saturating_add(1)
+            .saturating_add(state.anchor_offset as u16);
+        let cursor_y = anchor
             .screen_top
-            .saturating_add(anchor.height);
-        let editor_bottom = editor_area.y.saturating_add(editor_area.height);
-        // Try below first.
-        if block_bottom.saturating_add(popup_height) <= editor_bottom {
+            .saturating_add(1)
+            .saturating_add(state.anchor_line as u16);
+
+        // Right-edge clamp: shift the popup left until it fits.
+        let popup_x = cursor_x.min(editor_right.saturating_sub(width));
+
+        // Try below first — popup top sits on the row right after
+        // the cursor's row.
+        let below_top = cursor_y.saturating_add(1);
+        if below_top.saturating_add(popup_height) <= editor_bottom {
             return Rect {
-                x,
-                y: block_bottom,
+                x: popup_x,
+                y: below_top,
                 width,
                 height: popup_height,
             };
         }
-        // Fallback above.
-        if anchor.screen_top >= editor_area.y.saturating_add(popup_height) {
+        // Fallback above the cursor row.
+        if cursor_y >= editor_area.y.saturating_add(popup_height) {
             return Rect {
-                x,
-                y: anchor.screen_top.saturating_sub(popup_height),
+                x: popup_x,
+                y: cursor_y.saturating_sub(popup_height),
                 width,
                 height: popup_height,
             };
@@ -133,6 +153,9 @@ fn compute_popup_rect(
     }
 
     // No anchor or no room above/below — center on the editor area.
+    let x = editor_area
+        .x
+        .saturating_add((editor_area.width.saturating_sub(width)) / 2);
     let y = editor_area
         .y
         .saturating_add((editor_area.height.saturating_sub(popup_height)) / 2);

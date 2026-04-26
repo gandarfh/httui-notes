@@ -40,6 +40,22 @@ pub fn dispatch(app: &mut App, key: KeyEvent) {
         return;
     }
 
+    // `Ctrl+Space` in insert mode — manual trigger for the SQL
+    // completion popup. Lets the user browse the full dialect
+    // listing right after a space (where the auto-trigger has no
+    // prefix to chew on) or force-reopen a popup they just dismissed.
+    //
+    // Terminal quirk: most terminals report Ctrl+Space as KeyCode::
+    // Char(' ') with the CONTROL modifier set, but some emit the
+    // legacy NUL byte form (`Char('\0')`). Accept both.
+    if app.vim.mode == Mode::Insert
+        && key.modifiers.contains(KeyModifiers::CONTROL)
+        && matches!(key.code, KeyCode::Char(' ') | KeyCode::Char('\0'))
+    {
+        force_open_completion_popup(app);
+        return;
+    }
+
     // Completion popup keys are intercepted before mode parsing so a
     // user mid-typing (Mode::Insert) can navigate / accept / dismiss
     // without leaving insert. Any unmatched key falls through to the
@@ -119,6 +135,22 @@ fn parse_completion_popup_key(key: crossterm::event::KeyEvent) -> Option<Action>
 /// - prefix is empty, or
 /// - no candidates match (avoids painting an empty popup).
 fn refresh_completion_popup(app: &mut App) {
+    rebuild_completion_popup(app, /* allow_empty_prefix = */ false);
+}
+
+/// `Ctrl+Space` — manual trigger. Opens the popup even when the
+/// cursor sits right after a non-word char (where there's no prefix
+/// yet) so the user can browse the full dialect listing without
+/// having to type the first letter. Inside a partial word it
+/// behaves like the auto-trigger and shows the filtered list.
+fn force_open_completion_popup(app: &mut App) {
+    rebuild_completion_popup(app, /* allow_empty_prefix = */ true);
+}
+
+/// Shared body for both the auto trigger and the manual one. The
+/// only knob is whether an empty prefix is acceptable — auto closes
+/// the popup, manual opens it with the full dialect listing.
+fn rebuild_completion_popup(app: &mut App, allow_empty_prefix: bool) {
     let Some(doc) = app.document() else {
         app.completion_popup = None;
         return;
@@ -151,12 +183,18 @@ fn refresh_completion_popup(app: &mut App) {
             return;
         }
     };
-    let Some((anchor_offset, prefix)) =
-        crate::sql_completion::prefix_at_cursor(&body, line, offset)
-    else {
-        app.completion_popup = None;
-        return;
-    };
+    // Detect the prefix word at the cursor. When we got there via a
+    // manual trigger and the cursor isn't on a word char, fall back
+    // to "no prefix, anchor at cursor" so the popup still opens.
+    let (anchor_offset, prefix) =
+        match crate::sql_completion::prefix_at_cursor(&body, line, offset) {
+            Some(p) => p,
+            None if allow_empty_prefix => (offset, String::new()),
+            None => {
+                app.completion_popup = None;
+                return;
+            }
+        };
     let dialect = crate::sql_completion::Dialect::from_block(block);
     let items = crate::sql_completion::complete(dialect, &prefix);
     if items.is_empty() {
