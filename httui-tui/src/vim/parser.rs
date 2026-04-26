@@ -316,6 +316,12 @@ pub enum Action {
     /// `y` inside the row-detail modal — copy the current row's
     /// values to the system clipboard as pretty-printed JSON.
     CopyDbRowDetailJson,
+    /// `gc` chord on a DB block — open the connection picker popup
+    /// anchored to that block. Mnemonic: `g`-prefixed "goto" family
+    /// (gg, gt, gd, gf …) extended with `gc` = goto connection.
+    /// Dispatch validates the cursor; on a non-DB position it
+    /// surfaces a status hint.
+    OpenConnectionPicker,
     /// `Esc` / `Ctrl-C` inside the picker — close without picking.
     CloseConnectionPicker,
     /// `j` / `Down` / `k` / `Up` inside the picker — move the
@@ -700,6 +706,31 @@ pub fn parse_normal(state: &mut VimState, key: KeyEvent) -> Action {
         return Action::Motion(m, count);
     }
 
+    // App-level shortcuts (non-vim) — centralised in
+    // `vim::keybindings` so they're easy to find and remap. Each
+    // helper wraps a `KeyChord` constant; check them before the
+    // big match below so the literal branches stay focused on
+    // genuine vim primitives.
+    use crate::vim::keybindings as kb;
+    if kb::matches_run_block(&key) {
+        return Action::RunBlock;
+    }
+    if kb::matches_open_db_row_detail(&key) {
+        return Action::OpenDbRowDetail;
+    }
+    if kb::matches_quick_open(&key) {
+        return Action::EnterQuickOpen;
+    }
+    if kb::matches_tree_toggle(&key) {
+        return Action::TreeToggle;
+    }
+    if kb::matches_focus_swap(&key) {
+        return Action::FocusSwap;
+    }
+    if kb::matches_open_connection_picker(&key) {
+        return Action::OpenConnectionPicker;
+    }
+
     match (modifiers, code) {
         // gg / G with optional count — these need state.
         (_, KeyCode::Char('g')) => {
@@ -748,18 +779,10 @@ pub fn parse_normal(state: &mut VimState, key: KeyEvent) -> Action {
         (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char('v')) => Action::EnterVisual,
         (_, KeyCode::Char('V')) => Action::EnterVisualLine,
 
-        // `r` — run the block under the cursor. Vim's `r{char}`
-        // replace-single-char isn't implemented; the key is free.
-        (KeyModifiers::NONE, KeyCode::Char('r')) => Action::RunBlock,
-
-        // `<CR>` — open the row-detail modal when the cursor is on
-        // a DB result row. Dispatch checks the cursor; on any other
-        // position the action is a no-op (Vim's default `<CR>` in
-        // normal is `+` which we don't implement).
-        (KeyModifiers::NONE, KeyCode::Enter) => Action::OpenDbRowDetail,
-
         // Paste. Excluding Ctrl so `Ctrl+P` (quick-open) reaches the
-        // dedicated arm below.
+        // dedicated arm below. (`r` / `<CR>` / `<C-p>` / `<C-e>` /
+        // `Tab` are app-level shortcuts handled by the keybindings
+        // pre-match block above.)
         (KeyModifiers::NONE, KeyCode::Char('p')) => Action::Paste(PastePos::After, count),
         (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char('P')) => {
             Action::Paste(PastePos::Before, count)
@@ -769,13 +792,6 @@ pub fn parse_normal(state: &mut VimState, key: KeyEvent) -> Action {
         (KeyModifiers::NONE, KeyCode::Char('u')) => Action::Undo,
         (KeyModifiers::CONTROL, KeyCode::Char('r')) => Action::Redo,
         (KeyModifiers::NONE, KeyCode::Char('.')) => Action::RepeatChange(count),
-
-        // Quick-open modal.
-        (KeyModifiers::CONTROL, KeyCode::Char('p')) => Action::EnterQuickOpen,
-
-        // File-tree sidebar.
-        (KeyModifiers::CONTROL, KeyCode::Char('e')) => Action::TreeToggle,
-        (_, KeyCode::Tab) => Action::FocusSwap,
 
         // `Ctrl+W` — vim window prefix. Sets `state.pending_window`
         // so the next keystroke is interpreted as a [`WindowCmd`] by

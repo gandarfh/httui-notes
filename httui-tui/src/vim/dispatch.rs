@@ -308,6 +308,11 @@ fn apply_action(app: &mut App, action: Action, recording: bool) {
         Action::OpenDbRowDetail => apply_open_db_row_detail(app),
         Action::CloseDbRowDetail => apply_close_db_row_detail(app),
         Action::CopyDbRowDetailJson => apply_copy_db_row_detail_json(app),
+        Action::OpenConnectionPicker => {
+            if let Err(msg) = open_connection_picker(app) {
+                app.set_status(StatusKind::Error, msg);
+            }
+        }
         Action::CloseConnectionPicker => apply_close_connection_picker(app),
         Action::MoveConnectionPickerCursor(delta) => {
             apply_move_connection_picker_cursor(app, delta)
@@ -1498,13 +1503,13 @@ fn load_more_db_block(app: &mut App, segment_idx: usize) -> Result<(), String> {
 
 // ───────────── connection picker popup ─────────────
 
-/// `:conn` (or `Action::OpenConnectionPicker`) — open the connection
-/// picker popup anchored to the DB block at the cursor. Loads
-/// connections from `httui-core` synchronously (small SQLite read,
-/// runs on the dispatch thread) and seeds the picker state. Returns
-/// `Err(msg)` on validation failures (no DB block at cursor, no
-/// connections registered) so the caller can surface a status.
-pub fn open_connection_picker(app: &mut App) -> Result<(), String> {
+/// `gc` — open the connection picker popup anchored to the DB
+/// block at the cursor. Loads connections from `httui-core`
+/// synchronously (small SQLite read, runs on the dispatch thread)
+/// and seeds the picker state. Returns `Err(msg)` on validation
+/// failures (no DB block at cursor, no connections registered) so
+/// the caller can surface a status.
+fn open_connection_picker(app: &mut App) -> Result<(), String> {
     let segment_idx = match app.document().map(|d| d.cursor()) {
         Some(Cursor::InBlock { segment_idx, .. })
         | Some(Cursor::InBlockResult { segment_idx, .. }) => segment_idx,
