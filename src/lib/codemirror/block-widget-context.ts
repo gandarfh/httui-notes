@@ -48,7 +48,6 @@ export function buildInfoString(alias?: string, displayMode?: string): string {
 /** Map language string to block type */
 export function langToBlockType(lang: string): string {
   if (lang === "http") return "http";
-  if (lang === "e2e") return "e2e";
   if (lang === "db" || lang.startsWith("db-")) return "db";
   return lang;
 }

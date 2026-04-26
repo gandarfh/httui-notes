@@ -10,8 +10,8 @@ import { resolveConnectionIdentifier } from "./connection-resolve";
 import { listConnections, type Connection } from "@/lib/tauri/connections";
 import { useEnvironmentStore } from "@/stores/environment";
 
-const EXECUTABLE_BLOCK_TYPES = ["httpBlock", "dbBlock", "e2eBlock"];
-const EXECUTABLE_LANGS = ["http", "db", "e2e"];
+const EXECUTABLE_BLOCK_TYPES = ["httpBlock", "dbBlock"];
+const EXECUTABLE_LANGS = ["http", "db"];
 
 /**
  * Collect all executable blocks above a given position in the TipTap document.

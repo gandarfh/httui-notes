@@ -16,13 +16,15 @@ import { StandaloneBlock } from "@/components/blocks/standalone/StandaloneBlock"
  */
 export const widgetTransaction = Annotation.define<boolean>();
 
-// Scanner still detects both http + e2e so cross-block resolvers
-// (cm-references, document.ts dependency walker, DiffViewer) keep working
-// for legacy http content. The editor widget builder, however, only mounts
-// the BlockAdapter pipeline for e2e — http blocks are rendered by
-// `cm-http-block.tsx` instead. See `EDITOR_WIDGET_LANGS` below.
-const BLOCK_OPEN_RE = /^```(http|e2e)(.*)$/;
-const EDITOR_WIDGET_LANGS: ReadonlySet<string> = new Set(["e2e"]);
+// Scanner detects http only (db has its own scanner in cm-db-block.tsx).
+// The editor widget builder used to mount the BlockAdapter pipeline for
+// e2e blocks; with E2E removed, no language flows through that adapter
+// — the set is empty, `createEditorBlockWidgets` becomes a no-op, and
+// http blocks are owned entirely by `cm-http-block.tsx`. The DiffViewer
+// (read-only) still uses `findFencedBlocks` to render http widgets in
+// the diff side-by-side view via `createBlockWidgetPlugin`.
+const BLOCK_OPEN_RE = /^```(http)(.*)$/;
+const EDITOR_WIDGET_LANGS: ReadonlySet<string> = new Set();
 const BLOCK_CLOSE_RE = /^```\s*$/;
 
 export interface FencedBlock {
@@ -83,7 +85,6 @@ export function extractAlias(info: string): string | undefined {
 /** Map language string to block type */
 function langToBlockType(lang: string): string {
   if (lang === "http") return "http";
-  if (lang === "e2e") return "e2e";
   return lang;
 }
 

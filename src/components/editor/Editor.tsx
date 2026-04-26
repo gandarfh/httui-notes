@@ -27,7 +27,6 @@ import { usePaneStore } from "@/stores/pane";
 import { BlockContextProvider } from "@/components/blocks/BlockContext";
 // http blocks are now owned by `cm-http-block.tsx` + `HttpFencedPanel`
 // (since stage 3 of the HTTP redesign); no registry side-effect needed.
-import "@/components/blocks/e2e";
 import "./editor.css";
 import { createWikilinkSuggest } from "./extensions/WikilinkSuggest";
 import { useWorkspace } from "@/contexts/WorkspaceContext";

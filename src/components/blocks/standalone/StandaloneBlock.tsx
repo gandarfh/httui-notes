@@ -42,13 +42,6 @@ function parseBlockContent(blockType: string, raw: string): ParsedBlock {
       if (typeof data === "string") return { displayContent: data };
       return { displayContent: data.body ?? raw, method: data.method, url: data.url };
     }
-    if (blockType === "e2e") {
-      return {
-        displayContent: data.baseUrl
-          ? `Base URL: ${data.baseUrl}\nSteps: ${data.steps?.length ?? 0}`
-          : JSON.stringify(data, null, 2),
-      };
-    }
     return { displayContent: JSON.stringify(data, null, 2) };
   } catch {
     return { displayContent: raw };
@@ -317,7 +310,6 @@ function buildParams(blockType: string, content: string): Record<string, unknown
       return { query: data.query ?? content, connection_id: data.connectionId ?? "", page: 1, page_size: 100 };
     }
     if (blockType === "http") return data;
-    if (blockType === "e2e") return data;
     return data;
   } catch {
     if (blockType === "db") {

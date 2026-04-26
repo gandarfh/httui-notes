@@ -809,9 +809,6 @@ fn main() {
             let mut executor_registry = httui_notes::executor::ExecutorRegistry::new();
             executor_registry.register(Box::new(SharedHttpExecutor(http_executor)));
             executor_registry.register(Box::new(SharedDbExecutor(db_executor)));
-            executor_registry.register(Box::new(
-                httui_notes::executor::e2e::E2eExecutor::new(),
-            ));
             app.manage(executor_registry);
 
             // Chat sidecar (lazy — spawned on first use, not at startup)

@@ -59,7 +59,6 @@ import {
 } from "@/lib/blocks/cm-references";
 import { useEnvironmentStore } from "@/stores/environment";
 import { BlockContextProvider } from "@/components/blocks/BlockContext";
-import { WidgetPortals } from "./WidgetPortals";
 import { DbWidgetPortals } from "./DbWidgetPortals";
 import { HttpWidgetPortals } from "./HttpWidgetPortals";
 import {
@@ -951,7 +950,6 @@ export function MarkdownEditor({
         />
         {editorReady && viewRef.current && (
           <>
-            <WidgetPortals view={viewRef.current} filePath={filePath} />
             <DbWidgetPortals view={viewRef.current} filePath={filePath} />
             <HttpWidgetPortals view={viewRef.current} filePath={filePath} />
           </>

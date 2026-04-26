@@ -444,7 +444,8 @@ function buildDecorations(view: EditorView): DecorationSet {
       }
 
       // ── Fenced code blocks (```lang ... ```) ──
-      // Executable blocks (http/db/e2e) are handled separately by cm-block-widgets
+      // Executable blocks (http/db) are handled separately by their own
+      // CM6 extensions (`cm-http-block.tsx` / `cm-db-block.tsx`).
       if (name === "FencedCode") {
         const codeInfo = node.node.getChild("CodeInfo");
         const lang = codeInfo
@@ -453,7 +454,7 @@ function buildDecorations(view: EditorView): DecorationSet {
         // CodeInfo covers the entire info string (lang + key=value attrs).
         // Only the first token is the dialect; use it for the executable check.
         const langToken = lang.split(/\s+/)[0];
-        const isExecutable = /^(http|db(?:-[\w:-]+)?|e2e)$/.test(langToken);
+        const isExecutable = /^(http|db(?:-[\w:-]+)?)$/.test(langToken);
         if (!isExecutable) {
           const startLine = state.doc.lineAt(node.from).number;
           const endLine = state.doc.lineAt(node.to).number;

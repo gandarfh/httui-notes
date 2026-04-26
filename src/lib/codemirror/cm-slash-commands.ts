@@ -31,7 +31,6 @@ const ICON_SVGS: Record<string, string> = {
   diagram: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
   database: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/>',
   http: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
-  e2e: '<path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><path d="m9 15 2 2 4-4"/>',
 };
 
 /** Create a DOM SVG element for an icon type */
@@ -97,7 +96,6 @@ const COMMANDS: SlashCommand[] = [
   { label: "HTTP POST", type: "http", insert: "```http alias=req1\nPOST \nContent-Type: application/json\n\n{}\n```\n", cursorOffset: -23, section: EXEC },
   { label: "HTTP PUT", type: "http", insert: "```http alias=req1\nPUT \nContent-Type: application/json\n\n{}\n```\n", cursorOffset: -23, section: EXEC },
   { label: "HTTP DELETE", type: "http", insert: "```http alias=req1\nDELETE \n```\n", cursorOffset: -5, section: EXEC },
-  { label: "E2E Test", type: "e2e", insert: '```e2e alias=e2e1\n{"baseUrl":"","headers":[],"steps":[]}\n```\n', section: EXEC },
 ];
 
 // ── Completion source ───────────────────────────────────────────────────────
