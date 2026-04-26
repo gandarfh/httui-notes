@@ -224,6 +224,49 @@ describe("resolveAllReferences", () => {
     expect(errors).toHaveLength(1);
     expect(errors[0].message).toContain("no result yet");
   });
+
+  // ─────── Epic 16 L166: alias/env shadow warning (T37) ───────
+
+  it("emits warning when block alias shadows env var with same name", () => {
+    // Block "login" + env var "login": block ref resolves correctly, but
+    // a warning surfaces so the user knows their env var is being ignored.
+    const envVars = { login: "from-env-shadowed" };
+    const { resolved, errors, warnings } = resolveAllReferences(
+      "{{login.response.body.token}}",
+      blocks,
+      100,
+      envVars,
+    );
+    expect(errors).toHaveLength(0);
+    expect(resolved).toBe("abc123");
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].message.toLowerCase()).toContain("shadow");
+    expect(warnings[0].message).toContain("login");
+  });
+
+  it("no shadow warning when alias and env var names differ", () => {
+    const envVars = { OTHER_KEY: "value" };
+    const { warnings } = resolveAllReferences(
+      "{{login.response.body.token}}",
+      blocks,
+      100,
+      envVars,
+    );
+    expect(warnings).toHaveLength(0);
+  });
+
+  it("no shadow warning when only env var exists (no matching block)", () => {
+    // {{API_KEY}} with no matching block alias — pure env resolution, no
+    // shadowing happening, so no warning.
+    const envVars = { API_KEY: "secret" };
+    const { warnings } = resolveAllReferences(
+      "Bearer {{API_KEY}}",
+      blocks,
+      100,
+      envVars,
+    );
+    expect(warnings).toHaveLength(0);
+  });
 });
 
 describe("db block reference shim (stage-2 response shape)", () => {

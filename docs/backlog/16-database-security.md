@@ -163,7 +163,7 @@
 - [x] Block dangerous property names in JSON path navigation: `__proto__`, `constructor`, `prototype` (both references.ts and references.rs)
 - [x] Add MAX_DEPTH=50 recursion limit in dependency resolution (dependencies.ts and runner.rs)
 - [x] Warn when block alias collides with environment variable name (or require `env:` prefix)
-- [ ] Add test: prototype pollution attempt, deep chain DoS, alias/env collision
+- [x] Add test: prototype pollution attempt, deep chain DoS, alias/env collision
 
 ### Story 16.14 — App Database Protection (partial)
 > Fix T33
