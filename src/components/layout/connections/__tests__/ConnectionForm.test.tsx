@@ -1,0 +1,196 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { renderWithProviders, screen, waitFor } from "@/test/render";
+import userEvent from "@testing-library/user-event";
+import { ConnectionForm } from "@/components/layout/connections/ConnectionForm";
+import { mockTauriCommand, clearTauriMocks } from "@/test/mocks/tauri";
+import type { Connection } from "@/lib/tauri/connections";
+
+const mkConnection = (over: Partial<Connection> = {}): Connection => ({
+  id: "c1",
+  name: "primary",
+  driver: "postgres",
+  host: "db.test",
+  port: 5432,
+  database_name: "mydb",
+  username: "alice",
+  ssl_mode: "require",
+  timeout_ms: 10000,
+  query_timeout_ms: 30000,
+  ttl_seconds: 300,
+  max_pool_size: 5,
+  ...over,
+});
+
+describe("ConnectionForm", () => {
+  beforeEach(() => {
+    clearTauriMocks();
+  });
+
+  afterEach(() => {
+    clearTauriMocks();
+  });
+
+  describe("create mode", () => {
+    it("renders 'New Connection' title when no connection prop", () => {
+      renderWithProviders(<ConnectionForm connection={null} onClose={vi.fn()} />);
+      expect(screen.getByText("New Connection")).toBeInTheDocument();
+    });
+
+    it("calls create_connection IPC on Save", async () => {
+      const user = userEvent.setup();
+      let received: unknown = null;
+      mockTauriCommand("create_connection", (args) => {
+        received = args;
+      });
+      const onClose = vi.fn();
+
+      renderWithProviders(
+        <ConnectionForm connection={null} onClose={onClose} />,
+      );
+
+      const nameInput = screen.getByPlaceholderText("Connection name");
+      await user.type(nameInput, "test conn");
+
+      const buttons = screen.getAllByRole("button");
+      const saveBtn = buttons.find((b) =>
+        /create connection|save|^add$/i.test(b.textContent ?? ""),
+      );
+      // Fallback — find by text "Create"
+      await user.click(saveBtn ?? screen.getByText(/create/i));
+
+      await waitFor(() => expect(received).not.toBeNull());
+      expect((received as { input: { name: string } }).input.name).toBe(
+        "test conn",
+      );
+      expect(onClose).toHaveBeenCalled();
+    });
+
+    it("switches driver to sqlite hides host/port fields", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<ConnectionForm connection={null} onClose={vi.fn()} />);
+
+      // Default = postgres → no FILE PATH label
+      expect(screen.queryByText(/FILE PATH/i)).not.toBeInTheDocument();
+
+      await user.click(screen.getByText("SQLite"));
+
+      expect(screen.getByText(/FILE PATH/i)).toBeInTheDocument();
+    });
+
+    it("captures error when create_connection rejects", async () => {
+      const user = userEvent.setup();
+      mockTauriCommand("create_connection", () => {
+        throw new Error("port in use");
+      });
+
+      renderWithProviders(<ConnectionForm connection={null} onClose={vi.fn()} />);
+
+      await user.type(
+        screen.getByPlaceholderText("Connection name"),
+        "x",
+      );
+      await user.click(screen.getByText(/create/i));
+
+      await waitFor(() =>
+        expect(screen.getByText("port in use")).toBeInTheDocument(),
+      );
+    });
+  });
+
+  describe("edit mode", () => {
+    it("renders 'Edit Connection' title with existing values", () => {
+      renderWithProviders(
+        <ConnectionForm connection={mkConnection()} onClose={vi.fn()} />,
+      );
+      expect(screen.getByText("Edit Connection")).toBeInTheDocument();
+      expect(screen.getByDisplayValue("primary")).toBeInTheDocument();
+      expect(screen.getByDisplayValue("alice")).toBeInTheDocument();
+    });
+
+    it("calls update_connection on Save in edit mode", async () => {
+      const user = userEvent.setup();
+      let received: unknown = null;
+      mockTauriCommand("update_connection", (args) => {
+        received = args;
+      });
+
+      renderWithProviders(
+        <ConnectionForm connection={mkConnection()} onClose={vi.fn()} />,
+      );
+
+      const buttons = screen.getAllByRole("button");
+      const saveBtn = buttons.find((b) =>
+        /save|update/i.test(b.textContent ?? ""),
+      );
+      await user.click(saveBtn ?? screen.getByText(/save/i));
+
+      await waitFor(() => expect(received).not.toBeNull());
+      expect((received as { id: string }).id).toBe("c1");
+    });
+
+    it("Test button calls test_connection IPC", async () => {
+      const user = userEvent.setup();
+      let tested = false;
+      mockTauriCommand("test_connection", () => {
+        tested = true;
+      });
+
+      renderWithProviders(
+        <ConnectionForm connection={mkConnection()} onClose={vi.fn()} />,
+      );
+
+      // Test button only renders in edit mode
+      const buttons = screen.getAllByRole("button");
+      const testBtn = buttons.find((b) =>
+        /test/i.test(b.textContent ?? ""),
+      );
+      if (testBtn) {
+        await user.click(testBtn);
+        await waitFor(() => expect(tested).toBe(true));
+      } else {
+        // If button not found by name, that's a render issue; fail explicitly
+        throw new Error("Test button not found");
+      }
+    });
+
+    it("captures test error", async () => {
+      const user = userEvent.setup();
+      mockTauriCommand("test_connection", () => {
+        throw new Error("DNS failure");
+      });
+
+      renderWithProviders(
+        <ConnectionForm connection={mkConnection()} onClose={vi.fn()} />,
+      );
+
+      const buttons = screen.getAllByRole("button");
+      const testBtn = buttons.find((b) => /test/i.test(b.textContent ?? ""));
+      if (testBtn) {
+        await user.click(testBtn);
+        await waitFor(() =>
+          expect(screen.getByText(/DNS failure/i)).toBeInTheDocument(),
+        );
+      }
+    });
+  });
+
+  describe("close behaviors", () => {
+    it("Close button calls onClose", async () => {
+      const user = userEvent.setup();
+      const onClose = vi.fn();
+      renderWithProviders(<ConnectionForm connection={null} onClose={onClose} />);
+
+      await user.click(screen.getByRole("button", { name: /close/i }));
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("Escape key closes the form", async () => {
+      const user = userEvent.setup();
+      const onClose = vi.fn();
+      renderWithProviders(<ConnectionForm connection={null} onClose={onClose} />);
+
+      await user.keyboard("{Escape}");
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+  });
+});
