@@ -453,6 +453,221 @@ impl Ord for CompletionKind {
     }
 }
 
+/// What the detector found inside an open `{{...}}` ref. Returned
+/// by `detect_ref_context` when the cursor sits between an opener
+/// and the matching `}}`. The completion engine uses it to switch
+/// off the SQL path entirely (refs and SQL keywords don't mix).
+///
+/// Splitting on `.` matters because the engine surfaces *different*
+/// items per segment:
+/// - segment 1 (`{{|}}` or `{{q1|}}`) → alias names + env vars
+/// - segment 2+ (`{{q1.|}}` or `{{q1.id|}}`) → keys of that
+///   block's cached result.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RefDetect {
+    /// Where the *prefix* word starts in the body (column on the
+    /// current line). Used by the popup's accept handler to know
+    /// how many characters to backspace before splicing the chosen
+    /// label.
+    pub anchor_offset: usize,
+    /// What the user has typed since the last `{{` or `.` — the
+    /// item the popup will filter on. Empty when the cursor sits
+    /// right after `{{` or `.`.
+    pub prefix: String,
+    /// Path segments before the current one. `None` for the first
+    /// segment after `{{`; `Some("q1")` for `{{q1.|}}`;
+    /// `Some("q1.response")` for `{{q1.response.|}}`.
+    pub path: Option<String>,
+}
+
+/// Detect whether the cursor sits inside an open `{{...}}` ref. V1
+/// only walks the current line — refs spanning multiple lines are
+/// rare in practice and would complicate detection a lot. Returns
+/// `None` when there's no open `{{` to the left, or when there's
+/// already a `}}` between the opener and the cursor (the ref is
+/// closed; we're back in plain SQL).
+pub fn detect_ref_context(body: &str, line: usize, cursor_offset: usize) -> Option<RefDetect> {
+    let line_text = body.lines().nth(line)?;
+    let chars: Vec<char> = line_text.chars().collect();
+    let take = cursor_offset.min(chars.len());
+    let head: String = chars[..take].iter().collect();
+
+    // Find the *last* `{{` to the left, then make sure no `}}`
+    // appears between it and the cursor. If a `}}` is present, the
+    // ref is closed and we're back in plain SQL.
+    let last_open = head.rfind("{{")?;
+    let after_open = &head[last_open + 2..];
+    if after_open.contains("}}") {
+        return None;
+    }
+
+    // The current segment is everything since the last `.` (or the
+    // whole `after_open` when there's no dot yet). The path is
+    // everything before that dot.
+    let (path, prefix) = match after_open.rfind('.') {
+        Some(dot_idx) => (
+            Some(after_open[..dot_idx].to_string()),
+            after_open[dot_idx + 1..].to_string(),
+        ),
+        None => (None, after_open.to_string()),
+    };
+
+    let anchor_offset = cursor_offset.saturating_sub(prefix.chars().count());
+    Some(RefDetect {
+        anchor_offset,
+        prefix,
+        path,
+    })
+}
+
+/// Build the candidate list for the ref popup. When `detect.path`
+/// is `None`, surfaces aliases of blocks above `current_segment`
+/// (with type + cached/no-result hint) plus env vars from the
+/// active environment. When the path is set to a single alias,
+/// surfaces the navigable keys of that block's cached result.
+///
+/// V1 limits: multi-segment paths (`q1.response.something.|`) drop
+/// to a JSON-walk of the cached result; non-objects yield no
+/// suggestions. No support yet for HTTP/E2E result shapes (TUI
+/// editing of those blocks is paused — Story 02/03/06/07).
+pub fn complete_refs(
+    detect: &RefDetect,
+    segments: &[crate::buffer::Segment],
+    current_segment: usize,
+    env_vars: &std::collections::HashMap<String, String>,
+) -> Vec<CompletionItem> {
+    let prefix_lower = detect.prefix.to_ascii_lowercase();
+    let mut out: Vec<CompletionItem> = Vec::new();
+
+    let Some(path) = detect.path.as_deref() else {
+        // Top-level: aliases first (most-typed), env vars after.
+        for seg in segments.iter().take(current_segment) {
+            if let crate::buffer::Segment::Block(b) = seg {
+                if let Some(alias) = b.alias.as_deref() {
+                    if alias.to_ascii_lowercase().starts_with(&prefix_lower) {
+                        let cached = if b.cached_result.is_some() {
+                            "cached"
+                        } else {
+                            "no result"
+                        };
+                        out.push(CompletionItem {
+                            label: alias.to_string(),
+                            kind: CompletionKind::Reference,
+                            detail: Some(format!("{} · {cached}", b.block_type)),
+                        });
+                    }
+                }
+            }
+        }
+        for key in env_vars.keys() {
+            if key.to_ascii_lowercase().starts_with(&prefix_lower) {
+                out.push(CompletionItem {
+                    label: key.clone(),
+                    kind: CompletionKind::Reference,
+                    detail: Some("env".into()),
+                });
+            }
+        }
+        out.sort_by(|a, b| a.label.cmp(&b.label));
+        out.dedup_by(|a, b| a.label == b.label);
+        return out;
+    };
+
+    // Path is set — walk it against the matching block's cache and
+    // emit the value's child keys. For DB blocks this also exposes
+    // the legacy `response.<col>` shim so users can complete column
+    // names off the first row without spelling out `response.0.rows.0.`.
+    let path_segs: Vec<&str> = path.split('.').collect();
+    let head = match path_segs.first() {
+        Some(h) => *h,
+        None => return out,
+    };
+    let block = segments
+        .iter()
+        .take(current_segment)
+        .filter_map(|s| match s {
+            crate::buffer::Segment::Block(b) => Some(b),
+            _ => None,
+        })
+        .find(|b| b.alias.as_deref() == Some(head));
+    let Some(block) = block else { return out };
+    let Some(cached) = block.cached_result.as_ref() else {
+        return out;
+    };
+
+    // Walk the rest of the path through the cached JSON.
+    let mut cursor_value: &serde_json::Value = cached;
+    for seg in path_segs.iter().skip(1) {
+        // Skip a literal `response` token for the legacy shim — same
+        // semantics as `resolve_one_ref` in the dispatch layer.
+        if *seg == "response"
+            && cursor_value.get("results").is_some()
+        {
+            continue;
+        }
+        match cursor_value
+            .get(seg)
+            .or_else(|| seg.parse::<usize>().ok().and_then(|i| cursor_value.as_array().and_then(|a| a.get(i))))
+        {
+            Some(v) => cursor_value = v,
+            None => return out,
+        }
+    }
+
+    // For DB-shaped values, expose passthrough fields + the legacy
+    // shim (first row's columns). For everything else just dump
+    // top-level keys.
+    let is_db_response =
+        cursor_value.get("results").map(|r| r.is_array()).unwrap_or(false);
+    if is_db_response {
+        for key in &["results", "messages", "stats", "plan"] {
+            if cursor_value.get(*key).is_some()
+                && key.to_ascii_lowercase().starts_with(&prefix_lower)
+            {
+                out.push(CompletionItem {
+                    label: (*key).to_string(),
+                    kind: CompletionKind::Reference,
+                    detail: Some("response field".into()),
+                });
+            }
+        }
+        // Legacy shim: surface columns of `results[0].rows[0]`.
+        if let Some(first_row) = cursor_value
+            .get("results")
+            .and_then(|r| r.as_array())
+            .and_then(|a| a.first())
+            .and_then(|r| r.get("rows"))
+            .and_then(|r| r.as_array())
+            .and_then(|a| a.first())
+            .and_then(|r| r.as_object())
+        {
+            for key in first_row.keys() {
+                if key.to_ascii_lowercase().starts_with(&prefix_lower) {
+                    out.push(CompletionItem {
+                        label: key.clone(),
+                        kind: CompletionKind::Reference,
+                        detail: Some("first row".into()),
+                    });
+                }
+            }
+        }
+    } else if let Some(obj) = cursor_value.as_object() {
+        for key in obj.keys() {
+            if key.to_ascii_lowercase().starts_with(&prefix_lower) {
+                out.push(CompletionItem {
+                    label: key.clone(),
+                    kind: CompletionKind::Reference,
+                    detail: None,
+                });
+            }
+        }
+    }
+
+    out.sort_by(|a, b| a.label.cmp(&b.label));
+    out.dedup_by(|a, b| a.label == b.label);
+    out
+}
+
 /// Walk back from `(line, offset)` in `body` and return the start
 /// offset of the current "word" (alphanumeric / underscore run) plus
 /// the prefix string. Returns `None` when the cursor isn't in a
@@ -872,6 +1087,206 @@ mod tests {
             complete(Dialect::Postgres, "S", SqlContext::Table, Some(&schema));
         let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
         assert!(labels.contains(&"SELECT"));
+    }
+
+    // ───────────── detect_ref_context (Story 04.7) ─────────────
+    //
+    // Switching to ref mode is gated on "cursor sits inside an open
+    // `{{...}}`". The detector runs before SQL completion so a user
+    // mid-ref doesn't get keyword suggestions on top of alias names.
+
+    #[test]
+    fn detect_ref_context_returns_none_when_no_open_brace() {
+        // Plain SQL with no `{{` to the left of the cursor.
+        assert!(detect_ref_context("SELECT * FROM users", 0, 19).is_none());
+    }
+
+    #[test]
+    fn detect_ref_context_picks_up_empty_open() {
+        // `{{|` — cursor right after the opener. Prefix is empty,
+        // path is None, anchor sits at the cursor.
+        let got = detect_ref_context("SELECT * WHERE x = {{", 0, 21).unwrap();
+        assert_eq!(got.prefix, "");
+        assert_eq!(got.path, None);
+        assert_eq!(got.anchor_offset, 21);
+    }
+
+    #[test]
+    fn detect_ref_context_returns_prefix_for_first_segment() {
+        // `{{q1|` — typing the alias. Prefix is what's typed since
+        // the opener; no `.` yet so path is None.
+        let got = detect_ref_context("SELECT {{q1", 0, 11).unwrap();
+        assert_eq!(got.prefix, "q1");
+        assert_eq!(got.path, None);
+        assert_eq!(got.anchor_offset, 9); // start of `q1`
+    }
+
+    #[test]
+    fn detect_ref_context_splits_path_after_dot() {
+        // `{{q1.r|` — the path holds the alias, prefix is the new
+        // segment ("r"). Lets the engine pivot from "list aliases"
+        // to "list keys of q1's cached result".
+        let got = detect_ref_context("SELECT {{q1.r", 0, 13).unwrap();
+        assert_eq!(got.prefix, "r");
+        assert_eq!(got.path.as_deref(), Some("q1"));
+        assert_eq!(got.anchor_offset, 12); // start of `r`
+    }
+
+    #[test]
+    fn detect_ref_context_supports_multi_segment_path() {
+        // `{{q1.response.|` — two-segment path, empty current
+        // prefix. Engine walks into `cached_result.response.*`.
+        let got = detect_ref_context("SELECT {{q1.response.", 0, 21).unwrap();
+        assert_eq!(got.prefix, "");
+        assert_eq!(got.path.as_deref(), Some("q1.response"));
+    }
+
+    #[test]
+    fn detect_ref_context_returns_none_when_brace_already_closed() {
+        // `{{q1}} AND id = 5|` — cursor is past a closed ref.
+        assert!(
+            detect_ref_context("WHERE x = {{q1}} AND id = 5", 0, 27).is_none(),
+            "closed ref should not trigger"
+        );
+    }
+
+    // ───────────── complete_refs (Story 04.7) ─────────────
+
+    fn make_ref_doc(md: &str) -> crate::buffer::Document {
+        crate::buffer::Document::from_markdown(md).expect("parse")
+    }
+
+    fn refs_doc_blocks(doc: &crate::buffer::Document) -> Vec<usize> {
+        doc.segments()
+            .iter()
+            .enumerate()
+            .filter_map(|(i, s)| matches!(s, crate::buffer::Segment::Block(_)).then_some(i))
+            .collect()
+    }
+
+    #[test]
+    fn complete_refs_no_path_lists_aliases_and_envs() {
+        // Top-level: aliases first (alphabetical), env vars after,
+        // both filtered by prefix and tagged with kind=Reference.
+        let md = "```db-postgres alias=q1\nSELECT 1\n```\n\n```db-postgres alias=q2\nSELECT 2\n```\n\n```db-postgres alias=cur\nSELECT 3\n```\n";
+        let doc = make_ref_doc(md);
+        let blocks = refs_doc_blocks(&doc);
+        let mut envs = std::collections::HashMap::new();
+        envs.insert("API_TOKEN".to_string(), "abc".to_string());
+        let detect = RefDetect {
+            anchor_offset: 0,
+            prefix: "q".to_string(),
+            path: None,
+        };
+        let items = complete_refs(&detect, doc.segments(), blocks[2], &envs);
+        let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+        assert_eq!(labels, vec!["q1", "q2"]);
+        assert!(items.iter().all(|i| i.kind == CompletionKind::Reference));
+    }
+
+    #[test]
+    fn complete_refs_no_path_includes_env_vars() {
+        // Env keys also surface — popular for `{{API_KEY}}`-style refs.
+        let md = "```db-postgres alias=cur\nSELECT 1\n```\n";
+        let doc = make_ref_doc(md);
+        let blocks = refs_doc_blocks(&doc);
+        let mut envs = std::collections::HashMap::new();
+        envs.insert("API_TOKEN".to_string(), "abc".to_string());
+        let detect = RefDetect {
+            anchor_offset: 0,
+            prefix: "API".to_string(),
+            path: None,
+        };
+        let items = complete_refs(&detect, doc.segments(), blocks[0], &envs);
+        let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+        assert_eq!(labels, vec!["API_TOKEN"]);
+        assert_eq!(items[0].detail.as_deref(), Some("env"));
+    }
+
+    #[test]
+    fn complete_refs_path_alias_with_db_response_lists_passthrough_and_columns() {
+        // `{{q1.|}}` against a DB-shaped cached_result — popup
+        // surfaces both passthrough fields (results/messages/stats)
+        // and the legacy shim of first-row columns.
+        let md = "```db-postgres alias=q1\nSELECT 1\n```\n\n```db-postgres alias=cur\nSELECT 1\n```\n";
+        let mut doc = make_ref_doc(md);
+        let blocks = refs_doc_blocks(&doc);
+        let cached = serde_json::json!({
+            "results": [
+                {
+                    "kind": "select",
+                    "columns": [],
+                    "rows": [{ "id": 7, "name": "alice" }],
+                    "has_more": false
+                }
+            ],
+            "messages": [],
+            "stats": { "elapsed_ms": 12 }
+        });
+        if let Some(b) = doc.block_at_mut(blocks[0]) {
+            b.cached_result = Some(cached);
+        }
+        let detect = RefDetect {
+            anchor_offset: 0,
+            prefix: "".to_string(),
+            path: Some("q1".to_string()),
+        };
+        let items = complete_refs(
+            &detect,
+            doc.segments(),
+            blocks[1],
+            &std::collections::HashMap::new(),
+        );
+        let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+        assert!(labels.contains(&"results"), "missing passthrough: {labels:?}");
+        assert!(labels.contains(&"stats"), "missing passthrough: {labels:?}");
+        assert!(labels.contains(&"id"), "missing first-row column: {labels:?}");
+        assert!(labels.contains(&"name"), "missing first-row column: {labels:?}");
+    }
+
+    #[test]
+    fn complete_refs_path_to_unknown_alias_returns_empty() {
+        // `{{ghost.|}}` — alias doesn't exist above. Popup empty
+        // (caller closes it) so user sees nothing instead of a
+        // confusing wrong list.
+        let md = "```db-postgres alias=cur\nSELECT 1\n```\n";
+        let doc = make_ref_doc(md);
+        let blocks = refs_doc_blocks(&doc);
+        let detect = RefDetect {
+            anchor_offset: 0,
+            prefix: "".to_string(),
+            path: Some("ghost".to_string()),
+        };
+        let items = complete_refs(
+            &detect,
+            doc.segments(),
+            blocks[0],
+            &std::collections::HashMap::new(),
+        );
+        assert!(items.is_empty());
+    }
+
+    #[test]
+    fn complete_refs_skips_blocks_at_or_below_current() {
+        // Refs can only point to blocks ABOVE the current one. A
+        // block sitting after `cur` mustn't appear in the popup.
+        let md = "```db-postgres alias=cur\nSELECT 1\n```\n\n```db-postgres alias=below\nSELECT 2\n```\n";
+        let doc = make_ref_doc(md);
+        let blocks = refs_doc_blocks(&doc);
+        let detect = RefDetect {
+            anchor_offset: 0,
+            prefix: "".to_string(),
+            path: None,
+        };
+        let items = complete_refs(
+            &detect,
+            doc.segments(),
+            blocks[0], // `cur` is the first block
+            &std::collections::HashMap::new(),
+        );
+        let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+        assert!(!labels.contains(&"below"));
+        assert!(!labels.contains(&"cur"));
     }
 
     #[test]

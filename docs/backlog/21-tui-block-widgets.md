@@ -259,22 +259,35 @@ Hoje TUI sempre re-executava em `r`. Agora consulta cache primeiro (per-file SQL
 
 ---
 
-### Story 04.7 — Refs autocomplete `{{...}}` 🚧 P1
+### Story 04.7 — Refs autocomplete `{{...}}` ✅ P1
 
-Trigger ao digitar `{{` em qualquer campo. Lista aliases de blocos anteriores + env vars do environment ativo. Vale tanto pro SQL quanto pra futuros campos de HTTP/E2E quando voltarem.
+**Entregue:**
+- [x] `RefDetect` struct + `detect_ref_context(body, line, cursor_offset) -> Option<RefDetect>` em `sql_completion.rs`. V1 walks current line; rfind do último `{{`, bail se já tem `}}` antes do cursor. Split do segmento atual via último `.`: `prefix` = chars depois (ou desde o `{{`); `path` = parte antes do dot (None se não tem).
+- [x] `complete_refs(detect, segments, current_segment, env_vars) -> Vec<CompletionItem>`:
+  - **Sem path** (top-level): walks `segments[..current_segment]`, coleta aliases de blocos com hint `<type> · <cached/no result>`. Depois env vars (`detail = "env"`). Tudo filtrado por prefix (case-insensitive), sorted, dedup por label.
+  - **Com path = single alias**: localiza bloco por alias, lê `cached_result`. Se shape DB (`{results: [...]}`): expõe passthrough fields (`results`/`messages`/`stats`/`plan`) + legacy shim de colunas do `results[0].rows[0]` (`detail = "first row"`). Fallback genérico: top-level keys do object atual.
+  - **Multi-segment path**: walk através do JSON com dot-nav (suporta numeric index pra arrays); skip do literal `response` shim quando shape DB.
+  - **Alias desconhecido**: retorna vazio (popup fecha).
+  - **Refs só apontam pra blocos ABOVE current_segment** — invariante do DAG preservado.
+- [x] Wire em `rebuild_completion_popup`: refs **win over SQL**. Tenta `detect_ref_context` primeiro; if Some, monta popup state com items de `complete_refs` e retorna. Else fall through pro path SQL existente.
+- [x] Reusa engine de 04.4a: mesmas keybindings (Tab/Enter aceita, Esc/Ctrl-C dismissa, Ctrl-n/p navega), mesmo accept (backspace prefix + insert label, snapshot pra undo), mesmo render (popup ancorado abaixo do cursor).
+- [x] **Ctrl+Space** funciona dentro de `{{` também — força reabrir popup vazio com tudo do alias/env atual.
+- [x] 11 testes novos em `sql_completion::tests`:
+  - `detect_ref_context`: sem `{{`, com `{{|`, prefix `{{q1|`, dot split `{{q1.r|`, multi-segment `{{q1.response.|`, ref já fechado `{{q1}} ...`
+  - `complete_refs`: top-level lista aliases + env vars filtrado, env-only quando prefix bate só env, path single-alias com DB shape lista passthrough + first-row columns, alias desconhecido vazio, blocos abaixo do current não aparecem
 
-**Tasks:**
-- [ ] **Source 4 — Refs**: nova `CompletionSource` que ativa apenas dentro de `{{...}}` aberto.
-- [ ] Detector: `{{` antes do cursor (sem `}}` fechando) abre popup; `}}` fecha.
-- [ ] Fontes de items:
-  - `App.document` walks blocks anteriores ao cursor, coleta `alias` (com type-tag: HTTP/DB/E2E + flag `cached`/`no-result`).
-  - `App.env_vars` lista keys do active env.
-- [ ] Após `{{alias.`: navega JSON do `cached_result` daquele bloco com dot notation, popup mostra keys disponíveis no nível atual. Cada `.` redoes o lookup.
-- [ ] Ordem: aliases acima de env vars (mais comum em scripts).
-- [ ] Reuso da infra de popup de Story 04.4a (mesmas keybindings, mesmo widget).
-- [ ] Testes: triggers corretos, lista filtrada, navegação por tree de JSON, `{{ENV_KEY}}` (sem dots) lista envs sem aliases.
+**Pra usar:**
+- Dentro do body de qualquer DB block, digite `{{` → popup abre com aliases + env vars
+- Digite mais chars → filtra
+- Digite `.` após escolher um alias (ou type-it: `{{q1.`) → popup pivota pra keys do `cached_result` daquele bloco
+- `Tab`/`Enter` insere; `Esc` cancela; `}}` fecha o ref naturalmente
 
-**Depende de:** Story 04.4a (engine).
+**Não cobre (V2):**
+- Ref-popup em campos não-SQL (URL/header/body de HTTP — dependem de Stories 02/03 voltarem do paused)
+- Multi-line refs (`{{` em uma linha, prefix em outra)
+- Auto-close inteligente: hoje insere apenas o label; user precisa digitar `}}` explicitamente
+
+**Depende de:** Story 04.4a (engine). ✓
 
 ---
 

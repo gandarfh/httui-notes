@@ -183,6 +183,54 @@ fn rebuild_completion_popup(app: &mut App, allow_empty_prefix: bool) {
             return;
         }
     };
+    // Refs win over SQL completion: when the cursor sits inside an
+    // open `{{...}}` ref, the popup switches to alias / env-var /
+    // ref-path mode entirely. The prefix the popup tracks is what's
+    // typed since the last `{{` or `.` — same accept semantics as
+    // the SQL path (backspace prefix, splice label).
+    if let Some(ref_detect) =
+        crate::sql_completion::detect_ref_context(&body, line, offset)
+    {
+        // Need env vars to populate top-level ref candidates.
+        let env_vars: std::collections::HashMap<String, String> =
+            tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current()
+                    .block_on(load_active_env_vars(app.pool_manager.app_pool()))
+            })
+            .unwrap_or_default();
+        let segments_snapshot: Vec<crate::buffer::Segment> = app
+            .document()
+            .map(|d| d.segments().to_vec())
+            .unwrap_or_default();
+        let items = crate::sql_completion::complete_refs(
+            &ref_detect,
+            &segments_snapshot,
+            segment_idx,
+            &env_vars,
+        );
+        if items.is_empty() {
+            app.completion_popup = None;
+            return;
+        }
+        let prior_label = app
+            .completion_popup
+            .as_ref()
+            .and_then(|p| p.items.get(p.selected))
+            .map(|i| i.label.clone());
+        let selected = prior_label
+            .and_then(|lbl| items.iter().position(|i| i.label == lbl))
+            .unwrap_or(0);
+        app.completion_popup = Some(crate::app::CompletionPopupState {
+            segment_idx,
+            items,
+            selected,
+            anchor_line: line,
+            anchor_offset: ref_detect.anchor_offset,
+            prefix: ref_detect.prefix,
+        });
+        return;
+    }
+
     // Detect the prefix word at the cursor. When we got there via a
     // manual trigger and the cursor isn't on a word char, fall back
     // to "no prefix, anchor at cursor" so the popup still opens.
