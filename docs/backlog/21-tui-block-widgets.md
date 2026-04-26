@@ -32,20 +32,25 @@ Auditoria de paridade Desktop × TUI consolidada em §15.bis.
 
 ---
 
-### Story 04.1 — Refs `{{...}}` → bind params 🚧 P0 (segurança)
+### Story 04.1 — Refs `{{...}}` → bind params ✅ P0 (segurança)
 
-Hoje `httui-tui::vim::dispatch::resolve_block_refs` faz **string substitution** dos `{{alias.path}}` direto na query SQL. Isso viola o invariante do `CLAUDE.md` ("Block references in SQL ... are always converted to bind parameters, never string-interpolated") e é vetor de SQL injection trivial via valor de bloco upstream.
+**Entregue:**
+- [x] `resolve_block_refs` retorna `(String, Vec<serde_json::Value>)` — placeholders `?` + bind values em paralelo
+- [x] `resolve_one_ref` retorna `serde_json::Value` (não mais SQL literal); `value_for_bind` valida scalar (Number/Bool/String/Null) e rejeita Array/Object
+- [x] `apply_run_block` + `load_more_db_block` propagam `bind_values: Vec<Value>` até `spawn_db_query` → executor params
+- [x] Função pure (`&[Segment]` em vez de `&App`) — testes constroem `Document::from_markdown` direto
+- [x] Placeholder canônico `?` em todos os dialetos (sqlx adapta pra `$N` no driver Postgres). Multi-statement já funciona via `count_placeholders`/slice no executor — quando 04.2 entregar, refs em statement N vão pros binds certos.
+- [x] Env vars resolvem como `Value::String` (mesma garantia: bind, não interp)
+- [x] 8 testes novos em `dispatch::tests::resolve_block_refs_*`:
+  - SQL injection guard (`'; DROP TABLE x;` vai pro bind, não pra SQL)
+  - Múltiplos placeholders em ordem
+  - Tipos preservados (Number, Bool, Null)
+  - Env var como String bind
+  - Array/Object rejeitado com erro
+  - Alias desconhecido falha loud
+  - Query sem refs passa-through
 
-**Tasks:**
-- [ ] Substituir string substitution por extração de placeholders + array de bind values
-- [ ] Adaptar para os 3 dialetos: `$N` (Postgres), `?` (MySQL/SQLite)
-- [ ] `httui-core::executor::db` já aceita `bind_values: Vec<Value>` — usar
-- [ ] Resolver `{{ENV_VAR}}` continua como string (envs não são SQL injection no mesmo sentido — confirmar com desktop)
-- [ ] Testes: query com `WHERE id = {{prev.response.id}}` gera `WHERE id = $1` + `[prev_id]`, **não** `WHERE id = '7; DROP TABLE...'`
-- [ ] Testes: 3 dialetos geram placeholders corretos
-- [ ] Testes: ref resolvendo a array/object falha gracefully (não vira string mal-formada)
-
-**Refs:** `src/components/blocks/db/fenced/DbFencedPanel.tsx:340-360` (`resolveRefsToBindParams` — espelhar).
+**Ref desktop espelhada:** `src/components/blocks/db/fenced/DbFencedPanel.tsx:340-360` (`resolveRefsToBindParams`).
 
 ---
 

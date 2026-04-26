@@ -1083,8 +1083,12 @@ fn apply_run_block(app: &mut App) {
                 .block_on(load_active_env_vars(app.pool_manager.app_pool()))
         })
         .unwrap_or_default();
-    let query = match resolve_block_refs(app, segment_idx, &raw_query, &env_vars) {
-        Ok(q) => q,
+    let resolved = match app.document() {
+        Some(d) => resolve_block_refs(d.segments(), segment_idx, &raw_query, &env_vars),
+        None => Ok((raw_query.clone(), Vec::new())),
+    };
+    let (query, bind_values) = match resolved {
+        Ok(qb) => qb,
         Err(msg) => {
             if let Some(doc) = app.tabs.active_document_mut() {
                 if let Some(b) = doc.block_at_mut(segment_idx) {
@@ -1137,6 +1141,7 @@ fn apply_run_block(app: &mut App) {
         token,
         connection_id,
         query,
+        bind_values,
         limit,
         0,
     );
@@ -1157,6 +1162,7 @@ fn spawn_db_query(
     token: CancellationToken,
     connection_id: String,
     query: String,
+    bind_values: Vec<serde_json::Value>,
     limit: u64,
     offset: u64,
 ) {
@@ -1171,7 +1177,7 @@ fn spawn_db_query(
     let params = serde_json::json!({
         "connection_id": connection_id,
         "query": query,
-        "bind_values": [],
+        "bind_values": bind_values,
         "offset": offset,
         "fetch_size": limit,
     });
@@ -1480,7 +1486,10 @@ fn load_more_db_block(app: &mut App, segment_idx: usize) -> Result<(), String> {
                 .block_on(load_active_env_vars(app.pool_manager.app_pool()))
         })
         .unwrap_or_default();
-    let query = resolve_block_refs(app, segment_idx, &raw_query, &env_vars)?;
+    let (query, bind_values) = match app.document() {
+        Some(d) => resolve_block_refs(d.segments(), segment_idx, &raw_query, &env_vars)?,
+        None => (raw_query.clone(), Vec::new()),
+    };
     let pool_mgr = app.pool_manager.clone();
     let connection_id = tokio::task::block_in_place(|| {
         tokio::runtime::Handle::current()
@@ -1495,6 +1504,7 @@ fn load_more_db_block(app: &mut App, segment_idx: usize) -> Result<(), String> {
         token,
         connection_id,
         query,
+        bind_values,
         limit,
         current_offset,
     );
@@ -1857,22 +1867,27 @@ fn db_row_payload(
     Some(serde_json::Value::Object(out))
 }
 
-/// Substitute `{{alias.response.path...}}` placeholders in `query`
-/// against the `cached_result` of blocks sitting above
-/// `current_segment` in the document. Numbers, strings, and bools
-/// are rendered as SQL literals (strings get single-quote escaped);
-/// any reference whose target is missing surfaces a friendly error
-/// instead of leaving the placeholder untouched.
+/// Replace `{{alias.response.path...}}` placeholders in `query` with
+/// SQL bind placeholders (`?`) and collect each resolved value into a
+/// parallel array. Mirrors `resolveRefsToBindParams` on the desktop
+/// (`src/components/blocks/db/fenced/DbFencedPanel.tsx:340-360`):
+/// values **never** become part of the SQL string — sqlx binds them
+/// at the driver layer, so a malicious upstream value like
+/// `'7; DROP TABLE x'` lands as a single literal string parameter,
+/// not as injected SQL.
+///
+/// The function is pure: callers thread the document's segment slice
+/// in. That keeps tests free of `App` plumbing and matches how
+/// `apply_run_block` / `load_more_db_block` already split the
+/// pre-flight (read-only) phase from the spawn (mutates `app`).
 fn resolve_block_refs(
-    app: &App,
+    segments: &[crate::buffer::Segment],
     current_segment: usize,
     query: &str,
     env_vars: &std::collections::HashMap<String, String>,
-) -> Result<String, String> {
-    let Some(doc) = app.document() else {
-        return Ok(query.to_string());
-    };
+) -> Result<(String, Vec<serde_json::Value>), String> {
     let mut out = String::with_capacity(query.len());
+    let mut binds: Vec<serde_json::Value> = Vec::new();
     let bytes = query.as_bytes();
     let mut i = 0usize;
     while i < bytes.len() {
@@ -1889,15 +1904,16 @@ fn resolve_block_refs(
             let inner = std::str::from_utf8(&bytes[i + 2..close])
                 .map_err(|_| "invalid utf-8 inside reference".to_string())?
                 .trim();
-            let value = resolve_one_ref(doc, current_segment, inner, env_vars)?;
-            out.push_str(&value);
+            let value = resolve_one_ref(segments, current_segment, inner, env_vars)?;
+            out.push('?');
+            binds.push(value);
             i = close + 2;
         } else {
             out.push(bytes[i] as char);
             i += 1;
         }
     }
-    Ok(out)
+    Ok((out, binds))
 }
 
 /// Locate the `}}` closing brace inside a placeholder body. Returns
@@ -1915,11 +1931,11 @@ fn find_close_marker(b: &[u8]) -> Option<usize> {
 }
 
 fn resolve_one_ref(
-    doc: &crate::buffer::Document,
+    segments: &[crate::buffer::Segment],
     current_segment: usize,
     inner: &str,
     env_vars: &std::collections::HashMap<String, String>,
-) -> Result<String, String> {
+) -> Result<serde_json::Value, String> {
     let parts: Vec<&str> = inner.split('.').map(str::trim).collect();
     let head = parts.first().copied().unwrap_or("").trim();
     if head.is_empty() {
@@ -1928,8 +1944,7 @@ fn resolve_one_ref(
     // Block refs are dotted (`alias.field…`); when missing, fall back
     // to env vars only for single-segment keys (`{{TOKEN}}`). This
     // mirrors the desktop precedence: blocks win over env collisions.
-    let block_match = doc
-        .segments()
+    let block_match = segments
         .iter()
         .take(current_segment)
         .filter_map(|s| match s {
@@ -1952,7 +1967,7 @@ fn resolve_one_ref(
             value = navigate_json(value, part)
                 .ok_or_else(|| format!("path `{part}` not found in `{head}`"))?;
         }
-        return json_to_sql_literal(value);
+        return value_for_bind(value);
     }
     // No matching block. A dotted reference can only be a block, so
     // fail loudly. Single-segment refs try env vars next.
@@ -1960,9 +1975,9 @@ fn resolve_one_ref(
         return Err(format!("block `{head}` not found above this one"));
     }
     if let Some(v) = env_vars.get(head) {
-        // Env values are user-managed strings — quote and escape so
-        // numeric strings stay strings (vim semantics: literal substitution).
-        return Ok(format!("'{}'", v.replace('\'', "''")));
+        // Env values bind as plain strings — same shape every other
+        // value gets, so the driver decides numeric coercion.
+        return Ok(serde_json::Value::String(v.clone()));
     }
     Err(format!("`{head}` is not a block alias above or an env var"))
 }
@@ -1976,12 +1991,17 @@ fn navigate_json<'a>(v: &'a serde_json::Value, key: &str) -> Option<&'a serde_js
     v.as_object()?.get(key)
 }
 
-fn json_to_sql_literal(v: &serde_json::Value) -> Result<String, String> {
+/// Verify a reference's resolved value is bind-safe and clone it for
+/// the bind array. Arrays and objects can't go through driver-side
+/// parameter binding for the dialects we target, so reject them
+/// loudly; the user almost always meant a scalar field anyway and a
+/// silent JSON-stringify would mask the typo.
+fn value_for_bind(v: &serde_json::Value) -> Result<serde_json::Value, String> {
     match v {
-        serde_json::Value::Null => Ok("NULL".into()),
-        serde_json::Value::Bool(b) => Ok(if *b { "TRUE" } else { "FALSE" }.into()),
-        serde_json::Value::Number(n) => Ok(n.to_string()),
-        serde_json::Value::String(s) => Ok(format!("'{}'", s.replace('\'', "''"))),
+        serde_json::Value::Null
+        | serde_json::Value::Bool(_)
+        | serde_json::Value::Number(_)
+        | serde_json::Value::String(_) => Ok(v.clone()),
         serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
             Err("reference points to a non-scalar value".into())
         }
@@ -2240,5 +2260,227 @@ mod tests {
         // empty result anyway).
         assert!(should_prefetch(0, 0, true, 5));
         assert!(!should_prefetch(0, 0, false, 5));
+    }
+
+    // ───────────── resolve_block_refs (bind-params) ─────────────
+    //
+    // These tests guard the security invariant: every `{{ref}}` value,
+    // no matter what the upstream block emits, must leave the function
+    // as a *bind value* — never as part of the SQL string. A malicious
+    // value like `'; DROP TABLE x;` should land in the bind array
+    // intact and reach the driver as a single string parameter.
+    //
+    // Tests build a `Document` from markdown so we can fill
+    // `cached_result` on parsed blocks before resolving — that mirrors
+    // how `apply_run_block` sees the world at run time.
+
+    use crate::buffer::{Document, Segment};
+
+    fn make_doc(md: &str) -> Document {
+        Document::from_markdown(md).expect("valid markdown")
+    }
+
+    fn set_cache(doc: &mut Document, idx: usize, v: serde_json::Value) {
+        let block = doc
+            .block_at_mut(idx)
+            .expect("segment idx should be a block");
+        block.cached_result = Some(v);
+    }
+
+    fn block_indices(doc: &Document) -> Vec<usize> {
+        doc.segments()
+            .iter()
+            .enumerate()
+            .filter_map(|(i, s)| matches!(s, Segment::Block(_)).then_some(i))
+            .collect()
+    }
+
+    fn empty_env() -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
+
+    #[test]
+    fn resolve_block_refs_replaces_refs_with_question_marks() {
+        // Two-block doc; second block references the first by alias.
+        // The output SQL must carry placeholders, never the raw value.
+        let md = "```http alias=upstream\nGET /users/7\n```\n\n```db-postgres alias=q\nSELECT 1\n```\n";
+        let mut doc = make_doc(md);
+        let blocks = block_indices(&doc);
+        set_cache(&mut doc, blocks[0], serde_json::json!({ "id": 7 }));
+        let (sql, binds) = resolve_block_refs(
+            doc.segments(),
+            blocks[1],
+            "SELECT * FROM users WHERE id = {{upstream.id}}",
+            &empty_env(),
+        )
+        .expect("resolves");
+        assert_eq!(sql, "SELECT * FROM users WHERE id = ?");
+        assert_eq!(binds, vec![serde_json::json!(7)]);
+    }
+
+    #[test]
+    fn resolve_block_refs_blocks_sql_injection_via_string_value() {
+        // Classic injection payload returned by an upstream block: the
+        // single-quote-and-DROP must NOT escape into the SQL string.
+        // It belongs in the bind array as a single literal.
+        let md = "```http alias=evil\nGET /\n```\n\n```db-postgres alias=q\nSELECT 1\n```\n";
+        let mut doc = make_doc(md);
+        let blocks = block_indices(&doc);
+        let payload = "7'; DROP TABLE users; --";
+        set_cache(
+            &mut doc,
+            blocks[0],
+            serde_json::json!({ "id": payload }),
+        );
+        let (sql, binds) = resolve_block_refs(
+            doc.segments(),
+            blocks[1],
+            "SELECT * FROM users WHERE id = {{evil.id}}",
+            &empty_env(),
+        )
+        .expect("resolves");
+        assert_eq!(sql, "SELECT * FROM users WHERE id = ?");
+        assert!(
+            !sql.contains("DROP"),
+            "injection payload leaked into SQL: {sql}"
+        );
+        assert_eq!(
+            binds,
+            vec![serde_json::Value::String(payload.to_string())]
+        );
+    }
+
+    #[test]
+    fn resolve_block_refs_emits_one_bind_per_placeholder_in_order() {
+        // Multiple placeholders → array order matches placeholder order.
+        // sqlx slices binds per-statement by `count_placeholders`, so
+        // ordering matters when 04.2 multi-statement lands.
+        let md = "```http alias=src\nGET /\n```\n\n```db-postgres alias=q\nSELECT 1\n```\n";
+        let mut doc = make_doc(md);
+        let blocks = block_indices(&doc);
+        set_cache(
+            &mut doc,
+            blocks[0],
+            serde_json::json!({ "a": 1, "b": "two", "c": true }),
+        );
+        let (sql, binds) = resolve_block_refs(
+            doc.segments(),
+            blocks[1],
+            "SELECT {{src.a}}, {{src.b}}, {{src.c}}",
+            &empty_env(),
+        )
+        .expect("resolves");
+        assert_eq!(sql, "SELECT ?, ?, ?");
+        assert_eq!(
+            binds,
+            vec![
+                serde_json::json!(1),
+                serde_json::json!("two"),
+                serde_json::json!(true),
+            ]
+        );
+    }
+
+    #[test]
+    fn resolve_block_refs_preserves_value_types() {
+        // Number stays a Number (driver decides numeric coercion);
+        // bool stays a Bool; null stays Null. Earlier code stringified
+        // each into a SQL literal — that's what we're moving away from.
+        let md = "```http alias=src\nGET /\n```\n\n```db-postgres alias=q\nSELECT 1\n```\n";
+        let mut doc = make_doc(md);
+        let blocks = block_indices(&doc);
+        set_cache(
+            &mut doc,
+            blocks[0],
+            serde_json::json!({ "n": 42, "f": false, "z": serde_json::Value::Null }),
+        );
+        let (_, binds) = resolve_block_refs(
+            doc.segments(),
+            blocks[1],
+            "SELECT {{src.n}}, {{src.f}}, {{src.z}}",
+            &empty_env(),
+        )
+        .expect("resolves");
+        assert!(binds[0].is_number(), "number type lost: {:?}", binds[0]);
+        assert!(binds[1].is_boolean(), "bool type lost: {:?}", binds[1]);
+        assert!(binds[2].is_null(), "null type lost: {:?}", binds[2]);
+    }
+
+    #[test]
+    fn resolve_block_refs_env_var_becomes_string_bind() {
+        // Single-segment refs that don't match a block fall back to
+        // env vars and bind as a String. This replaces the old path
+        // that wrapped values in `'...'` SQL literals.
+        let mut env = std::collections::HashMap::new();
+        env.insert("API_TOKEN".to_string(), "abc-123".to_string());
+        let md = "```db-postgres alias=q\nSELECT 1\n```\n";
+        let doc = make_doc(md);
+        let blocks = block_indices(&doc);
+        let (sql, binds) = resolve_block_refs(
+            doc.segments(),
+            blocks[0],
+            "SELECT {{API_TOKEN}}",
+            &env,
+        )
+        .expect("resolves");
+        assert_eq!(sql, "SELECT ?");
+        assert_eq!(binds, vec![serde_json::json!("abc-123")]);
+    }
+
+    #[test]
+    fn resolve_block_refs_rejects_array_or_object_value() {
+        // Driver-side bind can't take a JSON array or object on the
+        // dialects we target — caller sees a clear error instead of a
+        // silent stringify. Mirrors desktop behavior.
+        let md = "```http alias=src\nGET /\n```\n\n```db-postgres alias=q\nSELECT 1\n```\n";
+        let mut doc = make_doc(md);
+        let blocks = block_indices(&doc);
+        set_cache(
+            &mut doc,
+            blocks[0],
+            serde_json::json!({ "items": [1, 2, 3] }),
+        );
+        let err = resolve_block_refs(
+            doc.segments(),
+            blocks[1],
+            "SELECT * FROM x WHERE y = {{src.items}}",
+            &empty_env(),
+        )
+        .expect_err("array values can't bind");
+        assert!(err.contains("non-scalar"), "got: {err}");
+    }
+
+    #[test]
+    fn resolve_block_refs_unknown_alias_errors() {
+        // A dotted ref to a non-existent block fails loudly instead of
+        // silently leaving the placeholder — same desktop semantics.
+        let md = "```db-postgres alias=q\nSELECT 1\n```\n";
+        let doc = make_doc(md);
+        let blocks = block_indices(&doc);
+        let err = resolve_block_refs(
+            doc.segments(),
+            blocks[0],
+            "SELECT * FROM x WHERE y = {{ghost.id}}",
+            &empty_env(),
+        )
+        .expect_err("ghost alias has no upstream block");
+        assert!(err.contains("ghost"), "got: {err}");
+    }
+
+    #[test]
+    fn resolve_block_refs_preserves_query_when_no_refs_present() {
+        // Plain SQL passes through verbatim with an empty bind array.
+        let md = "```db-postgres alias=q\nSELECT 1\n```\n";
+        let doc = make_doc(md);
+        let blocks = block_indices(&doc);
+        let (sql, binds) = resolve_block_refs(
+            doc.segments(),
+            blocks[0],
+            "SELECT 1 FROM users LIMIT 10",
+            &empty_env(),
+        )
+        .expect("resolves");
+        assert_eq!(sql, "SELECT 1 FROM users LIMIT 10");
+        assert!(binds.is_empty());
     }
 }
