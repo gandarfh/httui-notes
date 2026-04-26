@@ -63,7 +63,7 @@
 - [x] On keychain store failure: return error instead of falling back to plaintext, surface warning to user
 - [x] On keychain resolve failure: return explicit error, not `__KEYCHAIN__` sentinel as the value
 - [x] Environment duplicate: verify keychain availability before duplicating secrets, re-encrypt each value
-- [ ] Add integration test: simulate keychain failure, verify no plaintext storage
+- [x] Add integration test: simulate keychain failure, verify no plaintext storage
 
 ### Story 16.3 — Connection DTO Sanitization ✅
 > Fix T05, T14, T26, T27
