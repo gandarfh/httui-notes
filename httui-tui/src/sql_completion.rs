@@ -152,15 +152,19 @@ const SQLITE_FUNCTIONS: &[&str] = &[
 /// computes this from the body left of the cursor; the engine uses
 /// it to decide whether to surface schema items, and which kind.
 ///
-/// V1 detector handles the explicit cases that hit ~80% of typing:
+/// The detector handles three explicit cases plus a "general" one:
 /// `FROM`/`JOIN`/`INTO`/`UPDATE` → table; `<word>.` → columns of
-/// that word. Anything else (mid-`SELECT`, `WHERE`, etc.) falls
-/// through to `Open` — keyword/function popup. Scope-aware column
-/// completion (extracting tables in scope from a SELECT) is V2.
+/// that word; anything else → `Open` carrying the *tables already in
+/// scope* (extracted from `FROM`/`JOIN` clauses elsewhere in the SQL)
+/// so bare column names also surface mid-`SELECT`/`WHERE`/`ON`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SqlContext {
-    /// No structural hint — show keywords and builtins only.
-    Open,
+    /// Mid-statement — keywords/builtins plus, when `in_scope` is
+    /// non-empty, columns from the named tables. Lets users type
+    /// `WHERE i⌷` and get `id` (without spelling out `users.id`).
+    /// `in_scope` may include tables not present in the schema cache;
+    /// the engine just skips those.
+    Open { in_scope: Vec<String> },
     /// User is naming a table next: `FROM ⌷`, `JOIN ⌷`, `INTO ⌷`,
     /// `UPDATE ⌷`. Schema source contributes table names; keywords
     /// + builtins still appear (a subquery start with `SELECT` is
@@ -170,6 +174,14 @@ pub enum SqlContext {
     /// source contributes that table's columns; keywords/builtins
     /// don't make sense after `<table>.` so they're suppressed.
     ColumnOf(String),
+}
+
+impl SqlContext {
+    /// Convenience for tests / call sites that don't care about
+    /// scope. Returns `Open { in_scope: vec![] }`.
+    pub fn open_no_scope() -> Self {
+        SqlContext::Open { in_scope: Vec::new() }
+    }
 }
 
 /// Walk the SQL left of the cursor and decide what category of
@@ -182,7 +194,7 @@ pub enum SqlContext {
 pub fn detect_context(body: &str, line: usize, anchor_offset: usize) -> SqlContext {
     let line_text = match body.lines().nth(line) {
         Some(s) => s,
-        None => return SqlContext::Open,
+        None => return SqlContext::open_no_scope(),
     };
     let chars: Vec<char> = line_text.chars().collect();
     let take = anchor_offset.min(chars.len());
@@ -200,30 +212,89 @@ pub fn detect_context(body: &str, line: usize, anchor_offset: usize) -> SqlConte
         if !table.is_empty() {
             return SqlContext::ColumnOf(table.to_string());
         }
-        return SqlContext::Open;
+        return SqlContext::open_no_scope();
     }
 
     // Trailing whitespace before the prefix → look at the last word
     // before the gap. `FROM` / `JOIN` / `INTO` (after INSERT) /
     // `UPDATE` open a table-naming spot.
     let trimmed = head.trim_end_matches(|c: char| c.is_whitespace());
-    if trimmed.len() == head.len() {
-        // No whitespace gap — the prefix sits glued to a non-word
-        // char (a comma, a paren) or to the start of the line. None
-        // of our trigger keywords apply in that shape.
-        return SqlContext::Open;
-    }
-    let last_word_start = trimmed
-        .rfind(|c: char| !is_word_char(c))
-        .map(|i| i + 1)
-        .unwrap_or(0);
-    let last_word = &trimmed[last_word_start..];
-    let upper = last_word.to_ascii_uppercase();
-    if matches!(upper.as_str(), "FROM" | "JOIN" | "UPDATE" | "INTO") {
-        return SqlContext::Table;
+    if trimmed.len() != head.len() {
+        let last_word_start = trimmed
+            .rfind(|c: char| !is_word_char(c))
+            .map(|i| i + 1)
+            .unwrap_or(0);
+        let last_word = &trimmed[last_word_start..];
+        let upper = last_word.to_ascii_uppercase();
+        if matches!(upper.as_str(), "FROM" | "JOIN" | "UPDATE" | "INTO") {
+            return SqlContext::Table;
+        }
     }
 
-    SqlContext::Open
+    // Mid-statement — extract tables from `FROM`/`JOIN` clauses
+    // anywhere in the SQL so bare column names also surface in
+    // `WHERE`/`ON`/`SELECT` positions. The detector looks at the
+    // whole body (not just the current line) because users typically
+    // put `FROM` on its own line above the `WHERE`.
+    SqlContext::Open {
+        in_scope: extract_tables_in_scope(body),
+    }
+}
+
+/// Pull table names out of `FROM ⌷` and `JOIN ⌷` positions in the
+/// SQL. Used by `detect_context` to populate the scope of `Open`
+/// contexts so columns from those tables surface as bare names.
+///
+/// V1 limits: ignores quoted identifiers, comments, and string
+/// literals (could mistake `'FROM users'` inside a quoted string for
+/// a real `FROM`). Acceptable trade-off for a popup heuristic — the
+/// worst case is a spurious column suggestion, never a wrong query.
+pub fn extract_tables_in_scope(body: &str) -> Vec<String> {
+    let chars: Vec<char> = body.chars().collect();
+    let mut out: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < chars.len() {
+        // Look for an alphabetic word starting here.
+        if !is_word_char(chars[i]) {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < chars.len() && is_word_char(chars[i]) {
+            i += 1;
+        }
+        let word: String = chars[start..i].iter().collect();
+        // Word boundary check on the left — `start == 0` or the
+        // previous char is non-word.
+        let left_ok = start == 0 || !is_word_char(chars[start - 1]);
+        if !left_ok {
+            continue;
+        }
+        let upper = word.to_ascii_uppercase();
+        if upper != "FROM" && upper != "JOIN" {
+            continue;
+        }
+        // Skip whitespace, then take the table name (next word).
+        while i < chars.len() && chars[i].is_whitespace() {
+            i += 1;
+        }
+        let tbl_start = i;
+        while i < chars.len() && is_word_char(chars[i]) {
+            i += 1;
+        }
+        if i > tbl_start {
+            let table: String = chars[tbl_start..i].iter().collect();
+            // Skip pseudo-keywords that can follow FROM/JOIN in some
+            // dialects (`SELECT` in subqueries, `LATERAL` modifier).
+            let table_upper = table.to_ascii_uppercase();
+            if !matches!(table_upper.as_str(), "SELECT" | "LATERAL")
+                && !out.iter().any(|t| t.eq_ignore_ascii_case(&table))
+            {
+                out.push(table);
+            }
+        }
+    }
+    out
 }
 
 /// Build the candidate list for the popup. `prefix` is the partial
@@ -290,7 +361,34 @@ pub fn complete(
                 out.dedup_by(|a, b| a.label == b.label);
                 return out;
             }
-            SqlContext::Open => {}
+            SqlContext::Open { in_scope } => {
+                // Bare column completion — columns of every table in
+                // scope (extracted from FROM/JOIN clauses) get added
+                // alongside keywords/builtins. Detail line shows
+                // `from <table>` so two tables sharing a column name
+                // (`id` in both `users` and `orders`) stay
+                // disambiguated in the popup.
+                for table_name in in_scope {
+                    if let Some(table) = tables
+                        .iter()
+                        .find(|t| t.name.eq_ignore_ascii_case(table_name))
+                    {
+                        for col in &table.columns {
+                            if col
+                                .name
+                                .to_ascii_uppercase()
+                                .starts_with(&prefix_upper)
+                            {
+                                out.push(CompletionItem {
+                                    label: col.name.clone(),
+                                    kind: CompletionKind::Column,
+                                    detail: Some(format!("from {}", table.name)),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -393,7 +491,7 @@ mod tests {
     #[test]
     fn complete_filters_keywords_by_prefix_case_insensitive() {
         // `sel` should surface SELECT (and only SELECT among ANSI).
-        let items = complete(Dialect::Generic, "sel", SqlContext::Open, None);
+        let items = complete(Dialect::Generic, "sel", SqlContext::open_no_scope(), None);
         assert!(items.iter().any(|i| i.label == "SELECT"));
         assert!(items.iter().all(|i| i.label.starts_with("SEL")));
     }
@@ -401,9 +499,9 @@ mod tests {
     #[test]
     fn complete_includes_dialect_extras_for_postgres() {
         // Postgres adds RETURNING; generic doesn't.
-        let pg = complete(Dialect::Postgres, "RETUR", SqlContext::Open, None);
+        let pg = complete(Dialect::Postgres, "RETUR", SqlContext::open_no_scope(), None);
         assert!(pg.iter().any(|i| i.label == "RETURNING"));
-        let gen = complete(Dialect::Generic, "RETUR", SqlContext::Open, None);
+        let gen = complete(Dialect::Generic, "RETUR", SqlContext::open_no_scope(), None);
         assert!(gen.iter().all(|i| i.label != "RETURNING"));
     }
 
@@ -411,9 +509,9 @@ mod tests {
     fn complete_includes_function_builtins_for_dialect() {
         // `date_t` should match `DATE_TRUNC` on Postgres but not on
         // SQLite (where it's not a standard function).
-        let pg = complete(Dialect::Postgres, "date_t", SqlContext::Open, None);
+        let pg = complete(Dialect::Postgres, "date_t", SqlContext::open_no_scope(), None);
         assert!(pg.iter().any(|i| i.label == "DATE_TRUNC"));
-        let sqlite = complete(Dialect::Sqlite, "date_t", SqlContext::Open, None);
+        let sqlite = complete(Dialect::Sqlite, "date_t", SqlContext::open_no_scope(), None);
         assert!(sqlite.iter().all(|i| i.label != "DATE_TRUNC"));
     }
 
@@ -422,7 +520,7 @@ mod tests {
         // Sorted output makes the popup feel predictable across
         // keystrokes — the same prefix always produces the same
         // visual ordering.
-        let items = complete(Dialect::Postgres, "co", SqlContext::Open, None);
+        let items = complete(Dialect::Postgres, "co", SqlContext::open_no_scope(), None);
         let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
         let mut sorted = labels.clone();
         sorted.sort_unstable();
@@ -434,7 +532,7 @@ mod tests {
         // `<C-Space>` (manual force open) calls with empty prefix —
         // useful for "what's available?". MySQL list should be
         // non-empty and contain its own extras.
-        let items = complete(Dialect::MySql, "", SqlContext::Open, None);
+        let items = complete(Dialect::MySql, "", SqlContext::open_no_scope(), None);
         assert!(items.iter().any(|i| i.label == "STRAIGHT_JOIN"));
     }
 
@@ -442,7 +540,7 @@ mod tests {
     fn complete_dedups_keyword_function_overlap() {
         // `CASE` shows up as both a keyword and a Postgres function.
         // The popup should list it once, not twice.
-        let items = complete(Dialect::Postgres, "CASE", SqlContext::Open, None);
+        let items = complete(Dialect::Postgres, "CASE", SqlContext::open_no_scope(), None);
         let count = items.iter().filter(|i| i.label == "CASE").count();
         assert_eq!(count, 1);
     }
@@ -557,14 +655,14 @@ mod tests {
         // `SELECT col` — anchor at start of `col`. Last word before
         // the prefix is `SELECT` (not a table-trigger), so Open.
         let ctx = detect_context("SELECT col", 0, 7);
-        assert_eq!(ctx, SqlContext::Open);
+        assert_eq!(ctx, SqlContext::open_no_scope());
     }
 
     #[test]
     fn detect_context_at_line_start_returns_open() {
         // No body left of cursor — nothing to trigger on.
         let ctx = detect_context("", 0, 0);
-        assert_eq!(ctx, SqlContext::Open);
+        assert_eq!(ctx, SqlContext::open_no_scope());
     }
 
     // ───────────── Schema source (Table / ColumnOf) ─────────────
@@ -660,6 +758,108 @@ mod tests {
         // keywords/builtins still appear so the popup isn't empty.
         let items =
             complete(Dialect::Postgres, "SEL", SqlContext::Table, None);
+        assert!(items.iter().any(|i| i.label == "SELECT"));
+    }
+
+    // ───────────── Scope extraction + bare column completion ─────────────
+
+    #[test]
+    fn extract_tables_in_scope_picks_up_from_clause() {
+        // Single-table SELECT — `users` is the only table in scope.
+        let scope = extract_tables_in_scope("SELECT id FROM users WHERE id = 1");
+        assert_eq!(scope, vec!["users"]);
+    }
+
+    #[test]
+    fn extract_tables_in_scope_picks_up_join_clauses() {
+        // `JOIN` adds tables alongside the FROM target. Order
+        // mirrors source order — useful when ranking suggestions.
+        let scope = extract_tables_in_scope(
+            "SELECT * FROM users JOIN orders ON users.id = orders.user_id",
+        );
+        assert_eq!(scope, vec!["users", "orders"]);
+    }
+
+    #[test]
+    fn extract_tables_in_scope_dedups_repeats() {
+        // The same table joined twice (with aliases) shouldn't
+        // double-list — V1 stops at the table name.
+        let scope =
+            extract_tables_in_scope("FROM users JOIN users AS u2 ON 1=1");
+        assert_eq!(scope, vec!["users"]);
+    }
+
+    #[test]
+    fn extract_tables_in_scope_skips_subquery_marker() {
+        // `FROM (SELECT ...)` — `SELECT` is one of the pseudo-keywords
+        // we explicitly skip. The inner `FROM users` still hits.
+        let scope =
+            extract_tables_in_scope("SELECT * FROM (SELECT id FROM users) sub");
+        assert_eq!(scope, vec!["users"]);
+    }
+
+    #[test]
+    fn extract_tables_in_scope_returns_empty_for_no_from() {
+        // Just `SELECT 1` — no FROM, so no tables in scope.
+        assert!(extract_tables_in_scope("SELECT 1").is_empty());
+    }
+
+    #[test]
+    fn detect_context_after_where_returns_open_with_scope() {
+        // `SELECT * FROM users WHERE i⌷` — the cursor sits after
+        // a non-trigger word (`WHERE`), so the detector returns
+        // Open. The scope must carry `users` so the engine can
+        // surface that table's columns.
+        let body = "SELECT * FROM users WHERE i";
+        let ctx = detect_context(body, 0, 26);
+        assert_eq!(
+            ctx,
+            SqlContext::Open {
+                in_scope: vec!["users".into()]
+            }
+        );
+    }
+
+    #[test]
+    fn complete_open_with_scope_surfaces_columns_alongside_keywords() {
+        // The headline scenario from the screenshot: user has typed
+        // `WHERE i` after a known table; the popup must include
+        // column names (id) AND the keyword starting with `i` (IF/IN).
+        let schema = fake_schema();
+        let ctx = SqlContext::Open {
+            in_scope: vec!["users".into()],
+        };
+        let items = complete(Dialect::Postgres, "i", ctx, Some(&schema));
+        let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+        assert!(labels.contains(&"id"), "missing column id in {labels:?}");
+        assert!(labels.contains(&"IF"), "missing keyword IF in {labels:?}");
+    }
+
+    #[test]
+    fn complete_open_with_multi_table_scope_keeps_first_match_per_label() {
+        // Two tables, both with an `id` column. Dedup-by-label
+        // keeps the first occurrence; with `users` listed first in
+        // scope, we expect `from users` to win. Disambiguation by
+        // explicit `orders.id` still works through ColumnOf.
+        let schema = fake_schema();
+        let ctx = SqlContext::Open {
+            in_scope: vec!["users".into(), "orders".into()],
+        };
+        let items = complete(Dialect::Postgres, "id", ctx, Some(&schema));
+        let id_items: Vec<&CompletionItem> =
+            items.iter().filter(|i| i.label == "id").collect();
+        assert_eq!(id_items.len(), 1);
+        assert_eq!(id_items[0].detail.as_deref(), Some("from users"));
+    }
+
+    #[test]
+    fn complete_open_with_scope_but_no_schema_falls_back_to_keywords() {
+        // Schema not yet cached → in_scope is meaningless. Engine
+        // still produces keywords/builtins so the popup isn't empty.
+        let ctx = SqlContext::Open {
+            in_scope: vec!["users".into()],
+        };
+        let items = complete(Dialect::Postgres, "SEL", ctx, None);
         assert!(items.iter().any(|i| i.label == "SELECT"));
     }
 

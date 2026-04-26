@@ -178,13 +178,17 @@ Trigger contextual após `FROM`/`JOIN`/`UPDATE`/`INSERT INTO` → tabelas; após
   - `complete` Table sem schema → fallback keywords
   - `complete` Table com schema → keywords convivem com tables
 
-**Pendente (descopado pra V2):**
-- Scope-aware columns após `WHERE`/`ON` (extrair tables do FROM)
+**Refinamento incluído pós-feedback:**
+- [x] **Scope-aware bare columns** — `SqlContext::Open` agora carrega `in_scope: Vec<String>` extraído via `extract_tables_in_scope(body)` (scan global do SQL atrás de `FROM <tbl>` e `JOIN <tbl>`, dedup, skip de pseudo-keywords como `SELECT`/`LATERAL` em subqueries). Engine adiciona colunas dessas tabelas alongside keywords/builtins, com `detail = "from <table>"` pra disambiguar quando 2 tabelas têm coluna com mesmo nome (V1 dedup-by-label mantém primeira; explicit `<tbl>.col` continua via ColumnOf).
+- [x] 9 testes adicionais cobrindo: `extract_tables_in_scope` (FROM, JOIN, dedup, subquery skip, sem FROM), `detect_context` retorna Open com scope após WHERE, complete surface columns + keywords concorrentes, multi-table scope, fallback sem schema.
+
+**Pendente (V2):**
 - Alias resolution: `FROM users u WHERE u.|` → completar colunas de `users`
-- Multi-line context detection (FROM em linha anterior)
+- Multi-line context detection (FROM em linha anterior — atual scan já é global, mas detector imediato só olha linha do cursor)
 - Quoted identifiers `"users"."email"`
 - Refresh manual via `:schema refresh` ex command
 - Loading placeholder no popup quando schema_cache vazio + fetch em progresso
+- Multiple-id resolution UX (hoje dedup-by-label esconde 2ª ocorrência; futura UX: 2 entries com detail diferenciado)
 
 **Depende de:** Story 04.3 (schema cache), Story 04.4a (engine). Ambas concluídas.
 
