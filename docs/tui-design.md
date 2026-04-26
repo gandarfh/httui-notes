@@ -611,25 +611,26 @@ Vim primitives (motions, operators, modes) continuam hardcoded no `parser.rs` �
 
 Auditoria comparou `src/components/blocks/db/fenced/DbFencedPanel.tsx` + `httui-core::executor::db` (desktop) com `httui-tui/src/{vim/dispatch.rs, ui/blocks.rs, ui/db_row_detail.rs, ui/connection_picker.rs}` (TUI). Resultado abaixo. Ordenação por prioridade definida no Epic 21 (`docs/backlog/21-tui-block-widgets.md`).
 
-**P0 — segurança / correção:**
+**P0 — segurança / correção / fundação:**
 1. Refs `{{...}}` → bind params (TUI hoje string-substitui, viola invariante do `CLAUDE.md`). Story 04.1.
 2. Multi-statement support (`results: Vec<DbResult>` em vez de `results[0]` único). Story 04.2.
 3. Schema cache wired (`httui-core::schema_cache` não é consumido). Story 04.3.
-4. Schema autocomplete (tabelas/colunas após `FROM`/`JOIN`/etc.). Story 04.4.
+4. **Completion engine + SQL keywords/functions** (popup infra + lista de keywords/builtins por dialeto — desktop pega de `@codemirror/lang-sql`, TUI implementa). Story 04.4a.
+5. **Schema autocomplete** (tables/columns via context detection após `FROM`/`JOIN`/`<table>.`). Story 04.4b. Depende 04.3 + 04.4a.
 
 **P1 — paridade essencial:**
-5. Cache hash validation (TUI sempre re-executa). Story 04.6.
-6. Token `timeout=` no fence + enforcement. Story 04.5.
-7. Refs autocomplete `{{...}}`. Story 04.7.
-8. Erros com line/col + indicador visual. Story 04.8.
-9. Read-only mode + confirm em UPDATE/DELETE sem WHERE. Story 04.9.
+6. Cache hash validation (TUI sempre re-executa). Story 04.6.
+7. Token `timeout=` no fence + enforcement. Story 04.5.
+8. **Refs autocomplete `{{...}}`** (aliases + env vars + JSON dot-nav). Story 04.7. Depende 04.4a.
+9. Erros com line/col + indicador visual. Story 04.8.
+10. Read-only mode + confirm em UPDATE/DELETE sem WHERE. Story 04.9.
 
 **P2 — round out features:**
-10. Result tabs (Result/Messages/Plan/Stats). Story 05.1.
-11. EXPLAIN integration. Story 05.2.
-12. Display modes input/output/split. Story 08.
-13. Edição inline do fence (`<C-a>`, `<C-l>`, `<C-t>`, `<C-d>`). Story 11.
-14. Export menu (CSV/MD/INSERT além de JSON). Story 05.3.
+11. Result tabs (Result/Messages/Plan/Stats). Story 05.1.
+12. EXPLAIN integration. Story 05.2.
+13. Display modes input/output/split. Story 08.
+14. Edição inline do fence (`<C-a>`, `<C-l>`, `<C-t>`, `<C-d>`). Story 11.
+15. Export menu (CSV/MD/INSERT além de JSON). Story 05.3.
 
 **P3 / V2 deferred:**
 - Streamed row chunks (Story 05.4) — desktop também STUB.

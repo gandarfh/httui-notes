@@ -76,19 +76,42 @@ Desktop tem `useSchemaCacheStore` (Zustand) + SQLite-cached introspection (TTL 3
 
 ---
 
-### Story 04.4 — Schema autocomplete (SQL completion) 🚧 P0
+### Story 04.4a — Completion engine + SQL keywords/functions 🚧 P0
 
-Trigger autocomplete dentro do SQL editor após `FROM`, `JOIN`, `WHERE`, `SELECT`, `INSERT INTO`, `UPDATE`.
+Infra de popup compartilhada por todas as fontes de completion (keywords, schema, refs). Inclui a fonte mais simples: keywords SQL (SELECT/FROM/JOIN/WHERE/etc.) + builtin functions (COUNT/SUM/NOW/DATE_TRUNC/COALESCE/CASE/etc.). Desktop pega isso de graça via `@codemirror/lang-sql`; TUI precisa implementar manualmente (lista hardcoded por dialeto).
 
 **Tasks:**
-- [ ] Provider de completion no SQL editor (lê `App.schema_cache[conn_id]`)
-- [ ] Detector de contexto: que keyword precede o cursor? (heurística; tree-sitter pode ajudar quando walker AST estabilizar)
-- [ ] Popup estilo nvim: lista filtra ao digitar, `<C-n>`/`<C-p>` navega, `<Tab>`/`<CR>` aceita, `<Esc>` cancela
-- [ ] Após `FROM `: lista tabelas. Após `<table>.`: lista colunas. Após `JOIN <table> ON `: colunas das tabelas em scope.
-- [ ] Testes: triggers corretos por keyword, lista filtrada
-- [ ] Testes: schema vazio (conn sem schema cacheado) → popup vazio, não trava
+- [ ] Estrutura `CompletionPopup`: state (items, selected, filter input), render como overlay flutuante ancorado no cursor
+- [ ] Engine de completion: trait/enum `CompletionSource` com método `complete(context) -> Vec<CompletionItem>`. Sources são plugáveis.
+- [ ] Trigger automático: após digitar (em modo Insert dentro do SQL field), debounce ~80ms, chama todas as sources registradas e merge ordenado.
+- [ ] Trigger manual: `<C-Space>` força abrir popup mesmo sem prefix.
+- [ ] Navegação: `<C-n>`/`<C-p>` (ou `<Tab>`/`<S-Tab>`) move seleção, `<CR>`/`<Tab>` aceita, `<Esc>` dismiss.
+- [ ] Filter por prefix: typing após popup aberto refina lista (case-insensitive).
+- [ ] **Source 1 — Keywords**: lista hardcoded (~80 keywords SQL ANSI + dialect-specific extras). Reusa o `is_anonymous_keyword` de `ui::sql_highlight`.
+- [ ] **Source 2 — Builtin functions**: lista por dialeto (COUNT/SUM/AVG/MIN/MAX/COALESCE/NULLIF/CAST/EXTRACT/NOW/CURRENT_TIMESTAMP/DATE_TRUNC/JSON_EXTRACT/etc.). Mantida em `httui-tui/src/sql/dialect_builtins.rs` (novo) com `KEYWORDS_POSTGRES`, `BUILTINS_POSTGRES`, etc.
+- [ ] Testes: popup abre/fecha/navega, filter funciona, keywords listados, dialect switch usa lista certa.
 
-**Depende de:** Story 04.3.
+**Não cobre:** schema (tabelas/colunas) — Story 04.4b. Refs `{{...}}` — Story 04.7.
+
+---
+
+### Story 04.4b — Schema autocomplete (tables/columns) 🚧 P0
+
+Trigger contextual após `FROM`/`JOIN`/`UPDATE`/`INSERT INTO` → tabelas. Após `<table>.` → colunas. Após `SELECT ` ou `WHERE `/`ON ` em escopo conhecido → colunas das tables em scope.
+
+**Tasks:**
+- [ ] **Source 3 — Schema**: nova `CompletionSource` que lê `App.schema_cache[active_conn]` (Story 04.3).
+- [ ] Detector de contexto: heurística regex inicial sobre o texto antes do cursor:
+  - `FROM\s+\w*$` / `JOIN\s+\w*$` / `INTO\s+\w*$` / `UPDATE\s+\w*$` → completar **tabelas**
+  - `(\w+)\.\w*$` → completar **colunas da tabela `\1`**
+  - dentro de `SELECT ... FROM <tables>` ou `WHERE ... `: extrair tabelas em scope, listar todas as colunas
+- [ ] Quando schema ainda não foi fetched pra essa conn: dispara fetch lazy + popup mostra "loading…" placeholder
+- [ ] Quando conn não está set no bloco: schema source retorna vazio (popup fica só com keywords/builtins de 04.4a)
+- [ ] Testes: cada padrão regex completa correto (table vs column), scope extraction de SELECT/FROM, fallback gracioso quando schema vazio
+
+**Depende de:** Story 04.3 (schema cache), Story 04.4a (engine).
+
+---
 
 ---
 
@@ -123,17 +146,20 @@ Hoje TUI sempre re-executa em `r`. Desktop calcula `SHA256(query + connection_id
 
 ### Story 04.7 — Refs autocomplete `{{...}}` 🚧 P1
 
-Trigger ao digitar `{{` em qualquer campo. Lista aliases de blocos anteriores + env vars do environment ativo.
+Trigger ao digitar `{{` em qualquer campo. Lista aliases de blocos anteriores + env vars do environment ativo. Vale tanto pro SQL quanto pra futuros campos de HTTP/E2E quando voltarem.
 
 **Tasks:**
-- [ ] Detector: `{{` no input dispara popup
-- [ ] Fontes: `App.document` walks blocks anteriores ao cursor, coleta `alias`. `App.env_vars` lista keys do active env.
-- [ ] Após `{{alias.`: navega JSON do `cached_result` com dot notation, popup mostra keys disponíveis
-- [ ] Ordem: aliases (com type + cached/no-result) antes de env vars
-- [ ] Reuso da infra de popup de Story 04.4
-- [ ] Testes: triggers corretos, lista filtrada, navegação por tree de JSON
+- [ ] **Source 4 — Refs**: nova `CompletionSource` que ativa apenas dentro de `{{...}}` aberto.
+- [ ] Detector: `{{` antes do cursor (sem `}}` fechando) abre popup; `}}` fecha.
+- [ ] Fontes de items:
+  - `App.document` walks blocks anteriores ao cursor, coleta `alias` (com type-tag: HTTP/DB/E2E + flag `cached`/`no-result`).
+  - `App.env_vars` lista keys do active env.
+- [ ] Após `{{alias.`: navega JSON do `cached_result` daquele bloco com dot notation, popup mostra keys disponíveis no nível atual. Cada `.` redoes o lookup.
+- [ ] Ordem: aliases acima de env vars (mais comum em scripts).
+- [ ] Reuso da infra de popup de Story 04.4a (mesmas keybindings, mesmo widget).
+- [ ] Testes: triggers corretos, lista filtrada, navegação por tree de JSON, `{{ENV_KEY}}` (sem dots) lista envs sem aliases.
 
-**Depende de:** infra de popup compartilhada com 04.4.
+**Depende de:** Story 04.4a (engine).
 
 ---
 
