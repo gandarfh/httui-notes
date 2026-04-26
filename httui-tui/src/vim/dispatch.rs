@@ -40,6 +40,17 @@ pub fn dispatch(app: &mut App, key: KeyEvent) {
         return;
     }
 
+    // Completion popup keys are intercepted before mode parsing so a
+    // user mid-typing (Mode::Insert) can navigate / accept / dismiss
+    // without leaving insert. Any unmatched key falls through to the
+    // mode parser; that re-filter happens in the trigger below.
+    if app.completion_popup.is_some() {
+        if let Some(action) = parse_completion_popup_key(key) {
+            apply_action(app, action, false);
+            return;
+        }
+    }
+
     let action = match app.vim.mode {
         Mode::Normal => parse_normal(&mut app.vim, key),
         Mode::Insert => parse_insert(key),
@@ -66,6 +77,154 @@ pub fn dispatch(app: &mut App, key: KeyEvent) {
     apply_action(app, action, /* recording = */ true);
     if let Some(s) = swap {
         s.exit(app);
+    }
+    // After a typing-relevant action lands in a DB block, refresh
+    // the completion popup against the new prefix. `InsertChar` and
+    // `DeleteBackward` are the two paths that shift the prefix at
+    // the cursor; everything else is a no-op for the popup.
+    if matches!(
+        action,
+        Action::InsertChar(_) | Action::DeleteBackward
+    ) {
+        refresh_completion_popup(app);
+    }
+}
+
+/// Map a key event to a `CompletionPopup*` action, or `None` if the
+/// key isn't one the popup wants to claim. Caller (the dispatcher)
+/// only calls this when a popup is open; an unrecognized key falls
+/// through to mode parsing and the post-action trigger reopens the
+/// popup with the new prefix.
+fn parse_completion_popup_key(key: crossterm::event::KeyEvent) -> Option<Action> {
+    use crossterm::event::{KeyCode, KeyModifiers};
+    let plain = key.modifiers == KeyModifiers::NONE;
+    let ctrl = key.modifiers == KeyModifiers::CONTROL;
+    match key.code {
+        KeyCode::Esc => Some(Action::CompletionDismiss),
+        KeyCode::Char('c') if ctrl => Some(Action::CompletionDismiss),
+        KeyCode::Tab if plain => Some(Action::CompletionAccept),
+        KeyCode::Enter if plain => Some(Action::CompletionAccept),
+        KeyCode::Down if plain => Some(Action::CompletionNext),
+        KeyCode::Up if plain => Some(Action::CompletionPrev),
+        KeyCode::Char('n') if ctrl => Some(Action::CompletionNext),
+        KeyCode::Char('p') if ctrl => Some(Action::CompletionPrev),
+        _ => None,
+    }
+}
+
+/// Recompute the completion popup against the cursor's current
+/// position. Called after every keystroke that may have shifted the
+/// prefix word (insert, backspace). Closes the popup when:
+/// - cursor isn't in a DB block body, or
+/// - prefix is empty, or
+/// - no candidates match (avoids painting an empty popup).
+fn refresh_completion_popup(app: &mut App) {
+    let Some(doc) = app.document() else {
+        app.completion_popup = None;
+        return;
+    };
+    let Cursor::InBlock {
+        segment_idx,
+        line,
+        offset,
+    } = doc.cursor()
+    else {
+        app.completion_popup = None;
+        return;
+    };
+    let Some(seg) = doc.segments().get(segment_idx) else {
+        app.completion_popup = None;
+        return;
+    };
+    let Segment::Block(block) = seg else {
+        app.completion_popup = None;
+        return;
+    };
+    if !block.is_db() {
+        app.completion_popup = None;
+        return;
+    }
+    let body = match block.params.get("query").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => {
+            app.completion_popup = None;
+            return;
+        }
+    };
+    let Some((anchor_offset, prefix)) =
+        crate::sql_completion::prefix_at_cursor(&body, line, offset)
+    else {
+        app.completion_popup = None;
+        return;
+    };
+    let dialect = crate::sql_completion::Dialect::from_block(block);
+    let items = crate::sql_completion::complete(dialect, &prefix);
+    if items.is_empty() {
+        app.completion_popup = None;
+        return;
+    }
+    // Preserve the previous selection's label so re-filtering on a
+    // longer prefix doesn't reset the highlight to the top — useful
+    // when the user is typing toward a known target.
+    let prior_label = app
+        .completion_popup
+        .as_ref()
+        .and_then(|p| p.items.get(p.selected))
+        .map(|i| i.label.clone());
+    let selected = prior_label
+        .and_then(|lbl| items.iter().position(|i| i.label == lbl))
+        .unwrap_or(0);
+    app.completion_popup = Some(crate::app::CompletionPopupState {
+        segment_idx,
+        items,
+        selected,
+        anchor_line: line,
+        anchor_offset,
+        prefix,
+    });
+}
+
+fn apply_completion_next(app: &mut App) {
+    let Some(state) = app.completion_popup.as_mut() else { return };
+    if state.items.is_empty() {
+        return;
+    }
+    state.selected = (state.selected + 1) % state.items.len();
+}
+
+fn apply_completion_prev(app: &mut App) {
+    let Some(state) = app.completion_popup.as_mut() else { return };
+    if state.items.is_empty() {
+        return;
+    }
+    state.selected = if state.selected == 0 {
+        state.items.len() - 1
+    } else {
+        state.selected - 1
+    };
+}
+
+fn apply_completion_dismiss(app: &mut App) {
+    app.completion_popup = None;
+}
+
+/// Splice the selected item's label in place of the prefix word at
+/// the cursor. Implementation: backspace `prefix.len()` characters
+/// (which clears the partial word in the body), then insert each
+/// char of the label. Cursor lands at the end of the inserted text.
+fn apply_completion_accept(app: &mut App) {
+    let Some(state) = app.completion_popup.take() else { return };
+    let Some(item) = state.items.get(state.selected).cloned() else {
+        return;
+    };
+    let prefix_chars = state.prefix.chars().count();
+    let Some(doc) = app.tabs.active_document_mut() else { return };
+    doc.snapshot();
+    for _ in 0..prefix_chars {
+        doc.delete_char_before_cursor();
+    }
+    for ch in item.label.chars() {
+        doc.insert_char_at_cursor(ch);
     }
 }
 
@@ -318,6 +477,10 @@ fn apply_action(app: &mut App, action: Action, recording: bool) {
             apply_move_connection_picker_cursor(app, delta)
         }
         Action::ConfirmConnectionPicker => apply_confirm_connection_picker(app),
+        Action::CompletionNext => apply_completion_next(app),
+        Action::CompletionPrev => apply_completion_prev(app),
+        Action::CompletionAccept => apply_completion_accept(app),
+        Action::CompletionDismiss => apply_completion_dismiss(app),
         Action::ExitInsert => {
             if let Some(doc) = app.document_mut() {
                 recoil_after_exit(doc);

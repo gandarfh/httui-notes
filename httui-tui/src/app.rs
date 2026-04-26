@@ -151,6 +151,33 @@ pub struct ConnectionEntry {
     pub kind: String,
 }
 
+/// Open instance of the SQL completion popup. Anchored to the DB
+/// block at `segment_idx`; `(anchor_line, anchor_offset)` is where
+/// the prefix word starts inside the block body — Accept replaces
+/// from there to the current cursor with the selected item's label.
+///
+/// The popup co-exists with `Mode::Insert` (mode never flips) so the
+/// user can keep typing to filter the list. The dispatcher
+/// intercepts a small set of keys (`Tab`/`Enter`/`Esc`/`Ctrl-n`/
+/// `Ctrl-p`/`Down`/`Up`) and routes them to the popup; everything
+/// else falls through to normal insert handling and triggers a
+/// re-filter.
+pub struct CompletionPopupState {
+    pub segment_idx: usize,
+    pub items: Vec<crate::sql_completion::CompletionItem>,
+    pub selected: usize,
+    /// `(line, offset)` where the prefix word starts in the block
+    /// body. Reserved for cursor-anchored popup positioning later;
+    /// the V1 renderer just anchors below the block.
+    #[allow(dead_code)]
+    pub anchor_line: usize,
+    #[allow(dead_code)]
+    pub anchor_offset: usize,
+    /// What the user has typed so far — drives the popup header and
+    /// gets replaced on Accept.
+    pub prefix: String,
+}
+
 /// Open instance of the row-detail modal. The body lives in its own
 /// `Document` so the editor's full motion vocabulary (`hjkl`, `wbe`,
 /// `gg`/`G`, `Ctrl-d`/`Ctrl-u`, `f`/`F`, etc.) navigates the modal
@@ -234,6 +261,11 @@ pub struct App {
     /// synchronously and falls back to "loading…" when the entry is
     /// absent. See `crate::schema` for the cache + dedup model.
     pub schema_cache: crate::schema::SchemaCache,
+    /// `Some` while the SQL completion popup is open. Created by the
+    /// dispatcher after a typing-relevant action lands in a DB block
+    /// body; cleared on Accept/Dismiss or when the prefix becomes
+    /// empty.
+    pub completion_popup: Option<CompletionPopupState>,
 }
 
 impl App {
@@ -256,6 +288,7 @@ impl App {
             result_viewport_top: std::collections::HashMap::new(),
             connection_picker: None,
             schema_cache: crate::schema::SchemaCache::new(),
+            completion_popup: None,
         };
         app.load_initial_document();
         app

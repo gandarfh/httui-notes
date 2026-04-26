@@ -2,6 +2,7 @@
 //! per-segment renderer → cursor → status bar.
 
 mod blocks;
+mod completion_popup;
 mod connection_picker;
 mod cursor;
 pub mod db_row_detail;
@@ -225,6 +226,16 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     if let Some(state) = app.connection_picker.as_ref() {
         let anchor = compute_block_anchor(app, editor_area, state.segment_idx);
         connection_picker::render(frame, editor_area, state, anchor);
+    }
+
+    // SQL completion popup — paints whenever its state is `Some`,
+    // independent of mode (typing in Insert keeps the popup open and
+    // re-filtered). Anchored below the focused DB block; falls back
+    // above or centered if no room. Painted last so it floats above
+    // the editor cursor and any earlier overlays.
+    if let Some(state) = app.completion_popup.as_ref() {
+        let anchor = compute_block_anchor(app, editor_area, state.segment_idx);
+        completion_popup::render(frame, editor_area, state, anchor);
     }
 }
 

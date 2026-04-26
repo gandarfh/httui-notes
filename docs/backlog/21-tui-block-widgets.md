@@ -111,22 +111,43 @@ Desktop tem `useSchemaCacheStore` (Zustand) + SQLite-cached introspection (TTL 3
 
 ---
 
-### Story 04.4a — Completion engine + SQL keywords/functions 🚧 P0
+### Story 04.4a — Completion engine + SQL keywords/functions ✅ P0
 
-Infra de popup compartilhada por todas as fontes de completion (keywords, schema, refs). Inclui a fonte mais simples: keywords SQL (SELECT/FROM/JOIN/WHERE/etc.) + builtin functions (COUNT/SUM/NOW/DATE_TRUNC/COALESCE/CASE/etc.). Desktop pega isso de graça via `@codemirror/lang-sql`; TUI precisa implementar manualmente (lista hardcoded por dialeto).
+Infra de popup + Sources 1 (keywords) e 2 (builtin functions) entregues. Schema source (04.4b) e Refs source (04.7) plugam na mesma engine sem refactor.
 
-**Tasks:**
-- [ ] Estrutura `CompletionPopup`: state (items, selected, filter input), render como overlay flutuante ancorado no cursor
-- [ ] Engine de completion: trait/enum `CompletionSource` com método `complete(context) -> Vec<CompletionItem>`. Sources são plugáveis.
-- [ ] Trigger automático: após digitar (em modo Insert dentro do SQL field), debounce ~80ms, chama todas as sources registradas e merge ordenado.
-- [ ] Trigger manual: `<C-Space>` força abrir popup mesmo sem prefix.
-- [ ] Navegação: `<C-n>`/`<C-p>` (ou `<Tab>`/`<S-Tab>`) move seleção, `<CR>`/`<Tab>` aceita, `<Esc>` dismiss.
-- [ ] Filter por prefix: typing após popup aberto refina lista (case-insensitive).
-- [ ] **Source 1 — Keywords**: lista hardcoded (~80 keywords SQL ANSI + dialect-specific extras). Reusa o `is_anonymous_keyword` de `ui::sql_highlight`.
-- [ ] **Source 2 — Builtin functions**: lista por dialeto (COUNT/SUM/AVG/MIN/MAX/COALESCE/NULLIF/CAST/EXTRACT/NOW/CURRENT_TIMESTAMP/DATE_TRUNC/JSON_EXTRACT/etc.). Mantida em `httui-tui/src/sql/dialect_builtins.rs` (novo) com `KEYWORDS_POSTGRES`, `BUILTINS_POSTGRES`, etc.
-- [ ] Testes: popup abre/fecha/navega, filter funciona, keywords listados, dialect switch usa lista certa.
+**Entregue:**
+- [x] Novo módulo `httui-tui/src/sql_completion.rs`:
+  - `CompletionItem { label, kind, detail }` + `CompletionKind` enum (Keyword/Function/Table/Column/Reference — Table/Column/Reference reservados pra próximas stories)
+  - `Dialect` enum: `Dialect::from_block(block)` mapeia `db-postgres`/`db-mysql`/`db-sqlite`/`Generic`
+  - `complete(dialect, prefix) -> Vec<CompletionItem>` — case-insensitive prefix filter, alphabetical sort, dedup por label (Keyword vence Function quando overlap, ex `CASE`/`COUNT`)
+  - `prefix_at_cursor(body, line, offset) -> Option<(start, prefix)>` — detector de prefix word (alfanum + `_`) walking back do cursor
+- [x] **Source 1 (Keywords)**: 73 keywords ANSI + dialect-specific extras (Postgres: ILIKE/RETURNING/MATERIALIZED/RECURSIVE; MySQL: IGNORE/REPLACE/STRAIGHT_JOIN; SQLite: PRAGMA/AUTOINCREMENT/GLOB/VACUUM)
+- [x] **Source 2 (Functions)**: 36 funções Postgres (COUNT, COALESCE, DATE_TRUNC, JSONB_EXTRACT_PATH, etc.); 37 MySQL (CONCAT_WS, DATE_FORMAT, JSON_EXTRACT, etc.); 29 SQLite (JULIANDAY, STRFTIME, JSON_EXTRACT, etc.)
+- [x] **Popup state**: `App.completion_popup: Option<CompletionPopupState>` com items, selected, anchor (line/offset), prefix
+- [x] **Render**: novo `httui-tui/src/ui/completion_popup.rs` — popup ancorado abaixo do bloco DB focado (fallback acima/centralizado), max 8 rows visíveis, ListState scroll. Borda cyan, kind label cinza-escuro.
+- [x] **Trigger automático**: `refresh_completion_popup` rodado após `Action::InsertChar` ou `Action::DeleteBackward` no body de bloco DB. Calcula prefix → roda sources → preserva selected do popup anterior por label.
+- [x] **Keys interceptados** (popup aberto, antes de mode parsing):
+  - `Tab` / `Enter` → `CompletionAccept`
+  - `Esc` / `Ctrl-C` → `CompletionDismiss`
+  - `Down` / `Ctrl-n` → `CompletionNext` (wraps)
+  - `Up` / `Ctrl-p` → `CompletionPrev` (wraps)
+  - Outros keys: caem no parser de Insert + re-filter automático
+- [x] **Accept**: backspace `prefix.len()` chars + insere chars do label um a um. Cursor termina no fim. `doc.snapshot()` antes pra undo restaurar estado anterior.
+- [x] 11 testes em `sql_completion::tests`:
+  - Filtro case-insensitive
+  - Dialect-specific extras (Postgres `RETURNING`, MySQL `STRAIGHT_JOIN`)
+  - Functions per dialect (`DATE_TRUNC` em Postgres, não em SQLite)
+  - Sort alphabetical determinístico
+  - Empty prefix (manual force open) retorna tudo do dialeto
+  - Dedup `CASE` (overlap keyword/function)
+  - `prefix_at_cursor` end-of-word, mid-word, after-non-word, underscore-as-word, multi-line
+  - `Dialect::from_block` mapping
 
-**Não cobre:** schema (tabelas/colunas) — Story 04.4b. Refs `{{...}}` — Story 04.7.
+**Não cobre (próximas stories):**
+- Schema-aware completion (tables/columns) — Story 04.4b plugando 3rd source na mesma engine
+- Refs `{{...}}` autocomplete — Story 04.7
+- `<C-Space>` manual force-open — fácil de adicionar quando precisarmos; auto-trigger basta pra V1
+- Cursor-anchored popup positioning (campos `anchor_line`/`anchor_offset` reservados)
 
 ---
 

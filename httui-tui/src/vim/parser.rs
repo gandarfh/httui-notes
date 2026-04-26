@@ -330,6 +330,19 @@ pub enum Action {
     /// `Enter` inside the picker — apply the selected connection
     /// to the anchored block and close the popup.
     ConfirmConnectionPicker,
+    /// `Ctrl+n` / `Down` while the SQL completion popup is open —
+    /// move the highlight one item forward (wraps).
+    CompletionNext,
+    /// `Ctrl+p` / `Up` while the SQL completion popup is open —
+    /// move the highlight one item back (wraps).
+    CompletionPrev,
+    /// `Tab` / `Enter` while the SQL completion popup is open —
+    /// splice the selected item's label in place of the prefix word
+    /// at the cursor and close the popup.
+    CompletionAccept,
+    /// `Esc` / `Ctrl+C` while the popup is open — close it without
+    /// inserting anything; subsequent keys go to insert as usual.
+    CompletionDismiss,
     Noop,
 }
 
