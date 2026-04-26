@@ -54,16 +54,34 @@ Auditoria de paridade Desktop × TUI consolidada em §15.bis.
 
 ---
 
-### Story 04.2 — Multi-statement support 🚧 P0
+### Story 04.2 — Multi-statement support ✅ P0
 
-Backend (`httui-core::executor::db::mod.rs:104-161`) já suporta múltiplas statements em uma query (split em `;`, retorna `results: Vec<DbResult>`). TUI hoje só consome `results[0]` e renderiza um único result set.
+Backend (`httui-core::executor::db::mod.rs:104-161`) já suportava múltiplas statements em uma query (split em `;`, retorna `results: Vec<DbResult>`). TUI agora reconhece e consome a forma multi-result no resolver de refs e no summary.
 
-**Tasks:**
-- [ ] Atualizar `App.cached_result` (ou estrutura equivalente) para guardar `Vec<DbResult>` em vez de `Value` único
-- [ ] Atualizar resolução de refs: `{{alias.response.0.rows.0.col}}` (caminho explícito) + shim legado `{{alias.response.col}}` → `results[0].rows[0].col`
-- [ ] Renderer pega `results.len()`: 0 = "no results", 1 = render direto, 2+ = result tabs (depende de Story 05.1)
-- [ ] Testes: query `BEGIN; UPDATE foo SET x=1; SELECT * FROM foo; ROLLBACK;` retorna 4 results no estado
-- [ ] Testes: ref legada `{{alias.response.col}}` continua funcionando
+**Entregue:**
+- [x] `cached_result` continua armazenando o `DbResponse` JSON serializado completo (sem mudança de storage). O acesso é abstraído pelo shim de refs e pelos helpers de render — não vale a pena duplicar a estrutura no estado.
+- [x] DB ref shim em `resolve_one_ref` espelha desktop `makeDbResponseView`:
+  - **Passthrough**: `{{a.response.results}}`, `{{a.response.messages}}`, `{{a.response.stats}}`, `{{a.response.plan}}` → campos crus do `DbResponse`
+  - **Numeric shortcut**: `{{a.response.N.rows.M.col}}` → `results[N].rows[M].col` (forma que `{{` autocomplete vai sugerir)
+  - **Legacy column**: `{{a.response.col}}` → `results[0].rows[0].col` (shape pré-redesign continua funcionando)
+- [x] Shim só engaja quando: `block.is_db()` AND `cached_result` tem shape `{results: [...]}`. Caches antigos (sem `results` array) caem no path legado de plain dot-navigation, sem regressão.
+- [x] Render `db_summary` + status bar `summarize_db_response` ganham sufixo `(+N more)` quando `results.len() > 1`. Renderiza `results[0]` por enquanto; tabs full vêm em Story 05.1.
+- [x] Erros descritivos: `out of bounds`, `mutation has no rows`, `column not found in first row`.
+- [x] 8 testes novos em `dispatch::tests::db_shim_*`:
+  - Legacy `response.col` resolve primeiro row do primeiro result set
+  - Path explícito `response.0.rows.1.id` (multi-row)
+  - Numeric shortcut `response.2.rows.0.y` (multi-statement com 4 results)
+  - Passthrough `response.stats.elapsed_ms`
+  - Mutation `response.0.rows_affected` via numeric path
+  - Mutation com legacy column → erro claro
+  - Out-of-bounds index → erro com tamanho real
+  - Cache legado (sem `results` array) → fallback pra dot-nav simples
+
+**Ref desktop espelhada:** `src/lib/blocks/references.ts:174-223` (`makeDbResponseView`).
+
+**Pendente (descopado pra outras stories):**
+- Tabs UI pra navegar entre result sets — Story 05.1
+- Streamed row chunks por result set — Story 05.4 (V2)
 
 ---
 

@@ -1953,16 +1953,31 @@ fn resolve_one_ref(
         })
         .find(|b| b.alias.as_deref() == Some(head));
     if let Some(block) = block_match {
-        let mut value = block
+        let cached = block
             .cached_result
             .as_ref()
             .ok_or_else(|| format!("block `{head}` hasn't run yet — execute it first"))?;
+        let nav: Vec<&str> = parts[1..].to_vec();
+
+        // DB blocks get the multi-result shim that mirrors desktop's
+        // `makeDbResponseView` (`src/lib/blocks/references.ts:174-223`):
+        // the `response.*` namespace exposes three access patterns
+        // (passthrough / numeric / legacy column). Non-DB blocks keep
+        // the simple "strip `response` and dot-navigate" behavior.
+        if block.is_db()
+            && nav.first().copied() == Some("response")
+            && is_db_response_shape(cached)
+        {
+            return resolve_db_response_path(cached, &nav[1..]);
+        }
+
         // Skip a literal `response` segment for desktop-compat:
         // `{{alias.response.path}}` ≡ `{{alias.path}}`.
-        let mut nav: Vec<&str> = parts[1..].to_vec();
+        let mut nav = nav;
         if nav.first().copied() == Some("response") {
             nav.remove(0);
         }
+        let mut value = cached;
         for part in &nav {
             value = navigate_json(value, part)
                 .ok_or_else(|| format!("path `{part}` not found in `{head}`"))?;
@@ -1980,6 +1995,93 @@ fn resolve_one_ref(
         return Ok(serde_json::Value::String(v.clone()));
     }
     Err(format!("`{head}` is not a block alias above or an env var"))
+}
+
+/// Quick check: does this cached value carry the shape of a serialized
+/// `DbResponse` (top-level `results` array)? Used to gate the DB-only
+/// ref shim so older / non-DB cached blobs keep navigating raw.
+fn is_db_response_shape(v: &serde_json::Value) -> bool {
+    v.get("results")
+        .map(|r| r.is_array())
+        .unwrap_or(false)
+}
+
+/// Navigate the part of a `{{alias.response.…}}` ref that comes
+/// *after* the literal `response` segment. Three access patterns,
+/// dispatched on the first remaining segment:
+///
+/// - `response.results` / `response.messages` / `response.stats` /
+///   `response.plan` — passthrough to the matching `DbResponse` field.
+/// - `response.<N>` — numeric shortcut for `results[N]`.
+/// - `response.<col>` — legacy shim from before multi-result existed:
+///   the column is read from `results[0].rows[0]`.
+fn resolve_db_response_path(
+    cached: &serde_json::Value,
+    nav: &[&str],
+) -> Result<serde_json::Value, String> {
+    // `{{alias.response}}` alone — there's nothing scalar to bind.
+    let Some((first, rest)) = nav.split_first() else {
+        return Err(
+            "reference points to a non-scalar value".into(),
+        );
+    };
+
+    // Passthrough fields — `response.results`, `response.stats`, etc.
+    // We let the user navigate *through* these the long way: it's the
+    // shape `{{` autocomplete will guide users toward.
+    if matches!(*first, "results" | "messages" | "stats" | "plan") {
+        let mut value = cached
+            .get(*first)
+            .ok_or_else(|| format!("response has no `{first}`"))?;
+        for part in rest {
+            value = navigate_json(value, part)
+                .ok_or_else(|| format!("path `{part}` not found"))?;
+        }
+        return value_for_bind(value);
+    }
+
+    let results = cached
+        .get("results")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "response has no results array".to_string())?;
+
+    // Numeric shortcut: `response.0.rows.0.id` ≡ `response.results.0.rows.0.id`.
+    if let Ok(idx) = first.parse::<usize>() {
+        let mut value = results.get(idx).ok_or_else(|| {
+            format!(
+                "result index {idx} out of bounds (have {} result(s))",
+                results.len()
+            )
+        })?;
+        for part in rest {
+            value = navigate_json(value, part)
+                .ok_or_else(|| format!("path `{part}` not found"))?;
+        }
+        return value_for_bind(value);
+    }
+
+    // Legacy column shim: `response.col` → `results[0].rows[0].col`.
+    // The pre-redesign refs all looked like this — keep them working
+    // so existing notes don't break.
+    let first_result = results
+        .first()
+        .ok_or_else(|| "response has no result sets".to_string())?;
+    let rows = first_result
+        .get("rows")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| {
+            "first result has no rows (was it a mutation or error?)".to_string()
+        })?;
+    let first_row = rows
+        .first()
+        .ok_or_else(|| "first result has no rows yet".to_string())?;
+    let mut value = navigate_json(first_row, first)
+        .ok_or_else(|| format!("column `{first}` not found in first row"))?;
+    for part in rest {
+        value = navigate_json(value, part)
+            .ok_or_else(|| format!("path `{part}` not found"))?;
+    }
+    value_for_bind(value)
 }
 
 fn navigate_json<'a>(v: &'a serde_json::Value, key: &str) -> Option<&'a serde_json::Value> {
@@ -2047,20 +2149,26 @@ async fn resolve_connection_id(
 }
 
 /// Compact one-liner for the status bar: `5 rows · 12ms` /
-/// `mutation: 3 affected · 8ms` / `error: …`.
+/// `mutation: 3 affected · 8ms` / `error: …`. Multi-statement
+/// queries get a `(+N more)` suffix so users know the renderer is
+/// only surfacing `results[0]` for now (Story 05.1 ships tabs).
 fn summarize_db_response(resp: &httui_core::executor::db::types::DbResponse) -> String {
     use httui_core::executor::db::types::DbResult;
     let elapsed = resp.stats.elapsed_ms;
+    let extras = match resp.results.len() {
+        0 | 1 => String::new(),
+        n => format!(" (+{} more)", n - 1),
+    };
     if let Some(first) = resp.results.first() {
         match first {
             DbResult::Select { rows, has_more, .. } => {
                 let suffix = if *has_more { "+" } else { "" };
-                format!("{}{} rows · {}ms", rows.len(), suffix, elapsed)
+                format!("{}{} rows · {}ms{}", rows.len(), suffix, elapsed, extras)
             }
             DbResult::Mutation { rows_affected } => {
-                format!("{} affected · {}ms", rows_affected, elapsed)
+                format!("{} affected · {}ms{}", rows_affected, elapsed, extras)
             }
-            DbResult::Error { message, .. } => format!("error: {message}"),
+            DbResult::Error { message, .. } => format!("error: {message}{extras}"),
         }
     } else {
         format!("ok · {}ms", elapsed)
@@ -2482,5 +2590,239 @@ mod tests {
         .expect("resolves");
         assert_eq!(sql, "SELECT 1 FROM users LIMIT 10");
         assert!(binds.is_empty());
+    }
+
+    // ───────────── DB response shim (multi-statement) ─────────────
+    //
+    // Once a block is a `db-*` block and its cached_result has the
+    // `{results: [...]}` shape, `{{alias.response.…}}` enters the
+    // shim path that mirrors the desktop's `makeDbResponseView`:
+    //   - response.results / response.messages / response.stats: passthrough
+    //   - response.<N>: numeric shortcut → results[N]
+    //   - response.<col>: legacy → results[0].rows[0].<col>
+
+    fn db_response(results: serde_json::Value) -> serde_json::Value {
+        // Build a minimal `DbResponse`-shaped JSON. Pre-redesign caches
+        // (no `results` array) bypass the shim — see `is_db_response_shape`.
+        serde_json::json!({
+            "results": results,
+            "messages": [],
+            "plan": serde_json::Value::Null,
+            "stats": { "elapsed_ms": 12 }
+        })
+    }
+
+    fn select_result(rows: serde_json::Value) -> serde_json::Value {
+        serde_json::json!({
+            "kind": "select",
+            "columns": [],
+            "rows": rows,
+            "has_more": false
+        })
+    }
+
+    #[test]
+    fn db_shim_legacy_response_col_resolves_first_row_first_result() {
+        // `{{q.response.id}}` ≡ `results[0].rows[0].id` — the
+        // pre-redesign shape. Notes that pre-date multi-result must
+        // keep working, so this is a parity guarantee.
+        let md = "```db-postgres alias=src\nSELECT 1\n```\n\n```db-postgres alias=q\nSELECT 1\n```\n";
+        let mut doc = make_doc(md);
+        let blocks = block_indices(&doc);
+        set_cache(
+            &mut doc,
+            blocks[0],
+            db_response(serde_json::json!([
+                select_result(serde_json::json!([{ "id": 7, "name": "alice" }])),
+            ])),
+        );
+        let (sql, binds) = resolve_block_refs(
+            doc.segments(),
+            blocks[1],
+            "SELECT * FROM users WHERE id = {{src.response.id}}",
+            &empty_env(),
+        )
+        .expect("resolves");
+        assert_eq!(sql, "SELECT * FROM users WHERE id = ?");
+        assert_eq!(binds, vec![serde_json::json!(7)]);
+    }
+
+    #[test]
+    fn db_shim_explicit_path_walks_results_array() {
+        // `{{q.response.0.rows.0.id}}` is the shape `{{` autocomplete
+        // will guide users toward — passes through `results[]` cleanly.
+        let md = "```db-postgres alias=src\nSELECT 1\n```\n\n```db-postgres alias=q\nSELECT 1\n```\n";
+        let mut doc = make_doc(md);
+        let blocks = block_indices(&doc);
+        set_cache(
+            &mut doc,
+            blocks[0],
+            db_response(serde_json::json!([
+                select_result(serde_json::json!([{ "id": 7 }, { "id": 8 }])),
+            ])),
+        );
+        let (_, binds) = resolve_block_refs(
+            doc.segments(),
+            blocks[1],
+            "SELECT {{src.response.0.rows.1.id}}",
+            &empty_env(),
+        )
+        .expect("resolves");
+        assert_eq!(binds, vec![serde_json::json!(8)]);
+    }
+
+    #[test]
+    fn db_shim_numeric_shortcut_targets_second_result_set() {
+        // `BEGIN; SELECT a; SELECT b; ROLLBACK;` → 4 results. The
+        // numeric shortcut `response.2` lets a downstream block grab
+        // the *second* SELECT without spelling out `results.2`.
+        let md = "```db-postgres alias=src\nSELECT 1\n```\n\n```db-postgres alias=q\nSELECT 1\n```\n";
+        let mut doc = make_doc(md);
+        let blocks = block_indices(&doc);
+        set_cache(
+            &mut doc,
+            blocks[0],
+            db_response(serde_json::json!([
+                serde_json::json!({ "kind": "mutation", "rows_affected": 0 }),
+                select_result(serde_json::json!([{ "x": 1 }])),
+                select_result(serde_json::json!([{ "y": 99 }])),
+                serde_json::json!({ "kind": "mutation", "rows_affected": 0 }),
+            ])),
+        );
+        let (_, binds) = resolve_block_refs(
+            doc.segments(),
+            blocks[1],
+            "SELECT {{src.response.2.rows.0.y}}",
+            &empty_env(),
+        )
+        .expect("resolves");
+        assert_eq!(binds, vec![serde_json::json!(99)]);
+    }
+
+    #[test]
+    fn db_shim_passthrough_stats_returns_elapsed_ms() {
+        // `response.stats.elapsed_ms` walks the raw `DbResponse`
+        // shape — useful for "did the upstream block take too long?"
+        // gating, and proves the passthrough branch is wired.
+        let md = "```db-postgres alias=src\nSELECT 1\n```\n\n```db-postgres alias=q\nSELECT 1\n```\n";
+        let mut doc = make_doc(md);
+        let blocks = block_indices(&doc);
+        set_cache(
+            &mut doc,
+            blocks[0],
+            db_response(serde_json::json!([
+                select_result(serde_json::json!([{ "id": 1 }])),
+            ])),
+        );
+        let (_, binds) = resolve_block_refs(
+            doc.segments(),
+            blocks[1],
+            "SELECT {{src.response.stats.elapsed_ms}}",
+            &empty_env(),
+        )
+        .expect("resolves");
+        assert_eq!(binds, vec![serde_json::json!(12)]);
+    }
+
+    #[test]
+    fn db_shim_mutation_rows_affected_via_explicit_path() {
+        // For mutations there's no `rows[]`, so the legacy column
+        // shim doesn't apply. The explicit `response.0.rows_affected`
+        // path goes through the numeric-shortcut branch and reads it
+        // off the result-set object.
+        let md = "```db-postgres alias=src\nUPDATE foo SET x=1\n```\n\n```db-postgres alias=q\nSELECT 1\n```\n";
+        let mut doc = make_doc(md);
+        let blocks = block_indices(&doc);
+        set_cache(
+            &mut doc,
+            blocks[0],
+            db_response(serde_json::json!([
+                serde_json::json!({ "kind": "mutation", "rows_affected": 7 }),
+            ])),
+        );
+        let (_, binds) = resolve_block_refs(
+            doc.segments(),
+            blocks[1],
+            "SELECT {{src.response.0.rows_affected}}",
+            &empty_env(),
+        )
+        .expect("resolves");
+        assert_eq!(binds, vec![serde_json::json!(7)]);
+    }
+
+    #[test]
+    fn db_shim_legacy_against_mutation_errors_clearly() {
+        // `response.<col>` falls through the legacy branch which
+        // expects rows[0]. A mutation has no rows, so the user sees a
+        // clear error instead of a confusing "column not found".
+        let md = "```db-postgres alias=src\nUPDATE foo SET x=1\n```\n\n```db-postgres alias=q\nSELECT 1\n```\n";
+        let mut doc = make_doc(md);
+        let blocks = block_indices(&doc);
+        set_cache(
+            &mut doc,
+            blocks[0],
+            db_response(serde_json::json!([
+                serde_json::json!({ "kind": "mutation", "rows_affected": 1 }),
+            ])),
+        );
+        let err = resolve_block_refs(
+            doc.segments(),
+            blocks[1],
+            "SELECT {{src.response.id}}",
+            &empty_env(),
+        )
+        .expect_err("mutation has no rows");
+        assert!(
+            err.contains("rows") || err.contains("mutation"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn db_shim_out_of_bounds_result_index_errors() {
+        // `response.5` against a single-result response surfaces a
+        // bounds error with the actual length so users can fix the
+        // path.
+        let md = "```db-postgres alias=src\nSELECT 1\n```\n\n```db-postgres alias=q\nSELECT 1\n```\n";
+        let mut doc = make_doc(md);
+        let blocks = block_indices(&doc);
+        set_cache(
+            &mut doc,
+            blocks[0],
+            db_response(serde_json::json!([
+                select_result(serde_json::json!([{ "id": 1 }])),
+            ])),
+        );
+        let err = resolve_block_refs(
+            doc.segments(),
+            blocks[1],
+            "SELECT {{src.response.5.rows.0.id}}",
+            &empty_env(),
+        )
+        .expect_err("only 1 result, idx 5 out of bounds");
+        assert!(err.contains("out of bounds"), "got: {err}");
+    }
+
+    #[test]
+    fn db_shim_skipped_when_cached_lacks_results_array() {
+        // Pre-redesign caches don't have `{results: [...]}` — the
+        // shim must not engage so older notes still resolve via plain
+        // dot-navigation. Here the cached blob is a flat object.
+        let md = "```db-postgres alias=src\nSELECT 1\n```\n\n```db-postgres alias=q\nSELECT 1\n```\n";
+        let mut doc = make_doc(md);
+        let blocks = block_indices(&doc);
+        set_cache(
+            &mut doc,
+            blocks[0],
+            serde_json::json!({ "id": 42 }),
+        );
+        let (_, binds) = resolve_block_refs(
+            doc.segments(),
+            blocks[1],
+            "SELECT {{src.response.id}}",
+            &empty_env(),
+        )
+        .expect("resolves via legacy dot-nav");
+        assert_eq!(binds, vec![serde_json::json!(42)]);
     }
 }

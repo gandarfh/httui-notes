@@ -297,11 +297,21 @@ fn db_result_line(b: &BlockNode) -> Option<Line<'static>> {
 /// Pull a one-liner summary out of the block's `cached_result`
 /// (a `DbResponse` blob). Falls back to `None` when the shape doesn't
 /// match — better to skip than show a misleading number.
+///
+/// When the query returned multiple result sets (multi-statement),
+/// the summary describes `results[0]` and appends `(+N more)` so the
+/// user knows there's data the renderer isn't surfacing yet — Story
+/// 05.1 will wire up tabs to step through them.
 fn db_summary(b: &BlockNode) -> Option<String> {
     let result = b.cached_result.as_ref()?;
     let elapsed = result.get("stats")?.get("elapsed_ms")?.as_u64()?;
-    let first = result.get("results")?.as_array()?.first()?;
+    let results = result.get("results")?.as_array()?;
+    let first = results.first()?;
     let kind = first.get("kind")?.as_str()?;
+    let extras = match results.len() {
+        0 | 1 => String::new(),
+        n => format!(" (+{} more)", n - 1),
+    };
     match kind {
         "select" => {
             let rows = first.get("rows")?.as_array()?.len();
@@ -309,15 +319,15 @@ fn db_summary(b: &BlockNode) -> Option<String> {
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
             let suffix = if has_more { "+" } else { "" };
-            Some(format!("{rows}{suffix} rows · {elapsed}ms"))
+            Some(format!("{rows}{suffix} rows · {elapsed}ms{extras}"))
         }
         "mutation" => {
             let affected = first.get("rows_affected")?.as_u64()?;
-            Some(format!("{affected} affected · {elapsed}ms"))
+            Some(format!("{affected} affected · {elapsed}ms{extras}"))
         }
         "error" => first.get("message")
             .and_then(|v| v.as_str())
-            .map(|m| format!("error: {m}")),
+            .map(|m| format!("error: {m}{extras}")),
         _ => None,
     }
 }
