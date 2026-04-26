@@ -85,17 +85,29 @@ Backend (`httui-core::executor::db::mod.rs:104-161`) já suportava múltiplas st
 
 ---
 
-### Story 04.3 — Schema cache wired 🚧 P0 (gate de 04.4)
+### Story 04.3 — Schema cache wired ✅ P0 (gate de 04.4b)
 
-Desktop tem `useSchemaCacheStore` (Zustand) + SQLite-cached introspection (TTL 300s). TUI ainda não puxa schema. Sem schema cache, autocomplete de tabelas/colunas (04.4) é impossível.
+Desktop tem `useSchemaCacheStore` (Zustand) + SQLite-cached introspection (TTL 300s). TUI agora tem o equivalente em-memória + dedup, alimentado pelo `httui-core::db::schema_cache` que já era usado pelo desktop.
 
-**Tasks:**
-- [ ] Identificar API de schema_cache em `httui-core` (já existe — usado por desktop)
-- [ ] Adicionar campo em `App` ou store dedicado: `schema_cache: HashMap<ConnectionId, Schema>`
-- [ ] Carregar schema lazy: primeira vez que connection picker fecha em conn nova, dispara fetch async
-- [ ] Cache invalidation: refresh manual via ex command `:schema refresh` (P1, opcional)
-- [ ] Testes: schema é cacheado por conn, não re-fetchado em queries subsequentes
-- [ ] Testes: timeout/erro de introspection não trava executor
+**Entregue:**
+- [x] Novo módulo `httui-tui/src/schema.rs`: `SchemaCache` (in-memory) + `SchemaTable` / `SchemaColumn` + `group_entries()` (pure, agrupa flat `SchemaEntry` rows por `(schema, table)`)
+- [x] Campo `schema_cache: SchemaCache` em `App`
+- [x] `App::ensure_schema_loaded(conn_id)` — kick fetch async se ainda não cached e não pending. Dedup via `pending: HashSet<ConnectionId>`.
+- [x] Pipeline: `tokio::spawn` → `get_cached_schema` (SQLite, TTL 300s) → fallback `introspect_schema` (driver query) → `AppEvent::SchemaLoaded { connection_id, result }` → `App::on_schema_loaded` folda no cache + clears pending
+- [x] Hook em `apply_confirm_connection_picker`: trocar conn dispara fetch background. Por hora o único trigger; Story 04.4b decide estratégia adicional quando o popup precisar.
+- [x] Erros de introspection viram `StatusKind::Error` no status bar; cache não fica poisoned (retry possível).
+- [x] 6 testes novos em `schema::tests`:
+  - `group_entries` agrupa colunas por table
+  - Tabelas com mesmo nome em schemas diferentes não colidem (`public.users` vs `auth.users`)
+  - SQLite (schema-less) sorteia primeiro
+  - `store` substitui entrada existente (refresh)
+  - Pending dedup deixa só um fetch passar
+  - `invalidate` limpa data + pending flag
+
+**Pendente (descopado pra outras stories):**
+- Cache invalidation via ex command `:schema refresh` — P1 opcional, não bloqueante
+- Pre-load schema do conn ativo no startup — pode entrar quando 04.4b precisar UX mais responsiva
+- Invalidation em delete de connection — TUI não tem UI de delete de conn ainda
 
 ---
 

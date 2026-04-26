@@ -13,6 +13,7 @@ mod document_loader;
 mod error;
 mod event;
 mod pane;
+mod schema;
 mod terminal;
 mod tree;
 mod ui;

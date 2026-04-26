@@ -1,5 +1,6 @@
 use crossterm::event::{Event as CtEvent, KeyEvent};
 use futures::StreamExt;
+use httui_core::db::schema_cache::SchemaEntry;
 use httui_core::executor::db::types::DbResponse;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -27,6 +28,15 @@ pub enum AppEvent {
         segment_idx: usize,
         kind: DbBlockResultKind,
         outcome: Result<DbResponse, String>,
+    },
+    /// A backgrounded schema introspection finished. Spawned by
+    /// `App::ensure_schema_loaded` (typically right after the user
+    /// confirms a connection in the picker). The main loop folds the
+    /// result into `App.schema_cache` and clears the pending flag so
+    /// retries are possible after an error.
+    SchemaLoaded {
+        connection_id: String,
+        result: Result<Vec<SchemaEntry>, String>,
     },
 }
 

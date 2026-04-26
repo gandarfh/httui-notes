@@ -228,6 +228,12 @@ pub struct App {
     /// picker's parser. The popup renders independently of mode —
     /// any `Some` value paints it.
     pub connection_picker: Option<ConnectionPickerState>,
+    /// In-memory introspection cache, fed by background tasks
+    /// spawned from `ensure_schema_loaded`. Keyed by `connection_id`.
+    /// The SQL completion engine (Story 04.4b) reads from here
+    /// synchronously and falls back to "loading…" when the entry is
+    /// absent. See `crate::schema` for the cache + dedup model.
+    pub schema_cache: crate::schema::SchemaCache,
 }
 
 impl App {
@@ -249,9 +255,76 @@ impl App {
             running_query: None,
             result_viewport_top: std::collections::HashMap::new(),
             connection_picker: None,
+            schema_cache: crate::schema::SchemaCache::new(),
         };
         app.load_initial_document();
         app
+    }
+
+    /// Kick off a background introspection of `connection_id` if one
+    /// isn't already pending and the cache is empty. Cheap to call
+    /// repeatedly — the dedup gate makes the second/third call a
+    /// no-op. Result lands as `AppEvent::SchemaLoaded`.
+    pub fn ensure_schema_loaded(&mut self, connection_id: &str) {
+        if self.schema_cache.get(connection_id).is_some() {
+            return;
+        }
+        if self.schema_cache.is_pending(connection_id) {
+            return;
+        }
+        let Some(sender) = self.event_sender.clone() else {
+            // No event loop wired yet (unit-test-only path). Skip
+            // silently — the test that constructed the App didn't
+            // need async cache resolution.
+            return;
+        };
+        self.schema_cache.mark_pending(connection_id);
+        let pool_mgr = self.pool_manager.clone();
+        let app_pool = self.pool_manager.app_pool().clone();
+        let conn_id = connection_id.to_string();
+        tokio::spawn(async move {
+            // SQLite cache (TTL 300s) is the fast path; introspection
+            // hits the actual driver only on miss / expired entries.
+            // Mirrors `useSchemaCacheStore.ensureLoaded` on desktop.
+            let result = match httui_core::db::schema_cache::get_cached_schema(
+                &app_pool, &conn_id, 300,
+            )
+            .await
+            {
+                Ok(Some(entries)) if !entries.is_empty() => Ok(entries),
+                _ => httui_core::db::schema_cache::introspect_schema(
+                    &pool_mgr, &app_pool, &conn_id,
+                )
+                .await,
+            };
+            let _ = sender.send(crate::event::AppEvent::SchemaLoaded {
+                connection_id: conn_id,
+                result,
+            });
+        });
+    }
+
+    /// Fold a `SchemaLoaded` event into `schema_cache`. Called from
+    /// the main loop. Errors surface in the status bar but don't
+    /// poison the cache so a retry can succeed.
+    pub fn on_schema_loaded(
+        &mut self,
+        connection_id: String,
+        result: Result<Vec<httui_core::db::schema_cache::SchemaEntry>, String>,
+    ) {
+        self.schema_cache.clear_pending(&connection_id);
+        match result {
+            Ok(entries) => {
+                let tables = crate::schema::group_entries(entries);
+                self.schema_cache.store(&connection_id, tables);
+            }
+            Err(msg) => {
+                self.set_status(
+                    StatusKind::Error,
+                    format!("schema introspection failed: {msg}"),
+                );
+            }
+        }
     }
 
     /// Refresh the connection_id → name cache from SQLite. Call
@@ -694,6 +767,12 @@ async fn main_loop(
                 outcome,
             }) => {
                 vim::dispatch::handle_db_block_result(app, segment_idx, kind, outcome);
+            }
+            Some(AppEvent::SchemaLoaded {
+                connection_id,
+                result,
+            }) => {
+                app.on_schema_loaded(connection_id, result);
             }
             Some(AppEvent::Quit) | None => app.should_quit = true,
         }

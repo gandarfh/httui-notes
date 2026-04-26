@@ -1609,22 +1609,33 @@ fn apply_confirm_connection_picker(app: &mut App) {
         return;
     };
     let segment_idx = state.segment_idx;
-    let Some(doc) = app.tabs.active_document_mut() else { return };
-    doc.snapshot();
-    let Some(block) = doc.block_at_mut(segment_idx) else { return };
-    let Some(obj) = block.params.as_object_mut() else { return };
-    obj.insert(
-        "connection".into(),
-        serde_json::Value::String(picked.id.clone()),
-    );
-    // Drop the legacy alias so the next save serializes the
-    // canonical `connection=<id>` form only — `connection_id` was
-    // a JSON-body field from pre-redesign blocks and gets resolved
-    // the same way at run time.
-    obj.remove("connection_id");
+    let picked_id = picked.id.clone();
+    let picked_name = picked.name.clone();
+    if let Some(doc) = app.tabs.active_document_mut() {
+        doc.snapshot();
+        if let Some(block) = doc.block_at_mut(segment_idx) {
+            if let Some(obj) = block.params.as_object_mut() {
+                obj.insert(
+                    "connection".into(),
+                    serde_json::Value::String(picked_id.clone()),
+                );
+                // Drop the legacy alias so the next save serializes
+                // the canonical `connection=<id>` form only — the
+                // `connection_id` field was a JSON-body holdover from
+                // pre-redesign blocks and gets resolved the same way
+                // at run time.
+                obj.remove("connection_id");
+            }
+        }
+    }
+    // Kick off schema introspection in the background. By the time
+    // the user starts typing inside the SQL field (Story 04.4b), the
+    // completion engine has tables/columns ready to suggest. Cheap to
+    // call repeatedly — `ensure_schema_loaded` dedups on `pending`.
+    app.ensure_schema_loaded(&picked_id);
     app.set_status(
         StatusKind::Info,
-        format!("connection set to {}", picked.name),
+        format!("connection set to {picked_name}"),
     );
 }
 
