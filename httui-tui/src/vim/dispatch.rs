@@ -197,22 +197,42 @@ fn rebuild_completion_popup(app: &mut App, allow_empty_prefix: bool) {
         };
     let dialect = crate::sql_completion::Dialect::from_block(block);
     let context = crate::sql_completion::detect_context(&body, line, anchor_offset);
-    // Look up the active connection's schema (if cached) so the
-    // engine can surface tables/columns when the context calls for
-    // them. `connection` may be a UUID or a slug — the schema cache
-    // is keyed by the same id the picker writes, so a direct lookup
-    // works.
-    let conn_id = block
+    // The fence may carry either a UUID (canonical, written by the
+    // picker) or a human slug (legacy / hand-typed). The schema
+    // cache is always keyed by UUID, so resolve here via the
+    // `connection_names` map (id → name) — a reverse scan finds the
+    // id when the fence has a slug.
+    let conn_raw = block
         .params
         .get("connection")
         .or_else(|| block.params.get("connection_id"))
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
-    let schema_entry =
-        conn_id.as_deref().and_then(|id| app.schema_cache.get(id));
-    let schema_slice = schema_entry.map(|e| e.tables.as_slice());
-    let items =
-        crate::sql_completion::complete(dialect, &prefix, context, schema_slice);
+    let conn_id = conn_raw
+        .as_deref()
+        .map(|raw| resolve_connection_id_sync(raw, &app.connection_names));
+    // Borrow of `block` ends here — the snapshot below clones the
+    // schema tables so we can mutate `app` after.
+    let schema_tables: Option<Vec<crate::schema::SchemaTable>> = conn_id
+        .as_deref()
+        .and_then(|id| app.schema_cache.get(id))
+        .map(|e| e.tables.clone());
+    // First-time popup on this connection? Kick off the background
+    // introspection now. The fetch is idempotent + dedup'd, so
+    // calling it again on every keystroke is free; the result lands
+    // via `AppEvent::SchemaLoaded` and the next popup refresh sees
+    // it cached.
+    if let Some(id) = conn_id.as_deref() {
+        if schema_tables.is_none() {
+            app.ensure_schema_loaded(id);
+        }
+    }
+    let items = crate::sql_completion::complete(
+        dialect,
+        &prefix,
+        context,
+        schema_tables.as_deref(),
+    );
     if items.is_empty() {
         app.completion_popup = None;
         return;
@@ -236,6 +256,32 @@ fn rebuild_completion_popup(app: &mut App, allow_empty_prefix: bool) {
         anchor_offset,
         prefix,
     });
+}
+
+/// Resolve a fence's `connection=` value (UUID or slug) to the
+/// canonical UUID using the in-memory `connection_names` map. The
+/// async `resolve_connection_id` (used by the executor) hits the
+/// SQLite pool and we can't await on every keystroke; the names
+/// map is loaded at startup and refreshed after CRUD, so a sync
+/// scan is enough for popup-time lookups.
+///
+/// Returns the input verbatim when neither a key nor a value
+/// matches — that way an unknown id still flows through and
+/// `schema_cache.get(...)` simply yields `None` instead of
+/// silently swapping in some other connection's id.
+fn resolve_connection_id_sync(
+    raw: &str,
+    names: &std::collections::HashMap<String, String>,
+) -> String {
+    if names.contains_key(raw) {
+        return raw.to_string();
+    }
+    for (id, name) in names {
+        if name.eq_ignore_ascii_case(raw) {
+            return id.clone();
+        }
+    }
+    raw.to_string()
 }
 
 fn apply_completion_next(app: &mut App) {
