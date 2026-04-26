@@ -114,6 +114,11 @@ export interface HttpTimingBreakdown {
   connect_ms?: number | null;
   tls_ms?: number | null;
   ttfb_ms?: number | null;
+  /**
+   * V1: always `false`. Detection requires a custom connector — deferred
+   * to V2 alongside the isahc swap (see `docs/http-timing-isahc-future.md`).
+   */
+  connection_reused: boolean;
 }
 
 /** Cookie captured from a `Set-Cookie` response header. */
@@ -143,8 +148,22 @@ export interface HttpResponseFull {
   cookies: HttpCookieRaw[];
 }
 
-/** Backend-emitted chunk on the HTTP execution channel. */
+/** Backend-emitted chunk on the HTTP execution channel.
+ *
+ * Wire order on success: `headers` → `body_chunk` × N → `complete`.
+ * V1 frontend ignores the body bytes inside `body_chunk` (the consolidated
+ * body lives in `complete`), but uses the cumulative byte count to drive
+ * a "downloading X kb…" progress indicator.
+ */
 export type HttpChunk =
+  | {
+      kind: "headers";
+      status_code: number;
+      status_text: string;
+      headers: Record<string, string>;
+      ttfb_ms: number;
+    }
+  | { kind: "body_chunk"; offset: number; bytes: number[] }
   | ({ kind: "complete" } & HttpResponseFull)
   | { kind: "error"; message: string }
   | { kind: "cancelled" };
@@ -162,6 +181,23 @@ export interface ExecuteHttpStreamedOptions {
   params: Record<string, unknown>;
   /** Optional abort signal — sends `cancel_block(executionId)` when fired. */
   signal?: AbortSignal;
+  /**
+   * Called once when the `Headers` chunk arrives — i.e. the moment the
+   * server returned the status line. Use this to flip the statusbar dot
+   * to the response status class before the body finishes downloading.
+   */
+  onHeaders?: (headers: {
+    status_code: number;
+    status_text: string;
+    ttfb_ms: number;
+  }) => void;
+  /**
+   * Called per `BodyChunk` with the cumulative bytes received so far.
+   * V1: bytes themselves are discarded — the consolidated body arrives in
+   * the terminal `Complete` chunk. Use this purely to drive a download
+   * progress indicator ("downloading 1.2 MB…").
+   */
+  onProgress?: (bytesReceived: number) => void;
 }
 
 /**
@@ -184,6 +220,19 @@ export async function executeHttpStreamed(
   const outcome = new Promise<StreamedHttpOutcome>((resolve) => {
     channel.onmessage = (chunk) => {
       switch (chunk.kind) {
+        case "headers":
+          options.onHeaders?.({
+            status_code: chunk.status_code,
+            status_text: chunk.status_text,
+            ttfb_ms: chunk.ttfb_ms,
+          });
+          break;
+        case "body_chunk":
+          // V1: discard the bytes themselves — `complete` carries the final
+          // consolidated body. Only notify the progress counter so the UI
+          // can show "downloading X kb…" for long downloads.
+          options.onProgress?.(chunk.offset + chunk.bytes.length);
+          break;
         case "complete":
           resolve({
             status: "success",
@@ -247,10 +296,23 @@ export function normalizeHttpResponse(raw: unknown): HttpResponseFull {
         ? obj.duration_ms
         : 0;
 
-  const timing: HttpTimingBreakdown =
+  // Build the timing object explicitly so legacy cached responses (which
+  // may not have `connection_reused` or `ttfb_ms`) get a stable shape.
+  const rawTiming =
     obj.timing && typeof obj.timing === "object"
-      ? (obj.timing as HttpTimingBreakdown)
-      : { total_ms: elapsed_ms };
+      ? (obj.timing as Partial<HttpTimingBreakdown>)
+      : null;
+  const timing: HttpTimingBreakdown = {
+    total_ms:
+      typeof rawTiming?.total_ms === "number"
+        ? rawTiming.total_ms
+        : elapsed_ms,
+    dns_ms: rawTiming?.dns_ms ?? null,
+    connect_ms: rawTiming?.connect_ms ?? null,
+    tls_ms: rawTiming?.tls_ms ?? null,
+    ttfb_ms: rawTiming?.ttfb_ms ?? null,
+    connection_reused: rawTiming?.connection_reused === true,
+  };
 
   const cookies: HttpCookieRaw[] = Array.isArray(obj.cookies)
     ? (obj.cookies as HttpCookieRaw[])

@@ -39,7 +39,11 @@ describe("normalizeHttpResponse", () => {
       elapsed_ms: 123,
     };
     const out = normalizeHttpResponse(raw);
-    expect(out.timing).toEqual({ total_ms: 123 });
+    expect(out.timing.total_ms).toBe(123);
+    // V2 sub-fields stay nullish until isahc swap.
+    expect(out.timing.dns_ms ?? null).toBeNull();
+    expect(out.timing.connect_ms ?? null).toBeNull();
+    expect(out.timing.connection_reused).toBe(false);
     expect(out.cookies).toEqual([]);
   });
 
@@ -65,7 +69,8 @@ describe("normalizeHttpResponse", () => {
     expect(out.body).toBeUndefined();
     expect(out.size_bytes).toBe(0);
     expect(out.elapsed_ms).toBe(0);
-    expect(out.timing).toEqual({ total_ms: 0 });
+    expect(out.timing.total_ms).toBe(0);
+    expect(out.timing.connection_reused).toBe(false);
     expect(out.cookies).toEqual([]);
   });
 
@@ -79,12 +84,55 @@ describe("normalizeHttpResponse", () => {
     expect(out.status_code).toBe(0);
     expect(out.headers).toEqual({});
     expect(out.cookies).toEqual([]);
-    expect(out.timing).toEqual({ total_ms: 0 });
+    expect(out.timing.total_ms).toBe(0);
+    expect(out.timing.connection_reused).toBe(false);
   });
 
   it("handles non-object roots", () => {
     expect(normalizeHttpResponse(null).status_code).toBe(0);
     expect(normalizeHttpResponse(undefined).status_code).toBe(0);
     expect(normalizeHttpResponse("string").status_code).toBe(0);
+  });
+
+  it("preserves Onda 4 timing fields (ttfb_ms + connection_reused)", () => {
+    const raw = {
+      status_code: 200,
+      status_text: "OK",
+      headers: {},
+      body: "ok",
+      size_bytes: 2,
+      elapsed_ms: 150,
+      timing: {
+        total_ms: 150,
+        ttfb_ms: 42,
+        connection_reused: false,
+      },
+      cookies: [],
+    };
+    const out = normalizeHttpResponse(raw);
+    expect(out.timing.ttfb_ms).toBe(42);
+    expect(out.timing.connection_reused).toBe(false);
+    // V2 sub-fields stay nullish.
+    expect(out.timing.dns_ms ?? null).toBeNull();
+    expect(out.timing.connect_ms ?? null).toBeNull();
+    expect(out.timing.tls_ms ?? null).toBeNull();
+  });
+
+  it("defaults connection_reused to false for legacy cached shapes", () => {
+    // Pre-Onda-4 cached responses don't carry `connection_reused`. The
+    // normalizer must fill it in so consumers always see a boolean.
+    const raw = {
+      status_code: 200,
+      status_text: "OK",
+      headers: {},
+      body: "ok",
+      size_bytes: 2,
+      elapsed_ms: 50,
+      timing: { total_ms: 50 },
+      cookies: [],
+    };
+    const out = normalizeHttpResponse(raw);
+    expect(out.timing.connection_reused).toBe(false);
+    expect(typeof out.timing.connection_reused).toBe("boolean");
   });
 });

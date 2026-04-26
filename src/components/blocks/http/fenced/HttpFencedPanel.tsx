@@ -100,18 +100,20 @@ import {
 } from "@/lib/blocks/http-codegen";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
-import { common, createLowlight } from "lowlight";
+import { EditorState, type Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
+import { syntaxHighlighting } from "@codemirror/language";
+import { oneDarkHighlightStyle } from "@codemirror/theme-one-dark";
 import CodeMirror from "@uiw/react-codemirror";
 import { json } from "@codemirror/lang-json";
+import { xml } from "@codemirror/lang-xml";
+import { html } from "@codemirror/lang-html";
 import { referenceHighlight } from "@/lib/blocks/cm-references";
 import {
   createReferenceAutocomplete,
   type EnvKeyInfo,
 } from "@/lib/blocks/cm-autocomplete";
 import type { BlockContext } from "@/lib/blocks/references";
-
-const lowlight = createLowlight(common);
 
 // Static themes — extracted so Emotion doesn't recreate them per render.
 const cmTransparentBg = EditorView.theme({
@@ -1469,42 +1471,81 @@ function BinaryFilePicker({
 
 // ─────────────────────── Body pretty/raw view ───────────────────────
 
-// Lightweight syntax highlighting via `lowlight` (highlight.js core) → hast
-// → HTML with `.hljs-*` classes. Same approach the legacy HttpBlockView
-// used; CSS for the classes lives below as `httpHljsCss` and is scoped to
-// `.cm-http-result-portal` so it doesn't leak to other panels.
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function hastToHtml(nodes: any[]): string {
-  return nodes
-    .map((node) => {
-      if (node.type === "text") return escapeHtml(node.value);
-      if (node.type === "element") {
-        const cls = node.properties?.className?.join(" ") ?? "";
-        const inner = hastToHtml(node.children ?? []);
-        return cls ? `<span class="${cls}">${inner}</span>` : inner;
-      }
-      return "";
-    })
-    .join("");
-}
-
-function highlightToHtml(text: string, lang: string | null): string {
-  if (!lang) return escapeHtml(text);
-  try {
-    return hastToHtml(lowlight.highlight(lang, text).children);
-  } catch {
-    return escapeHtml(text);
-  }
-}
-
 type BodyViewMode = "pretty" | "raw" | "preview" | "visualize";
+
+// ─────────── CM6 read-only body viewer (Onda 4) ───────────
+// Replaces the old `<Box as="pre" dangerouslySetInnerHTML>` + lowlight
+// renderer. CM6 paints incrementally even on multi-MB bodies, so the webview
+// stops blocking on large responses. Pattern mirrors `StandaloneBlock.tsx`
+// (`src/components/blocks/standalone/StandaloneBlock.tsx:102-163`).
+
+const cmReadOnlyBodyTheme = EditorView.theme({
+  "&": { fontSize: "12px", maxHeight: "320px" },
+  ".cm-content": {
+    fontFamily: "var(--chakra-fonts-mono)",
+    padding: "8px",
+  },
+  ".cm-gutters": { display: "none" },
+  ".cm-scroller": { overflow: "auto", overscrollBehavior: "contain" },
+  ".cm-activeLine": { backgroundColor: "transparent" },
+});
+const cmBodyReadOnly = EditorState.readOnly.of(true);
+
+/** Pick a CM6 language extension based on the response Content-Type, with
+ * a JSON/XML heuristic fallback when the header is missing or generic. */
+function selectBodyLanguage(
+  contentType: string | null,
+  text: string,
+): Extension | null {
+  if (contentType) {
+    const ct = contentType.split(";")[0].trim().toLowerCase();
+    if (ct.includes("json")) return json();
+    if (ct.includes("xml") || ct.includes("svg")) return xml();
+    if (ct.includes("html")) return html();
+  }
+  const heuristic = detectLang(text, "pretty");
+  if (heuristic === "json") return json();
+  if (heuristic === "xml") return xml();
+  return null;
+}
+
+function HttpBodyCM6Viewer({
+  text,
+  contentType,
+}: {
+  text: string;
+  contentType: string | null;
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const lang = selectBodyLanguage(contentType, text);
+    const extensions: Extension[] = [
+      cmBodyReadOnly,
+      cmReadOnlyBodyTheme,
+      syntaxHighlighting(oneDarkHighlightStyle),
+      ...(lang ? [lang] : []),
+    ];
+    const view = new EditorView({
+      state: EditorState.create({ doc: text, extensions }),
+      parent: containerRef.current,
+    });
+    return () => {
+      view.destroy();
+    };
+  }, [text, contentType]);
+
+  return (
+    <Box
+      ref={containerRef}
+      border="1px solid"
+      borderColor="border"
+      rounded="md"
+      overflow="hidden"
+    />
+  );
+}
 
 function HttpBodyView({
   rawBody,
@@ -1588,22 +1629,18 @@ function HttpBodyView({
       )}
       {(view === "pretty" || view === "raw") && (
         text ? (
-          <Box
-            as="pre"
-            className="hljs"
-            fontFamily="mono"
-            fontSize="xs"
-            whiteSpace="pre-wrap"
-            wordBreak="break-word"
-            maxH="320px"
-            overflowY="auto"
-            // Keep wheel/touch scrolls inside this pane — without `contain`,
-            // hitting the top/bottom chains the scroll up to the document
-            // and the user accidentally scrolls past the block.
-            overscrollBehavior="contain"
-            dangerouslySetInnerHTML={{
-              __html: highlightToHtml(text, detectLang(text, view)),
-            }}
+          <HttpBodyCM6Viewer
+            text={text}
+            // `pretty` view picks lang from the response Content-Type;
+            // `raw` view shows the bytes verbatim with no highlight (avoids
+            // distorting non-pretty payloads like form-urlencoded).
+            contentType={
+              view === "pretty"
+                ? response.headers["content-type"] ??
+                  response.headers["Content-Type"] ??
+                  null
+                : null
+            }
           />
         ) : (
           <Box as="pre" fontFamily="mono" fontSize="xs" color="fg.muted">
@@ -2249,6 +2286,7 @@ function HttpStatusBar({
   durationMs,
   cached,
   lastRunAt,
+  downloadingBytes,
   onSendAs,
 }: {
   alias: string | undefined;
@@ -2258,6 +2296,10 @@ function HttpStatusBar({
   durationMs: number | null;
   cached: boolean;
   lastRunAt: Date | null;
+  /** Cumulative body bytes received during a streamed response. Only
+   * displayed while the request is running and at least one BodyChunk has
+   * been delivered (Onda 4 progress indicator). */
+  downloadingBytes: number;
   onSendAs: (format: SendAsFormat) => void;
 }) {
   const status = response?.status_code;
@@ -2289,6 +2331,9 @@ function HttpStatusBar({
         <Text>{label}</Text>
       </HStack>
       {host && <Text>· {host}</Text>}
+      {executionState === "running" && downloadingBytes > 0 && (
+        <Text>· downloading {formatBytes(downloadingBytes)}…</Text>
+      )}
       {durationMs !== null && executionState !== "running" && (
         <Text>· {durationMs}ms</Text>
       )}
@@ -2733,6 +2778,10 @@ export const HttpFencedPanel = memo(function HttpFencedPanel({
   // drawer's `useEffect` re-fetches without us coupling its dependency
   // array to a fast-changing array reference.
   const [historyRefreshTick, setHistoryRefreshTick] = useState(0);
+  // Cumulative bytes received during a streamed response. Only meaningful
+  // while `executionState === "running"` and stays at 0 for fast responses
+  // that finish before any BodyChunk fires. Reset on every new run.
+  const [downloadingBytes, setDownloadingBytes] = useState(0);
 
   const abortRef = useRef<AbortController | null>(null);
 
@@ -2873,6 +2922,7 @@ export const HttpFencedPanel = memo(function HttpFencedPanel({
 
     setError(null);
     setCached(false);
+    setDownloadingBytes(0);
     setExecutionState("running");
     const abort = new AbortController();
     abortRef.current = abort;
@@ -2911,6 +2961,12 @@ export const HttpFencedPanel = memo(function HttpFencedPanel({
         executionId,
         params,
         signal: abort.signal,
+        onProgress: (bytes) => {
+          // Cumulative byte count drives the "downloading X kb…" indicator.
+          // Updates throttle naturally to chunk arrival cadence (≤ 1 update
+          // per network packet) — no debounce needed.
+          setDownloadingBytes(bytes);
+        },
       });
       const elapsed = Math.round(performance.now() - startedAt);
 
@@ -3358,6 +3414,7 @@ export const HttpFencedPanel = memo(function HttpFencedPanel({
             durationMs={durationMs}
             cached={cached}
             lastRunAt={lastRunAt}
+            downloadingBytes={downloadingBytes}
             onSendAs={handleSendAs}
           />,
           statusbarNode,
