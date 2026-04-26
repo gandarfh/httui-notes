@@ -153,21 +153,40 @@ Infra de popup + Sources 1 (keywords) e 2 (builtin functions) entregues. Schema 
 
 ---
 
-### Story 04.4b — Schema autocomplete (tables/columns) 🚧 P0
+### Story 04.4b — Schema autocomplete (tables/columns) ✅ P0
 
-Trigger contextual após `FROM`/`JOIN`/`UPDATE`/`INSERT INTO` → tabelas. Após `<table>.` → colunas. Após `SELECT ` ou `WHERE `/`ON ` em escopo conhecido → colunas das tables em scope.
+Trigger contextual após `FROM`/`JOIN`/`UPDATE`/`INSERT INTO` → tabelas; após `<table>.` → colunas. **Fecha o P0**.
 
-**Tasks:**
-- [ ] **Source 3 — Schema**: nova `CompletionSource` que lê `App.schema_cache[active_conn]` (Story 04.3).
-- [ ] Detector de contexto: heurística regex inicial sobre o texto antes do cursor:
-  - `FROM\s+\w*$` / `JOIN\s+\w*$` / `INTO\s+\w*$` / `UPDATE\s+\w*$` → completar **tabelas**
-  - `(\w+)\.\w*$` → completar **colunas da tabela `\1`**
-  - dentro de `SELECT ... FROM <tables>` ou `WHERE ... `: extrair tabelas em scope, listar todas as colunas
-- [ ] Quando schema ainda não foi fetched pra essa conn: dispara fetch lazy + popup mostra "loading…" placeholder
-- [ ] Quando conn não está set no bloco: schema source retorna vazio (popup fica só com keywords/builtins de 04.4a)
-- [ ] Testes: cada padrão regex completa correto (table vs column), scope extraction de SELECT/FROM, fallback gracioso quando schema vazio
+**Entregue:**
+- [x] `SqlContext` enum em `sql_completion.rs`: `Open`, `Table`, `ColumnOf(String)`
+- [x] `detect_context(body, line, anchor_offset)` — walks back na linha atual:
+  - Trailing `.` precedido de palavra → `ColumnOf(palavra)`
+  - Trailing whitespace + última palavra ∈ {FROM/JOIN/INTO/UPDATE} → `Table`
+  - Caso contrário → `Open`
+- [x] `complete()` ganha 2 parâmetros: `context: SqlContext` + `schema: Option<&[SchemaTable]>`. Layering:
+  - `Open`: keywords + builtins (comportamento V1)
+  - `Table`: tables matching prefix (kind=Table, detail=schema name) + keywords + builtins (subquery `FROM (SELECT...)` é legal)
+  - `ColumnOf(table)`: **só** colunas da tabela (kind=Column, detail=data_type), keywords suprimidos. Match case-insensitive de table name (`Users` casa com `users`).
+- [x] Dispatcher: `refresh_completion_popup` lê `block.params["connection"]` → `App.schema_cache.get(conn_id).tables` → passa pra engine
+- [x] Quando schema não está cacheado (`None`): fallback gracioso pra keywords. Quando bloco sem `connection=`: idem.
+- [x] 14 testes novos em `sql_completion::tests`:
+  - `detect_context`: after FROM/JOIN/INTO/UPDATE/word-dot, mid-word variants, line start (Open)
+  - `complete` Table ctx surface schema tables com detail
+  - `complete` ColumnOf surface só columns, keywords suprimidos
+  - `complete` ColumnOf table desconhecido → vazio
+  - `complete` ColumnOf case-insensitive table match
+  - `complete` Table sem schema → fallback keywords
+  - `complete` Table com schema → keywords convivem com tables
 
-**Depende de:** Story 04.3 (schema cache), Story 04.4a (engine).
+**Pendente (descopado pra V2):**
+- Scope-aware columns após `WHERE`/`ON` (extrair tables do FROM)
+- Alias resolution: `FROM users u WHERE u.|` → completar colunas de `users`
+- Multi-line context detection (FROM em linha anterior)
+- Quoted identifiers `"users"."email"`
+- Refresh manual via `:schema refresh` ex command
+- Loading placeholder no popup quando schema_cache vazio + fetch em progresso
+
+**Depende de:** Story 04.3 (schema cache), Story 04.4a (engine). Ambas concluídas.
 
 ---
 

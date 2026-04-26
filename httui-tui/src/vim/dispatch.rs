@@ -196,7 +196,23 @@ fn rebuild_completion_popup(app: &mut App, allow_empty_prefix: bool) {
             }
         };
     let dialect = crate::sql_completion::Dialect::from_block(block);
-    let items = crate::sql_completion::complete(dialect, &prefix);
+    let context = crate::sql_completion::detect_context(&body, line, anchor_offset);
+    // Look up the active connection's schema (if cached) so the
+    // engine can surface tables/columns when the context calls for
+    // them. `connection` may be a UUID or a slug — the schema cache
+    // is keyed by the same id the picker writes, so a direct lookup
+    // works.
+    let conn_id = block
+        .params
+        .get("connection")
+        .or_else(|| block.params.get("connection_id"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let schema_entry =
+        conn_id.as_deref().and_then(|id| app.schema_cache.get(id));
+    let schema_slice = schema_entry.map(|e| e.tables.as_slice());
+    let items =
+        crate::sql_completion::complete(dialect, &prefix, context, schema_slice);
     if items.is_empty() {
         app.completion_popup = None;
         return;

@@ -18,6 +18,7 @@
 //! alphabetically by label, with category as the tie-breaker.
 
 use crate::buffer::block::BlockNode;
+use crate::schema::SchemaTable;
 
 /// One row in the completion popup. The same shape is returned by
 /// every source (keywords, schema, refs) so the popup widget renders
@@ -37,11 +38,7 @@ pub struct CompletionItem {
 pub enum CompletionKind {
     Keyword,
     Function,
-    /// Reserved for Story 04.4b — schema-aware suggestions.
-    #[allow(dead_code)]
     Table,
-    /// Reserved for Story 04.4b — schema-aware suggestions.
-    #[allow(dead_code)]
     Column,
     /// Reserved for Story 04.7 — `{{ref}}` autocomplete.
     #[allow(dead_code)]
@@ -151,17 +148,151 @@ const SQLITE_FUNCTIONS: &[&str] = &[
     "TYPEOF", "UNLIKELY", "UPPER",
 ];
 
+/// What the cursor's surrounding SQL is asking for. The dispatcher
+/// computes this from the body left of the cursor; the engine uses
+/// it to decide whether to surface schema items, and which kind.
+///
+/// V1 detector handles the explicit cases that hit ~80% of typing:
+/// `FROM`/`JOIN`/`INTO`/`UPDATE` → table; `<word>.` → columns of
+/// that word. Anything else (mid-`SELECT`, `WHERE`, etc.) falls
+/// through to `Open` — keyword/function popup. Scope-aware column
+/// completion (extracting tables in scope from a SELECT) is V2.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SqlContext {
+    /// No structural hint — show keywords and builtins only.
+    Open,
+    /// User is naming a table next: `FROM ⌷`, `JOIN ⌷`, `INTO ⌷`,
+    /// `UPDATE ⌷`. Schema source contributes table names; keywords
+    /// + builtins still appear (a subquery start with `SELECT` is
+    /// legal here too).
+    Table,
+    /// User is naming a column on a known table: `users.⌷`. Schema
+    /// source contributes that table's columns; keywords/builtins
+    /// don't make sense after `<table>.` so they're suppressed.
+    ColumnOf(String),
+}
+
+/// Walk the SQL left of the cursor and decide what category of
+/// completion to surface. `anchor_offset` is where the *prefix*
+/// word starts (same as `prefix_at_cursor`'s first return); we look
+/// at what comes *before* that. Multi-line walk only on the current
+/// line for V1 — `FROM` on a previous line still works most of the
+/// time because users tend to put `FROM` and the table name on the
+/// same line.
+pub fn detect_context(body: &str, line: usize, anchor_offset: usize) -> SqlContext {
+    let line_text = match body.lines().nth(line) {
+        Some(s) => s,
+        None => return SqlContext::Open,
+    };
+    let chars: Vec<char> = line_text.chars().collect();
+    let take = anchor_offset.min(chars.len());
+    let head: String = chars[..take].iter().collect();
+
+    // Trailing dot? `<word>.` → ColumnOf(<word>).
+    if head.ends_with('.') {
+        let body_no_dot = &head[..head.len() - 1];
+        // Walk back through `[A-Za-z0-9_]+` to extract the word.
+        let table_start = body_no_dot
+            .rfind(|c: char| !is_word_char(c))
+            .map(|i| i + 1)
+            .unwrap_or(0);
+        let table = &body_no_dot[table_start..];
+        if !table.is_empty() {
+            return SqlContext::ColumnOf(table.to_string());
+        }
+        return SqlContext::Open;
+    }
+
+    // Trailing whitespace before the prefix → look at the last word
+    // before the gap. `FROM` / `JOIN` / `INTO` (after INSERT) /
+    // `UPDATE` open a table-naming spot.
+    let trimmed = head.trim_end_matches(|c: char| c.is_whitespace());
+    if trimmed.len() == head.len() {
+        // No whitespace gap — the prefix sits glued to a non-word
+        // char (a comma, a paren) or to the start of the line. None
+        // of our trigger keywords apply in that shape.
+        return SqlContext::Open;
+    }
+    let last_word_start = trimmed
+        .rfind(|c: char| !is_word_char(c))
+        .map(|i| i + 1)
+        .unwrap_or(0);
+    let last_word = &trimmed[last_word_start..];
+    let upper = last_word.to_ascii_uppercase();
+    if matches!(upper.as_str(), "FROM" | "JOIN" | "UPDATE" | "INTO") {
+        return SqlContext::Table;
+    }
+
+    SqlContext::Open
+}
+
 /// Build the candidate list for the popup. `prefix` is the partial
-/// word the user has typed (already separated from surrounding
-/// punctuation by the dispatcher). Empty prefix yields *all*
-/// candidates — useful for an explicit `<C-Space>` trigger; the
-/// auto-trigger path callers gate on `prefix.len() >= 1` themselves.
+/// word the user has typed; `context` is what the cursor's
+/// surroundings hint at; `schema` is the in-memory schema cache for
+/// the active connection (or `None` when not yet loaded). Schema
+/// items lead, then keywords/builtins — except in `ColumnOf`, which
+/// suppresses keywords entirely (a column name slot can't take a
+/// keyword anyway).
 ///
 /// Sorted alphabetically by label so the same prefix always produces
 /// the same popup ordering — UX wins from determinism here.
-pub fn complete(dialect: Dialect, prefix: &str) -> Vec<CompletionItem> {
+pub fn complete(
+    dialect: Dialect,
+    prefix: &str,
+    context: SqlContext,
+    schema: Option<&[SchemaTable]>,
+) -> Vec<CompletionItem> {
     let prefix_upper = prefix.to_ascii_uppercase();
     let mut out: Vec<CompletionItem> = Vec::new();
+
+    // Schema source — only when we have a cache for this connection
+    // and the context tells us what to surface.
+    if let Some(tables) = schema {
+        match &context {
+            SqlContext::Table => {
+                for t in tables {
+                    if t.name.to_ascii_uppercase().starts_with(&prefix_upper) {
+                        out.push(CompletionItem {
+                            label: t.name.clone(),
+                            kind: CompletionKind::Table,
+                            detail: t.schema.clone(),
+                        });
+                    }
+                }
+            }
+            SqlContext::ColumnOf(table_name) => {
+                // Match the table name case-insensitively — users
+                // often type `users.id` even if the schema name is
+                // `Users` or quoted differently. V1 ignores aliases
+                // (no scope analysis); a future story will track
+                // `FROM users u` → alias `u` resolves to `users`.
+                if let Some(table) = tables
+                    .iter()
+                    .find(|t| t.name.eq_ignore_ascii_case(table_name))
+                {
+                    for col in &table.columns {
+                        if col
+                            .name
+                            .to_ascii_uppercase()
+                            .starts_with(&prefix_upper)
+                        {
+                            out.push(CompletionItem {
+                                label: col.name.clone(),
+                                kind: CompletionKind::Column,
+                                detail: col.data_type.clone(),
+                            });
+                        }
+                    }
+                }
+                // ColumnOf suppresses keywords/builtins — return now
+                // so the sort below sees only column items.
+                out.sort_by(|a, b| a.label.cmp(&b.label));
+                out.dedup_by(|a, b| a.label == b.label);
+                return out;
+            }
+            SqlContext::Open => {}
+        }
+    }
 
     let keyword_lists: &[&[&str]] = match dialect {
         Dialect::Postgres => &[ANSI_KEYWORDS, POSTGRES_KEYWORDS],
@@ -262,7 +393,7 @@ mod tests {
     #[test]
     fn complete_filters_keywords_by_prefix_case_insensitive() {
         // `sel` should surface SELECT (and only SELECT among ANSI).
-        let items = complete(Dialect::Generic, "sel");
+        let items = complete(Dialect::Generic, "sel", SqlContext::Open, None);
         assert!(items.iter().any(|i| i.label == "SELECT"));
         assert!(items.iter().all(|i| i.label.starts_with("SEL")));
     }
@@ -270,9 +401,9 @@ mod tests {
     #[test]
     fn complete_includes_dialect_extras_for_postgres() {
         // Postgres adds RETURNING; generic doesn't.
-        let pg = complete(Dialect::Postgres, "RETUR");
+        let pg = complete(Dialect::Postgres, "RETUR", SqlContext::Open, None);
         assert!(pg.iter().any(|i| i.label == "RETURNING"));
-        let gen = complete(Dialect::Generic, "RETUR");
+        let gen = complete(Dialect::Generic, "RETUR", SqlContext::Open, None);
         assert!(gen.iter().all(|i| i.label != "RETURNING"));
     }
 
@@ -280,9 +411,9 @@ mod tests {
     fn complete_includes_function_builtins_for_dialect() {
         // `date_t` should match `DATE_TRUNC` on Postgres but not on
         // SQLite (where it's not a standard function).
-        let pg = complete(Dialect::Postgres, "date_t");
+        let pg = complete(Dialect::Postgres, "date_t", SqlContext::Open, None);
         assert!(pg.iter().any(|i| i.label == "DATE_TRUNC"));
-        let sqlite = complete(Dialect::Sqlite, "date_t");
+        let sqlite = complete(Dialect::Sqlite, "date_t", SqlContext::Open, None);
         assert!(sqlite.iter().all(|i| i.label != "DATE_TRUNC"));
     }
 
@@ -291,7 +422,7 @@ mod tests {
         // Sorted output makes the popup feel predictable across
         // keystrokes — the same prefix always produces the same
         // visual ordering.
-        let items = complete(Dialect::Postgres, "co");
+        let items = complete(Dialect::Postgres, "co", SqlContext::Open, None);
         let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
         let mut sorted = labels.clone();
         sorted.sort_unstable();
@@ -303,7 +434,7 @@ mod tests {
         // `<C-Space>` (manual force open) calls with empty prefix —
         // useful for "what's available?". MySQL list should be
         // non-empty and contain its own extras.
-        let items = complete(Dialect::MySql, "");
+        let items = complete(Dialect::MySql, "", SqlContext::Open, None);
         assert!(items.iter().any(|i| i.label == "STRAIGHT_JOIN"));
     }
 
@@ -311,7 +442,7 @@ mod tests {
     fn complete_dedups_keyword_function_overlap() {
         // `CASE` shows up as both a keyword and a Postgres function.
         // The popup should list it once, not twice.
-        let items = complete(Dialect::Postgres, "CASE");
+        let items = complete(Dialect::Postgres, "CASE", SqlContext::Open, None);
         let count = items.iter().filter(|i| i.label == "CASE").count();
         assert_eq!(count, 1);
     }
@@ -357,6 +488,190 @@ mod tests {
         let body = "SELECT *\nFROM us";
         let got = prefix_at_cursor(body, 1, 7).expect("has prefix");
         assert_eq!(got.1, "us");
+    }
+
+    // ───────────── SqlContext detection ─────────────
+    //
+    // The detector handles the four explicit table-naming positions
+    // and the `<table>.` column-naming shape. Anything else returns
+    // `Open` so we fall back to keywords + builtins.
+
+    #[test]
+    fn detect_context_after_from_returns_table() {
+        // Cursor right after `FROM ` (anchor_offset=5, line=0).
+        // Body left of anchor is `FROM ` → trim → `FROM` → Table.
+        let ctx = detect_context("FROM ", 0, 5);
+        assert_eq!(ctx, SqlContext::Table);
+    }
+
+    #[test]
+    fn detect_context_mid_word_after_from_returns_table() {
+        // `SELECT * FROM us|` → anchor at start of `us`. The walk
+        // sees `SELECT * FROM ` left of the prefix and lands on
+        // `FROM` as the last word.
+        let body = "SELECT * FROM us";
+        let ctx = detect_context(body, 0, 14); // `u` starts at col 14
+        assert_eq!(ctx, SqlContext::Table);
+    }
+
+    #[test]
+    fn detect_context_after_join_returns_table() {
+        // `... JOIN orders` mid-word. Same shape as FROM.
+        let ctx = detect_context("SELECT * FROM users JOIN o", 0, 25);
+        assert_eq!(ctx, SqlContext::Table);
+    }
+
+    #[test]
+    fn detect_context_after_into_returns_table() {
+        // `INSERT INTO ⌷` — `INTO` is the trigger (the `INSERT`
+        // word ahead of it doesn't matter for V1).
+        let ctx = detect_context("INSERT INTO ", 0, 12);
+        assert_eq!(ctx, SqlContext::Table);
+    }
+
+    #[test]
+    fn detect_context_after_update_returns_table() {
+        // `UPDATE ⌷` — table name slot.
+        let ctx = detect_context("UPDATE ", 0, 7);
+        assert_eq!(ctx, SqlContext::Table);
+    }
+
+    #[test]
+    fn detect_context_after_word_dot_returns_column_of_word() {
+        // `users.|` cursor right after the dot (no prefix yet).
+        // `<word>.` is the explicit column-of pattern.
+        let ctx = detect_context("SELECT users.", 0, 13);
+        assert_eq!(ctx, SqlContext::ColumnOf("users".into()));
+    }
+
+    #[test]
+    fn detect_context_word_dot_with_partial_column() {
+        // `users.id|` — anchor at start of `id`; the `users.` left
+        // of it triggers ColumnOf.
+        let ctx = detect_context("SELECT users.id", 0, 13);
+        assert_eq!(ctx, SqlContext::ColumnOf("users".into()));
+    }
+
+    #[test]
+    fn detect_context_random_word_returns_open() {
+        // `SELECT col` — anchor at start of `col`. Last word before
+        // the prefix is `SELECT` (not a table-trigger), so Open.
+        let ctx = detect_context("SELECT col", 0, 7);
+        assert_eq!(ctx, SqlContext::Open);
+    }
+
+    #[test]
+    fn detect_context_at_line_start_returns_open() {
+        // No body left of cursor — nothing to trigger on.
+        let ctx = detect_context("", 0, 0);
+        assert_eq!(ctx, SqlContext::Open);
+    }
+
+    // ───────────── Schema source (Table / ColumnOf) ─────────────
+
+    fn fake_schema() -> Vec<SchemaTable> {
+        use crate::schema::SchemaColumn;
+        vec![
+            SchemaTable {
+                schema: Some("public".into()),
+                name: "users".into(),
+                columns: vec![
+                    SchemaColumn { name: "id".into(), data_type: Some("int4".into()) },
+                    SchemaColumn { name: "email".into(), data_type: Some("text".into()) },
+                    SchemaColumn { name: "name".into(), data_type: Some("text".into()) },
+                ],
+            },
+            SchemaTable {
+                schema: Some("public".into()),
+                name: "orders".into(),
+                columns: vec![
+                    SchemaColumn { name: "id".into(), data_type: Some("int4".into()) },
+                    SchemaColumn { name: "user_id".into(), data_type: Some("int4".into()) },
+                ],
+            },
+        ]
+    }
+
+    #[test]
+    fn complete_table_context_surfaces_schema_tables() {
+        // Table context + schema cached → tables matching prefix
+        // appear, alongside keywords/builtins (a `SELECT` subquery
+        // is legal here too, so we keep the keywords).
+        let schema = fake_schema();
+        let items =
+            complete(Dialect::Postgres, "us", SqlContext::Table, Some(&schema));
+        let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+        assert!(labels.contains(&"users"), "users should be in: {labels:?}");
+        // Detail carries the schema name so the popup can show
+        // `users  (public)` later.
+        let users_item = items.iter().find(|i| i.label == "users").unwrap();
+        assert_eq!(users_item.kind, CompletionKind::Table);
+        assert_eq!(users_item.detail.as_deref(), Some("public"));
+    }
+
+    #[test]
+    fn complete_column_of_context_surfaces_only_columns() {
+        // ColumnOf(users) — popup should list users' columns and
+        // *no* keywords. `<users>.SELECT` doesn't make sense.
+        let schema = fake_schema();
+        let items = complete(
+            Dialect::Postgres,
+            "",
+            SqlContext::ColumnOf("users".into()),
+            Some(&schema),
+        );
+        let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+        assert_eq!(labels, vec!["email", "id", "name"]);
+        assert!(items.iter().all(|i| i.kind == CompletionKind::Column));
+    }
+
+    #[test]
+    fn complete_column_of_unknown_table_returns_empty() {
+        // ColumnOf(nope) — table not in schema → no items at all
+        // (and keywords stay suppressed by the column branch).
+        let schema = fake_schema();
+        let items = complete(
+            Dialect::Postgres,
+            "",
+            SqlContext::ColumnOf("nope".into()),
+            Some(&schema),
+        );
+        assert!(items.is_empty(), "got: {items:?}");
+    }
+
+    #[test]
+    fn complete_column_of_table_name_match_is_case_insensitive() {
+        // User wrote `Users.|` but the schema has `users`. V1 still
+        // matches — case folding is friendlier than failing silently.
+        let schema = fake_schema();
+        let items = complete(
+            Dialect::Postgres,
+            "em",
+            SqlContext::ColumnOf("Users".into()),
+            Some(&schema),
+        );
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].label, "email");
+    }
+
+    #[test]
+    fn complete_table_context_with_no_schema_falls_back_to_keywords() {
+        // Schema not yet cached (`None`) → no schema items, but
+        // keywords/builtins still appear so the popup isn't empty.
+        let items =
+            complete(Dialect::Postgres, "SEL", SqlContext::Table, None);
+        assert!(items.iter().any(|i| i.label == "SELECT"));
+    }
+
+    #[test]
+    fn complete_table_context_keeps_keywords_alongside_tables() {
+        // Verifies keywords keep showing up under Table ctx — a
+        // user might be starting a subquery (`FROM (SELECT ...)`).
+        let schema = fake_schema();
+        let items =
+            complete(Dialect::Postgres, "S", SqlContext::Table, Some(&schema));
+        let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+        assert!(labels.contains(&"SELECT"));
     }
 
     #[test]
