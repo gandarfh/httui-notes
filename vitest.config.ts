@@ -25,6 +25,21 @@ export default defineConfig({
           globals: true,
           include: ["src/**/*.{test,spec}.{ts,tsx}"],
           exclude: ["src/**/*.browser.{test,spec}.{ts,tsx}"],
+          coverage: {
+            provider: "v8",
+            reporter: ["text", "html", "json-summary"],
+            include: ["src/**/*.{ts,tsx}"],
+            exclude: [
+              "src/test/**",
+              "**/*.test.{ts,tsx}",
+              "**/*.spec.{ts,tsx}",
+              "**/__tests__/**",
+              "src/main.tsx",
+              "src/vite-env.d.ts",
+              "src/components/ui/**",
+              "src/types/**",
+            ],
+          },
         },
       },
       {
