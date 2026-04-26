@@ -1,213 +1,309 @@
 # Epic 21 — TUI Block Widgets
 
-Widgets de blocos executáveis (HTTP, DB, E2E) na TUI: UI de input, output rendering, streaming, cancel, display modes, autocomplete `{{refs}}` e schema SQL.
+Widgets de blocos executáveis (HTTP, DB, E2E) na TUI.
 
-**Depende de:** Epic 18 (Buffer & Rendering), Epic 19 (Vim Engine)
+**Foco atual (2026-04-26):** **paridade do bloco DB com o desktop**. Stories de HTTP e E2E ficam pausadas até as P0–P1 da DB-parity entregarem. Stories existentes mantêm numeração de origem e ressurgem com status atualizado; gaps de paridade descobertos na auditoria de 2026-04-26 viram substories `04.x` / `05.x`.
+
+**Depende de:** Epic 18 (Buffer & Rendering), Epic 19 (Vim Engine — congelado em Round 2 + visual)
 **Desbloqueia:** —
 
-Referência: [`docs/tui-design.md`](../tui-design.md) §7.3–§7.6, §10.
+Referência: [`docs/tui-design.md`](../tui-design.md) §7.3–§7.6, §10, §15.bis.
+Auditoria de paridade Desktop × TUI consolidada em §15.bis.
+
+**Legenda de estado:**
+- ✅ **done** — entregue, com testes
+- 🚧 **active** — em progresso ou desbloqueada pra começar
+- ⏸ **paused** — congelada pelo foco atual
+- 🧊 **deferred V2** — fora do escopo da paridade V1
 
 ---
 
-## Story 01: Widget shell compartilhado
+## DB Parity Track (foco ativo)
 
-Infra comum de todos os blocos: header, display modes, ações, state rendering.
+### Story 04 — Widget DB — input ✅ parcial
 
-### Tasks
+**Entregue:**
+- Connection picker via `Ctrl+L` (popup ancorado acima do bloco com fallback abaixo / centro).
+- Footer com `connection: <name> · limit: <N> · press 'r' to run`.
+- Fence parser suporta `alias=`, `connection=`, `limit=`, `display_mode=` (em `httui-core::blocks::parser`).
+- SQL highlight via `manual_lex` (tree-sitter parse cached pra futuro uso).
 
-- [ ] Trait `BlockWidget`:
-  - [ ] `fn render_header(&self, area, style) -> Header`
-  - [ ] `fn render_input(&self, area, focus) -> Vec<Line>`
-  - [ ] `fn render_output(&self, area) -> Vec<Line>`
-  - [ ] `fn handle_key(&mut self, key) -> WidgetAction`
-  - [ ] `fn height(&self, width, display_mode) -> u16`
-- [ ] Header padrão: `{icon} {type}  {alias}  [{mode}] {state_badge} [▶] [✕]`
-- [ ] Border: simples quando não selecionado, dupla/accent quando `BlockSelected`, cor por estado
-- [ ] Display modes: `input` / `output` / `split` — toggle via botões no header (`<C-h>` input, `<C-l>` output, `<C-k>` split)
-- [ ] Alias editável inline no header (entra com `<C-a>` em `BlockSelected`)
-- [ ] Run button: `<leader>r` ou `:run` — estado durante execução vira `[⟳]`
-- [ ] Cancel button: visível durante `running`, dispara cancel no executor
-- [ ] State badges:
-  - [ ] `idle` (cinza)
-  - [ ] `cached` (magenta, com clock icon)
-  - [ ] `running` (amarelo, com spinner animado)
-  - [ ] `success` (verde, com status text)
-  - [ ] `error` (vermelho, com mensagem truncada + tooltip full)
-- [ ] Testes: render correto em cada modo/estado
+**Pendente:** ver substories 04.1–04.9 abaixo.
 
-## Story 02: Widget HTTP — input
+---
 
-UI do input do bloco HTTP: method, URL, tabs de params/headers/body/settings.
+### Story 04.1 — Refs `{{...}}` → bind params 🚧 P0 (segurança)
 
-### Tasks
+Hoje `httui-tui::vim::dispatch::resolve_block_refs` faz **string substitution** dos `{{alias.path}}` direto na query SQL. Isso viola o invariante do `CLAUDE.md` ("Block references in SQL ... are always converted to bind parameters, never string-interpolated") e é vetor de SQL injection trivial via valor de bloco upstream.
 
-- [ ] Render do header com method badge colorido (GET=verde, POST=azul, PUT=laranja, PATCH=amarelo, DELETE=vermelho, HEAD=roxo, OPTIONS=cinza)
-- [ ] Method selector: dropdown acessível via `<CR>` em cima, ou ex command `:method {VERB}`
-- [ ] URL field: single-line textarea com syntax highlight de `{{refs}}` (magenta)
-- [ ] Hover `{{ref}}` mostra valor resolvido no status bar
-- [ ] Autocomplete `{{`: lista aliases acima + env vars (reusa `extractReferencedAliases` do core)
-- [ ] Tabs: Params | Headers | Body | Settings (`<C-Tab>` cicla)
-- [ ] **Params/Headers**: tabela key/value com `+` pra adicionar, `d` na linha pra remover
-- [ ] **Body**: multi-line textarea com syntect JSON highlight (se detectar `Content-Type: application/json`)
-- [ ] **Settings**: campo `timeout_ms` numérico
-- [ ] Persistir no fence info string canônico do bloco HTTP (formato alinhado com [`db-block-redesign.md`](../db-block-redesign.md))
-- [ ] Testes: edição de cada campo propaga pro `BlockNode`
+**Tasks:**
+- [ ] Substituir string substitution por extração de placeholders + array de bind values
+- [ ] Adaptar para os 3 dialetos: `$N` (Postgres), `?` (MySQL/SQLite)
+- [ ] `httui-core::executor::db` já aceita `bind_values: Vec<Value>` — usar
+- [ ] Resolver `{{ENV_VAR}}` continua como string (envs não são SQL injection no mesmo sentido — confirmar com desktop)
+- [ ] Testes: query com `WHERE id = {{prev.response.id}}` gera `WHERE id = $1` + `[prev_id]`, **não** `WHERE id = '7; DROP TABLE...'`
+- [ ] Testes: 3 dialetos geram placeholders corretos
+- [ ] Testes: ref resolvendo a array/object falha gracefully (não vira string mal-formada)
 
-## Story 03: Widget HTTP — output
+**Refs:** `src/components/blocks/db/fenced/DbFencedPanel.tsx:340-360` (`resolveRefsToBindParams` — espelhar).
 
-Render da resposta HTTP com status, body, headers.
+---
 
-### Tasks
+### Story 04.2 — Multi-statement support 🚧 P0
 
-- [ ] Linha de status: badge colorido por classe (2xx verde, 3xx azul, 4xx amarelo, 5xx vermelho) + tempo + tamanho
-- [ ] Body:
-  - [ ] JSON: formatado e com highlight (syntect)
-  - [ ] HTML/XML: com highlight
-  - [ ] Plain text: direto
-  - [ ] Binary: mostra metadata + ações `o` (open external) / `s` (save to disk)
-- [ ] Scroll vertical no body (`<C-e>` / `<C-y>`), horizontal (`zh`/`zl`)
-- [ ] Headers colapsáveis: `▸ Headers (N)` → `▾ Headers (N)` com lista key/value
-- [ ] Copy body: `y` em foco no output copia pro registro/clipboard
-- [ ] Fullscreen toggle: `<leader>bf` abre body em modal fullscreen
-- [ ] Testes: render de cada content-type, scroll, copy
+Backend (`httui-core::executor::db::mod.rs:104-161`) já suporta múltiplas statements em uma query (split em `;`, retorna `results: Vec<DbResult>`). TUI hoje só consome `results[0]` e renderiza um único result set.
 
-## Story 04: Widget DB — input
+**Tasks:**
+- [ ] Atualizar `App.cached_result` (ou estrutura equivalente) para guardar `Vec<DbResult>` em vez de `Value` único
+- [ ] Atualizar resolução de refs: `{{alias.response.0.rows.0.col}}` (caminho explícito) + shim legado `{{alias.response.col}}` → `results[0].rows[0].col`
+- [ ] Renderer pega `results.len()`: 0 = "no results", 1 = render direto, 2+ = result tabs (depende de Story 05.1)
+- [ ] Testes: query `BEGIN; UPDATE foo SET x=1; SELECT * FROM foo; ROLLBACK;` retorna 4 results no estado
+- [ ] Testes: ref legada `{{alias.response.col}}` continua funcionando
 
-UI do bloco DB: connection, SQL editor, tabs de query/settings.
+---
 
-### Tasks
+### Story 04.3 — Schema cache wired 🚧 P0 (gate de 04.4)
 
-- [ ] Header com connection slug destacado: `DB  db1  [prod]  ...` (atual mostra no footer)
-- [x] **Connection picker**: `Ctrl+L` (em vez de `<leader>dp` — leader keys ainda não landed) abre **popup ancorado acima do bloco** (cai pra baixo se sem headroom). Estado em `App.connection_picker`. Pré-seleciona conexão atual. `Enter` escreve `connection=<id>` em `block.params` + `doc.snapshot()` pra undo. Implementação: `ui::connection_picker` + `vim::dispatch::open_connection_picker`. Keybinding centralizado em `vim::keybindings::OPEN_CONNECTION_PICKER`.
-- [ ] SQL editor multi-line:
-  - [ ] Syntect SQL highlight
-  - [ ] Autocomplete de schema: tabelas e colunas da conexão selecionada (reusa `schema_cache` do core)
-  - [ ] Triggers: após `FROM`, `JOIN`, `WHERE`, `SELECT`, `INSERT INTO`, `UPDATE`
-  - [ ] Autocomplete `{{refs}}` com Ctrl+Space ou `{{`
-- [ ] Tabs: Query | Settings (`<C-Tab>` cicla)
-- [ ] **Settings**: `limit` (numérico), `timeout_ms`, `display_mode`
-- [ ] Multi-statement: separador `;` permitido, backend já suporta (stage 1 do redesign)
-- [ ] Fence info string conforme §2.1 do `db-block-redesign.md`
-- [ ] Testes: edição preserva SQL cru, autocomplete schema funciona
+Desktop tem `useSchemaCacheStore` (Zustand) + SQLite-cached introspection (TTL 300s). TUI ainda não puxa schema. Sem schema cache, autocomplete de tabelas/colunas (04.4) é impossível.
 
-## Story 05: Widget DB — output (tabela + streaming)
+**Tasks:**
+- [ ] Identificar API de schema_cache em `httui-core` (já existe — usado por desktop)
+- [ ] Adicionar campo em `App` ou store dedicado: `schema_cache: HashMap<ConnectionId, Schema>`
+- [ ] Carregar schema lazy: primeira vez que connection picker fecha em conn nova, dispara fetch async
+- [ ] Cache invalidation: refresh manual via ex command `:schema refresh` (P1, opcional)
+- [ ] Testes: schema é cacheado por conn, não re-fetchado em queries subsequentes
+- [ ] Testes: timeout/erro de introspection não trava executor
 
-Renderizar resultados como tabela com scroll, streaming do executor, e Load more.
+---
 
-### Tasks
+### Story 04.4 — Schema autocomplete (SQL completion) 🚧 P0
 
-- [x] `ratatui::widgets::Table` com:
-  - [x] Headers colunas (nomes do schema)
-  - [x] Linhas virtualizadas (viewport persistente em `App.result_viewport_top`, scroll estilo editor com `clamp_viewport` + `SCROLL_OFF=2`)
-  - [ ] Scroll horizontal (`zh`/`zl` ou `<C-h>`/`<C-l>`) — pendente
-  - [x] Scroll vertical: `j`/`k` movem cursor; viewport segue. `Ctrl-d`/`Ctrl-u` via motion engine.
-- [x] Seleção de linha com `<CR>` abre **modal centralizado** com valores full (em vez de drawer lateral). Modal usa `Document` próprio + redirecionamento de `app.document_mut()`, então motions vim completas funcionam (`hjkl`, `wbe`, text objects `vi{`/`va{`, etc.). `Y` copia row inteiro como JSON via `arboard`.
-- [x] Cell com valor null: renderiza `(null)` em cinza
-- [ ] Streaming: cada `ExecutionEvent::Row` chega via channel, push na tabela, redraw — pendente (executor atual entrega resultado completo)
-- [x] Footer com "N rows" — feito; `[Load more]` substituído por **prefetch automático** no `j` quando cursor está dentro de `DB_PREFETCH_THRESHOLD=5` rows do fundo + `has_more=true`
-- [x] Cancel durante execução: `Ctrl-C` aborta via `CancellationToken` em `App.running_query` (intercepta no top do `dispatch`). SQLite/MySQL não propagam cancel pro driver; Postgres funciona limpo.
-- [x] Testes: prefetch threshold (`should_prefetch_*`), viewport (`clamp_result_viewport_*`), modal body (`build_body_lines_*`)
+Trigger autocomplete dentro do SQL editor após `FROM`, `JOIN`, `WHERE`, `SELECT`, `INSERT INTO`, `UPDATE`.
 
-## Story 06: Widget E2E — input
+**Tasks:**
+- [ ] Provider de completion no SQL editor (lê `App.schema_cache[conn_id]`)
+- [ ] Detector de contexto: que keyword precede o cursor? (heurística; tree-sitter pode ajudar quando walker AST estabilizar)
+- [ ] Popup estilo nvim: lista filtra ao digitar, `<C-n>`/`<C-p>` navega, `<Tab>`/`<CR>` aceita, `<Esc>` cancela
+- [ ] Após `FROM `: lista tabelas. Após `<table>.`: lista colunas. Após `JOIN <table> ON `: colunas das tabelas em scope.
+- [ ] Testes: triggers corretos por keyword, lista filtrada
+- [ ] Testes: schema vazio (conn sem schema cacheado) → popup vazio, não trava
 
-UI do bloco E2E: base URL, headers default, lista de steps.
+**Depende de:** Story 04.3.
 
-### Tasks
+---
 
-- [ ] Campo base URL (single-line com `{{refs}}`)
-- [ ] Default headers: tabela key/value compartilhada por todos os steps
-- [ ] Lista de steps:
-  - [ ] Cada step é um card colapsável (fold com `za`)
-  - [ ] Header do step: `{n}. {method} {path}`
-  - [ ] Quando expandido: tabs Request (Params/Headers/Body) + Assertions (Expect/Extract)
-- [ ] Adicionar step: `+` ou `:step add` ao fim
-- [ ] Reordenar: `Alt-j`/`Alt-k` quando step selecionado
-- [ ] Deletar step: `d` em cima do card (ou `:step delete {n}`)
-- [ ] **Expect**: status esperado + JSON matches (key=path, value=expected) + body contains
-- [ ] **Extract**: mapping de variável → JSON path
-- [ ] Fence info string canônica pro E2E
-- [ ] Testes: adicionar/reordenar/deletar steps preserva consistência
+### Story 04.5 — Token `timeout=` + enforcement 🚧 P1
 
-## Story 07: Widget E2E — output
+Desktop tem `timeout=30000` no fence + executor wrap em `tokio::time::timeout`. TUI parser não reconhece o token e executor não aplica timeout.
 
-Render dos resultados por step + summary.
+**Tasks:**
+- [ ] Adicionar `timeout` a `DbBlockParams` em `httui-core::blocks` (se ainda não tem)
+- [ ] Parser TUI: ler `timeout=NNNN` do info string, validar numérico
+- [ ] Executor: `tokio::time::timeout(Duration::from_millis(timeout), query_future)`, erro com mensagem `"query exceeded {timeout}ms"`
+- [ ] Default: 30s se ausente
+- [ ] Testes: timeout=100 numa query lenta retorna erro com mensagem
+- [ ] Testes: timeout ausente usa default
 
-### Tasks
+---
 
-- [ ] Summary bar: "N/M passed" com progress bar colorida
-- [ ] Lista de resultados por step, colapsável (fold sincronizado com input)
-- [ ] Por step:
-  - [ ] Ícone ✓/✕/⊙ (skipped), status code, elapsed
-  - [ ] Se falha: lista de assertions que falharam (expected vs received)
-  - [ ] Response body expandível (reusa renderer do HTTP output)
-  - [ ] Extracted variables: `{name: value}` em cinza
-- [ ] Continue on failure: steps subsequentes rodam mesmo se um falha (comportamento atual)
-- [ ] Testes: render correto pra mix de pass/fail, extractions propagam visualmente
+### Story 04.6 — Cache hash validation 🚧 P1
 
-## Story 08: Display mode toggle
+Hoje TUI sempre re-executa em `r`. Desktop calcula `SHA256(query + connection_id + limit + env_snapshot)` e serve cache em hit (com badge `cached`). Cache fica em SQLite via `httui-core`.
 
-Persistir `display_mode` no fence e ajustar render.
+**Tasks:**
+- [ ] Calcular hash em `apply_run_block` antes de spawn task
+- [ ] Lookup no cache (`httui-core::cache::get_block_result`?) antes de executar
+- [ ] Hit → emit `AppEvent::DbBlockResult` com flag `from_cache=true`, badge muda
+- [ ] `:run!` (ou `R` em normal) força bypass do cache (P2 — já listado em Story 09)
+- [ ] Mutation methods (UPDATE/INSERT/DELETE/etc.) **nunca** servem de cache (espelhar comportamento desktop)
+- [ ] Testes: query idempotente roda, segundo `r` é cache hit
+- [ ] Testes: UPDATE sempre re-executa
 
-### Tasks
+---
 
-- [ ] `input` mode: só UI de input, esconde output
-- [ ] `output` mode: só UI de output, esconde input
-- [ ] `split` mode: input em cima, output embaixo (vertical) ou lado a lado se viewport width > threshold (horizontal)
-- [ ] Toggle via header buttons ou `<C-h>`/`<C-j>`/`<C-k>` em `BlockSelected`
-- [ ] Altura do bloco recalculada (dispara reflow do documento)
-- [ ] Default: `input` quando `idle`, `split` quando tem resultado (ou conforme fence)
-- [ ] Animação de transição não existe (terminal); só redraw
-- [ ] Testes: cada modo renderiza conforme esperado, reflow correto
+### Story 04.7 — Refs autocomplete `{{...}}` 🚧 P1
 
-## Story 09: Execução e cancel
+Trigger ao digitar `{{` em qualquer campo. Lista aliases de blocos anteriores + env vars do environment ativo.
 
-Integração com executores do core via channel.
+**Tasks:**
+- [ ] Detector: `{{` no input dispara popup
+- [ ] Fontes: `App.document` walks blocks anteriores ao cursor, coleta `alias`. `App.env_vars` lista keys do active env.
+- [ ] Após `{{alias.`: navega JSON do `cached_result` com dot notation, popup mostra keys disponíveis
+- [ ] Ordem: aliases (com type + cached/no-result) antes de env vars
+- [ ] Reuso da infra de popup de Story 04.4
+- [ ] Testes: triggers corretos, lista filtrada, navegação por tree de JSON
 
-### Tasks
+**Depende de:** infra de popup compartilhada com 04.4.
 
-- [x] `r` em normal mode (em vez de `:run`) chama `apply_run_block` → `httui-core::executor::db::DbExecutor`
-- [ ] `:run!` ignora cache — pendente (atual sempre re-executa)
-- [x] Executor roda em `tokio::spawn`, recebe `CancellationToken` (DB; HTTP/E2E pendentes)
-- [x] Resultado vira `AppEvent::DbBlockResult { segment_idx, kind, outcome }` no main loop
-- [ ] Tipos de evento granulares (`Started`, `Progress`, `Row`, `StepDone`) — atual entrega resultado completo no `Completed`. Streaming pendente.
-- [x] `Ctrl-C` cancela via `cancel_running_query` (intercepta no top do `dispatch`, antes do mode parsing)
-- [ ] Cache hit visual ainda não checa hash — sempre re-executa
-- [x] Resolução de refs `{{alias.path}}` em `resolve_block_refs` (env vars + block deps)
-- [ ] Deps com lock compartilhado pendente
-- [x] Testes: `should_prefetch_*`, viewport `clamp_*`, modal body lines
+---
 
-## Story 10: Autocomplete de `{{refs}}` e schema
+### Story 04.8 — Errors com line/col + visual 🚧 P1
 
-Provider de completions contextuais dentro dos campos de bloco.
+Postgres/MySQL retornam `position`/`line`/`column` em erros de syntax. Desktop pinta squiggle no editor + duplica na linha de status.
 
-### Tasks
+**Tasks:**
+- [ ] Parser de erros no executor (3 dialetos): extrai `(line, col, message)`
+- [ ] Estado: `ExecutionState::Error` ganha campo `position: Option<(usize, usize)>`
+- [ ] Render: linha `line` ganha underline vermelho na faixa de col±N
+- [ ] Status bar: `error: <msg> at line:col`
+- [ ] Testes: erro do Postgres parseado, posição extraída, render aplica underline
 
-- [ ] Trigger: digitação de `{{` em qualquer campo de texto
-- [ ] Listar:
-  - [ ] Aliases de blocos anteriores no doc (com tipo + estado cached/no result)
-  - [ ] Env variables do environment ativo
-- [ ] Após selecionar `{{alias.`: navegar JSON do result cacheado com dot notation (popup mostra keys disponíveis)
-- [ ] Trigger SQL: após keywords (`FROM`, `JOIN`, `WHERE`, `SELECT`, `INSERT INTO`, `UPDATE`) → lista tabelas/colunas
-- [ ] Popup estilo vim/nvim com lista + highlight do char atual filtrando
-- [ ] Navegação: `<C-n>`/`<C-p>` ou `<Tab>`/`<S-Tab>`
-- [ ] Accept: `<CR>` ou `<Tab>`
-- [ ] Dismiss: `<Esc>`
-- [ ] Testes: triggers corretos, lista filtrada ordenadamente, navegação por tree de JSON
+---
 
-## Story 11: Edição inline do fence info string
+### Story 04.9 — Read-only mode + confirm dialog 🚧 P1
 
-Editar metadados do bloco (alias, connection, limit, etc.) sem sair do bloco.
+Connections têm flag `is_readonly`. Desktop bloqueia mutations em RO connections com confirm modal. Também avisa em `UPDATE`/`DELETE` sem `WHERE` mesmo em RW.
 
-### Tasks
+**Tasks:**
+- [ ] Detector SQL: classifica statement como mutation/select via parsing leve (regex inicial — `^\s*(UPDATE|DELETE|INSERT|DROP|TRUNCATE|ALTER)`)
+- [ ] Detector "unscoped": `UPDATE` ou `DELETE` sem `WHERE` (regex + tree-sitter quando walker estabilizar)
+- [ ] Modal de confirmação: `Mode::DbConfirmRun` com mensagem + `[y]es / [n]o`
+- [ ] Bloqueio total quando RO + mutation: erro inline, sem modal
+- [ ] Testes: RO + UPDATE = blocked, RW + UPDATE sem WHERE = confirm, RW + UPDATE com WHERE = direto
 
-- [ ] Header do bloco tem campos editáveis inline por keybinding:
-  - [ ] `<C-a>` edita alias
-  - [ ] `<C-c>` edita connection (DB) / method (HTTP)
-  - [ ] `<C-l>` edita limit (DB) / timeout (qualquer)
-  - [ ] `<C-d>` edita display mode (input/output/split)
-- [ ] Ao acionar: prompt inline no header com valor atual
+---
+
+### Story 05 — Widget DB — output ✅ parcial
+
+**Entregue:**
+- `ratatui::Table` com viewport persistente (clamp + `SCROLL_OFF=2`).
+- Cell rendering: null em cinza `(null)`, JSON pretty-printed, truncate em 30 chars.
+- Modal row-detail (`Mode::DbRowDetail`) com vim motions completas (`hjkl`/`wbe`/`gg`/`G`/`Ctrl-d`/`Ctrl-u`/`f`/`F`/`vi{`/`va{`).
+- `Y` copia row inteiro como JSON pretty-printed via `arboard`.
+- Auto-prefetch quando cursor a ≤5 rows do fundo + `has_more=true` (`DB_PREFETCH_THRESHOLD=5`).
+- Cancel via `Ctrl+C` (`CancellationToken` em `App.running_query`). Postgres limpo, SQLite/MySQL não propagam pro driver.
+- Footer com "N rows".
+
+**Pendente:** ver substories 05.1–05.4.
+
+---
+
+### Story 05.1 — Result tabs (Result(s)/Messages/Plan/Stats) 🚧 P2
+
+Após Story 04.2 (multi-statement), result panel precisa abas. Espelha desktop:
+- **Result(s)** — uma sub-aba numerada por result set se 2+
+- **Messages** — NOTICE/WARNING dos result sets (ainda STUB no executor; expor o que vier)
+- **Plan** — populated por Story 05.2 (EXPLAIN)
+- **Stats** — elapsed, rows totais, cache hit, statement count
+
+**Tasks:**
+- [ ] Estado: `ResultPanelTab` enum
+- [ ] Render condicional: 0 results = "no results"; 1 = render direto; 2+ = sub-tabs com `[1] [2] [3]`
+- [ ] Cycle: `<Tab>`/`<S-Tab>` ou `<C-Tab>`
+- [ ] Aba Stats sempre visível
+- [ ] Testes: render correto pra 0/1/2+ result sets
+
+**Depende de:** Story 04.2.
+
+---
+
+### Story 05.2 — EXPLAIN integration 🚧 P2
+
+`<leader>e` (ou ex `:explain`) wrappa primeira statement em `EXPLAIN` (Postgres/MySQL) ou `EXPLAIN QUERY PLAN` (SQLite), executa one-off, popula tab Plan.
+
+**Tasks:**
+- [ ] Detector de dialect → wrapper apropriado
+- [ ] Execução paralela ao normal? Ou separada? — desktop faz separada, mantém
+- [ ] Render do plano: text bruto formatado (Postgres tem ANALYZE com tree, mas V1 só EXPLAIN — texto plano)
+- [ ] Auto-switch pra tab Plan ao receber resultado
+- [ ] Testes: query EXPLAIN é wrapper correto pro dialeto, não modifica fence
+
+**Depende de:** Story 05.1.
+
+---
+
+### Story 05.3 — Export menu (CSV/MD/INSERT além de JSON) 🚧 P2
+
+Hoje só `Y` no modal copia row como JSON. Desktop oferece 4 formatos via menu.
+
+**Tasks:**
+- [ ] Ex command `:export <format>` ou keybinding `<leader>y` abre picker
+- [ ] Formatos: CSV (RFC 4180), JSON (array), Markdown (GFM table), INSERT (per-row INSERT inferring table name)
+- [ ] Destinos: clipboard (default) ou `:export <format> <path>` salva file
+- [ ] Reuso da lógica de `httui-core` se já existe (desktop usa `src/lib/blocks/db-export.ts` — pode ter equivalent Rust); senão portar
+- [ ] Testes: cada formato gera output esperado pra dataset fixture
+
+---
+
+### Story 05.4 — Streamed row chunks 🧊 deferred V2
+
+Hoje executor entrega `DbResponse` completa. Desktop tem channel preparado mas também não chunkifica payload. Implementar streaming na TUI sem o desktop fazer primeiro é trabalho duplicado e contradiz "paridade".
+
+**Quando reativar:** quando `httui-core::executor::db` emitir `ExecutionEvent::Row` chunks.
+
+---
+
+### Story 08 — Display mode toggle (input/output/split) 🚧 P2
+
+**Tasks:**
+- [ ] Persistir `display_mode` no fence (`display=input|output|split`)
+- [ ] Toggle: `<C-d>` ou `:display <mode>` em `BlockSelected`
+- [ ] Render condicional baseado em mode + tem-resultado
+- [ ] Default: `input` quando idle, `split` quando tem resultado (espelha desktop)
+- [ ] Reflow do documento (recalcular altura)
+- [ ] Testes: cada modo renderiza conforme esperado, height correto
+
+---
+
+### Story 09 — Execução e cancel ✅ parcial
+
+**Entregue:**
+- `r` em normal mode → `apply_run_block` → executor async via `tokio::spawn` + `CancellationToken`
+- Resultado vira `AppEvent::DbBlockResult { segment_idx, kind, outcome }` no main loop
+- `Ctrl-C` cancela (intercepta no top do `dispatch`, antes do mode parsing)
+- Resolução de refs `{{alias.path}}` em `resolve_block_refs` (env vars + block deps)
+
+**Pendente:**
+- [ ] `:run!` (ou `R`) ignora cache — depende de Story 04.6
+- [ ] Tipos de evento granulares (`Started`, `Progress`, `Row`, `StepDone`) — Story 05.4 (deferred V2)
+- [ ] Deps com lock compartilhado — Story 04.7 / autocomplete
+
+---
+
+### Story 11 — Edição inline do fence info string (DB) 🚧 P2
+
+Editar metadados do bloco DB sem sair (alias, connection, limit, timeout, display_mode).
+
+**Tasks:**
+- [ ] `<C-a>` edita alias (prompt inline)
+- [ ] `<C-c>` edita connection — já existe via `Ctrl+L` picker; não duplicar
+- [ ] `<C-l>` edita limit (numérico)
+- [ ] `<C-t>` edita timeout (numérico, ms)
+- [ ] `<C-d>` edita display mode (input/output/split) — Story 08 cobre
 - [ ] `<CR>` confirma; `<Esc>` cancela
-- [ ] Validação: alias único no doc, connection existe, limit numérico, etc.
+- [ ] Validação: alias único no doc, limit > 0, timeout > 0
 - [ ] Erro → notification no status bar
-- [ ] Persiste no fence info canônico
-- [ ] Testes: cada campo editado persiste corretamente, validações bloqueiam valores inválidos
+- [ ] Persiste no fence canônico (ordem: alias → connection → limit → timeout → display)
+- [ ] Testes: cada campo persiste, validação bloqueia inválido
+
+**Depende de:** Story 04.5 (timeout token).
+
+---
+
+## P3 / Deferred V2 (DB)
+
+- 🧊 **Schema panel UI lateral** — desktop também só tem STUB. Quando virar, ambos avançam juntos.
+- 🧊 **Run history persistence + viewer** — `block_run_history` table existe no desktop mas não é populado pelo bloco DB. Aguardar product decision.
+- 🧊 **Resolved bindings debug panel** — útil mas baixa prioridade; pode virar `:resolve <alias>` ex command no futuro.
+- 🧊 **Live elapsed timer (100ms tick)** — verificar se TUI já mostra elapsed; se não, baixa prioridade.
+
+---
+
+## Stories pausadas (HTTP / E2E) ⏸
+
+Retomar após DB-parity P0–P1 entregar. Estado preservado pra retomar sem perda.
+
+### Story 01 — Widget shell compartilhado ⏸
+
+Trait `BlockWidget` + header padrão + display modes + state badges. Útil quando voltar pros 3 tipos de bloco. Hoje cada bloco tem render ad-hoc — refatoração pode esperar.
+
+### Story 02 — Widget HTTP — input ⏸
+### Story 03 — Widget HTTP — output ⏸
+### Story 06 — Widget E2E — input ⏸
+### Story 07 — Widget E2E — output ⏸
+
+(Bodies originais preservados em `git log` — `docs/backlog/21-tui-block-widgets.md` antes de 2026-04-26.)
+
+### Story 10 — Autocomplete `{{refs}}` cross-block (todos os tipos) ⏸
+
+Cobertura DB-only via Stories 04.4 + 04.7. Quando HTTP/E2E voltarem, esta story expande pros outros 2 tipos.

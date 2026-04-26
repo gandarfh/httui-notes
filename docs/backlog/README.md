@@ -59,7 +59,7 @@ Epic 07 (HTTP Client), Epic 16 (DB Security pattern)
 | 18  | [TUI Buffer & Rendering](18-tui-buffer-rendering.md) | 7  | 17          | planned |
 | 19  | [TUI Vim Engine](19-tui-vim-engine.md)          | 16      | 18          | planned |
 | 20  | [TUI Editor Shell](20-tui-editor-shell.md)      | 10      | 18, 19      | planned |
-| 21  | [TUI Block Widgets](21-tui-block-widgets.md)    | 11      | 18, 19      | planned |
+| 21  | [TUI Block Widgets](21-tui-block-widgets.md)    | 11+9    | 18, 19      | active (DB-parity foco) |
 | 22  | [TUI Integrations](22-tui-integrations.md)      | 10      | 17, 20      | planned |
 | 23  | [TUI Polish & Distribution](23-tui-polish-distribution.md) | 14 | 17-22       | planned |
 | 24  | [HTTP Block Redesign](24-http-block-redesign.md) | 8       | 07, 16      | planned |
@@ -121,8 +121,8 @@ Epic 07 (HTTP Client), Epic 16 (DB Security pattern)
 **Fase 13 — TUI core (parallelizable parcialmente)**
 
 17. Epic 18 — TUI Buffer & Rendering (block tree, parser reuso, prose highlight, reflow)
-18. Epic 19 — TUI Vim Engine (modos, motions, operadores, text objects, registers, marks, ex, macros, fronteira bloco/prose) — depende de 18
-19. Epic 21 — TUI Block Widgets (HTTP/DB/E2E inline com streaming, cancel, autocomplete) — paralelo com 19
+18. Epic 19 — TUI Vim Engine (modos, motions, operadores, text objects, registers, marks, ex, macros, fronteira bloco/prose) — depende de 18 — **congelado em Round 2 + visual mode (foco mudou pra paridade DB)**
+19. Epic 21 — TUI Block Widgets (HTTP/DB/E2E inline com streaming, cancel, autocomplete) — paralelo com 19 — **active: DB-parity track (substories 04.1–04.9 + 05.1–05.3); HTTP/E2E pausados**
 
 **Fase 14 — TUI shell & integracoes**
 
