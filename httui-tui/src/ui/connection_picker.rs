@@ -18,13 +18,19 @@ use ratatui::{
 };
 
 use crate::app::ConnectionPickerState;
+use crate::ui::BlockAnchor;
 
 /// Maximum body rows shown at once. The list scrolls past this via
 /// `ListState`'s built-in selection-aware offset.
 const MAX_VISIBLE_ROWS: usize = 12;
 
-pub fn render(frame: &mut Frame, editor_area: Rect, state: &ConnectionPickerState) {
-    let popup = compute_popup_rect(editor_area, state);
+pub fn render(
+    frame: &mut Frame,
+    editor_area: Rect,
+    state: &ConnectionPickerState,
+    anchor: Option<BlockAnchor>,
+) {
+    let popup = compute_popup_rect(editor_area, state, anchor);
     let bg_style = Style::default().bg(Color::Black).fg(Color::White);
 
     // Hard-fill the popup area before painting so editor content
@@ -101,13 +107,21 @@ pub fn render(frame: &mut Frame, editor_area: Rect, state: &ConnectionPickerStat
     frame.render_widget(Paragraph::new(footer).style(bg_style), footer_area);
 }
 
-/// Compute the popup rect. Picks a width that fits the longest
-/// connection label (clamped between 30 and the editor width), and
-/// a height of `min(connections, MAX_VISIBLE_ROWS) + chrome`.
-/// Centered horizontally; vertically anchored ~3 rows below the
-/// editor top so it floats over the document without covering the
-/// status bar.
-fn compute_popup_rect(area: Rect, state: &ConnectionPickerState) -> Rect {
+/// Compute the popup rect. Width fits the longest connection label
+/// (clamped between 30 and the editor width); height is
+/// `min(connections, MAX_VISIBLE_ROWS) + chrome`.
+///
+/// Anchoring rule: when `anchor` is `Some` (we know the focused
+/// block's screen rect), the popup snaps to the block's left edge
+/// and prefers the slot directly *above* the block. If there's not
+/// enough headroom above, it flips to the slot just below. When
+/// `anchor` is `None` (block off-screen / no doc), it falls back to
+/// floating ~3 rows below the editor top, horizontally centered.
+fn compute_popup_rect(
+    area: Rect,
+    state: &ConnectionPickerState,
+    anchor: Option<BlockAnchor>,
+) -> Rect {
     const PADDING: u16 = 4; // borders + spacing
     let longest = state
         .connections
@@ -117,11 +131,36 @@ fn compute_popup_rect(area: Rect, state: &ConnectionPickerState) -> Rect {
         .unwrap_or(20) as u16;
     let width = (longest + PADDING).clamp(30, area.width.saturating_sub(2));
     let visible = state.connections.len().min(MAX_VISIBLE_ROWS) as u16;
-    let height = visible
-        + 3 // top border + footer + bottom border
-        ;
-    let x = area.x + (area.width.saturating_sub(width)) / 2;
-    let y = area.y + 3.min(area.height.saturating_sub(height));
+    let height = visible + 3; // top border + footer + bottom border
+
+    let (x, y) = match anchor {
+        Some(a) => {
+            // Horizontal: align with the block's left edge, but
+            // shift left if it would overflow the right of the
+            // editor area.
+            let max_x = area.x + area.width.saturating_sub(width);
+            let x = (area.x + 2).min(max_x); // +2 = past the block's left border
+            // Vertical: prefer above the block. If the block sits
+            // too close to the top of the editor, drop the popup
+            // below the block instead.
+            let above_y = a.screen_top.checked_sub(height);
+            let below_y = a.screen_top.saturating_add(a.height);
+            let fits_below = below_y.saturating_add(height)
+                <= area.y.saturating_add(area.height);
+            let y = match (above_y, fits_below) {
+                (Some(top), _) if top >= area.y => top,
+                (_, true) => below_y,
+                (Some(top), false) => top, // fall back even if it clips
+                (None, false) => area.y,
+            };
+            (x, y)
+        }
+        None => {
+            let x = area.x + (area.width.saturating_sub(width)) / 2;
+            let y = area.y + 3u16.min(area.height.saturating_sub(height));
+            (x, y)
+        }
+    };
     Rect {
         x,
         y,

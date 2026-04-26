@@ -549,6 +549,62 @@ enabled = false              # reservado pro futuro
 - **Reuso de schema_cache:** quando executor DB roda via TUI e popula schema, desktop ganha o cache de graça. Isso é a feature, mas vale um teste explícito.
 - **Help overlay sobreposto:** decisão de design — modal full-screen ou side panel? Ambos funcionam; MVP opta por modal (mais simples).
 
+## 15.bis Status atual do bloco DB e modais
+
+Snapshot do que já está implementado (épico 21 + integrações), referência rápida pra próximo trabalho:
+
+### Bloco DB
+- **Render**: tabela com `ratatui::Table` (header bold, column_spacing 2, truncate em 30 chars). Border yellow durante `Running`, green em `Success`, red em `Error`.
+- **Result line**: `✓ N rows · Xms` / `… running  (Ctrl-C to cancel)` / `✗ {msg}`.
+- **Footer**: `connection: {alias|name|UUID} · press 'r' to run` (UUIDs resolvem pra nome via `App.connection_names`).
+- **Run**: `r` (em `parse_normal`) → `apply_run_block`. **Async via `tokio::spawn`** + `CancellationToken` em `App.running_query`. Resultado volta via `AppEvent::DbBlockResult` no main loop. UI nunca congela.
+- **Cancel**: `Ctrl-C` durante query rodando dispara `cancel_running_query` (intercepta no top do `dispatch`, antes do mode parsing).
+- **Result table viewport**: persistente em `App.result_viewport_top: HashMap<segment_idx, u16>`, scroll estilo editor (`clamp_viewport` com `SCROLL_OFF=2`). Cursor flutua na banda visível; janela só desliza quando cursor sairia (não mais "leading from bottom").
+- **Scroll infinito (paginação)**: prefetch automático em `j` quando cursor está dentro de `DB_PREFETCH_THRESHOLD=5` rows do fundo + `has_more=true`. `load_more_db_block` faz spawn async com `offset = rows.len()`; `handle_db_block_result(LoadMore)` faz merge das rows novas + atualiza `has_more`.
+
+### Modal de detalhe de linha (`Mode::DbRowDetail`)
+- **Trigger**: `<CR>` no result row.
+- **Body**: snapshot do row pintado como prose num `Document` próprio em `DbRowDetailState.doc`. Header line: `coluna  (TYPE)` (cyan bold + DarkGray). Value line (2-space indent): cor `#c6d0f5`. JSON em strings (typical `jsonb` sobre wire) é parseado e pretty-printed.
+- **Navegação**: `app.document_mut()` redireciona pro `state.doc` enquanto modal aberto, então **todas as motions/operators do vim engine funcionam de graça**: `hjkl`, `wbe`, `gg`/`G`, `Ctrl-d`/`Ctrl-u`, `f`/`F`/`t`/`T`/`;`/`,`, counts (`5j`, `10w`).
+- **Yank**: `y{motion}`, `yy`, `yiw`, `yi{` (text objects), `viwy` — todos funcionam e auto-sync pro **clipboard do sistema** via `arboard`.
+- **Visual mode**: `v`/`V` entram visual-mode dentro do modal (modal renderiza mesmo com `mode == Visual` porque o gate é `app.db_row_detail.is_some()`, independente de mode). `va{`/`vi{` text objects via novo `Action::VisualSelectTextObject`. Após operator/exit visual, `return_from_visual` restaura `Mode::DbRowDetail`.
+- **Filter no parse_db_row_detail**: bloqueia mutação (insert/edit/paste/undo/d/c) e mode transitions disruptivos (search `/`, ex `:`). Search e visual-mode plumbing diferenciados — search ainda bloqueado, visual liberado.
+- **`Y`** (uppercase) — copia row inteiro como JSON pretty-printed (via `arboard`).
+- **Close**: `Ctrl-C` (apenas — `Esc`/`q` mantêm semântica vim).
+- **Scroll persistente**: `viewport_top` em `DbRowDetailState`, `clamp_viewport` igual editor.
+- **Cursor visual**: terminal cursor via `set_cursor_position` (sem highlight de linha cheia — confundia ao mover).
+
+### Connection picker (popup)
+- **Trigger**: `Ctrl-L` (vim binda pra "redraw screen", livre). Mnemônico: **L** = list de conexões.
+- **Anchor**: popup flutua **acima** do bloco DB focado (computado em `ui::compute_block_anchor` via `layout_document` + `pane.viewport_top`). Cai pra baixo do bloco se não couber acima; fallback central se bloco off-screen.
+- **State**: `App.connection_picker: Option<ConnectionPickerState>`. Pré-seleciona a conexão atual do bloco.
+- **Confirm** (`Enter`): escreve `connection=<id>` em `block.params`, remove campo legado `connection_id`, marca doc dirty via `doc.snapshot()`.
+- **Independência de mode**: como o modal de detalhe, popup pinta sempre que state é `Some`.
+
+### Keybindings centralizados
+Atalhos de **app** (não-vim) ficam em `vim::keybindings`:
+
+| Constante                  | Tecla      | Ação                                      |
+| -------------------------- | ---------- | ----------------------------------------- |
+| `QUICK_OPEN`               | `Ctrl+P`   | Abre quick-open                           |
+| `TREE_TOGGLE`              | `Ctrl+E`   | Toggle file-tree sidebar                  |
+| `FOCUS_SWAP`               | `Tab`      | Swap focus sidebar ↔ editor               |
+| `RUN_BLOCK`                | `r`        | Roda bloco no cursor                      |
+| `OPEN_DB_ROW_DETAIL`       | `<CR>`     | Abre modal row-detail (em result row)     |
+| `OPEN_CONNECTION_PICKER`   | `Ctrl+L`   | Abre connection picker (em bloco DB)      |
+
+Vim primitives (motions, operators, modes) continuam hardcoded no `parser.rs` — rebindar `j` quebraria mental model. Quando `vim.toml` keymap loading chegar, o ponto de extensão é substituir esses `pub const` por valores carregados do TOML.
+
+### Clipboard
+- **`vim::dispatch::sync_yank_to_clipboard`** chamado depois de cada operator. Cobre `apply_op_motion`, `apply_op_linewise`, `apply_op_textobject`, `apply_visual_operator`. Yank via vim → clipboard sistema automaticamente.
+- **`crate::clipboard::set_text(&str)`** wrapper de `arboard`. Falha (SSH sem forward, sandbox) vira status warning, não bloqueia.
+
+### Async DB execution
+- **`AppEvent::DbBlockResult { segment_idx, kind, outcome }`** — task de execução envia o resultado pro main loop quando termina.
+- **`EventLoop::sender()`** expõe `mpsc::UnboundedSender<AppEvent>` pra spawned tasks.
+- **`App.event_sender`** + **`App.running_query`** — campos novos em `App`. `RunningQuery` guarda `cancel: CancellationToken`, `started_at`, `kind` (Run vs LoadMore), `segment_idx`.
+- **Limitação**: uma query por vez. SQLite/MySQL não propagam cancel pro driver — query pode terminar no servidor. Postgres funciona limpo.
+
 ## 16. Resumo do escopo total
 
 1. **Foundation** — extrair `httui-core`, scaffold do binário, event loop, config.

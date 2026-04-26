@@ -77,8 +77,8 @@ UI do bloco DB: connection, SQL editor, tabs de query/settings.
 
 ### Tasks
 
-- [ ] Header com connection slug destacado: `DB  db1  [prod]  ...`
-- [ ] Connection picker: `<leader>dp` ou click no slug → overlay com lista de conexões
+- [ ] Header com connection slug destacado: `DB  db1  [prod]  ...` (atual mostra no footer)
+- [x] **Connection picker**: `Ctrl+L` (em vez de `<leader>dp` — leader keys ainda não landed) abre **popup ancorado acima do bloco** (cai pra baixo se sem headroom). Estado em `App.connection_picker`. Pré-seleciona conexão atual. `Enter` escreve `connection=<id>` em `block.params` + `doc.snapshot()` pra undo. Implementação: `ui::connection_picker` + `vim::dispatch::open_connection_picker`. Keybinding centralizado em `vim::keybindings::OPEN_CONNECTION_PICKER`.
 - [ ] SQL editor multi-line:
   - [ ] Syntect SQL highlight
   - [ ] Autocomplete de schema: tabelas e colunas da conexão selecionada (reusa `schema_cache` do core)
@@ -96,18 +96,17 @@ Renderizar resultados como tabela com scroll, streaming do executor, e Load more
 
 ### Tasks
 
-- [ ] `ratatui::widgets::Table` com:
-  - [ ] Headers colunas (nomes do schema)
-  - [ ] Linhas virtualizadas (só renderiza visíveis)
-  - [ ] Scroll horizontal (`zh`/`zl` ou `<C-h>`/`<C-l>`)
-  - [ ] Scroll vertical (`<C-e>`/`<C-y>`)
-- [ ] Seleção de linha com `<CR>` abre drawer lateral com valores full (útil pra JSON/texto longo)
-- [ ] Cell com valor null: renderiza `NULL` em cinza itálico
-- [ ] Streaming: cada `ExecutionEvent::Row` chega via channel, push na tabela, redraw
-- [ ] `ExecutionEvent::Stats` finaliza com "N rows fetched" no footer
-- [ ] Footer com "N rows" + `[Load more]` botão/ação (`<CR>` no footer executa query com `OFFSET`)
-- [ ] Cancel durante streaming: `<C-c>` aborta (reusa cancel token do stage 3 do redesign)
-- [ ] Testes: streaming atualiza incrementalmente, cancel funciona, Load more buscando offset correto
+- [x] `ratatui::widgets::Table` com:
+  - [x] Headers colunas (nomes do schema)
+  - [x] Linhas virtualizadas (viewport persistente em `App.result_viewport_top`, scroll estilo editor com `clamp_viewport` + `SCROLL_OFF=2`)
+  - [ ] Scroll horizontal (`zh`/`zl` ou `<C-h>`/`<C-l>`) — pendente
+  - [x] Scroll vertical: `j`/`k` movem cursor; viewport segue. `Ctrl-d`/`Ctrl-u` via motion engine.
+- [x] Seleção de linha com `<CR>` abre **modal centralizado** com valores full (em vez de drawer lateral). Modal usa `Document` próprio + redirecionamento de `app.document_mut()`, então motions vim completas funcionam (`hjkl`, `wbe`, text objects `vi{`/`va{`, etc.). `Y` copia row inteiro como JSON via `arboard`.
+- [x] Cell com valor null: renderiza `(null)` em cinza
+- [ ] Streaming: cada `ExecutionEvent::Row` chega via channel, push na tabela, redraw — pendente (executor atual entrega resultado completo)
+- [x] Footer com "N rows" — feito; `[Load more]` substituído por **prefetch automático** no `j` quando cursor está dentro de `DB_PREFETCH_THRESHOLD=5` rows do fundo + `has_more=true`
+- [x] Cancel durante execução: `Ctrl-C` aborta via `CancellationToken` em `App.running_query` (intercepta no top do `dispatch`). SQLite/MySQL não propagam cancel pro driver; Postgres funciona limpo.
+- [x] Testes: prefetch threshold (`should_prefetch_*`), viewport (`clamp_result_viewport_*`), modal body (`build_body_lines_*`)
 
 ## Story 06: Widget E2E — input
 
@@ -166,16 +165,16 @@ Integração com executores do core via channel.
 
 ### Tasks
 
-- [ ] `:run` em `BlockSelected` chama `httui-core::executor::dispatch(block_node)`
-- [ ] `:run!` ignora cache (força re-execução)
-- [ ] Executor roda em `tokio::spawn`, recebe `CancelToken`
-- [ ] Eventos do executor viram `AppEvent::BlockEvent { block_id, event }`
-- [ ] Tipos de evento: `Started`, `Progress`, `Row` (DB), `StepDone` (E2E), `Completed { result }`, `Failed { error }`
-- [ ] `<C-c>` com block selected cancela via token
-- [ ] Cache hit: se `cached_result.is_some()` e hash bate, não executa — só mostra cached badge
-- [ ] Resolução de dependências (reuso de `resolve_dependencies` do core)
-- [ ] Deps executando simultaneamente: lock compartilhado (já existe em core)
-- [ ] Testes: execução com sucesso, com erro, cancelada, com deps
+- [x] `r` em normal mode (em vez de `:run`) chama `apply_run_block` → `httui-core::executor::db::DbExecutor`
+- [ ] `:run!` ignora cache — pendente (atual sempre re-executa)
+- [x] Executor roda em `tokio::spawn`, recebe `CancellationToken` (DB; HTTP/E2E pendentes)
+- [x] Resultado vira `AppEvent::DbBlockResult { segment_idx, kind, outcome }` no main loop
+- [ ] Tipos de evento granulares (`Started`, `Progress`, `Row`, `StepDone`) — atual entrega resultado completo no `Completed`. Streaming pendente.
+- [x] `Ctrl-C` cancela via `cancel_running_query` (intercepta no top do `dispatch`, antes do mode parsing)
+- [ ] Cache hit visual ainda não checa hash — sempre re-executa
+- [x] Resolução de refs `{{alias.path}}` em `resolve_block_refs` (env vars + block deps)
+- [ ] Deps com lock compartilhado pendente
+- [x] Testes: `should_prefetch_*`, viewport `clamp_*`, modal body lines
 
 ## Story 10: Autocomplete de `{{refs}}` e schema
 
