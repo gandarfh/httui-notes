@@ -202,7 +202,10 @@ src-tauri/src/
 │   ├── mod.rs               # setup SQLite, migrations
 │   ├── connections.rs       # CRUD connections + pool management
 │   ├── environments.rs      # CRUD environments + variables
-│   ├── block_results.rs     # cache de resultados
+│   ├── block_results.rs     # cache de resultados (invalidado por hash)
+│   ├── block_settings.rs    # flags por bloco (follow_redirects, verify_ssl, …)
+│   ├── block_examples.rs    # respostas pinadas pelo usuário
+│   ├── block_history.rs     # histórico de execução (metadata only, last N)
 │   ├── schema_cache.rs      # metadata de tabelas/colunas
 │   └── search_index.rs      # FTS5
 ├── fs/
@@ -342,6 +345,65 @@ adjacentes — o probe Y atravessa varios e o cursor teleporta. Com **um** widge
 substituindo **um** range doc, `moveVertically` comporta-se. Por isso o close
 panel consolida fence-close + result + statusbar num unico widget ao inves de
 tres em sequencia.
+
+---
+
+## 7. HTTP block — caminho nativo CM6 com streaming
+
+Mesmo pattern do DB block (fenced-native, painel React via portais), mas com
+particularidades de HTTP. Body do fence e formato HTTP-message
+(`METHOD URL\n<headers>\n\n<body>`), parser em `src/lib/blocks/http-fence.ts`.
+Detalhes completos em `docs/http-block-redesign.md`.
+
+**Executor streamed (`httui-core/src/executor/http/mod.rs`):**
+
+```rust
+pub async fn execute_streamed<F>(
+    &self,
+    params: serde_json::Value,
+    cancel: CancellationToken,
+    on_chunk: F,
+) -> Result<HttpResponse, ExecutorError>
+where F: Fn(HttpChunk) + Send,
+```
+
+Consome `Response::bytes_stream()` em loop, emitindo:
+
+1. `HttpChunk::Headers { status_code, status_text, headers, ttfb_ms }` — assim
+   que `req.send().await` retorna headers. `ttfb_ms` cronometra do dispatch
+   ate esse ponto (= "Time to First Byte" no Postman).
+2. `HttpChunk::BodyChunk { offset, bytes }` — por chunk yieldado pelo stream.
+3. `HttpChunk::Complete(HttpResponse)` — body consolidado + timing total +
+   cookies. Frontend grava no cache SQLite a partir desse chunk.
+
+`execute_with_cancel` legacy virou wrapper com callback no-op — todos os
+30+ testes legacy continuam validos sem mudanca.
+
+**Memory cap:** body cap absoluto de **100 MB** (`MAX_BODY_BYTES`). Acima
+disso o executor retorna `[body_too_large]` antes de copiar mais bytes,
+evitando OOM em downloads acidentais (defesa em profundidade — o stream ja
+mantem memoria ~constante por chunk de ~16 KB).
+
+**Cancel mid-body:** o `tokio::select!` no loop observa o `CancellationToken`
+a cada chunk. Cancel mid-flight retorna `Err("Request cancelled")` e descarta
+os bytes parciais (mesmo pattern do DB block). O `executions.rs` Tauri command
+converte em `HttpChunk::Cancelled` no wire.
+
+**Timing breakdown (V1):** `total_ms` + `ttfb_ms`. Sub-fields
+`dns_ms`/`connect_ms`/`tls_ms` ficam `None` — preenche-los exige trocar
+`reqwest` por `isahc`/libcurl. Decisao registrada em
+`docs/http-timing-isahc-future.md` com criterios de reabertura. `connection_reused`
+fica `false` no V1 pelo mesmo motivo.
+
+**Body viewer (`HttpBodyCM6Viewer` em `HttpFencedPanel.tsx`):** CodeMirror 6
+read-only com `oneDarkHighlightStyle` e linguagem selecionada por
+`Content-Type` (`json`/`xml`/`html`/`svg`, com fallback heuristico). Substitui
+um `<pre dangerouslySetInnerHTML>` + `lowlight` que travava o webview em
+respostas de MB.
+
+**Status bar streaming UX:** durante o stream, o `onProgress` callback no
+`executeHttpStreamed` notifica os bytes cumulativos recebidos; status bar
+mostra `· downloading 1.2 MB…` em vez do indicador de tempo idle.
 
 ---
 

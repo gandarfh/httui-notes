@@ -47,6 +47,12 @@ Armazena tudo que não pertence ao arquivo: estado do app, secrets e cache de ex
     
 -   `block_results` — cache de resultados de blocos executáveis. Campos: file\_path, block\_hash, status (success, error), response (JSON), total\_rows (para paginação), executed\_at, elapsed\_ms. O block\_hash é calculado a partir do conteúdo do bloco — se o conteúdo muda, o cache é invalidado automaticamente.
     
+-   `block_settings` — configurações por (file\_path, alias) que não cabem no info string do fence: `follow_redirects`, `verify_ssl`, `encode_url`, `trim_whitespace`, `history_disabled`. Persistido fora do .md pra não poluir o vault com flags que mudam UX local.
+    
+-   `block_examples` — respostas pinadas pelo usuário ("Save as example") por (file\_path, alias). Metadata + body completo, distinto de `block_results` (que é cache invalidável). Mostradas no drawer de settings de cada bloco.
+    
+-   `block_run_history` — histórico de execuções (last 10 por bloco, configurável). **Apenas metadados**: método, URL canônica, status, sizes, elapsed, outcome, ran\_at. Nunca persiste body de request/response (privacy by default — use Examples pra preservar respostas específicas).
+    
 -   `app_config` — key-value store para configurações. Inclui: vault ativo, layout dos panes, arquivos abertos, environment ativo, preferências do usuário, keybinding mode, theme override.
     
 -   `schema_cache` — metadata das conexões para autocomplete. Campos: connection\_id, table\_name, column\_name, data\_type, cached\_at. Cache com TTL, refresh ao conectar/reconectar.
@@ -191,8 +197,8 @@ Tokens do info string: `alias`, `timeout`, `display` (`input`|`split`|`output`),
 
 -   **Toolbar (top):** badge `HTTP` · alias · método colorido · host (derivado da URL) · toggle `[raw│form]` · ▶/⏹ run/cancel · ⚙ settings.
 -   **Body area:** texto cru em modo `raw` (com método colorido na primeira linha); tabular Params/Headers/Body em modo `form`.
--   **Result tabs:** Body (sub-toggle `pretty│raw`) · Headers · Cookies · Timing · Raw.
--   **Status bar (footer):** dot por status class (2xx green, 3xx blue, 4xx orange, 5xx red), host, elapsed, size, "ran X ago", alias, hint de atalho, e menu `⤓` Send-as.
+-   **Result tabs:** Body (sub-toggle `pretty│raw`, render via CM6 read-only com syntax highlight escolhido por Content-Type) · Headers · Cookies · Timing (V1: total + ttfb; sub-fields DNS/Connect/TLS adiados — ver [`http-timing-isahc-future.md`](./http-timing-isahc-future.md)) · Raw.
+-   **Status bar (footer):** dot por status class (2xx green, 3xx blue, 4xx orange, 5xx red), host, elapsed, size, "ran X ago" (idle) ou "downloading X kb…" (durante stream), alias, hint de atalho, e menu `⤓` Send-as.
 
 **Cursor dentro do bloco:** cercas reveladas, body editável como texto puro. Vim, multi-cursor, undo/redo unificados via CM6.
 
@@ -203,6 +209,8 @@ Tokens do info string: `alias`, `timeout`, `display` (`input`|`split`|`output`),
 **History:** SQLite `block_run_history` armazena últimos N runs (metadata only — método, URL canônica, status, sizes, elapsed, timestamp). Drawer expõe via section "History (last N)" com botão "Clear history".
 
 **Cache:** `sha256(method + URL com sorted-encoded params + sorted headers + body + env-snapshot dos vars referenciados)`. Mutações (POST/PUT/PATCH/DELETE) **nunca** servem do cache.
+
+**Streaming + memory cap:** o executor consome a response via `bytes_stream` e emite `Headers` → `BodyChunk*` → `Complete` no `tauri::Channel<HttpChunk>`. Frontend usa o `Headers` chunk pra mostrar status/TTFB imediatamente e o `BodyChunk` cumulativo pra exibir "downloading X kb…" no status bar. Body cap absoluto: **100 MB** — acima disso o executor retorna `[body_too_large]` antes de copiar mais bytes (defesa contra OOM em downloads acidentais). Cancel mid-body descarta os bytes parciais (mesmo pattern do DB block).
 
 ### DB block
 
