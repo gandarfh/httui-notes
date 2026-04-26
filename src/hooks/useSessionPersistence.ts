@@ -1,6 +1,5 @@
 import { useEffect, useRef } from "react";
 import { restoreSession, setConfig, startWatching, rebuildSearchIndex } from "@/lib/tauri/commands";
-import { markdownToHtml } from "@/lib/markdown/parser";
 import { usePaneStore } from "@/stores/pane";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useSettingsStore } from "@/stores/settings";
@@ -36,7 +35,6 @@ export function useSessionPersistence(): void {
     (async () => {
       try {
         const session = await restoreSession();
-        const useCM = useSettingsStore.getState().editorEngine === "codemirror";
 
         useWorkspaceStore.getState().setVaults(session.vaults);
         if (session.vim_enabled) useSettingsStore.getState().setVimEnabled(true);
@@ -59,7 +57,7 @@ export function useSessionPersistence(): void {
               const contents = new Map<string, string>();
               for (const tab of session.tab_contents) {
                 if (tab.content) {
-                  contents.set(tab.file_path, useCM ? tab.content : markdownToHtml(tab.content));
+                  contents.set(tab.file_path, tab.content);
                 }
               }
 
@@ -84,7 +82,7 @@ export function useSessionPersistence(): void {
             const tab = session.tab_contents[0];
             if (tab?.content) {
               const { openFile } = usePaneStore.getState();
-              openFile(tab.file_path, useCM ? tab.content : markdownToHtml(tab.content), tab.vault_path);
+              openFile(tab.file_path, tab.content, tab.vault_path);
             }
           }
         }

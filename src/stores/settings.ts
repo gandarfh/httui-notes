@@ -7,8 +7,6 @@ import { applyTheme } from "@/lib/theme/apply";
 
 // --- Types ---
 
-export type EditorEngine = "tiptap" | "codemirror";
-
 export interface AppSettings {
   autoSaveMs: number;
   editorFontSize: number;
@@ -34,7 +32,6 @@ interface SettingsState {
   // Editor settings
   vimEnabled: boolean;
   vimMode: string;
-  editorEngine: EditorEngine;
 
   // Layout
   sidebarOpen: boolean;
@@ -47,7 +44,6 @@ interface SettingsState {
   resetTheme: () => void;
   toggleVim: () => void;
   setVimMode: (mode: string) => void;
-  setEditorEngine: (engine: EditorEngine) => void;
   setVimEnabled: (enabled: boolean) => void;
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
@@ -65,7 +61,6 @@ export const useSettingsStore = create<SettingsState>()(
       theme: DEFAULT_THEME,
       vimEnabled: false,
       vimMode: "normal",
-      editorEngine: "codemirror" as EditorEngine,
       sidebarOpen: true,
 
       openSettings: () => set({ settingsOpen: true }),
@@ -103,7 +98,6 @@ export const useSettingsStore = create<SettingsState>()(
 
       toggleVim: () => set((state) => ({ vimEnabled: !state.vimEnabled })),
       setVimMode: (mode) => set({ vimMode: mode }),
-      setEditorEngine: (engine) => set({ editorEngine: engine }),
       setVimEnabled: (enabled) => set({ vimEnabled: enabled }),
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
       setSidebarOpen: (open) => set({ sidebarOpen: open }),

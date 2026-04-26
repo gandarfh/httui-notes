@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Box, Flex, Text } from "@chakra-ui/react";
 import { TabBar } from "../TabBar";
-import { Editor } from "@/components/editor";
 import { MarkdownEditor } from "@/components/editor/MarkdownEditor";
 import { DiffViewer } from "@/components/editor/DiffViewer";
 import { ConflictBanner } from "../ConflictBanner";
@@ -31,29 +30,30 @@ export function PaneNode({ layout, path, handleEditorChange, onNavigateFile }: P
   const closeOthers = usePaneStore((s) => s.closeOthers);
   const closeAll = usePaneStore((s) => s.closeAll);
   const vimEnabled = useSettingsStore((s) => s.vimEnabled);
-  const setVimMode = useSettingsStore((s) => s.setVimMode);
-  const editorEngine = useSettingsStore((s) => s.editorEngine);
   // navigateFile passed via prop chain to avoid WorkspaceContext subscription
   // (which would re-render on every file tree change, resetting CM6 scroll)
 
-  // When switching to CM mode, re-read files that were cached as HTML by TipTap
-  const prevEngineRef = useRef(editorEngine);
+  // Re-read files cached as HTML by the legacy TipTap editor on first open
+  // after upgrade. Detected by the leading `<` — markdown never starts with
+  // an HTML tag at column 0.
+  const recoveredRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    if (prevEngineRef.current !== editorEngine && editorEngine === "codemirror") {
-      if (layout.type === "leaf") {
-        for (const tab of layout.tabs) {
-          if (tab.kind === "diff") continue;
-          const cached = editorContents.get(tab.filePath);
-          if (cached && cached.trimStart().startsWith("<")) {
-            readNote(tab.vaultPath, tab.filePath).then((md) => {
-              openFile(tab.filePath, md, tab.vaultPath);
-            }).catch(() => {});
-          }
-        }
+    if (layout.type !== "leaf") return;
+    for (const tab of layout.tabs) {
+      if (tab.kind === "diff") continue;
+      const cached = editorContents.get(tab.filePath);
+      if (
+        cached &&
+        cached.trimStart().startsWith("<") &&
+        !recoveredRef.current.has(tab.filePath)
+      ) {
+        recoveredRef.current.add(tab.filePath);
+        readNote(tab.vaultPath, tab.filePath)
+          .then((md) => openFile(tab.filePath, md, tab.vaultPath))
+          .catch(() => {});
       }
     }
-    prevEngineRef.current = editorEngine;
-  }, [editorEngine, layout, editorContents, openFile]);
+  }, [layout, editorContents, openFile]);
 
   if (layout.type === "leaf") {
     const activeTab = layout.tabs[layout.activeTab];
@@ -95,23 +95,13 @@ export function PaneNode({ layout, path, handleEditorChange, onNavigateFile }: P
               />
             )}
             <Box flex={1} overflow="hidden">
-              {editorEngine === "codemirror" ? (
-                <MarkdownEditor
-                  content={content}
-                  onChange={(c) => handleEditorChange(layout.id, activeTab.filePath, c, activeTab.vaultPath)}
-                  filePath={activeTab.filePath}
-                  vimEnabled={vimEnabled}
-                  onNavigateFile={onNavigateFile}
-                />
-              ) : (
-                <Editor
-                  content={content}
-                  onChange={(c) => handleEditorChange(layout.id, activeTab.filePath, c, activeTab.vaultPath)}
-                  filePath={activeTab.filePath}
-                  vimEnabled={vimEnabled}
-                  onVimModeChange={setVimMode}
-                />
-              )}
+              <MarkdownEditor
+                content={content}
+                onChange={(c) => handleEditorChange(layout.id, activeTab.filePath, c, activeTab.vaultPath)}
+                filePath={activeTab.filePath}
+                vimEnabled={vimEnabled}
+                onNavigateFile={onNavigateFile}
+              />
             </Box>
           </Box>
           )

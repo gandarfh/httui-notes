@@ -1,7 +1,5 @@
 import { useCallback, useRef } from "react";
 import { readNote, writeNote, setConfig } from "@/lib/tauri/commands";
-import { markdownToHtml } from "@/lib/markdown/parser";
-import { htmlToMarkdown } from "@/lib/markdown/serializer";
 import { usePaneStore } from "@/stores/pane";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useSettingsStore } from "@/stores/settings";
@@ -13,16 +11,16 @@ export function useEditorSession() {
   const handleFileSelect = useCallback(
     async (filePath: string) => {
       const vaultPath = useWorkspaceStore.getState().vaultPath;
-      const useCM = useSettingsStore.getState().editorEngine === "codemirror";
       if (!vaultPath) return;
       try {
         const { editorContents, openFile } = usePaneStore.getState();
         const cached = editorContents.get(filePath);
-        const needsRead = !cached || (useCM && cached.trimStart().startsWith("<"));
+        // Legacy TipTap sessions cached HTML — detect and force a fresh
+        // markdown read so the CM6 editor doesn't render an HTML string.
+        const needsRead = !cached || cached.trimStart().startsWith("<");
         if (needsRead) {
           const markdown = await readNote(vaultPath, filePath);
-          const content = useCM ? markdown : markdownToHtml(markdown);
-          openFile(filePath, content, vaultPath);
+          openFile(filePath, markdown, vaultPath);
         } else {
           openFile(filePath, cached, vaultPath);
         }
@@ -37,8 +35,7 @@ export function useEditorSession() {
   const handleEditorChange = useCallback(
     (_paneId: string, filePath: string, content: string, tabVaultPath: string) => {
       const { updateContent, markUnsaved, activePaneId } = usePaneStore.getState();
-      const { settings: { autoSaveMs }, editorEngine } = useSettingsStore.getState();
-      const useCM = editorEngine === "codemirror";
+      const { settings: { autoSaveMs } } = useSettingsStore.getState();
       updateContent(filePath, content);
       markUnsaved(activePaneId, filePath, true);
 
@@ -49,7 +46,7 @@ export function useEditorSession() {
           if (usePaneStore.getState().hasConflict(filePath)) return;
           if (suppressedFiles.current.has(filePath)) return;
           try {
-            await writeNote(tabVaultPath, filePath, useCM ? content : htmlToMarkdown(content));
+            await writeNote(tabVaultPath, filePath, content);
             const store = usePaneStore.getState();
             store.markUnsaved(store.activePaneId, filePath, false);
           } catch (err) {
@@ -62,7 +59,6 @@ export function useEditorSession() {
   );
 
   const forceSave = useCallback(() => {
-    const useCM = useSettingsStore.getState().editorEngine === "codemirror";
     const { getActiveLeaf, editorContents, markUnsaved } = usePaneStore.getState();
     const leaf = getActiveLeaf();
     if (!leaf || leaf.tabs.length === 0) return;
@@ -70,7 +66,7 @@ export function useEditorSession() {
     if (!tab) return;
     const content = editorContents.get(tab.filePath);
     if (content) {
-      writeNote(tab.vaultPath, tab.filePath, useCM ? content : htmlToMarkdown(content))
+      writeNote(tab.vaultPath, tab.filePath, content)
         .then(() => markUnsaved(leaf.id, tab.filePath, false))
         .catch((err) => console.error("Save failed:", err));
     }
