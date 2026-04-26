@@ -258,6 +258,33 @@ fn rebuild_completion_popup(app: &mut App, allow_empty_prefix: bool) {
     });
 }
 
+/// Assemble the JSON `serde_json::Value` that `DbExecutor`
+/// deserializes into its `DbParams`. Pure function — extracted from
+/// `spawn_db_query` so it's testable in isolation. Stays in lockstep
+/// with `httui_core::executor::db::DbParams`: any new field there
+/// has to be threaded through here.
+fn build_db_executor_params(
+    connection_id: &str,
+    query: &str,
+    bind_values: &[serde_json::Value],
+    offset: u64,
+    limit: u64,
+    timeout_ms: Option<u64>,
+) -> serde_json::Value {
+    serde_json::json!({
+        "connection_id": connection_id,
+        "query": query,
+        "bind_values": bind_values,
+        "offset": offset,
+        "fetch_size": limit,
+        // `timeout_ms` is `Option<u64>`; serde maps `None` → `null`
+        // → executor's `Option<u64>` deserializes back to `None`,
+        // which falls through to the connection's default timeout
+        // and ultimately the 30 s fallback in `execute_with_cancel`.
+        "timeout_ms": timeout_ms,
+    })
+}
+
 /// Build the cache hash for a DB block run. Mirrors desktop's
 /// `computeDbCacheHash`: the hashed text is the raw SQL body plus,
 /// when any env vars are referenced via `{{KEY}}`, a sorted
@@ -1515,6 +1542,14 @@ fn apply_run_block(app: &mut App) {
         .get("limit")
         .and_then(|v| v.as_u64())
         .unwrap_or(100);
+    // Per-query timeout opt-in via `timeout=` token in the fence
+    // (parser writes `timeout_ms`). `None` → executor falls back to
+    // the connection's default timeout, then to 30s if the
+    // connection has no override either.
+    let timeout_ms = block
+        .params
+        .get("timeout_ms")
+        .and_then(|v| v.as_u64());
 
     let pool_mgr = app.pool_manager.clone();
     let resolved = tokio::task::block_in_place(|| {
@@ -1618,6 +1653,7 @@ fn apply_run_block(app: &mut App) {
         bind_values,
         limit,
         0,
+        timeout_ms,
         cache_key,
     );
 }
@@ -1640,6 +1676,7 @@ fn spawn_db_query(
     bind_values: Vec<serde_json::Value>,
     limit: u64,
     offset: u64,
+    timeout_ms: Option<u64>,
     cache_key: Option<(String, String)>,
 ) {
     let Some(sender) = app.event_sender.clone() else {
@@ -1650,13 +1687,14 @@ fn spawn_db_query(
         return;
     };
     let executor = httui_core::executor::db::DbExecutor::new(app.pool_manager.clone());
-    let params = serde_json::json!({
-        "connection_id": connection_id,
-        "query": query,
-        "bind_values": bind_values,
-        "offset": offset,
-        "fetch_size": limit,
-    });
+    let params = build_db_executor_params(
+        &connection_id,
+        &query,
+        &bind_values,
+        offset,
+        limit,
+        timeout_ms,
+    );
     let token_for_task = token.clone();
     let kind_for_task = kind;
     tokio::spawn(async move {
@@ -1981,6 +2019,10 @@ fn load_more_db_block(app: &mut App, segment_idx: usize) -> Result<(), String> {
         .get("limit")
         .and_then(|v| v.as_u64())
         .unwrap_or(100);
+    let timeout_ms = block
+        .params
+        .get("timeout_ms")
+        .and_then(|v| v.as_u64());
 
     let env_vars: std::collections::HashMap<String, String> =
         tokio::task::block_in_place(|| {
@@ -2014,6 +2056,7 @@ fn load_more_db_block(app: &mut App, segment_idx: usize) -> Result<(), String> {
         bind_values,
         limit,
         current_offset,
+        timeout_ms,
         None,
     );
     Ok(())
@@ -3496,5 +3539,39 @@ mod tests {
         });
         let s = db_summary_from_value(Some(&value), 4);
         assert_eq!(s, "7 affected · 4ms");
+    }
+
+    // ───────────── Executor params builder (Story 04.5 timeout) ─────────────
+
+    #[test]
+    fn executor_params_includes_timeout_when_set() {
+        // `timeout=NNNN` token in the fence flows here as
+        // `Some(NNNN)`. Executor's `DbParams.timeout_ms` reads it
+        // verbatim and wraps the run in `tokio::time::timeout`.
+        let params =
+            build_db_executor_params("conn-1", "SELECT 1", &[], 0, 100, Some(500));
+        assert_eq!(params["timeout_ms"], 500);
+    }
+
+    #[test]
+    fn executor_params_emits_null_timeout_when_absent() {
+        // No fence token → field serializes as `null`. Executor
+        // falls back to the connection's default timeout (and then
+        // to 30s if there's no override either).
+        let params =
+            build_db_executor_params("conn-1", "SELECT 1", &[], 0, 100, None);
+        assert!(params["timeout_ms"].is_null());
+    }
+
+    #[test]
+    fn executor_params_passes_bind_values_through() {
+        // Bind values land as a JSON array in the same position
+        // the executor reads them. Sanity check on the wire shape.
+        let binds = vec![serde_json::json!(7), serde_json::json!("alice")];
+        let params =
+            build_db_executor_params("conn-1", "SELECT ?, ?", &binds, 0, 50, None);
+        assert_eq!(params["bind_values"][0], 7);
+        assert_eq!(params["bind_values"][1], "alice");
+        assert_eq!(params["fetch_size"], 50);
     }
 }

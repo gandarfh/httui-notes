@@ -196,17 +196,30 @@ Trigger contextual após `FROM`/`JOIN`/`UPDATE`/`INSERT INTO` → tabelas; após
 
 ---
 
-### Story 04.5 — Token `timeout=` + enforcement 🚧 P1
+### Story 04.5 — Token `timeout=` + enforcement ✅ P1
 
-Desktop tem `timeout=30000` no fence + executor wrap em `tokio::time::timeout`. TUI parser não reconhece o token e executor não aplica timeout.
+**Achado**: parser core (`httui-core/src/blocks/parser.rs:149-156`) já extraía `timeout=NNNN` do fence pra `params["timeout_ms"]`, e executor (`httui-core/src/executor/db/mod.rs:64-72`) já wrappa `tokio::time::timeout` com fallback `connection default → 30s`. Story foi puramente plumbing TUI.
 
-**Tasks:**
-- [ ] Adicionar `timeout` a `DbBlockParams` em `httui-core::blocks` (se ainda não tem)
-- [ ] Parser TUI: ler `timeout=NNNN` do info string, validar numérico
-- [ ] Executor: `tokio::time::timeout(Duration::from_millis(timeout), query_future)`, erro com mensagem `"query exceeded {timeout}ms"`
-- [ ] Default: 30s se ausente
-- [ ] Testes: timeout=100 numa query lenta retorna erro com mensagem
-- [ ] Testes: timeout ausente usa default
+**Entregue:**
+- [x] Novo helper `build_db_executor_params(conn, query, binds, offset, limit, timeout_ms)` extraído de `spawn_db_query` — pure function, testável em isolamento, fica em lockstep com `httui-core::executor::db::DbParams` (qualquer field novo lá precisa thread aqui).
+- [x] `apply_run_block` lê `timeout_ms` de `block.params` (`Option<u64>`)
+- [x] `load_more_db_block` lê o mesmo (paginação respeita timeout do bloco)
+- [x] `spawn_db_query` ganha param `timeout_ms`, threading direto pro builder
+- [x] JSON params inclui `"timeout_ms": <u64 or null>` — `None` serializa como `null`, executor's `Option<u64>` deserialize back to `None`, fallback no executor pra connection default → 30s.
+- [x] 3 testes novos em `dispatch::tests::executor_params_*`:
+  - timeout setado vai pro JSON
+  - timeout ausente vira null
+  - bind_values + fetch_size também passam corretamente
+
+**Pra usar:**
+```
+```db-postgres alias=q connection=prod timeout=5000
+SELECT pg_sleep(10)
+```
+```
+→ erro `Query timed out after 5000ms` após 5s.
+
+Sem token: usa `connections.query_timeout_ms` da conn (default 30000).
 
 ---
 
