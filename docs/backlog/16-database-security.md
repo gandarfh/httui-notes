@@ -171,7 +171,7 @@
 **Tasks:**
 - [x] Set notes.db file permissions to 0600 on Unix after creation
 - [ ] Evaluate SQLite encryption (sqlcipher or PRAGMA key) — benchmark performance impact
-- [ ] Document security model: what's protected by keychain vs what's plaintext in notes.db
+- [x] Document security model: what's protected by keychain vs what's plaintext in notes.db
 
 ## Implementation Order
 

@@ -1,5 +1,21 @@
 # Security Model
 
+## Threat Model
+
+### Threat actors we defend against
+
+- **Local user-mode malware reading app data** — another process running as the same user trying to read `notes.db` to harvest connection passwords or secret env vars. Mitigation: secrets live in OS keychain, not in the SQLite file; file mode `0600` keeps the DB owner-only.
+- **Webview-resident attacker** — JS injected into the renderer (e.g. via a hostile MCP response or a future XSS bug) attempting to exfiltrate secrets through the IPC layer. Mitigation: `list_connections` strips passwords; `list_env_variables` masks secret values; CSP blocks inline/`eval` scripts; asset protocol scope is restricted; direct SQL capabilities are removed.
+- **Hostile/buggy MCP server prompts** — the chat sidecar autonomously calling `execute_block` on arbitrary aliases or hammering the DB. Mitigation: permission broker prompts the user; `execute_block` is rate-limited (30/60s) and bound to aliases that exist in the current note.
+- **Malicious SQL or block content authored in a vault** — `; DROP TABLE`, multi-statement smuggling, prototype-pollution paths in `{{refs}}`. Mitigation: server-side multi-statement detection, comment-aware placeholder counting, bind-value type/range validation, blocked dangerous JSON keys (`__proto__`, `constructor`, `prototype`), MAX_DEPTH on dependency graphs.
+- **Sidecar protocol tampering** — anything writing to the sidecar stdio without knowing the spawn-time secret. Mitigation: HMAC-SHA256 envelope on every message.
+
+### Assumptions about the operator
+
+- The OS keychain is reachable. On headless or sandboxed environments where it isn't, secret store/load operations **fail loudly** — they do not silently fall back to plaintext.
+- The vault directory and `notes.db` live on a local disk owned by the user. Sync (Git, iCloud, Dropbox) is the user's choice and outside this model.
+- The user trusts the vault content they open. Vault files can author arbitrary `{{refs}}` and SQL — we sanitize execution, but a fully untrusted vault is treated like running untrusted code in any IDE.
+
 ## Data at Rest
 
 ### notes.db (SQLite — app data directory)
@@ -97,3 +113,28 @@ Uses the `keyring` crate with service name `httui-notes`.
 - Switching environment or connection produces different hash, invalidating stale cache
 - Execution locks (`block_execution_locks` table) prevent TOCTOU race on concurrent block execution
 - Permission broker requires user confirmation for `execute_block` via chat sidecar
+
+## Out of scope (explicitly NOT protected)
+
+The model above stops at well-defined boundaries. Anything below is the operator's responsibility — calling it out so nobody assumes coverage that isn't there.
+
+| Scenario | Why we don't cover it |
+|----------|------------------------|
+| **Root / admin process on the same machine** | A process running as root (or with debugger / `ptrace` privileges) can read process memory and the keychain regardless of our defenses. The same trust boundary protects every desktop app. |
+| **Disk encryption / lost device** | We rely on FileVault / BitLocker / LUKS at the OS layer. `notes.db` itself is not encrypted today — see "Notes.db is not encrypted at rest" below. |
+| **`notes.db` is not encrypted at rest** | Connection metadata, environment variable **keys**, non-secret env values, block result cache, chat messages, and query audit log are all readable by anyone with file access (including disk-imaging tools). Mitigation: file mode `0600` + secrets out-of-band in keychain. SQLCipher is being evaluated as a follow-up. |
+| **Vault `.md` files on disk** | Block source (queries, HTTP requests, refs) is plain markdown by design — diff-friendly and human-readable. If a vault contains sensitive query text, the user is responsible for where they sync it. |
+| **Cached HTTP response bodies** | `block_results` caches full responses (including any tokens echoed back). Users who execute a request that returns a credential should clear the cache or treat the file like the response itself. |
+| **Network traffic to user-configured endpoints** | We honor `verify_ssl` and SSL mode flags, but we don't pin certificates. A user who sets `verify_ssl=false` is opting out of TLS verification for that connection. |
+| **Side-channels (timing, cache state, screen readers)** | Out of scope for a desktop note editor. |
+| **Supply chain of dependencies** | We trust the integrity of crates from crates.io and npm packages. Lockfiles are committed; we don't sign or verify provenance beyond what cargo/npm offer natively. |
+
+### Sensitivity tiers — quick reference
+
+When reasoning about "should this go through keychain?", these are the categories we apply:
+
+- **Tier 1 — keychain-only.** Database connection passwords, secret-flagged env variable values. Never written to `notes.db` in cleartext, never returned over IPC, never logged.
+- **Tier 2 — `notes.db` plaintext, IPC-masked.** Connection metadata (host, username), env variable keys, schema cache. Returned over IPC with credential fields stripped, but readable on disk by anyone with the file.
+- **Tier 3 — `notes.db` plaintext, IPC-exposed.** App config, chat history, block results, audit log. The user expects to see these in the UI; on-disk protection is file mode `0600` only.
+
+When adding a new field, classify it before storing. If it could ever hold a credential, treat it as Tier 1 from day one.
