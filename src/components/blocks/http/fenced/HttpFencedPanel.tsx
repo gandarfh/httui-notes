@@ -54,20 +54,28 @@ import {
   type HttpPortalEntry,
 } from "@/lib/codemirror/cm-http-block";
 import {
+  buildBinaryFileBody,
   deriveBodyMode,
+  isBinaryFileBody,
   isCompatibleSwitch,
   parseHttpMessageBody,
   parseLegacyHttpBody,
+  parseMultipartBody,
   legacyToHttpMessage,
   setContentTypeForMode,
   stringifyHttpFenceInfo,
   stringifyHttpMessageBody,
+  stringifyMultipartBody,
   type HttpBlockMetadata,
   type HttpBodyMode,
   type HttpDisplayMode,
   type HttpMessageParsed,
   type HttpMethod,
+  type HttpKVRow,
+  type MultipartPart,
+  type MultipartPartKind,
 } from "@/lib/blocks/http-fence";
+import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import type { HttpBlockSettings } from "@/lib/tauri/commands";
 import { useBlockSettings } from "./useBlockSettings";
 import { toaster } from "@/components/ui/toaster";
@@ -154,6 +162,41 @@ const cmBodyTheme = EditorView.theme({
 });
 
 /**
+ * Light-weight HTML input that mirrors the commit-on-blur contract of
+ * `HttpInlineCM` but without the CodeMirror runtime — used in tabs that
+ * don't need `{{ref}}` highlighting (multipart `name` / file value), where
+ * a CM re-render on every committed keystroke caused visible flashing.
+ */
+const CommitOnBlurInput = memo(function CommitOnBlurInput({
+  value,
+  placeholder,
+  onCommit,
+  readOnly,
+}: {
+  value: string;
+  placeholder?: string;
+  onCommit: (next: string) => void;
+  readOnly?: boolean;
+}) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  return (
+    <Input
+      size="xs"
+      value={draft}
+      placeholder={placeholder}
+      readOnly={readOnly}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        if (draft !== value) onCommit(draft);
+      }}
+      fontFamily="mono"
+      fontSize="xs"
+    />
+  );
+});
+
+/**
  * Single-line CodeMirror replacing `<Input>` for the form-mode KV rows.
  * Supports `{{ref}}` highlight + autocomplete. Commits on blur (matches
  * the existing form pattern — see `CommitOnBlurInput`).
@@ -172,12 +215,12 @@ const HttpInlineCM = memo(function HttpInlineCM({
     getEnvKeys: () => (string | EnvKeyInfo)[];
   };
 }) {
-  const [draft, setDraft] = useState(value);
-  // Re-sync from prop when the canonical value changes (e.g. raw edit, mode
-  // flip). The user's in-flight typing is preserved while focused — the
-  // committed `value` prop only updates after blur.
-  useEffect(() => setDraft(value), [value]);
-
+  // Controlled-direct pattern (matches the legacy `HttpBlockView.InlineCM`):
+  // value flows in, every keystroke flows out via `onCommit`. Without the
+  // local-draft + commit-on-blur indirection, react-codemirror's internal
+  // diff sees `value === currentDoc` after each commit and does NOT
+  // reanimate the editor — that was the source of the visible flash when
+  // we used `useState(draft)` + `useEffect`.
   const extensions = useMemo(() => {
     const exts = [cmInlineTheme, cmTransparentBg, ...referenceHighlight];
     if (refsGetters) {
@@ -202,11 +245,8 @@ const HttpInlineCM = memo(function HttpInlineCM({
       overflow="hidden"
     >
       <CodeMirror
-        value={draft}
-        onChange={(v) => setDraft(v)}
-        onBlur={() => {
-          if (draft !== value) onCommit(draft);
-        }}
+        value={value}
+        onChange={onCommit}
         extensions={extensions}
         basicSetup={{
           lineNumbers: false,
@@ -660,6 +700,111 @@ function bodyAsText(body: unknown): string {
 // that would make the form feel laggy.)
 
 /**
+ * One row of the Params/Headers table. Memoised so a re-render of
+ * `HttpFormPanel` (e.g. after another row commits) doesn't tear down the
+ * CodeMirror editors of *this* row — that's what produced the visible
+ * flash. Callbacks are stable inside the row because `updateRow` and
+ * `deleteRow` come from the parent already wrapped in a no-deps
+ * `useCallback`, and `index` / `kind` are intrinsic to this row.
+ */
+const KVRow = memo(function KVRow({
+  kind,
+  index,
+  row,
+  updateRow,
+  deleteRow,
+  refsGetters,
+}: {
+  kind: "params" | "headers";
+  index: number;
+  row: HttpKVRow;
+  updateRow: (
+    kind: "params" | "headers",
+    index: number,
+    patch: Partial<HttpKVRow>,
+  ) => void;
+  deleteRow: (kind: "params" | "headers", index: number) => void;
+  refsGetters?: {
+    getBlocks: () => BlockContext[];
+    getEnvKeys: () => (string | EnvKeyInfo)[];
+  };
+}) {
+  const onToggle = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) =>
+      updateRow(kind, index, { enabled: e.target.checked }),
+    [kind, index, updateRow],
+  );
+  const onKeyCommit = useCallback(
+    (next: string) => updateRow(kind, index, { key: next }),
+    [kind, index, updateRow],
+  );
+  const onValueCommit = useCallback(
+    (next: string) => updateRow(kind, index, { value: next }),
+    [kind, index, updateRow],
+  );
+  const onDescCommit = useCallback(
+    (next: string) =>
+      updateRow(kind, index, { description: next || undefined }),
+    [kind, index, updateRow],
+  );
+  const onDelete = useCallback(
+    () => deleteRow(kind, index),
+    [kind, index, deleteRow],
+  );
+
+  return (
+    <Flex
+      align="center"
+      gap={1}
+      px={2}
+      py={1}
+      borderBottomWidth="1px"
+      borderColor="border.muted"
+      _last={{ borderBottomWidth: 0 }}
+    >
+      <input
+        type="checkbox"
+        aria-label={`Toggle ${kind} row ${index}`}
+        checked={row.enabled}
+        onChange={onToggle}
+      />
+      <Box flex={1}>
+        <HttpInlineCM
+          placeholder="key"
+          value={row.key}
+          onCommit={onKeyCommit}
+          refsGetters={refsGetters}
+        />
+      </Box>
+      <Box flex={2}>
+        <HttpInlineCM
+          placeholder="value"
+          value={row.value}
+          onCommit={onValueCommit}
+          refsGetters={refsGetters}
+        />
+      </Box>
+      <Box flex={1}>
+        <HttpInlineCM
+          placeholder="description"
+          value={row.description ?? ""}
+          onCommit={onDescCommit}
+          refsGetters={refsGetters}
+        />
+      </Box>
+      <IconButton
+        aria-label={`Delete ${kind} row ${index}`}
+        size="xs"
+        variant="ghost"
+        onClick={onDelete}
+      >
+        <LuX />
+      </IconButton>
+    </Flex>
+  );
+});
+
+/**
  * Tabular Params/Headers editor shown when `mode=form` and the cursor is
  * outside the block. Each input maintains a local draft and only re-emits
  * the canonical raw body on blur (matching the `EnvironmentManager`
@@ -668,46 +813,107 @@ function bodyAsText(body: unknown): string {
  */
 function HttpFormPanel({
   parsed,
+  bodyMode,
   onChange,
+  onPickFile,
   refsGetters,
 }: {
   parsed: HttpMessageParsed;
+  bodyMode: HttpBodyMode;
   onChange: (next: HttpMessageParsed) => void;
+  onPickFile: () => Promise<string | null>;
   refsGetters?: {
     getBlocks: () => BlockContext[];
     getEnvKeys: () => (string | EnvKeyInfo)[];
   };
 }) {
+  // ── Pending rows (local, not yet committed to the doc) ──
+  // Rows with empty `key` would be dropped by the canonical stringifier
+  // (a `?` query segment with no key, or a blank header line that breaks
+  // header parsing). Keeping them in local state until the user types a
+  // key avoids round-trip loss while still letting the doc remain the
+  // source of truth for everything that's actually filled in.
+  const [pending, setPending] = useState<{
+    params: HttpKVRow[];
+    headers: HttpKVRow[];
+  }>({ params: [], headers: [] });
+
+  // Refs that always carry the latest `parsed` / `pending` / `onChange` so
+  // the row callbacks below can stay referentially stable. Without this,
+  // every keystroke that committed a value would re-create every row's
+  // `onCommit`, which forces `HttpInlineCM` (CodeMirror) to re-render and
+  // visibly flash.
+  const parsedRef = useRef(parsed);
+  const pendingRef = useRef(pending);
+  const onChangeRef = useRef(onChange);
+  parsedRef.current = parsed;
+  pendingRef.current = pending;
+  onChangeRef.current = onChange;
+
+  // Stable updateRow — no deps, reads always-fresh state via refs.
   const updateRow = useCallback(
     (
       kind: "params" | "headers",
-      index: number,
+      displayIndex: number,
       patch: Partial<HttpMessageParsed["params"][number]>,
     ) => {
-      const rows = parsed[kind].slice();
-      rows[index] = { ...rows[index], ...patch };
-      onChange({ ...parsed, [kind]: rows });
+      const parsed = parsedRef.current;
+      const pending = pendingRef.current;
+      const onChange = onChangeRef.current;
+
+      const realLen = parsed[kind].length;
+      if (displayIndex < realLen) {
+        const rows = parsed[kind].slice();
+        rows[displayIndex] = { ...rows[displayIndex], ...patch };
+        onChange({ ...parsed, [kind]: rows });
+        return;
+      }
+      const pIdx = displayIndex - realLen;
+      const current = pending[kind][pIdx];
+      if (!current) return;
+      const updated = { ...current, ...patch };
+      if (updated.key.trim() !== "") {
+        // Promote pending → committed atomically (React 18 batches both).
+        setPending((prev) => ({
+          ...prev,
+          [kind]: prev[kind].filter((_, i) => i !== pIdx),
+        }));
+        onChange({ ...parsed, [kind]: [...parsed[kind], updated] });
+      } else {
+        setPending((prev) => {
+          const list = prev[kind].slice();
+          list[pIdx] = updated;
+          return { ...prev, [kind]: list };
+        });
+      }
     },
-    [parsed, onChange],
+    [],
   );
 
-  const addRow = useCallback(
-    (kind: "params" | "headers") => {
-      const rows = [
-        ...parsed[kind],
-        { key: "", value: "", enabled: true },
-      ];
-      onChange({ ...parsed, [kind]: rows });
-    },
-    [parsed, onChange],
-  );
+  const addRow = useCallback((kind: "params" | "headers") => {
+    setPending((prev) => ({
+      ...prev,
+      [kind]: [...prev[kind], { key: "", value: "", enabled: true }],
+    }));
+  }, []);
 
   const deleteRow = useCallback(
-    (kind: "params" | "headers", index: number) => {
-      const rows = parsed[kind].filter((_, i) => i !== index);
-      onChange({ ...parsed, [kind]: rows });
+    (kind: "params" | "headers", displayIndex: number) => {
+      const parsed = parsedRef.current;
+      const onChange = onChangeRef.current;
+      const realLen = parsed[kind].length;
+      if (displayIndex < realLen) {
+        const rows = parsed[kind].filter((_, i) => i !== displayIndex);
+        onChange({ ...parsed, [kind]: rows });
+        return;
+      }
+      const pIdx = displayIndex - realLen;
+      setPending((prev) => ({
+        ...prev,
+        [kind]: prev[kind].filter((_, i) => i !== pIdx),
+      }));
     },
-    [parsed, onChange],
+    [],
   );
 
   const onBodyCommit = useCallback(
@@ -716,68 +922,24 @@ function HttpFormPanel({
   );
 
   const renderTable = (kind: "params" | "headers") => {
-    const rows = parsed[kind];
+    const merged = [...parsed[kind], ...pending[kind]];
     return (
       <Box>
-        {rows.length === 0 && (
+        {merged.length === 0 && (
           <Text fontSize="xs" color="fg.muted" px={3} py={2}>
             (no {kind})
           </Text>
         )}
-        {rows.map((row, i) => (
-          <Flex
+        {merged.map((row, i) => (
+          <KVRow
             key={`${kind}-${i}`}
-            align="center"
-            gap={1}
-            px={2}
-            py={1}
-            borderBottomWidth="1px"
-            borderColor="border.muted"
-            _last={{ borderBottomWidth: 0 }}
-          >
-            <input
-              type="checkbox"
-              aria-label={`Toggle ${kind} row ${i}`}
-              checked={row.enabled}
-              onChange={(e) =>
-                updateRow(kind, i, { enabled: e.target.checked })
-              }
-            />
-            <Box flex={1}>
-              <HttpInlineCM
-                placeholder="key"
-                value={row.key}
-                onCommit={(next) => updateRow(kind, i, { key: next })}
-                refsGetters={refsGetters}
-              />
-            </Box>
-            <Box flex={2}>
-              <HttpInlineCM
-                placeholder="value"
-                value={row.value}
-                onCommit={(next) => updateRow(kind, i, { value: next })}
-                refsGetters={refsGetters}
-              />
-            </Box>
-            <Box flex={1}>
-              <HttpInlineCM
-                placeholder="description"
-                value={row.description ?? ""}
-                onCommit={(next) =>
-                  updateRow(kind, i, { description: next || undefined })
-                }
-                refsGetters={refsGetters}
-              />
-            </Box>
-            <IconButton
-              aria-label={`Delete ${kind} row ${i}`}
-              size="xs"
-              variant="ghost"
-              onClick={() => deleteRow(kind, i)}
-            >
-              <LuX />
-            </IconButton>
-          </Flex>
+            kind={kind}
+            index={i}
+            row={row}
+            updateRow={updateRow}
+            deleteRow={deleteRow}
+            refsGetters={refsGetters}
+          />
         ))}
         <Box px={2} py={1}>
           <Button
@@ -807,10 +969,10 @@ function HttpFormPanel({
       <Tabs.Root defaultValue="params" size="sm" variant="line">
         <Tabs.List>
           <Tabs.Trigger value="params">
-            Params ({parsed.params.length})
+            Params ({parsed.params.length + pending.params.length})
           </Tabs.Trigger>
           <Tabs.Trigger value="headers">
-            Headers ({parsed.headers.length})
+            Headers ({parsed.headers.length + pending.headers.length})
           </Tabs.Trigger>
           <Tabs.Trigger value="body">Body</Tabs.Trigger>
         </Tabs.List>
@@ -821,13 +983,482 @@ function HttpFormPanel({
           {renderTable("headers")}
         </Tabs.Content>
         <Tabs.Content value="body" px={0} pt={2}>
-          <HttpBodyCM
-            value={parsed.body}
+          <HttpBodyByMode
+            bodyMode={bodyMode}
+            parsed={parsed}
             onCommit={onBodyCommit}
+            onPickFile={onPickFile}
             refsGetters={refsGetters}
           />
         </Tabs.Content>
       </Tabs.Root>
+    </Box>
+  );
+}
+
+// ─────────────────────── Body tab dispatcher (Onda 2) ───────────────────────
+
+/**
+ * Body tab content for the form mode. Picks a UI based on the `Content-Type`
+ * driven `bodyMode` pill — text-ish modes keep the existing CodeMirror
+ * editor; structured modes get table editors and file pickers.
+ *
+ * `none` is the only mode that intentionally renders no editor — it's a
+ * prompt to pick a body type from the toolbar. The others all serialize
+ * back to the canonical raw body via `onCommit`.
+ */
+function HttpBodyByMode({
+  bodyMode,
+  parsed,
+  onCommit,
+  onPickFile,
+  refsGetters,
+}: {
+  bodyMode: HttpBodyMode;
+  parsed: HttpMessageParsed;
+  onCommit: (next: string) => void;
+  onPickFile: () => Promise<string | null>;
+  refsGetters?: {
+    getBlocks: () => BlockContext[];
+    getEnvKeys: () => (string | EnvKeyInfo)[];
+  };
+}) {
+  if (bodyMode === "none") {
+    return (
+      <Box px={2} py={3}>
+        <Text fontSize="xs" color="fg.muted">
+          No body. Pick a Content-Type from the toolbar pill to add one.
+        </Text>
+      </Box>
+    );
+  }
+
+  if (bodyMode === "form-urlencoded") {
+    return (
+      <FormUrlEncodedTable
+        body={parsed.body}
+        onCommit={onCommit}
+        refsGetters={refsGetters}
+      />
+    );
+  }
+
+  if (bodyMode === "multipart") {
+    return (
+      <MultipartTable
+        body={parsed.body}
+        onCommit={onCommit}
+        onPickFile={onPickFile}
+      />
+    );
+  }
+
+  if (bodyMode === "binary") {
+    return (
+      <BinaryFilePicker
+        body={parsed.body}
+        onCommit={onCommit}
+        onPickFile={onPickFile}
+      />
+    );
+  }
+
+  // json / xml / text fall through to the existing CodeMirror editor with
+  // sublanguage detection (JSON highlighted, XML / text plain).
+  return (
+    <HttpBodyCM
+      value={parsed.body}
+      onCommit={onCommit}
+      refsGetters={refsGetters}
+    />
+  );
+}
+
+// ─────────────────────── form-urlencoded ───────────────────────
+
+interface UrlEncodedRow {
+  key: string;
+  value: string;
+}
+
+function parseUrlEncoded(body: string): UrlEncodedRow[] {
+  if (body.trim().length === 0) return [];
+  return body
+    .split("&")
+    .map((seg) => {
+      const eq = seg.indexOf("=");
+      if (eq === -1) return { key: seg, value: "" };
+      return { key: seg.slice(0, eq), value: seg.slice(eq + 1) };
+    })
+    .filter((r) => r.key.length > 0);
+}
+
+function stringifyUrlEncoded(rows: UrlEncodedRow[]): string {
+  return rows
+    .filter((r) => r.key.length > 0)
+    .map((r) => (r.value ? `${r.key}=${r.value}` : r.key))
+    .join("&");
+}
+
+function FormUrlEncodedTable({
+  body,
+  onCommit,
+  refsGetters,
+}: {
+  body: string;
+  onCommit: (next: string) => void;
+  refsGetters?: {
+    getBlocks: () => BlockContext[];
+    getEnvKeys: () => (string | EnvKeyInfo)[];
+  };
+}) {
+  const rows = useMemo(() => parseUrlEncoded(body), [body]);
+  // Same pending-row pattern as `HttpFormPanel`: rows with empty `key`
+  // would not survive a `parseUrlEncoded → stringifyUrlEncoded` round-trip,
+  // so we hold them locally until the user fills the key.
+  const [pending, setPending] = useState<UrlEncodedRow[]>([]);
+
+  const updateRow = useCallback(
+    (displayIndex: number, patch: Partial<UrlEncodedRow>) => {
+      if (displayIndex < rows.length) {
+        const next = rows.slice();
+        next[displayIndex] = { ...next[displayIndex], ...patch };
+        onCommit(stringifyUrlEncoded(next));
+        return;
+      }
+      // Read-and-decide outside setPending — calling onCommit from within
+      // a setState updater double-fires under StrictMode.
+      const pIdx = displayIndex - rows.length;
+      const current = pending[pIdx];
+      if (!current) return;
+      const updated = { ...current, ...patch };
+      if (updated.key.trim() !== "") {
+        setPending((prev) => prev.filter((_, i) => i !== pIdx));
+        onCommit(stringifyUrlEncoded([...rows, updated]));
+      } else {
+        setPending((prev) => {
+          const list = prev.slice();
+          list[pIdx] = updated;
+          return list;
+        });
+      }
+    },
+    [rows, pending, onCommit],
+  );
+  const addRow = useCallback(() => {
+    setPending((prev) => [...prev, { key: "", value: "" }]);
+  }, []);
+  const deleteRow = useCallback(
+    (displayIndex: number) => {
+      if (displayIndex < rows.length) {
+        onCommit(stringifyUrlEncoded(rows.filter((_, idx) => idx !== displayIndex)));
+        return;
+      }
+      const pIdx = displayIndex - rows.length;
+      setPending((prev) => prev.filter((_, i) => i !== pIdx));
+    },
+    [rows, onCommit],
+  );
+
+  const merged = [...rows, ...pending];
+
+  return (
+    <Box>
+      {merged.length === 0 && (
+        <Text fontSize="xs" color="fg.muted" px={3} py={2}>
+          (no fields — application/x-www-form-urlencoded)
+        </Text>
+      )}
+      {merged.map((row, i) => (
+        <Flex
+          key={`urlenc-${i}`}
+          align="center"
+          gap={1}
+          px={2}
+          py={1}
+          borderBottomWidth="1px"
+          borderColor="border.muted"
+          _last={{ borderBottomWidth: 0 }}
+        >
+          <Box flex={1}>
+            <HttpInlineCM
+              placeholder="key"
+              value={row.key}
+              onCommit={(next) => updateRow(i, { key: next })}
+              refsGetters={refsGetters}
+            />
+          </Box>
+          <Box flex={2}>
+            <HttpInlineCM
+              placeholder="value"
+              value={row.value}
+              onCommit={(next) => updateRow(i, { value: next })}
+              refsGetters={refsGetters}
+            />
+          </Box>
+          <IconButton
+            aria-label={`Delete field ${i}`}
+            size="xs"
+            variant="ghost"
+            onClick={() => deleteRow(i)}
+          >
+            <LuX />
+          </IconButton>
+        </Flex>
+      ))}
+      <Box px={2} py={1}>
+        <Button size="2xs" variant="ghost" onClick={addRow}>
+          + add field
+        </Button>
+      </Box>
+    </Box>
+  );
+}
+
+// ─────────────────────── multipart ───────────────────────
+
+function MultipartTable({
+  body,
+  onCommit,
+  onPickFile,
+}: {
+  body: string;
+  onCommit: (next: string) => void;
+  onPickFile: () => Promise<string | null>;
+}) {
+  const parts = useMemo(() => parseMultipartBody(body), [body]);
+  // Pending parts: parts with empty `name` would be dropped at re-parse
+  // (Content-Disposition without a name is invalid). Held locally and
+  // promoted to `parts` once the user types a name.
+  const [pending, setPending] = useState<MultipartPart[]>([]);
+
+  const commit = useCallback(
+    (next: MultipartPart[]) => {
+      onCommit(stringifyMultipartBody(next).body);
+    },
+    [onCommit],
+  );
+
+  const updatePart = useCallback(
+    (displayIndex: number, patch: Partial<MultipartPart>) => {
+      if (displayIndex < parts.length) {
+        const next = parts.slice();
+        next[displayIndex] = { ...next[displayIndex], ...patch };
+        commit(next);
+        return;
+      }
+      // Read-and-decide outside setPending — calling commit from within a
+      // setState updater double-fires under StrictMode and would push the
+      // part to `parts` twice.
+      const pIdx = displayIndex - parts.length;
+      const current = pending[pIdx];
+      if (!current) return;
+      const updated = { ...current, ...patch };
+      if (updated.name.trim() !== "") {
+        setPending((prev) => prev.filter((_, i) => i !== pIdx));
+        commit([...parts, updated]);
+      } else {
+        setPending((prev) => {
+          const list = prev.slice();
+          list[pIdx] = updated;
+          return list;
+        });
+      }
+    },
+    [parts, pending, commit],
+  );
+
+  const addPart = useCallback((kind: MultipartPartKind) => {
+    setPending((prev) => [
+      ...prev,
+      { kind, name: "", value: "", enabled: true },
+    ]);
+  }, []);
+
+  const deletePart = useCallback(
+    (displayIndex: number) => {
+      if (displayIndex < parts.length) {
+        commit(parts.filter((_, idx) => idx !== displayIndex));
+        return;
+      }
+      const pIdx = displayIndex - parts.length;
+      setPending((prev) => prev.filter((_, i) => i !== pIdx));
+    },
+    [parts, commit],
+  );
+
+  const pickFileForPart = useCallback(
+    async (displayIndex: number) => {
+      const path = await onPickFile();
+      if (!path) return;
+      updatePart(displayIndex, {
+        kind: "file",
+        value: path,
+        filename: undefined,
+        contentType: undefined,
+      });
+    },
+    [onPickFile, updatePart],
+  );
+
+  const merged = [...parts, ...pending];
+
+  return (
+    <Box>
+      {merged.length === 0 && (
+        <Text fontSize="xs" color="fg.muted" px={3} py={2}>
+          (no parts — multipart/form-data)
+        </Text>
+      )}
+      {merged.map((part, i) => (
+        <Flex
+          key={`multi-${i}`}
+          align="center"
+          gap={1}
+          px={2}
+          py={1}
+          borderBottomWidth="1px"
+          borderColor="border.muted"
+          _last={{ borderBottomWidth: 0 }}
+        >
+          <input
+            type="checkbox"
+            aria-label={`Toggle part ${i}`}
+            checked={part.enabled}
+            onChange={(e) =>
+              updatePart(i, { enabled: e.target.checked })
+            }
+          />
+          <Box flex={1}>
+            <CommitOnBlurInput
+              placeholder="name"
+              value={part.name}
+              onCommit={(next) => updatePart(i, { name: next })}
+            />
+          </Box>
+          <Box minW="64px">
+            <NativeSelectRoot size="sm">
+              <NativeSelectField
+                value={part.kind}
+                onChange={(e) => {
+                  const nextKind = e.target.value as MultipartPartKind;
+                  if (nextKind === part.kind) return;
+                  // Switching to file with no value yet → leave value empty;
+                  // user clicks Choose…
+                  updatePart(i, {
+                    kind: nextKind,
+                    // Clear file metadata when switching back to text.
+                    ...(nextKind === "text" && {
+                      filename: undefined,
+                      contentType: undefined,
+                    }),
+                  });
+                }}
+              >
+                <option value="text">text</option>
+                <option value="file">file</option>
+              </NativeSelectField>
+            </NativeSelectRoot>
+          </Box>
+          <Box flex={2}>
+            {part.kind === "file" ? (
+              <Flex align="center" gap={1}>
+                <Text
+                  fontFamily="mono"
+                  fontSize="xs"
+                  color="fg.muted"
+                  truncate
+                  flex={1}
+                  title={part.value}
+                >
+                  {part.value || "(no file selected)"}
+                </Text>
+                <Button
+                  size="2xs"
+                  variant="outline"
+                  onClick={() => void pickFileForPart(i)}
+                >
+                  Choose…
+                </Button>
+              </Flex>
+            ) : (
+              <CommitOnBlurInput
+                placeholder="value"
+                value={part.value}
+                onCommit={(next) => updatePart(i, { value: next })}
+              />
+            )}
+          </Box>
+          <IconButton
+            aria-label={`Delete part ${i}`}
+            size="xs"
+            variant="ghost"
+            onClick={() => deletePart(i)}
+          >
+            <LuX />
+          </IconButton>
+        </Flex>
+      ))}
+      <Flex px={2} py={1} gap={2}>
+        <Button size="2xs" variant="ghost" onClick={() => addPart("text")}>
+          + add text part
+        </Button>
+        <Button size="2xs" variant="ghost" onClick={() => addPart("file")}>
+          + add file part
+        </Button>
+      </Flex>
+    </Box>
+  );
+}
+
+// ─────────────────────── binary ───────────────────────
+
+function BinaryFilePicker({
+  body,
+  onCommit,
+  onPickFile,
+}: {
+  body: string;
+  onCommit: (next: string) => void;
+  onPickFile: () => Promise<string | null>;
+}) {
+  const current = isBinaryFileBody(body)?.path ?? null;
+
+  const choose = useCallback(async () => {
+    const path = await onPickFile();
+    if (!path) return;
+    onCommit(buildBinaryFileBody(path));
+  }, [onPickFile, onCommit]);
+
+  const clear = useCallback(() => {
+    onCommit("");
+  }, [onCommit]);
+
+  return (
+    <Box px={3} py={3}>
+      <Flex align="center" gap={2}>
+        <Text
+          fontFamily="mono"
+          fontSize="xs"
+          color={current ? "fg" : "fg.muted"}
+          truncate
+          flex={1}
+          title={current ?? undefined}
+        >
+          {current ?? "(no file selected — body is empty)"}
+        </Text>
+        <Button size="2xs" variant="outline" onClick={() => void choose()}>
+          {current ? "Replace…" : "Choose…"}
+        </Button>
+        {current && (
+          <Button size="2xs" variant="ghost" onClick={clear}>
+            Clear
+          </Button>
+        )}
+      </Flex>
+      <Text fontSize="2xs" color="fg.muted" mt={2}>
+        The file is read at request time and uploaded as the raw body.
+      </Text>
     </Box>
   );
 }
@@ -2158,6 +2789,18 @@ export const HttpFencedPanel = memo(function HttpFencedPanel({
     [parsed, replaceBody],
   );
 
+  /** Open the OS-native file picker; returns the absolute path or `null` if
+   *  the user cancelled. Lives at the panel root so the form-mode body tab
+   *  doesn't have to import Tauri APIs directly. */
+  const pickFile = useCallback(async (): Promise<string | null> => {
+    try {
+      const result = await openFileDialog({ multiple: false });
+      return typeof result === "string" ? result : null;
+    } catch {
+      return null;
+    }
+  }, []);
+
   const toolbarNode = entry.toolbar;
   const formNode = entry.form;
   const resultNode = entry.result;
@@ -2189,7 +2832,9 @@ export const HttpFencedPanel = memo(function HttpFencedPanel({
         createPortal(
           <HttpFormPanel
             parsed={parsed}
+            bodyMode={currentBodyMode}
             onChange={onFormChange}
+            onPickFile={pickFile}
             refsGetters={refsGetters}
           />,
           formNode,

@@ -172,14 +172,12 @@ function notify() {
   for (const fn of listeners) fn();
 }
 
-let bodyNotifyTimer: ReturnType<typeof setTimeout> | null = null;
-function scheduleBodyNotify() {
-  if (bodyNotifyTimer !== null) clearTimeout(bodyNotifyTimer);
-  bodyNotifyTimer = setTimeout(() => {
-    bodyNotifyTimer = null;
-    notify();
-  }, 250);
-}
+// (Body changes used to be debounced via `scheduleBodyNotify` but the
+// 250 ms gap created a visible hole in the form view: a pending row
+// promoted to committed disappeared until the debounce fired and `parsed`
+// re-derived. We now route body changes through the same immediate
+// `notify()` path as metadata changes — `memo` on the React side keeps
+// the cascade cheap.)
 
 export function subscribeToHttpPortals(cb: () => void): () => void {
   listeners.add(cb);
@@ -217,6 +215,16 @@ function registerSlot(
   element: HTMLElement,
 ) {
   const prev = entries.get(blockId);
+  if (prev && prev[slot] === element) {
+    // Same DOM container, just refreshing the widget after a doc change.
+    // The block content is already kept in sync by `syncRegistryBlocks`
+    // (which mutates positions in place and only swaps `entry.block` when
+    // metadata or body actually changed — those paths debounce or notify
+    // themselves). Skipping `notify()` here avoids a re-render cascade on
+    // every keystroke that would reanimate the CodeMirror inputs in the
+    // form view, producing the visible flash.
+    return;
+  }
   const next: HttpPortalEntry = prev
     ? { ...prev, block, [slot]: element }
     : { blockId, block, actions: {}, [slot]: element };
@@ -263,8 +271,13 @@ function syncRegistryBlocks(blocks: HttpFencedBlock[]): void {
       entry.block = fresh;
       meaningfulChange = true;
     } else if (bodyChanged) {
+      // Body change must propagate immediately so the React panel can
+      // reconcile pending rows against the freshly-parsed body in the
+      // same tick — without this, a pending row promoted to committed
+      // would visibly disappear for the duration of the debounce while
+      // `parsed` stays stale.
       entry.block = fresh;
-      scheduleBodyNotify();
+      meaningfulChange = true;
     } else {
       prev.from = fresh.from;
       prev.to = fresh.to;
