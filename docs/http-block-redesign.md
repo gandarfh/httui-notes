@@ -215,7 +215,7 @@ Tabs `Body · Headers · Cookies · Timing · Raw`:
   - Botão `[ ⊞ visualize ]` quando JSON com tree/tabela.
 - **Headers** — tabela request + response (pinning no que importa).
 - **Cookies** — tabela domain · name · value · path · expires. Cookie jar persistente por env (V2, ver §11).
-- **Timing** — barras horizontais: DNS · Connect · TLS · TTFB · Download · Total.
+- **Timing** — V1: TTFB · Download · Total (DNS/Connect/TLS adiados, ver [`http-timing-isahc-future.md`](./http-timing-isahc-future.md)).
 - **Raw** — request + response como texto chapado (debug, copy-paste em ticket).
 
 Assertions/tests estão **fora do HTTP block** — use o E2E block quando precisar validar response (ver §10).
@@ -367,7 +367,7 @@ stringifyHttpMessageBody(parsed): string  // canonical reformat
 **Executor** (`httui-core/src/executor/http.rs`):
 - Mantém shape de input atual (frontend resolve refs antes de mandar).
 - Streaming via `tauri::Channel<HttpResponseChunk>` (igual DB): emite `headers` → `body_chunk*` → `done | error | cancelled`.
-- Adiciona `timing: TimingBreakdown { dns_ms, connect_ms, tls_ms, ttfb_ms, total_ms }` dentro do evento `done`.
+- Adiciona `timing: TimingBreakdown { total_ms, ttfb_ms }` no evento `done`. Sub-fields `dns_ms`/`connect_ms`/`tls_ms` ficam `None` no V1 — exigem trocar `reqwest` por `isahc`/libcurl, ver [`http-timing-isahc-future.md`](./http-timing-isahc-future.md).
 - Cookies: opt-in por `send_cookies: bool` no request; quando ativo, lê do jar SQLite (V2) e envia no header.
 
 **Shape dos chunks** (`httui-core/src/executor/http/types.rs`):
@@ -495,7 +495,8 @@ Depois de 1-2 releases estáveis: remover branch JSON legado do parser (opcional
 | JSON sub-language | `@codemirror/lang-json` | Sim | – |
 | XML sub-language | `@codemirror/lang-xml` | Verificar | ~6kb |
 | GraphQL editor (V2) | `cm6-graphql` | Não | ~30kb |
-| HTTP timing breakdown | `reqwest` middleware | Sim (reqwest) | – |
+| HTTP timing (V1: total + ttfb) | `Instant` no executor (zero deps) | Sim | – |
+| HTTP timing breakdown completo (V2) | `isahc` + libcurl `getinfo` | Não — ver [`http-timing-isahc-future.md`](./http-timing-isahc-future.md) | rewrite |
 | Cookie jar (V2) | `cookie_store` crate | Não | ~10kb |
 
 ---
@@ -530,7 +531,7 @@ Depois de 1-2 releases estáveis: remover branch JSON legado do parser (opcional
 - **Execução** (integração): ▶ dispara `execute_block`, response chega, cancel interrompe, mutation não cacheia.
 - **Tests inline** (integração): assertion pass/fail, badge atualiza, mensagem clara.
 - **Cookie jar V2** (integração): set-cookie persiste, próximo request envia Cookie header quando opt-in.
-- **Timing** (integração): breakdown DNS/Connect/TLS/TTFB plausível; soma ≤ total.
+- **Timing** (integração): `total_ms` e `ttfb_ms` plausíveis; `ttfb_ms ≤ total_ms`. Sub-fields DNS/Connect/TLS adiados (V2 via isahc).
 - **Code generation** (vitest): cURL/fetch/Python output válido, refs resolvidas.
 
 ---
@@ -551,7 +552,7 @@ Mesma filosofia do DB redesign — entregas mergeable, vault nunca quebra. Sete 
 - `HttpResponseChunk` enum (Headers/BodyChunk/Done/Error/Cancelled) e shape final `HttpResponse` com `timing` + `cookies[]` (cookies persistente jar fica V2).
 - Executor `http.rs` vira streamed: abre request, emite `Headers`, consome body em pedaços pro `BodyChunk`, finaliza com `Done`.
 - Cancel via `CancellationToken` (mesmo pattern do DB).
-- `timing` via reqwest middleware (DNS/connect/TLS/TTFB hooks).
+- `timing`: V1 mede `total_ms` (in-out do `req.send()` + body stream) e `ttfb_ms` (cronometra `req.send()` retornar antes de consumir body). DNS/Connect/TLS ficam `None` — exigem trocar reqwest por isahc/libcurl (ver [`http-timing-isahc-future.md`](./http-timing-isahc-future.md)).
 - Frontend: hook subscreve ao channel, acumula bytes no CM6 viewer read-only virtualizado, grava no cache SQLite só quando `Done` chega.
 - **Invariante:** comportamento idêntico, shape preparado, responses de MB renderizam sem travar.
 
