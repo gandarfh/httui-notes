@@ -42,6 +42,9 @@ import {
 import {
   LuClipboard,
   LuDownload,
+  LuExpand,
+  LuFileText,
+  LuGlobe,
   LuPlay,
   LuSettings,
   LuSquare,
@@ -1472,7 +1475,10 @@ function BinaryFilePicker({
 
 // ─────────────────────── Body pretty/raw view ───────────────────────
 
-type BodyViewMode = "pretty" | "raw" | "preview" | "visualize";
+// "pretty" routes by content-type: image/pdf/html → visual preview;
+// everything else → CM6 read-only viewer with syntax highlight. The
+// dedicated "preview" mode was folded into pretty (it duplicated work).
+type BodyViewMode = "pretty" | "raw" | "visualize";
 
 // ─────────── CM6 read-only body viewer (Onda 4) ───────────
 // Replaces the old `<Box as="pre" dangerouslySetInnerHTML>` + lowlight
@@ -1592,15 +1598,6 @@ function HttpBodyView({
         >
           raw
         </Button>
-        {previewMeta.kind !== "none" && (
-          <Button
-            size="2xs"
-            variant={view === "preview" ? "solid" : "ghost"}
-            onClick={() => setView("preview")}
-          >
-            preview
-          </Button>
-        )}
         {visualizeData !== null && (
           <Button
             size="2xs"
@@ -1622,13 +1619,17 @@ function HttpBodyView({
           </IconButton>
         )}
       </HStack>
-      {view === "preview" && previewMeta.kind !== "none" && (
-        <HttpBodyPreview meta={previewMeta} />
+      {view === "pretty" && previewMeta.kind !== "none" && (
+        <HttpBodyPreview
+          meta={previewMeta}
+          sizeBytes={response.size_bytes}
+        />
       )}
       {view === "visualize" && visualizeData !== null && (
         <HttpJsonVisualizer data={visualizeData} />
       )}
-      {(view === "pretty" || view === "raw") && (
+      {((view === "pretty" && previewMeta.kind === "none") ||
+        view === "raw") && (
         text ? (
           <HttpBodyCM6Viewer
             text={text}
@@ -1691,7 +1692,22 @@ function detectPreview(response: HttpResponseFull): PreviewMeta {
   return { kind: "none" };
 }
 
-function HttpBodyPreview({ meta }: { meta: PreviewMeta }) {
+/**
+ * Inline preview affordance per content kind:
+ *   - **image**: rendered inline (no scroll-leak issue) with an "expand"
+ *     IconButton overlay in the top-right that opens the fullscreen modal.
+ *   - **pdf** / **html**: a richer placeholder card (icon + type + size +
+ *     CTA) that opens the modal on click — the modal is required because
+ *     iframe wheel events bypass DOM scroll containment in the Tauri
+ *     webview and would otherwise leak into the markdown editor.
+ */
+function HttpBodyPreview({
+  meta,
+  sizeBytes,
+}: {
+  meta: PreviewMeta;
+  sizeBytes: number;
+}) {
   // Lifecycle: HTML preview uses a blob URL we must revoke on unmount.
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   useEffect(() => {
@@ -1706,67 +1722,287 @@ function HttpBodyPreview({ meta }: { meta: PreviewMeta }) {
     return () => URL.revokeObjectURL(url);
   }, [meta]);
 
+  const [open, setOpen] = useState(false);
+
+  if (meta.kind === "none") {
+    return (
+      <Text fontSize="xs" color="fg.muted">
+        Preview not available for this response.
+      </Text>
+    );
+  }
+
+  const label =
+    meta.kind === "image"
+      ? "Image preview"
+      : meta.kind === "pdf"
+        ? "PDF preview"
+        : "HTML preview";
+
+  // Image renders inline — no internal scroll, so no leak. The expand
+  // button still gives access to the fullscreen viewer for big images.
   if (meta.kind === "image") {
     return (
+      <>
+        <Box
+          position="relative"
+          bg="bg.subtle"
+          borderWidth="1px"
+          borderColor="border"
+          borderRadius="sm"
+          p={2}
+          display="flex"
+          justifyContent="center"
+          alignItems="center"
+          maxH="400px"
+          overflow="hidden"
+        >
+          <img
+            src={meta.dataUrl}
+            alt={meta.alt}
+            style={{
+              maxWidth: "100%",
+              maxHeight: "380px",
+              objectFit: "contain",
+              display: "block",
+            }}
+          />
+          <IconButton
+            aria-label="Open image fullscreen"
+            size="xs"
+            variant="solid"
+            onClick={() => setOpen(true)}
+            position="absolute"
+            top={2}
+            right={2}
+            opacity={0.85}
+            _hover={{ opacity: 1 }}
+          >
+            <LuExpand />
+          </IconButton>
+        </Box>
+        {open && (
+          <PreviewOverlay
+            meta={meta}
+            blobUrl={blobUrl}
+            label={label}
+            onClose={() => setOpen(false)}
+          />
+        )}
+      </>
+    );
+  }
+
+  // PDF / HTML — richer placeholder card with icon + type + size + CTA.
+  const Icon = meta.kind === "pdf" ? LuFileText : LuGlobe;
+  const typeLine =
+    meta.kind === "pdf" ? "PDF document" : "HTML page";
+
+  return (
+    <>
       <Box
         bg="bg.subtle"
-        p={2}
-        borderRadius="sm"
+        borderWidth="1px"
+        borderColor="border"
+        borderRadius="md"
+        px={4}
+        py={3}
         display="flex"
-        justifyContent="center"
+        alignItems="center"
+        gap={3}
       >
-        <img
-          src={meta.dataUrl}
-          alt={meta.alt}
-          style={{
-            maxWidth: "100%",
-            maxHeight: "400px",
-            objectFit: "contain",
-          }}
-        />
+        <Box
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+          w="40px"
+          h="40px"
+          borderRadius="sm"
+          bg="bg.panel"
+          color="fg.muted"
+          flexShrink={0}
+        >
+          <Box fontSize="20px">
+            <Icon />
+          </Box>
+        </Box>
+        <Box flex={1} display="flex" flexDirection="column" gap={0.5} minW={0}>
+          <Text fontSize="sm" fontWeight="medium">
+            {typeLine}
+          </Text>
+          <Text fontSize="xs" color="fg.muted">
+            {formatBytes(sizeBytes)} · click to open in a focused viewer
+          </Text>
+        </Box>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setOpen(true)}
+          disabled={meta.kind === "html" && !blobUrl}
+          flexShrink={0}
+        >
+          <LuExpand /> Open
+        </Button>
       </Box>
-    );
-  }
-  if (meta.kind === "pdf") {
-    // <iframe> renders consistently across Tauri webviews (macOS WebKit
-    // hands off to QuickLook, Windows WebView2 has native PDF, Linux
-    // WebKitGTK falls back gracefully). <embed> works on some platforms
-    // and silently shows blank on others — iframe is the safe default.
-    return (
-      <iframe
-        src={meta.dataUrl}
-        title="PDF preview"
-        style={{
-          width: "100%",
-          height: "500px",
-          border: "1px solid var(--chakra-colors-border-muted)",
-          borderRadius: "var(--chakra-radii-sm)",
-        }}
-      />
-    );
-  }
-  if (meta.kind === "html" && blobUrl) {
-    return (
-      <iframe
-        src={blobUrl}
-        // `sandbox=""` (empty value) is the strictest policy: no scripts,
-        // no forms, no same-origin, no popups. Layout-only rendering.
-        sandbox=""
-        title="HTML preview"
-        style={{
-          width: "100%",
-          height: "500px",
-          border: "1px solid var(--chakra-colors-border-muted)",
-          borderRadius: "var(--chakra-radii-sm)",
-          background: "white",
-        }}
-      />
-    );
-  }
+      {open && (
+        <PreviewOverlay
+          meta={meta}
+          blobUrl={blobUrl}
+          label={label}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </>
+  );
+}
+
+/**
+ * Fullscreen preview modal — Portal + Box (deliberately not Chakra Dialog,
+ * which would steal focus from the markdown editor on close). Locks body
+ * scroll while open so wheel events that escape from data: URL iframes
+ * have nowhere to land. Esc + backdrop click + close button all dismiss.
+ */
+function PreviewOverlay({
+  meta,
+  blobUrl,
+  label,
+  onClose,
+}: {
+  meta: PreviewMeta;
+  blobUrl: string | null;
+  label: string;
+  onClose: () => void;
+}) {
+  // Lock body scroll while open. The Tauri webview's compositor scroll
+  // routing means wheel leaks out of the iframe — locking the body
+  // prevents the host doc from scrolling beneath the modal.
+  useEffect(() => {
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, []);
+
+  // Esc closes the modal. Window-level so it works regardless of focus
+  // (the iframe steals focus on its own).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
-    <Text fontSize="xs" color="fg.muted">
-      Preview not available for this response.
-    </Text>
+    <Portal>
+      <Box
+        position="fixed"
+        inset={0}
+        bg="blackAlpha.700"
+        zIndex={3000}
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+        p={6}
+        onClick={onClose}
+        role="dialog"
+        aria-modal="true"
+        backdropFilter="blur(2px)"
+      >
+        <Box
+          bg="bg.panel"
+          borderWidth="1px"
+          borderColor="border"
+          borderRadius="lg"
+          boxShadow="2xl"
+          w="90vw"
+          h="90vh"
+          maxW="1400px"
+          display="flex"
+          flexDirection="column"
+          overflow="hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Flex
+            justify="space-between"
+            align="center"
+            px={4}
+            py={2.5}
+            bg="bg.subtle"
+            borderBottomWidth="1px"
+            borderColor="border"
+          >
+            <Text fontSize="sm" fontWeight="semibold">
+              {label}
+            </Text>
+            <IconButton
+              aria-label="Close preview"
+              size="xs"
+              variant="ghost"
+              onClick={onClose}
+            >
+              <LuX />
+            </IconButton>
+          </Flex>
+          <Box flex={1} overflow="hidden" bg="bg" p={4}>
+            {meta.kind === "image" && (
+              <Box
+                w="100%"
+                h="100%"
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
+                bg="bg.subtle"
+                borderRadius="md"
+              >
+                <img
+                  src={meta.dataUrl}
+                  alt={meta.alt}
+                  style={{
+                    maxWidth: "100%",
+                    maxHeight: "100%",
+                    objectFit: "contain",
+                  }}
+                />
+              </Box>
+            )}
+            {meta.kind === "pdf" && (
+              <iframe
+                src={meta.dataUrl}
+                title="PDF preview"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  border: "1px solid var(--chakra-colors-border)",
+                  borderRadius: "var(--chakra-radii-md)",
+                  display: "block",
+                  background: "white",
+                }}
+              />
+            )}
+            {meta.kind === "html" && blobUrl && (
+              <iframe
+                src={blobUrl}
+                // `sandbox=""` (empty value) is the strictest policy: no
+                // scripts, no forms, no same-origin, no popups. Layout-
+                // only rendering.
+                sandbox=""
+                title="HTML preview"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  border: "1px solid var(--chakra-colors-border)",
+                  borderRadius: "var(--chakra-radii-md)",
+                  display: "block",
+                  background: "white",
+                }}
+              />
+            )}
+          </Box>
+        </Box>
+      </Box>
+    </Portal>
   );
 }
 
