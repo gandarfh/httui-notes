@@ -70,9 +70,18 @@ pub fn render(
         .items
         .iter()
         .map(|item| {
+            // Prefer the source-specific `detail` when set — that
+            // disambiguates env vars from block aliases (`env` vs
+            // `db-postgres · cached`), columns from keywords (`int4`
+            // vs `keyword`), and so on. Fall back to the kind label
+            // for sources that don't carry their own detail.
+            let suffix = item
+                .detail
+                .clone()
+                .unwrap_or_else(|| item.kind.label().to_string());
             ListItem::new(Line::from(vec![
                 Span::styled(item.label.clone(), label_style),
-                Span::styled(format!("  {}", item.kind.label()), kind_style),
+                Span::styled(format!("  {suffix}"), kind_style),
             ]))
         })
         .collect();
