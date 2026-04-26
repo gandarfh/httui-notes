@@ -1728,10 +1728,14 @@ function HttpBodyPreview({ meta }: { meta: PreviewMeta }) {
     );
   }
   if (meta.kind === "pdf") {
+    // <iframe> renders consistently across Tauri webviews (macOS WebKit
+    // hands off to QuickLook, Windows WebView2 has native PDF, Linux
+    // WebKitGTK falls back gracefully). <embed> works on some platforms
+    // and silently shows blank on others — iframe is the safe default.
     return (
-      <embed
+      <iframe
         src={meta.dataUrl}
-        type="application/pdf"
+        title="PDF preview"
         style={{
           width: "100%",
           height: "500px",
