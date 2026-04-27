@@ -41,12 +41,18 @@ pub enum AppEvent {
 }
 
 /// Why this DB result was produced — used by the main loop to pick
-/// between "replace the cached_result" (fresh run) and "append the
-/// new page's rows" (load-more).
+/// between "replace the cached_result" (fresh run), "append the
+/// new page's rows" (load-more), and "merge into the plan slot
+/// without touching results" (EXPLAIN).
 #[derive(Debug)]
 pub enum DbBlockResultKind {
     Run,
     LoadMore,
+    /// `<C-x>` (EXPLAIN) — the query was wrapped in the dialect's
+    /// EXPLAIN keyword. Result lands in `cached_result["plan"]`,
+    /// not `cached_result.results`, so the original query's output
+    /// isn't destroyed by inspecting its plan.
+    Explain,
 }
 
 /// Spawns a background task that drains `crossterm`'s event stream and

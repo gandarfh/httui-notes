@@ -130,6 +130,11 @@ pub enum RunningKind {
     /// Pagination triggered by the result-table prefetch — appends
     /// rows to the existing `cached_result`.
     LoadMore,
+    /// `<C-x>` (EXPLAIN) — runs the query wrapped in the dialect's
+    /// EXPLAIN keyword. Lands in `cached_result["plan"]` so the
+    /// original query's output stays intact; auto-switches the
+    /// result tab to `Plan` so the user sees the new plan.
+    Explain,
 }
 
 /// Open instance of the connection picker popup. Anchored to the

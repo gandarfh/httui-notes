@@ -471,7 +471,13 @@ pub fn run_explain(app: &mut App) {
         .unwrap_or("");
     let dialect = crate::sql_completion::Dialect::from_block(&block);
     let wrapped = crate::sql_completion::explain_wrap(raw, dialect);
-    run_db_block_inner(app, segment_idx, /* force_unscoped = */ true, Some(wrapped));
+    run_db_block_inner(
+        app,
+        segment_idx,
+        /* force_unscoped = */ true,
+        Some(wrapped),
+        /* as_explain = */ true,
+    );
 }
 
 // ───────────── ref / bind resolution ─────────────
@@ -849,7 +855,13 @@ pub fn apply_run_block(app: &mut App) {
         app.set_status(StatusKind::Info, "no block at cursor (place cursor on a block first)");
         return;
     };
-    run_db_block_inner(app, segment_idx, /* force_unscoped = */ false, None);
+    run_db_block_inner(
+        app,
+        segment_idx,
+        /* force_unscoped = */ false,
+        None,
+        /* as_explain = */ false,
+    );
 }
 
 /// Run the DB block at `segment_idx`. Shared entry for the
@@ -860,11 +872,23 @@ pub fn apply_run_block(app: &mut App) {
 /// `query_override` lets callers (currently `run_explain`) substitute
 /// the SQL that's actually sent to the executor while keeping the
 /// block's `params["query"]` text untouched.
+///
+/// `as_explain` re-routes the run as an EXPLAIN side-channel:
+/// - skips the read-only gate (EXPLAIN is read-only by definition),
+/// - skips the unscoped-destructive confirm (EXPLAIN doesn't mutate),
+/// - skips the cache (EXPLAIN output is dialect-specific and small —
+///   not worth poisoning the main cache slot),
+/// - leaves `block.state` and `block.cached_result.results` untouched
+///   so the block keeps showing whatever the last `r` produced,
+/// - tags the spawn `RunningKind::Explain` so the result handler
+///   merges into `cached_result["plan"]` and auto-switches to the
+///   Plan tab.
 pub(crate) fn run_db_block_inner(
     app: &mut App,
     segment_idx: usize,
     force_unscoped: bool,
     query_override: Option<String>,
+    as_explain: bool,
 ) {
     let Some(doc) = app.document() else { return };
     // Snapshot the block so we can release the immutable doc borrow
@@ -978,35 +1002,40 @@ pub(crate) fn run_db_block_inner(
     // path here — the user has to either flip the conn's flag or
     // pick a different connection. Sync lookup via `block_in_place`,
     // matching the rest of `apply_run_block` (already on the
-    // dispatch thread; small SQLite read).
-    let conn_meta = tokio::task::block_in_place(|| {
-        tokio::runtime::Handle::current().block_on(
-            httui_core::db::connections::get_connection(
-                app.pool_manager.app_pool(),
-                &connection_id,
-            ),
-        )
-    });
-    let is_readonly_conn = matches!(
-        &conn_meta,
-        Ok(Some(c)) if c.is_readonly
-    );
-    if is_readonly_conn && is_writing_query(&raw_query) {
-        let msg = "connection is read-only — flip the flag or pick a writable connection".to_string();
-        if let Some(doc) = app.tabs.active_document_mut() {
-            if let Some(b) = doc.block_at_mut(segment_idx) {
-                b.state = ExecutionState::Error(msg.clone());
-                b.cached_result = None;
+    // dispatch thread; small SQLite read). Skipped for EXPLAIN —
+    // the wrapped query is a read by definition.
+    if !as_explain {
+        let conn_meta = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(
+                httui_core::db::connections::get_connection(
+                    app.pool_manager.app_pool(),
+                    &connection_id,
+                ),
+            )
+        });
+        let is_readonly_conn = matches!(
+            &conn_meta,
+            Ok(Some(c)) if c.is_readonly
+        );
+        if is_readonly_conn && is_writing_query(&raw_query) {
+            let msg = "connection is read-only — flip the flag or pick a writable connection".to_string();
+            if let Some(doc) = app.tabs.active_document_mut() {
+                if let Some(b) = doc.block_at_mut(segment_idx) {
+                    b.state = ExecutionState::Error(msg.clone());
+                    b.cached_result = None;
+                }
             }
+            app.set_status(StatusKind::Error, msg);
+            return;
         }
-        app.set_status(StatusKind::Error, msg);
-        return;
     }
 
     // Confirm gate: unscoped UPDATE/DELETE (no WHERE) is the kind
     // of slip that nukes a whole table. Pop a y/n modal so the user
     // explicitly OKs it. Skipped when `force_unscoped` is true (the
-    // user already said yes from the previous popup).
+    // user already said yes from the previous popup) — and EXPLAIN
+    // calls always pass force_unscoped, so this branch is also a
+    // no-op for the side-channel.
     if !force_unscoped && is_unscoped_destructive(&raw_query) {
         let s = strip_leading_sql_comments(&raw_query);
         let kind: String = s
@@ -1030,11 +1059,19 @@ pub(crate) fn run_db_block_inner(
     // `compute_block_hash`). Hit → set state to `Cached`, paint the
     // ⛁ summary, skip the spawn entirely. Miss → keep `cache_key`
     // so `handle_db_block_result` writes on success.
-    let file_path: Option<String> = app
-        .active_pane()
-        .and_then(|p| p.document_path.as_ref())
-        .map(|p| p.to_string_lossy().to_string());
-    let cache_key: Option<(String, String)> =
+    //
+    // EXPLAIN bypasses the cache entirely: the output is dialect-
+    // specific, small, and stat-sensitive (the same EXPLAIN can
+    // produce different plans across runs as the planner re-costs).
+    // Caching it would either pollute the main query's cache slot
+    // or need a separate slot, neither of which is worth shipping.
+    let cache_key: Option<(String, String)> = if as_explain {
+        None
+    } else {
+        let file_path: Option<String> = app
+            .active_pane()
+            .and_then(|p| p.document_path.as_ref())
+            .map(|p| p.to_string_lossy().to_string());
         if is_cacheable_query(&raw_query) {
             file_path.as_deref().map(|fp| {
                 let hash = compute_db_cache_hash(
@@ -1046,7 +1083,8 @@ pub(crate) fn run_db_block_inner(
             })
         } else {
             None
-        };
+        }
+    };
     if let Some((fp, hash)) = cache_key.as_ref() {
         let app_pool = app.pool_manager.app_pool().clone();
         let fp_owned = fp.clone();
@@ -1087,19 +1125,30 @@ pub(crate) fn run_db_block_inner(
         }
     }
 
-    // Mark the block Running so the renderer paints the spinner /
-    // yellow border on the next frame.
-    if let Some(doc) = app.tabs.active_document_mut() {
-        if let Some(b) = doc.block_at_mut(segment_idx) {
-            b.state = ExecutionState::Running;
+    // Flip state to `Running` so the renderer paints the spinner /
+    // yellow border. Skipped for EXPLAIN — the original query's
+    // output stays visible while the plan loads in the background;
+    // the status bar carries the "explaining…" affordance instead.
+    if !as_explain {
+        if let Some(doc) = app.tabs.active_document_mut() {
+            if let Some(b) = doc.block_at_mut(segment_idx) {
+                b.state = ExecutionState::Running;
+            }
         }
+    } else {
+        app.set_status(StatusKind::Info, "explaining…");
     }
 
     let token = CancellationToken::new();
+    let kind = if as_explain {
+        crate::app::RunningKind::Explain
+    } else {
+        crate::app::RunningKind::Run
+    };
     spawn_db_query(
         app,
         segment_idx,
-        crate::app::RunningKind::Run,
+        kind,
         token,
         connection_id,
         query,
@@ -1158,6 +1207,7 @@ fn spawn_db_query(
         let result_kind = match kind_for_task {
             crate::app::RunningKind::Run => crate::event::DbBlockResultKind::Run,
             crate::app::RunningKind::LoadMore => crate::event::DbBlockResultKind::LoadMore,
+            crate::app::RunningKind::Explain => crate::event::DbBlockResultKind::Explain,
         };
         let _ = sender.send(crate::event::AppEvent::DbBlockResult {
             segment_idx,
@@ -1309,6 +1359,53 @@ pub fn handle_db_block_result(
             }
             Err(msg) => {
                 app.set_status(StatusKind::Error, format!("load more: {msg}"));
+            }
+        },
+        DbBlockResultKind::Explain => match outcome {
+            Ok(response) => {
+                // Stuff the EXPLAIN response under `cached_result.plan`
+                // without touching `cached_result.results` — the
+                // user's last `r` output stays visible. If the block
+                // never ran a `r` (no cached_result yet), seed a
+                // minimal envelope so the Plan tab has somewhere to
+                // hang.
+                let plan_value = serde_json::to_value(&response).ok();
+                let first_was_error = matches!(
+                    response.results.first(),
+                    Some(DbResult::Error { .. })
+                );
+                if let Some(doc) = app.tabs.active_document_mut() {
+                    if let Some(b) = doc.block_at_mut(segment_idx) {
+                        let target = b.cached_result.get_or_insert_with(|| {
+                            serde_json::json!({
+                                "results": [],
+                                "messages": [],
+                                "stats": { "elapsed_ms": 0 }
+                            })
+                        });
+                        if let Some(obj) = target.as_object_mut() {
+                            obj.insert(
+                                "plan".into(),
+                                plan_value.unwrap_or(serde_json::Value::Null),
+                            );
+                        }
+                    }
+                }
+                if first_was_error {
+                    let msg = summarize_db_response(&response);
+                    app.set_status(StatusKind::Error, format!("explain: {msg}"));
+                } else {
+                    // Auto-switch to the Plan tab so the user sees the
+                    // result without an extra `gt`-cycle through tabs.
+                    app.db_result_tab = crate::app::ResultPanelTab::Plan;
+                    app.set_status(
+                        StatusKind::Info,
+                        format!("plan · {}ms", response.stats.elapsed_ms),
+                    );
+                }
+            }
+            Err(msg) => {
+                app.set_status(StatusKind::Error, format!("explain: {msg}"));
             }
         },
     }

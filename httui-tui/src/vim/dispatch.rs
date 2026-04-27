@@ -334,6 +334,7 @@ fn apply_confirm_db_run(app: &mut App) {
         state.segment_idx,
         /* force_unscoped = */ true,
         None,
+        /* as_explain = */ false,
     );
 }
 

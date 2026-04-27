@@ -12,11 +12,12 @@ Widgets de blocos executáveis (HTTP, DB, E2E) na TUI.
 
 ✅ **Story 11 — Slice 1 alias edit via `ga`** (commits `a5e6d56` + `b792deb`): Originalmente shippado como `<C-a>` mas rebinded pra `ga` (conflict com tmux prefix popular). Renderiza em popup ancorado encima do bloco (não status bar — usuário pediu reanchorar). Validação: alias único no doc.
 
+✅ **Story 05.2 V2 polish**: EXPLAIN agora roda em side-channel — `cached_result.results` permanece intocado, plan vai pra `cached_result["plan"]`, auto-switch pra Plan tab, postgres `QUERY PLAN` rows desempacotados estilo `psql`.
+
 ⏸ **Story 11 Slice 2 (limit) + Slice 3 (timeout)**: deferidas — viram modal único futuro com vários inputs (Tab navigation), provavelmente `gs` "go settings". Não shippar como chord-por-campo.
 
 **Próximo:**
-1. **Story 05.2 V2 polish**: spawn separado pra EXPLAIN escrever em `cached_result["plan"]`, auto-switch pra Plan tab, tree formatting do plan. Hoje EXPLAIN sobrescreve o `cached_result` da query principal — destrói o resultado anterior.
-2. **Story 05.3 Export menu**: exportar resultado inteiro (CSV/MD/INSERT) — complementa o `y` JSON-de-uma-linha do row-detail modal.
+1. **Story 05.3 Export menu**: exportar resultado inteiro (CSV/MD/INSERT) — complementa o `y` JSON-de-uma-linha do row-detail modal.
 
 **Foco atual (2026-04-26):** **paridade do bloco DB com o desktop**. Stories de HTTP e E2E ficam pausadas até as P0–P1 da DB-parity entregarem. Stories existentes mantêm numeração de origem e ressurgem com status atualizado; gaps de paridade descobertos na auditoria de 2026-04-26 viram substories `04.x` / `05.x`.
 
@@ -419,7 +420,7 @@ Após Story 04.2 (multi-statement), result panel precisa abas. Espelha desktop:
 
 ---
 
-### Story 05.2 — EXPLAIN integration ✅ P2
+### Story 05.2 — EXPLAIN integration ✅ done
 
 **Entregue:**
 - [x] `explain_wrap(query, dialect)` em `sql_completion.rs` — pure helper:
@@ -427,14 +428,13 @@ Após Story 04.2 (multi-statement), result panel precisa abas. Espelha desktop:
   - SQLite: `EXPLAIN QUERY PLAN <query>`
 - [x] Strip de trailing `;`; V1 só pega a primeira statement (multi-explain é V2)
 - [x] 5 testes `explain_wrap_*`
-- [x] Ex command `:explain` (alias `:exp`) registrado em `vim::ex` → roteia pra `commands::db::run_explain`
-- [x] `commands::db::run_explain` resolve cursor → bloco DB, wrappa, chama bridge `vim::dispatch::run_db_block_inner_for_explain` que reusa pipeline de spawn/cancel/result existente
-- [x] Output aparece no Result tab naturalmente (force_unscoped=true, EXPLAIN é read-only mesmo de DELETE)
-
-**Pendente (V2):**
-- Spawn separado que escreva em `cached_result["plan"]` em vez de `["results"]`
-- Auto-switch pra Plan tab quando EXPLAIN retorna
-- Render do plan formatted (hoje JSON pretty-print, parity desktop pede tree formatting)
+- [x] Keymap `<C-x>` em modo normal sobre DB block (commit `724694c`) — substituiu o ex command `:explain` que tinha shippado primeiro, per directive de keymap > ex command
+- [x] V2 polish: spawn separado escreve em `cached_result["plan"]`, NÃO sobrescreve `cached_result.results` — query original fica intacta
+  - `RunningKind::Explain` + `DbBlockResultKind::Explain` novos
+  - `run_db_block_inner` ganhou flag `as_explain` que skipa cache, read-only gate, destructive gate, state→Running
+  - Handler arm Explain merge plan no `cached_result["plan"]` + auto-switch `db_result_tab = Plan` + status `plan · NNms`
+- [x] V2 polish: tree formatting do plan (postgres EXPLAIN) — `build_plan_lines` desempacota `{"QUERY PLAN": "..."}` rows pra texto direto que já carrega indentação + `->` arrows estilo `psql`. Fallback pretty-print JSON pra MySQL/SQLite/FORMAT-JSON.
+- [x] 3 testes novos pra `build_plan_lines` (postgres unwrap, MySQL fallback, placeholder sem plan)
 
 **Depende de:** Story 05.1 ✅, helper `explain_wrap` (sql_completion).
 
