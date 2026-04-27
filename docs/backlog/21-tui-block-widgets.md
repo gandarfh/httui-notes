@@ -2,6 +2,11 @@
 
 Widgets de blocos executáveis (HTTP, DB, E2E) na TUI.
 
+**Próxima sessão (2026-04-26):**
+1. **Continuar refactor**: mover restante do código DB de `vim::dispatch` pra `commands::db` — `apply_run_block`, `run_db_block_inner`, `spawn_db_query`, `handle_db_block_result`, `load_more_db_block`, `cancel_running_query`, helpers de ref (`resolve_block_refs`/`resolve_one_ref`/`value_for_bind`/`navigate_json`/`find_close_marker`/`is_db_response_shape`/`resolve_db_response_path`), `summarize_db_response`, `build_db_executor_params`, `load_active_env_vars`, `resolve_connection_id` (async). Bridge `run_db_block_inner_for_explain` em dispatch fica até esse passo terminar.
+2. **Stories pendentes P2** (em ordem sugerida): Story 08 (display modes), Story 11 (edição inline fence), Story 05.3 (export menu CSV/MD/INSERT).
+3. **Story 05.2 V2 polish**: spawn separado pra EXPLAIN escrever em `cached_result["plan"]`, auto-switch pra Plan tab, tree formatting do plan.
+
 **Foco atual (2026-04-26):** **paridade do bloco DB com o desktop**. Stories de HTTP e E2E ficam pausadas até as P0–P1 da DB-parity entregarem. Stories existentes mantêm numeração de origem e ressurgem com status atualizado; gaps de paridade descobertos na auditoria de 2026-04-26 viram substories `04.x` / `05.x`.
 
 **Depende de:** Epic 18 (Buffer & Rendering), Epic 19 (Vim Engine — congelado em Round 2 + visual)
@@ -403,34 +408,24 @@ Após Story 04.2 (multi-statement), result panel precisa abas. Espelha desktop:
 
 ---
 
-### Story 05.2 — EXPLAIN integration 🚧 P2 (helper landed)
+### Story 05.2 — EXPLAIN integration ✅ P2
 
-**V1 entregue:**
-- [x] `explain_wrap(query, dialect)` em `sql_completion.rs` — pure helper que encapsula a query no EXPLAIN apropriado:
+**Entregue:**
+- [x] `explain_wrap(query, dialect)` em `sql_completion.rs` — pure helper:
   - Postgres / MySQL / Generic: `EXPLAIN <query>`
-  - SQLite: `EXPLAIN QUERY PLAN <query>` (plain `EXPLAIN` dumpa VDBE bytecode, inútil)
-- [x] Strip de trailing `;` pra não confundir o split de multi-statement
-- [x] Multi-statement: V1 só pega a primeira (explicar cada individual é V2)
-- [x] 5 testes em `sql_completion::tests::explain_wrap_*`
+  - SQLite: `EXPLAIN QUERY PLAN <query>`
+- [x] Strip de trailing `;`; V1 só pega a primeira statement (multi-explain é V2)
+- [x] 5 testes `explain_wrap_*`
+- [x] Ex command `:explain` (alias `:exp`) registrado em `vim::ex` → roteia pra `commands::db::run_explain`
+- [x] `commands::db::run_explain` resolve cursor → bloco DB, wrappa, chama bridge `vim::dispatch::run_db_block_inner_for_explain` que reusa pipeline de spawn/cancel/result existente
+- [x] Output aparece no Result tab naturalmente (force_unscoped=true, EXPLAIN é read-only mesmo de DELETE)
 
-**Pendente (próxima slice):**
-- Ex command `:explain` ou keybind dedicado
-- Spawn separado que não escreve em `cached_result["results"]` (ou escreve em `plan` específico)
-- Auto-switch pra Plan tab (Story 05.1 já tem o tab)
-- Render do plan no Plan tab (hoje só pretty-print do JSON; pra desktop parity, tree formatting)
+**Pendente (V2):**
+- Spawn separado que escreva em `cached_result["plan"]` em vez de `["results"]`
+- Auto-switch pra Plan tab quando EXPLAIN retorna
+- Render do plan formatted (hoje JSON pretty-print, parity desktop pede tree formatting)
 
-Helper basta pra próxima slice plumbar tudo sem refactor.
-
-`<leader>e` (ou ex `:explain`) wrappa primeira statement em `EXPLAIN` (Postgres/MySQL) ou `EXPLAIN QUERY PLAN` (SQLite), executa one-off, popula tab Plan.
-
-**Tasks:**
-- [ ] Detector de dialect → wrapper apropriado
-- [ ] Execução paralela ao normal? Ou separada? — desktop faz separada, mantém
-- [ ] Render do plano: text bruto formatado (Postgres tem ANALYZE com tree, mas V1 só EXPLAIN — texto plano)
-- [ ] Auto-switch pra tab Plan ao receber resultado
-- [ ] Testes: query EXPLAIN é wrapper correto pro dialeto, não modifica fence
-
-**Depende de:** Story 05.1.
+**Depende de:** Story 05.1 ✅, helper `explain_wrap` (sql_completion).
 
 ---
 
