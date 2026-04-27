@@ -685,11 +685,12 @@ fn render_http_inner(
             width: panel_chunk.width,
             height: panel_chunk.height.saturating_sub(used),
         };
-        render_result_tab_bar_inner(
+        render_result_tab_bar_for(
             frame,
             tab_bar_rect,
             result_tab,
             None, /* http never multi-statement */
+            "http",
         );
         render_result_separator(frame, separator_rect);
         render_http_response_panel(frame, content_rect, b, result_tab);
@@ -725,20 +726,139 @@ fn http_response_body_lines(b: &BlockNode) -> Vec<Line<'static>> {
         return vec![placeholder];
     };
     let body = result.get("body");
-    // The executor stores body as a JSON value: object/array for
-    // structured responses (Content-Type: application/json), string
-    // otherwise. Render objects pretty; strings as-is.
-    let text = match body {
-        Some(serde_json::Value::String(s)) => s.clone(),
-        Some(other) => serde_json::to_string_pretty(other).unwrap_or_default(),
+    // Body is either a JSON value (object/array → pretty-print and
+    // syntax-highlight as JSON) or a string (rendered as-is). We
+    // highlight the JSON path because that covers the common case
+    // of `application/json` responses.
+    let (text, is_json) = match body {
+        Some(serde_json::Value::String(s)) => (s.clone(), false),
+        Some(other) => (
+            serde_json::to_string_pretty(other).unwrap_or_default(),
+            true,
+        ),
         None => return vec![placeholder],
     };
     if text.is_empty() {
         return vec![placeholder];
     }
-    text.lines()
-        .map(|l| Line::from(l.to_string()))
-        .collect()
+    if is_json {
+        text.lines()
+            .map(|l| Line::from(highlight_json_line(l)))
+            .collect()
+    } else {
+        text.lines()
+            .map(|l| Line::from(l.to_string()))
+            .collect()
+    }
+}
+
+/// Tiny JSON-aware lexer: highlights string keys / values, numbers,
+/// booleans, nulls, and structural punctuation. Per-line so it
+/// composes with ratatui's line-by-line rendering. Strings split
+/// across lines (multi-line escape sequences) are rare in
+/// pretty-printed JSON; if they happen, the second half just
+/// renders default — acceptable for V1.
+fn highlight_json_line(line: &str) -> Vec<Span<'static>> {
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let key_style = Style::default().fg(Color::Cyan);
+    let str_style = Style::default().fg(Color::Green);
+    let num_style = Style::default().fg(Color::Rgb(255, 165, 0));
+    let kw_style = Style::default()
+        .fg(Color::Magenta)
+        .add_modifier(Modifier::BOLD);
+    let punct_style = Style::default().fg(Color::DarkGray);
+
+    let bytes = line.as_bytes();
+    let mut i = 0usize;
+    let mut last_string: Option<String> = None; // tracks key-vs-value context
+
+    while i < bytes.len() {
+        let c = bytes[i] as char;
+        if c == '"' {
+            // Scan to closing quote (respecting \" escapes).
+            let start = i;
+            i += 1;
+            while i < bytes.len() {
+                if bytes[i] == b'\\' && i + 1 < bytes.len() {
+                    i += 2;
+                    continue;
+                }
+                if bytes[i] == b'"' {
+                    i += 1;
+                    break;
+                }
+                i += 1;
+            }
+            let chunk = &line[start..i];
+            // Look ahead skipping spaces — `:` after a string means
+            // it's a key.
+            let mut j = i;
+            while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t') {
+                j += 1;
+            }
+            let is_key = j < bytes.len() && bytes[j] == b':';
+            spans.push(Span::styled(
+                chunk.to_string(),
+                if is_key { key_style } else { str_style },
+            ));
+            last_string = Some(chunk.to_string());
+        } else if c.is_ascii_digit() || (c == '-' && i + 1 < bytes.len() && (bytes[i + 1] as char).is_ascii_digit()) {
+            let start = i;
+            if c == '-' {
+                i += 1;
+            }
+            while i < bytes.len()
+                && ((bytes[i] as char).is_ascii_digit()
+                    || bytes[i] == b'.'
+                    || bytes[i] == b'e'
+                    || bytes[i] == b'E'
+                    || bytes[i] == b'+'
+                    || bytes[i] == b'-')
+            {
+                i += 1;
+            }
+            spans.push(Span::styled(line[start..i].to_string(), num_style));
+        } else if line[i..].starts_with("true") {
+            spans.push(Span::styled("true".to_string(), kw_style));
+            i += 4;
+        } else if line[i..].starts_with("false") {
+            spans.push(Span::styled("false".to_string(), kw_style));
+            i += 5;
+        } else if line[i..].starts_with("null") {
+            spans.push(Span::styled("null".to_string(), kw_style));
+            i += 4;
+        } else if matches!(c, '{' | '}' | '[' | ']' | ',' | ':') {
+            spans.push(Span::styled(c.to_string(), punct_style));
+            i += 1;
+        } else {
+            // Whitespace / unknown — keep default style.
+            let start = i;
+            while i < bytes.len() {
+                let ch = bytes[i] as char;
+                if ch == '"'
+                    || ch == '{'
+                    || ch == '}'
+                    || ch == '['
+                    || ch == ']'
+                    || ch == ','
+                    || ch == ':'
+                    || ch.is_ascii_digit()
+                    || (ch == '-' && i + 1 < bytes.len() && (bytes[i + 1] as char).is_ascii_digit())
+                    || line[i..].starts_with("true")
+                    || line[i..].starts_with("false")
+                    || line[i..].starts_with("null")
+                {
+                    break;
+                }
+                i += 1;
+            }
+            if i > start {
+                spans.push(Span::raw(line[start..i].to_string()));
+            }
+        }
+    }
+    let _ = last_string;
+    spans
 }
 
 fn http_response_headers_lines(b: &BlockNode) -> Vec<Line<'static>> {
@@ -1606,6 +1726,16 @@ fn render_result_tab_bar_inner(
     selected: crate::app::ResultPanelTab,
     result_count: Option<usize>,
 ) {
+    render_result_tab_bar_for(frame, area, selected, result_count, "")
+}
+
+fn render_result_tab_bar_for(
+    frame: &mut Frame,
+    area: Rect,
+    selected: crate::app::ResultPanelTab,
+    result_count: Option<usize>,
+    block_type: &str,
+) {
     use crate::app::ResultPanelTab;
     let active_style = Style::default()
         .fg(Color::White)
@@ -1622,9 +1752,9 @@ fn render_result_tab_bar_inner(
         let style = if tab == selected { active_style } else { inactive_style };
         let label = match (tab, result_count) {
             // Pluralize Result(s) when multi-statement returned >1
-            // result set — same convention the desktop uses.
+            // (DB only — HTTP never has multi).
             (ResultPanelTab::Result, Some(n)) if n > 1 => format!("Results ({n})"),
-            _ => tab.label().to_string(),
+            _ => tab.label_for(block_type).to_string(),
         };
         spans.push(Span::styled(label, style));
         spans.push(Span::raw("    "));

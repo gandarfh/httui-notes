@@ -353,6 +353,22 @@ impl ResultPanelTab {
         }
     }
 
+    /// Block-type-aware label. HTTP repurposes the 4 slots as
+    /// Body / Headers / Cookies / Stats so the tab strip reads
+    /// like the desktop's response viewer. DB and unknown types
+    /// fall through to the default `label()`.
+    pub fn label_for(self, block_type: &str) -> &'static str {
+        if block_type == "http" {
+            return match self {
+                ResultPanelTab::Result => "Body",
+                ResultPanelTab::Messages => "Headers",
+                ResultPanelTab::Plan => "Cookies",
+                ResultPanelTab::Stats => "Stats",
+            };
+        }
+        self.label()
+    }
+
     pub fn next(self) -> Self {
         match self {
             ResultPanelTab::Result => ResultPanelTab::Messages,
