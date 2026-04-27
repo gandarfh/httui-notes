@@ -1477,6 +1477,7 @@ mod tests {
         use crate::buffer::block::{BlockId, ExecutionState};
         let mk = |ty: &str| BlockNode {
             id: BlockId(0),
+            raw: ropey::Rope::new(),
             block_type: ty.to_string(),
             alias: None,
             display_mode: None,

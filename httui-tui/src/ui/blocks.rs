@@ -974,6 +974,7 @@ mod tests {
     fn http_block() -> BlockNode {
         BlockNode {
             id: BlockId(0),
+            raw: ropey::Rope::new(),
             block_type: "http".into(),
             alias: Some("login".into()),
             display_mode: None,
@@ -1022,6 +1023,7 @@ mod tests {
     fn db_footer_text_falls_back_to_raw_when_unmapped() {
         let b = BlockNode {
             id: BlockId(0),
+            raw: ropey::Rope::new(),
             block_type: "db-postgres".into(),
             alias: Some("q".into()),
             display_mode: None,
@@ -1044,6 +1046,7 @@ mod tests {
         let uuid = "abc-123";
         let b = BlockNode {
             id: BlockId(0),
+            raw: ropey::Rope::new(),
             block_type: "db-postgres".into(),
             alias: Some("q".into()),
             display_mode: None,
@@ -1065,6 +1068,7 @@ mod tests {
     fn build_result_table_returns_none_without_cache() {
         let b = BlockNode {
             id: BlockId(0),
+            raw: ropey::Rope::new(),
             block_type: "db-sqlite".into(),
             alias: None,
             display_mode: None,
@@ -1079,6 +1083,7 @@ mod tests {
     fn db_result_table_height_counts_visible_rows() {
         let b = BlockNode {
             id: BlockId(0),
+            raw: ropey::Rope::new(),
             block_type: "db-sqlite".into(),
             alias: None,
             display_mode: None,
@@ -1103,6 +1108,7 @@ mod tests {
         let rows: Vec<serde_json::Value> = (0..50).map(|i| json!({"id": i})).collect();
         let b = BlockNode {
             id: BlockId(0),
+            raw: ropey::Rope::new(),
             block_type: "db-sqlite".into(),
             alias: None,
             display_mode: None,
@@ -1158,6 +1164,7 @@ mod tests {
             (0..30).map(|i| json!({"id": i, "name": format!("r{i}")})).collect();
         let b = BlockNode {
             id: BlockId(0),
+            raw: ropey::Rope::new(),
             block_type: "db-sqlite".into(),
             alias: None,
             display_mode: None,
@@ -1213,6 +1220,7 @@ mod tests {
     fn e2e_body_lists_steps() {
         let b = BlockNode {
             id: BlockId(0),
+            raw: ropey::Rope::new(),
             block_type: "e2e".into(),
             alias: Some("flow".into()),
             display_mode: None,
@@ -1239,6 +1247,7 @@ mod tests {
     fn db_block_with_plan(plan: serde_json::Value) -> BlockNode {
         BlockNode {
             id: BlockId(0),
+            raw: ropey::Rope::new(),
             block_type: "db-postgres".into(),
             alias: Some("q".into()),
             display_mode: None,

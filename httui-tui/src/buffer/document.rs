@@ -44,8 +44,14 @@ impl Document {
                     segments.push(Segment::Prose(Rope::from_str(&prose)));
                 }
             }
+            // The block's raw markdown — keep ALL its source lines
+            // (fence header + body + closer) verbatim so
+            // `Cursor::InBlock` edits can mutate the rope directly
+            // and re-parse stays lossless.
+            let raw_text = lines[block.line_start..=block.line_end].join("\n");
             segments.push(Segment::Block(BlockNode {
                 id: BlockId(next_id),
+                raw: Rope::from_str(&raw_text),
                 block_type: block.block_type.clone(),
                 alias: block.alias.clone(),
                 display_mode: block.display_mode.clone(),
@@ -215,8 +221,10 @@ impl Document {
                     new_segs.push(Segment::Prose(Rope::from_str(&prose)));
                 }
             }
+            let raw_text = lines[block.line_start..=block.line_end].join("\n");
             new_segs.push(Segment::Block(BlockNode {
                 id: BlockId(self.next_block_id),
+                raw: Rope::from_str(&raw_text),
                 block_type: block.block_type.clone(),
                 alias: block.alias.clone(),
                 display_mode: block.display_mode.clone(),

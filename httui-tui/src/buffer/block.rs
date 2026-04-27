@@ -1,3 +1,4 @@
+use ropey::Rope;
 use serde_json::Value;
 
 /// Document-scoped identifier for a block node.
@@ -35,6 +36,14 @@ pub enum ExecutionState {
 #[derive(Debug, Clone)]
 pub struct BlockNode {
     pub id: BlockId,
+    /// The block's raw markdown — `\`\`\`<info>` line + body lines +
+    /// `\`\`\`` closer. This is the source of truth: editing it (via
+    /// `Cursor::InBlock`) is equivalent to editing prose, and the
+    /// derived fields below (`block_type`, `alias`, `display_mode`,
+    /// `params`) are kept in sync via `reparse_from_raw`. Cached
+    /// state (`state`, `cached_result`) survives re-parses because
+    /// they're keyed on `id`, not on text.
+    pub raw: Rope,
     pub block_type: String,
     pub alias: Option<String>,
     pub display_mode: Option<String>,
@@ -161,6 +170,7 @@ mod tests {
     fn block(ty: &str) -> BlockNode {
         BlockNode {
             id: BlockId(0),
+            raw: Rope::new(),
             block_type: ty.into(),
             alias: None,
             display_mode: None,
