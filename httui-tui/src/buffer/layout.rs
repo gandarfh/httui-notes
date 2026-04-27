@@ -41,10 +41,12 @@ fn block_height(b: &BlockNode, cursor_on_block: bool) -> u16 {
     let chrome = 4u16;
 
     let card = if b.is_http() {
-        // chrome + request body lines (method/URL row + 1 row per
-        // header + 1 row per query param + body separator + body
-        // lines) + response panel rows (only when the block has a
-        // cached result).
+        // chrome + request body lines + response panel rows (only
+        // when the block has a cached result). Two row counts to
+        // pick from based on cursor state — keep them in lockstep
+        // with the renderer (`ui::blocks::render_http_inner`),
+        // which swaps between raw rope and structured `b.params`
+        // depending on `selected`.
         let response_lines = if b.cached_result.is_some() {
             // Tab bar (1) + separator (1) + viewport (8) — mirrors
             // `ui::blocks::http_response_panel_height`.
@@ -53,7 +55,7 @@ fn block_height(b: &BlockNode, cursor_on_block: bool) -> u16 {
             0
         };
         chrome
-            .saturating_add(http_request_lines(b))
+            .saturating_add(http_request_lines(b, cursor_on_block))
             .saturating_add(response_lines)
     } else if b.is_db() {
         let mode = b.effective_display_mode();
@@ -91,11 +93,23 @@ fn block_height(b: &BlockNode, cursor_on_block: bool) -> u16 {
 /// Must mirror `ui::blocks::db_result_table_height` so the segment's
 /// reserved height matches what the renderer actually fills.
 /// Rows the HTTP block's request panel will paint inside the card.
-/// Mirrors `ui::blocks::http_body`: 1 row for the method+URL line +
-/// 1 per query param + 1 per header + (1 separator + body lines)
-/// when the body is non-empty. Used by `block_height` so the
-/// segment reservation matches what the renderer actually fills.
-fn http_request_lines(b: &BlockNode) -> u16 {
+/// Two paths matching `ui::blocks::render_http_inner`:
+///
+/// - Cursor on (`cursor_on_block`): renderer paints the raw rope
+///   line-by-line, so the row count is the body's raw line count.
+/// - Cursor off: renderer expands `b.params` (method+URL, query
+///   params one-per-row, headers one-per-row, body separator + body
+///   lines), so the row count mirrors that expansion.
+///
+/// Picking the wrong path leaves dead rows under the card (visible
+/// as empty lines between the closer and the footer bar).
+fn http_request_lines(b: &BlockNode, cursor_on_block: bool) -> u16 {
+    if cursor_on_block {
+        // Renderer uses `raw_body_text(b)` and feeds it through
+        // `highlight_http_message` — one Line per body row. Body
+        // rows = raw lines minus fence header + closer.
+        return crate::buffer::block::body_line_count(&b.raw).max(1) as u16;
+    }
     let mut rows: u16 = 1; // method+URL row
     if let Some(params) = b.params.get("params").and_then(|v| v.as_array()) {
         rows = rows.saturating_add(params.len() as u16);
