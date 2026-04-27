@@ -45,9 +45,6 @@ import {
   LuExpand,
   LuFileText,
   LuGlobe,
-  LuPlay,
-  LuSettings,
-  LuSquare,
   LuTrash2,
   LuX,
 } from "react-icons/lu";
@@ -73,7 +70,6 @@ import {
   type HttpBodyMode,
   type HttpDisplayMode,
   type HttpMessageParsed,
-  type HttpMethod,
   type HttpKVRow,
   type MultipartPart,
   type MultipartPartKind,
@@ -363,24 +359,13 @@ interface HttpFencedPanelProps {
   filePath: string;
 }
 
-type ExecutionState = "idle" | "running" | "success" | "error" | "cancelled";
-
-const METHOD_COLORS: Record<HttpMethod, string> = {
-  GET: "green.500",
-  POST: "blue.500",
-  PUT: "orange.500",
-  PATCH: "yellow.500",
-  DELETE: "red.500",
-  HEAD: "purple.500",
-  OPTIONS: "gray.500",
-};
-
-const MUTATION_METHODS: ReadonlySet<HttpMethod> = new Set([
-  "POST",
-  "PUT",
-  "PATCH",
-  "DELETE",
-]);
+// ExecutionState / METHOD_COLORS / MUTATION_METHODS / SendAsFormat moved to ./shared.ts
+import {
+  type ExecutionState,
+  type SendAsFormat,
+  MUTATION_METHODS,
+} from "./shared";
+import { HttpToolbar } from "./HttpToolbar";
 
 function parseBody(body: string): HttpMessageParsed {
   const legacy = parseLegacyHttpBody(body);
@@ -508,182 +493,7 @@ function buildExecutorParams(
 }
 
 // ─────────────────────── Sub-components ───────────────────────
-
-type SendAsFormat = "curl" | "fetch" | "python" | "httpie" | "http-file";
-
-function HttpToolbar({
-  alias,
-  method,
-  host,
-  mode,
-  bodyMode,
-  executionState,
-  onRun,
-  onCancel,
-  onOpenSettings,
-  onToggleMode,
-  onPickBodyMode,
-}: {
-  alias: string | undefined;
-  method: HttpMethod;
-  host: string | null;
-  mode: "raw" | "form";
-  bodyMode: HttpBodyMode;
-  executionState: ExecutionState;
-  onRun: () => void;
-  onCancel: () => void;
-  onOpenSettings: () => void;
-  onToggleMode: (next: "raw" | "form") => void;
-  onPickBodyMode: (next: HttpBodyMode) => void;
-}) {
-  const running = executionState === "running";
-  return (
-    <Flex
-      align="center"
-      gap={2}
-      px={3}
-      py={1.5}
-      bg="bg.subtle"
-      borderTopRadius="md"
-      fontSize="sm"
-      minH="36px"
-    >
-      <Badge colorPalette="blue" variant="subtle" textTransform="uppercase">
-        HTTP
-      </Badge>
-      {alias && (
-        <Text
-          fontFamily="mono"
-          color="fg.muted"
-          truncate
-          maxW="14ch"
-          aria-label="alias"
-        >
-          {alias}
-        </Text>
-      )}
-      <Box
-        px={1.5}
-        py={0.5}
-        borderRadius="sm"
-        bg="bg.muted"
-        fontSize="xs"
-        fontFamily="mono"
-        color={METHOD_COLORS[method]}
-        fontWeight="semibold"
-      >
-        {method}
-      </Box>
-      {host && (
-        <Text
-          fontFamily="mono"
-          color="fg.muted"
-          fontSize="xs"
-          truncate
-          maxW="32ch"
-        >
-          {host}
-        </Text>
-      )}
-      <Box flex={1} />
-      <HStack
-        gap={0}
-        borderRadius="sm"
-        borderWidth="1px"
-        borderColor="border.muted"
-        overflow="hidden"
-        aria-label="View mode"
-      >
-        <Button
-          size="2xs"
-          variant={mode === "raw" ? "solid" : "ghost"}
-          borderRadius="0"
-          onClick={() => onToggleMode("raw")}
-          aria-pressed={mode === "raw"}
-        >
-          raw
-        </Button>
-        <Button
-          size="2xs"
-          variant={mode === "form" ? "solid" : "ghost"}
-          borderRadius="0"
-          onClick={() => onToggleMode("form")}
-          aria-pressed={mode === "form"}
-        >
-          form
-        </Button>
-      </HStack>
-      <Menu.Root positioning={{ placement: "bottom-end" }}>
-        <Menu.Trigger asChild>
-          <Button
-            size="2xs"
-            variant="outline"
-            aria-label={`Body mode: ${bodyMode}`}
-            title="Set Content-Type for request body"
-            fontFamily="mono"
-          >
-            {bodyMode}
-          </Button>
-        </Menu.Trigger>
-        <Portal>
-          <Menu.Positioner>
-            <Menu.Content minW="180px" py={1}>
-              {(
-                [
-                  "none",
-                  "json",
-                  "xml",
-                  "text",
-                  "form-urlencoded",
-                  "multipart",
-                  "binary",
-                ] as HttpBodyMode[]
-              ).map((m) => (
-                <Menu.Item
-                  key={m}
-                  value={m}
-                  onSelect={() => onPickBodyMode(m)}
-                  fontFamily="mono"
-                >
-                  {m}
-                </Menu.Item>
-              ))}
-            </Menu.Content>
-          </Menu.Positioner>
-        </Portal>
-      </Menu.Root>
-      {running ? (
-        <IconButton
-          aria-label="Cancel request"
-          size="xs"
-          variant="ghost"
-          colorPalette="red"
-          onClick={onCancel}
-        >
-          <LuSquare />
-        </IconButton>
-      ) : (
-        <IconButton
-          aria-label="Run request"
-          size="xs"
-          variant="ghost"
-          colorPalette="green"
-          onClick={onRun}
-        >
-          <LuPlay />
-        </IconButton>
-      )}
-      <IconButton
-        aria-label="Block settings"
-        size="xs"
-        variant="ghost"
-        onClick={onOpenSettings}
-      >
-        <LuSettings />
-      </IconButton>
-    </Flex>
-  );
-}
+// HttpToolbar moved to ./HttpToolbar.tsx
 
 function bodyAsText(body: unknown): string {
   if (body === null || body === undefined) return "";
