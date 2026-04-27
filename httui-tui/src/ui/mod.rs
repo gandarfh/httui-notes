@@ -511,11 +511,43 @@ fn overlay_visual_selection(
             (lo_line, lo_col, hi_line, hi_col)
         };
 
+        // Map raw line index → screen Y. For prose segments lines
+        // are contiguous (rope_line N → y_start + N). Block segments
+        // have chrome (top border + header bar) above the fence
+        // header and a result panel between the body and the
+        // closer, so the mapping is non-linear.
+        let line_to_y: Box<dyn Fn(usize) -> u16> = match seg {
+            Segment::Prose(_) => {
+                let y_start = layout.y_start;
+                Box::new(move |line: usize| y_start.saturating_add(line as u16))
+            }
+            Segment::Block(_) => {
+                let y_start = layout.y_start;
+                let height = layout.height;
+                let last_raw = rope.len_lines().saturating_sub(1);
+                Box::new(move |line: usize| {
+                    if line == 0 {
+                        // Fence header sits just inside the top
+                        // border + chrome header bar.
+                        y_start.saturating_add(2)
+                    } else if line >= last_raw {
+                        // Closer sits one row above the chrome
+                        // footer bar and bottom border.
+                        y_start.saturating_add(height.saturating_sub(3))
+                    } else {
+                        // Body line N (raw line N): right after
+                        // the fence header.
+                        y_start.saturating_add(2).saturating_add(line as u16)
+                    }
+                })
+            }
+        };
+
         paint_segment_highlight(
             frame,
             area,
             viewport_top,
-            layout.y_start,
+            line_to_y.as_ref(),
             rope,
             start_line,
             start_col,
@@ -536,7 +568,7 @@ fn paint_segment_highlight(
     frame: &mut Frame,
     area: Rect,
     viewport_top: u16,
-    seg_y_start: u16,
+    line_to_y: &dyn Fn(usize) -> u16,
     rope: &ropey::Rope,
     start_line: usize,
     start_col: usize,
@@ -552,7 +584,7 @@ fn paint_segment_highlight(
         if line >= total_lines {
             break;
         }
-        let absolute_y = seg_y_start.saturating_add(line as u16);
+        let absolute_y = line_to_y(line);
         if absolute_y < viewport_top {
             continue;
         }
