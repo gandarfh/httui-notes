@@ -31,7 +31,6 @@ import {
   HStack,
   IconButton,
   Input,
-  Menu,
   NativeSelectField,
   NativeSelectRoot,
   Portal,
@@ -41,7 +40,6 @@ import {
 } from "@chakra-ui/react";
 import {
   LuClipboard,
-  LuDownload,
   LuExpand,
   LuFileText,
   LuGlobe,
@@ -383,33 +381,13 @@ function deriveHost(rawUrl: string): string | null {
   }
 }
 
-function statusDotColor(code: number | null | undefined): string {
-  if (!code) return "gray.400";
-  if (code >= 200 && code < 300) return "green.500";
-  if (code >= 300 && code < 400) return "blue.500";
-  if (code >= 400 && code < 500) return "orange.500";
-  if (code >= 500) return "red.500";
-  return "gray.400";
-}
-
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(2)} MB`;
-}
-
-function relativeTimeAgo(date: Date | null): string | null {
-  if (!date) return null;
-  const seconds = Math.round((Date.now() - date.getTime()) / 1000);
-  if (seconds < 5) return "just now";
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  return `${days}d ago`;
-}
+// statusDotColor / formatBytes / relativeTimeAgo moved to ./shared.ts
+import {
+  formatBytes,
+  relativeTimeAgo,
+  statusDotColor,
+} from "./shared";
+import { HttpStatusBar } from "./HttpStatusBar";
 
 // RFC 7230 header-name token characters. Reqwest rejects anything outside
 // this set (notably whitespace, control chars, `{`, `}`, `(`, `)`, `,`,
@@ -2480,113 +2458,7 @@ function HttpResult({
   );
 }
 
-function HttpStatusBar({
-  alias,
-  host,
-  executionState,
-  response,
-  durationMs,
-  cached,
-  lastRunAt,
-  downloadingBytes,
-  onSendAs,
-}: {
-  alias: string | undefined;
-  host: string | null;
-  executionState: ExecutionState;
-  response: HttpResponseFull | null;
-  durationMs: number | null;
-  cached: boolean;
-  lastRunAt: Date | null;
-  /** Cumulative body bytes received during a streamed response. Only
-   * displayed while the request is running and at least one BodyChunk has
-   * been delivered (Onda 4 progress indicator). */
-  downloadingBytes: number;
-  onSendAs: (format: SendAsFormat) => void;
-}) {
-  const status = response?.status_code;
-  const dotColor = statusDotColor(status);
-  const ago = relativeTimeAgo(lastRunAt);
-
-  let label: string;
-  if (executionState === "running") label = "running";
-  else if (executionState === "cancelled") label = "cancelled";
-  else if (executionState === "error") label = "error";
-  else if (status) label = `${status}`;
-  else label = "idle";
-
-  return (
-    <Flex
-      align="center"
-      gap={2}
-      px={3}
-      py={1}
-      bg="bg.subtle"
-      borderBottomRadius="md"
-      fontFamily="mono"
-      fontSize="xs"
-      color="fg.subtle"
-      minH="24px"
-    >
-      <HStack gap={1.5}>
-        <Box w={1.5} h={1.5} borderRadius="full" bg={dotColor} />
-        <Text>{label}</Text>
-      </HStack>
-      {host && <Text>· {host}</Text>}
-      {executionState === "running" && downloadingBytes > 0 && (
-        <Text>· downloading {formatBytes(downloadingBytes)}…</Text>
-      )}
-      {durationMs !== null && executionState !== "running" && (
-        <Text>· {durationMs}ms</Text>
-      )}
-      {response && executionState !== "running" && (
-        <Text>· {formatBytes(response.size_bytes)}</Text>
-      )}
-      {ago && executionState !== "running" && <Text>· ran {ago}</Text>}
-      {cached && <Text>· cached</Text>}
-      {alias && <Text>· {alias}</Text>}
-      <Box flex={1} />
-      <Text>⌘↵ to run · ⌘. to cancel</Text>
-      <Menu.Root positioning={{ placement: "top-end" }}>
-        <Menu.Trigger asChild>
-          <IconButton
-            aria-label="Send as / copy snippet"
-            size="2xs"
-            variant="ghost"
-            title="Send as / copy snippet"
-          >
-            <LuDownload />
-          </IconButton>
-        </Menu.Trigger>
-        <Portal>
-          <Menu.Positioner>
-            <Menu.Content minW="200px" py={1}>
-              <Menu.Item value="curl" onSelect={() => onSendAs("curl")}>
-                Copy as cURL
-              </Menu.Item>
-              <Menu.Item value="fetch" onSelect={() => onSendAs("fetch")}>
-                Copy as fetch (JS)
-              </Menu.Item>
-              <Menu.Item value="python" onSelect={() => onSendAs("python")}>
-                Copy as Python (requests)
-              </Menu.Item>
-              <Menu.Item value="httpie" onSelect={() => onSendAs("httpie")}>
-                Copy as HTTPie
-              </Menu.Item>
-              <Menu.Separator />
-              <Menu.Item
-                value="http-file"
-                onSelect={() => onSendAs("http-file")}
-              >
-                Save as .http file…
-              </Menu.Item>
-            </Menu.Content>
-          </Menu.Positioner>
-        </Portal>
-      </Menu.Root>
-    </Flex>
-  );
-}
+// HttpStatusBar moved to ./HttpStatusBar.tsx
 
 function HttpDrawer({
   metadata,
