@@ -5,6 +5,7 @@
 //! every frame — cheap until documents grow big, optimisation can wait.
 
 use crate::buffer::block::{BlockNode, ExecutionState};
+use crate::buffer::cursor::Cursor;
 use crate::buffer::document::Document;
 use crate::buffer::segment::Segment;
 
@@ -19,18 +20,25 @@ pub struct SegmentLayout {
 /// Lines a segment will occupy in the editor area.
 ///
 /// Width is accepted for forward-compat (prose wrap, multi-column
-/// blocks); current heuristic ignores it.
-pub fn segment_height(seg: &Segment, _width: u16) -> u16 {
+/// blocks); current heuristic ignores it. `cursor_on_block` toggles
+/// the "raw view" rendering for blocks: when the cursor sits on the
+/// block, the renderer paints two extra rows around the card (the
+/// fence header line above + ` ``` ` closer below) so the user can
+/// see exactly what they'd cut/yank — same affordance the desktop
+/// CM6 editor exposes when the cursor enters a block widget.
+pub fn segment_height(seg: &Segment, _width: u16, cursor_on_block: bool) -> u16 {
     match seg {
         Segment::Prose(rope) => rope.len_lines().max(1) as u16,
-        Segment::Block(b) => block_height(b),
+        Segment::Block(b) => block_height(b, cursor_on_block),
     }
 }
 
-fn block_height(b: &BlockNode) -> u16 {
-    if b.is_http() {
+fn block_height(b: &BlockNode, cursor_on_block: bool) -> u16 {
+    let raw_extra = if cursor_on_block { 2 } else { 0 };
+
+    let card = if b.is_http() {
         // border + URL line + meta line + border
-        4
+        4u16
     } else if b.is_db() {
         let mode = b.effective_display_mode();
         // SQL body lines — counted only when Input or Split asks for
@@ -73,8 +81,9 @@ fn block_height(b: &BlockNode) -> u16 {
         // border + steps + base_url line + border
         (steps as u16).saturating_add(3)
     } else {
-        4
-    }
+        4u16
+    };
+    card.saturating_add(raw_extra)
 }
 
 /// How tall the DB result `Table` widget paints inside the card.
@@ -111,11 +120,20 @@ fn db_table_height(b: &BlockNode) -> u16 {
 }
 
 /// Walk all segments and produce their `(idx, y_start, height)` triples.
+/// The block under the cursor reserves two extra rows so the renderer
+/// can paint the fence header / closer in raw view.
 pub fn layout_document(doc: &Document, viewport_width: u16) -> Vec<SegmentLayout> {
+    let cursor_seg = match doc.cursor() {
+        Cursor::InBlock { segment_idx, .. } | Cursor::InBlockResult { segment_idx, .. } => {
+            Some(segment_idx)
+        }
+        _ => None,
+    };
     let mut out = Vec::with_capacity(doc.segment_count());
     let mut y: u16 = 0;
     for (idx, seg) in doc.segments().iter().enumerate() {
-        let height = segment_height(seg, viewport_width);
+        let cursor_on_block = cursor_seg == Some(idx);
+        let height = segment_height(seg, viewport_width, cursor_on_block);
         out.push(SegmentLayout {
             segment_idx: idx,
             y_start: y,
@@ -230,6 +248,47 @@ mod tests {
             .unwrap()
             .height;
         assert_eq!(block_h, 3);
+    }
+
+    #[test]
+    fn db_block_grows_by_two_when_cursor_lands_on_it() {
+        // Same fixture as `db_block_height_grows_with_query` (3 lines
+        // of SQL → 6-line card) — but moving the cursor onto the
+        // block should add 2 rows for the fence header + closer that
+        // the renderer paints in raw view. Mirrors CM6 desktop's
+        // cursor-enter behavior.
+        let md = "```db-postgres alias=q\nSELECT *\nFROM users\nWHERE id > 10\n```\n";
+        let mut doc = Document::from_markdown(md).unwrap();
+        let block_idx = doc
+            .segments()
+            .iter()
+            .position(|s| matches!(s, crate::buffer::Segment::Block(_)))
+            .unwrap();
+        // Park cursor inside the block — the layout should now
+        // reserve 6 + 2 = 8 rows for it.
+        doc.set_cursor(crate::buffer::Cursor::InBlock {
+            segment_idx: block_idx,
+            line: 0,
+            offset: 0,
+        });
+        let with_cursor = layout_document(&doc, 80)
+            .iter()
+            .find(|l| l.segment_idx == block_idx)
+            .unwrap()
+            .height;
+        assert_eq!(with_cursor, 8);
+        // Move cursor off the block (the leading empty pad) — height
+        // collapses back to the bare 6.
+        doc.set_cursor(crate::buffer::Cursor::InProse {
+            segment_idx: 0,
+            offset: 0,
+        });
+        let without_cursor = layout_document(&doc, 80)
+            .iter()
+            .find(|l| l.segment_idx == block_idx)
+            .unwrap()
+            .height;
+        assert_eq!(without_cursor, 6);
     }
 
     #[test]

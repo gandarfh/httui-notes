@@ -42,14 +42,32 @@ pub fn render_block_with_selection(
     names: &ConnectionNames,
     result_tab: crate::app::ResultPanelTab,
 ) {
+    // Raw fence view when the cursor sits on the block: paint the
+    // ` ```<info> ` line above and the ` ``` ` closer below the card,
+    // matching CM6 desktop's behavior on cursor-enter. The layout
+    // module already reserved 2 extra rows for these (see
+    // `block_height`'s `cursor_on_block` branch); shrink `area` to
+    // the card's slice so border + body still fit.
+    let card_area = if selected {
+        render_fence_lines(frame, area, b);
+        Rect {
+            x: area.x,
+            y: area.y.saturating_add(1),
+            width: area.width,
+            height: area.height.saturating_sub(2),
+        }
+    } else {
+        area
+    };
+
     let title = block_title(b);
     let border_color = state_color(&b.state, selected);
     let outer = Block::default()
         .borders(Borders::ALL)
         .title(title)
         .border_style(Style::default().fg(border_color));
-    let inner = outer.inner(area);
-    frame.render_widget(outer, area);
+    let inner = outer.inner(card_area);
+    frame.render_widget(outer, card_area);
 
     if b.is_db() {
         render_db_inner(frame, inner, b, selected_row, viewport_top, names, result_tab);
@@ -65,6 +83,45 @@ pub fn render_block_with_selection(
     };
 
     frame.render_widget(Paragraph::new(lines), inner);
+}
+
+/// Paint the fence delimiter rows (` ```<info> ` above, ` ``` `
+/// below) around the block's card. Called when the cursor sits on
+/// the block — the layout reserved the rows; we just fill them with
+/// dim-colored monospace text so the user can see (and yank, once
+/// motion crosses these rows) the canonical fence text.
+fn render_fence_lines(frame: &mut Frame, area: Rect, b: &BlockNode) {
+    if area.height < 2 {
+        return;
+    }
+    let dim = Style::default().fg(Color::DarkGray);
+    // Header line — first line of the canonical fence markdown
+    // (` ```<type> alias=... ` etc.). We don't reach into the body
+    // because it's already rendered inside the card.
+    let fence = b.to_fence_markdown();
+    let header = fence.lines().next().unwrap_or("```").to_string();
+    let header_rect = Rect {
+        x: area.x,
+        y: area.y,
+        width: area.width,
+        height: 1,
+    };
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(header, dim))),
+        header_rect,
+    );
+    // Closer line — always the literal ` ``` ` for parity with the
+    // serializer's output. Painted at the bottom of the reserved area.
+    let closer_rect = Rect {
+        x: area.x,
+        y: area.y.saturating_add(area.height.saturating_sub(1)),
+        width: area.width,
+        height: 1,
+    };
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled("```".to_string(), dim))),
+        closer_rect,
+    );
 }
 
 fn block_title(b: &BlockNode) -> String {

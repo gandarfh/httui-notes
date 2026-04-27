@@ -862,7 +862,21 @@ fn render_segment(
             );
             if in_body {
                 if let Cursor::InBlock { line, offset, .. } = cursor {
-                    cursor::render_inblock_cursor(frame, area, line, offset);
+                    // When the cursor's on the block, the renderer
+                    // shifted the card down by 1 row to make room for
+                    // the fence header line. Mirror that here so the
+                    // body cursor lands on the right SQL row.
+                    let cursor_area = if focused {
+                        Rect {
+                            x: area.x,
+                            y: area.y.saturating_add(1),
+                            width: area.width,
+                            height: area.height.saturating_sub(2),
+                        }
+                    } else {
+                        area
+                    };
+                    cursor::render_inblock_cursor(frame, cursor_area, line, offset);
                 }
             }
         }
