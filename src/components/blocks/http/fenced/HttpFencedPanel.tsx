@@ -33,7 +33,6 @@ import {
   NativeSelectField,
   NativeSelectRoot,
   Portal,
-  Tabs,
   Text,
 } from "@chakra-ui/react";
 import {
@@ -66,7 +65,6 @@ import {
   type HttpBodyMode,
   type HttpDisplayMode,
   type HttpMessageParsed,
-  type HttpKVRow,
   type MultipartPart,
   type MultipartPartKind,
 } from "@/lib/blocks/http-fence";
@@ -385,6 +383,7 @@ import {
 } from "./shared";
 import { HttpStatusBar } from "./HttpStatusBar";
 import { HttpResultTabs } from "./HttpResultTabs";
+import { HttpFormMode } from "./HttpFormMode";
 
 // RFC 7230 header-name token characters. Reqwest rejects anything outside
 // this set (notably whitespace, control chars, `{`, `}`, `(`, `)`, `,`,
@@ -478,302 +477,6 @@ function buildExecutorParams(
 // highlight + autocomplete, and avoid the per-keystroke re-emit pipeline
 // that would make the form feel laggy.)
 
-/**
- * One row of the Params/Headers table. Memoised so a re-render of
- * `HttpFormPanel` (e.g. after another row commits) doesn't tear down the
- * CodeMirror editors of *this* row — that's what produced the visible
- * flash. Callbacks are stable inside the row because `updateRow` and
- * `deleteRow` come from the parent already wrapped in a no-deps
- * `useCallback`, and `index` / `kind` are intrinsic to this row.
- */
-const KVRow = memo(function KVRow({
-  kind,
-  index,
-  row,
-  updateRow,
-  deleteRow,
-  refsGetters,
-}: {
-  kind: "params" | "headers";
-  index: number;
-  row: HttpKVRow;
-  updateRow: (
-    kind: "params" | "headers",
-    index: number,
-    patch: Partial<HttpKVRow>,
-  ) => void;
-  deleteRow: (kind: "params" | "headers", index: number) => void;
-  refsGetters?: {
-    getBlocks: () => BlockContext[];
-    getEnvKeys: () => (string | EnvKeyInfo)[];
-  };
-}) {
-  const onToggle = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) =>
-      updateRow(kind, index, { enabled: e.target.checked }),
-    [kind, index, updateRow],
-  );
-  const onKeyCommit = useCallback(
-    (next: string) => updateRow(kind, index, { key: next }),
-    [kind, index, updateRow],
-  );
-  const onValueCommit = useCallback(
-    (next: string) => updateRow(kind, index, { value: next }),
-    [kind, index, updateRow],
-  );
-  const onDescCommit = useCallback(
-    (next: string) =>
-      updateRow(kind, index, { description: next || undefined }),
-    [kind, index, updateRow],
-  );
-  const onDelete = useCallback(
-    () => deleteRow(kind, index),
-    [kind, index, deleteRow],
-  );
-
-  return (
-    <Flex
-      align="center"
-      gap={1}
-      px={2}
-      py={1}
-      borderBottomWidth="1px"
-      borderColor="border.muted"
-      _last={{ borderBottomWidth: 0 }}
-    >
-      <input
-        type="checkbox"
-        aria-label={`Toggle ${kind} row ${index}`}
-        checked={row.enabled}
-        onChange={onToggle}
-      />
-      <Box flex={1}>
-        <HttpInlineCM
-          placeholder="key"
-          value={row.key}
-          onCommit={onKeyCommit}
-          refsGetters={refsGetters}
-        />
-      </Box>
-      <Box flex={2}>
-        <HttpInlineCM
-          placeholder="value"
-          value={row.value}
-          onCommit={onValueCommit}
-          refsGetters={refsGetters}
-        />
-      </Box>
-      <Box flex={1}>
-        <HttpInlineCM
-          placeholder="description"
-          value={row.description ?? ""}
-          onCommit={onDescCommit}
-          refsGetters={refsGetters}
-        />
-      </Box>
-      <IconButton
-        aria-label={`Delete ${kind} row ${index}`}
-        size="xs"
-        variant="ghost"
-        onClick={onDelete}
-      >
-        <LuX />
-      </IconButton>
-    </Flex>
-  );
-});
-
-/**
- * Tabular Params/Headers editor shown when `mode=form` and the cursor is
- * outside the block. Each input maintains a local draft and only re-emits
- * the canonical raw body on blur (matching the `EnvironmentManager`
- * pattern in this codebase). Toggles, add, and delete commit immediately
- * — those are infrequent and not on the keystroke path.
- */
-function HttpFormPanel({
-  parsed,
-  bodyMode,
-  onChange,
-  onPickFile,
-  refsGetters,
-}: {
-  parsed: HttpMessageParsed;
-  bodyMode: HttpBodyMode;
-  onChange: (next: HttpMessageParsed) => void;
-  onPickFile: () => Promise<string | null>;
-  refsGetters?: {
-    getBlocks: () => BlockContext[];
-    getEnvKeys: () => (string | EnvKeyInfo)[];
-  };
-}) {
-  // ── Pending rows (local, not yet committed to the doc) ──
-  // Rows with empty `key` would be dropped by the canonical stringifier
-  // (a `?` query segment with no key, or a blank header line that breaks
-  // header parsing). Keeping them in local state until the user types a
-  // key avoids round-trip loss while still letting the doc remain the
-  // source of truth for everything that's actually filled in.
-  const [pending, setPending] = useState<{
-    params: HttpKVRow[];
-    headers: HttpKVRow[];
-  }>({ params: [], headers: [] });
-
-  // Refs that always carry the latest `parsed` / `pending` / `onChange` so
-  // the row callbacks below can stay referentially stable. Without this,
-  // every keystroke that committed a value would re-create every row's
-  // `onCommit`, which forces `HttpInlineCM` (CodeMirror) to re-render and
-  // visibly flash.
-  const parsedRef = useRef(parsed);
-  const pendingRef = useRef(pending);
-  const onChangeRef = useRef(onChange);
-  parsedRef.current = parsed;
-  pendingRef.current = pending;
-  onChangeRef.current = onChange;
-
-  // Stable updateRow — no deps, reads always-fresh state via refs.
-  const updateRow = useCallback(
-    (
-      kind: "params" | "headers",
-      displayIndex: number,
-      patch: Partial<HttpMessageParsed["params"][number]>,
-    ) => {
-      const parsed = parsedRef.current;
-      const pending = pendingRef.current;
-      const onChange = onChangeRef.current;
-
-      const realLen = parsed[kind].length;
-      if (displayIndex < realLen) {
-        const rows = parsed[kind].slice();
-        rows[displayIndex] = { ...rows[displayIndex], ...patch };
-        onChange({ ...parsed, [kind]: rows });
-        return;
-      }
-      const pIdx = displayIndex - realLen;
-      const current = pending[kind][pIdx];
-      if (!current) return;
-      const updated = { ...current, ...patch };
-      if (updated.key.trim() !== "") {
-        // Promote pending → committed atomically (React 18 batches both).
-        setPending((prev) => ({
-          ...prev,
-          [kind]: prev[kind].filter((_, i) => i !== pIdx),
-        }));
-        onChange({ ...parsed, [kind]: [...parsed[kind], updated] });
-      } else {
-        setPending((prev) => {
-          const list = prev[kind].slice();
-          list[pIdx] = updated;
-          return { ...prev, [kind]: list };
-        });
-      }
-    },
-    [],
-  );
-
-  const addRow = useCallback((kind: "params" | "headers") => {
-    setPending((prev) => ({
-      ...prev,
-      [kind]: [...prev[kind], { key: "", value: "", enabled: true }],
-    }));
-  }, []);
-
-  const deleteRow = useCallback(
-    (kind: "params" | "headers", displayIndex: number) => {
-      const parsed = parsedRef.current;
-      const onChange = onChangeRef.current;
-      const realLen = parsed[kind].length;
-      if (displayIndex < realLen) {
-        const rows = parsed[kind].filter((_, i) => i !== displayIndex);
-        onChange({ ...parsed, [kind]: rows });
-        return;
-      }
-      const pIdx = displayIndex - realLen;
-      setPending((prev) => ({
-        ...prev,
-        [kind]: prev[kind].filter((_, i) => i !== pIdx),
-      }));
-    },
-    [],
-  );
-
-  const onBodyCommit = useCallback(
-    (next: string) => onChange({ ...parsed, body: next }),
-    [parsed, onChange],
-  );
-
-  const renderTable = (kind: "params" | "headers") => {
-    const merged = [...parsed[kind], ...pending[kind]];
-    return (
-      <Box>
-        {merged.length === 0 && (
-          <Text fontSize="xs" color="fg.muted" px={3} py={2}>
-            (no {kind})
-          </Text>
-        )}
-        {merged.map((row, i) => (
-          <KVRow
-            key={`${kind}-${i}`}
-            kind={kind}
-            index={i}
-            row={row}
-            updateRow={updateRow}
-            deleteRow={deleteRow}
-            refsGetters={refsGetters}
-          />
-        ))}
-        <Box px={2} py={1}>
-          <Button
-            size="2xs"
-            variant="ghost"
-            onClick={() => addRow(kind)}
-          >
-            + add {kind === "params" ? "param" : "header"}
-          </Button>
-        </Box>
-      </Box>
-    );
-  };
-
-  return (
-    <Box px={2} py={2}>
-      <Text
-        fontSize="2xs"
-        fontWeight="semibold"
-        color="fg.muted"
-        textTransform="uppercase"
-        letterSpacing="wider"
-        mb={1}
-      >
-        Request
-      </Text>
-      <Tabs.Root defaultValue="params" size="sm" variant="line">
-        <Tabs.List>
-          <Tabs.Trigger value="params">
-            Params ({parsed.params.length + pending.params.length})
-          </Tabs.Trigger>
-          <Tabs.Trigger value="headers">
-            Headers ({parsed.headers.length + pending.headers.length})
-          </Tabs.Trigger>
-          <Tabs.Trigger value="body">Body</Tabs.Trigger>
-        </Tabs.List>
-        <Tabs.Content value="params" px={0} pt={2}>
-          {renderTable("params")}
-        </Tabs.Content>
-        <Tabs.Content value="headers" px={0} pt={2}>
-          {renderTable("headers")}
-        </Tabs.Content>
-        <Tabs.Content value="body" px={0} pt={2}>
-          <HttpBodyByMode
-            bodyMode={bodyMode}
-            parsed={parsed}
-            onCommit={onBodyCommit}
-            onPickFile={onPickFile}
-            refsGetters={refsGetters}
-          />
-        </Tabs.Content>
-      </Tabs.Root>
-    </Box>
-  );
-}
 
 // ─────────────────────── Body tab dispatcher (Onda 2) ───────────────────────
 
@@ -3166,12 +2869,22 @@ export const HttpFencedPanel = memo(function HttpFencedPanel({
 
       {formNode &&
         createPortal(
-          <HttpFormPanel
+          <HttpFormMode
             parsed={parsed}
             bodyMode={currentBodyMode}
             onChange={onFormChange}
             onPickFile={pickFile}
             refsGetters={refsGetters}
+            InlineCM={HttpInlineCM}
+            renderBodyTab={({ parsed: p, onCommit, onPickFile: pick, refsGetters: r }) => (
+              <HttpBodyByMode
+                bodyMode={currentBodyMode}
+                parsed={p}
+                onCommit={onCommit}
+                onPickFile={pick}
+                refsGetters={r}
+              />
+            )}
           />,
           formNode,
         )}
