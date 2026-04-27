@@ -105,10 +105,11 @@ fn db_table_height(b: &BlockNode) -> u16 {
         1 + visible // +1 for the table header row
     };
     // Chrome rows the renderer carves on top of the panel:
+    //   +1 tab bar (Results / Messages / Plan / Stats)
     //   +1 separator under the tab strip
     //   +1 sub-tabs strip when results.len() > 1
     let multi = results.map(|a| a.len() > 1).unwrap_or(false);
-    let chrome_extra = 1 + if multi { 1 } else { 0 };
+    let chrome_extra = 2 + if multi { 1 } else { 0 };
     (table_rows + chrome_extra) as u16
 }
 
@@ -323,6 +324,6 @@ mod tests {
             .find(|l| l.segment_idx == idx)
             .unwrap()
             .height;
-        assert_eq!(block_h, 4 + 3 + (1 + 2 + 1));
+        assert_eq!(block_h, 4 + 3 + (1 + 2 + 2));
     }
 }

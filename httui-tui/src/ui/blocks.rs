@@ -947,10 +947,11 @@ fn db_result_table_height(b: &BlockNode) -> u16 {
         let visible = row_count.min(MAX_VISIBLE_ROWS);
         1 + visible
     };
-    // Match `buffer::layout::db_table_height`: separator (1) plus
-    // sub-tabs (1 only when multi-statement) live above the table.
+    // Match `buffer::layout::db_table_height`: tab bar (1) +
+    // separator (1) + sub-tabs (1 only when multi-statement) live
+    // above the table.
     let multi = results.map(|a| a.len() > 1).unwrap_or(false);
-    let chrome_extra = 1 + if multi { 1 } else { 0 };
+    let chrome_extra = 2 + if multi { 1 } else { 0 };
     (table_rows + chrome_extra) as u16
 }
 
@@ -1376,8 +1377,8 @@ mod tests {
                 "stats": {"elapsed_ms": 5},
             })),
         };
-        // header + 3 rows + 1 separator strip below the tabs.
-        assert_eq!(db_result_table_height(&b), 4 + 1);
+        // header + 3 rows + 2 chrome rows above (tab bar + separator).
+        assert_eq!(db_result_table_height(&b), 4 + 2);
     }
 
     #[test]
@@ -1401,10 +1402,11 @@ mod tests {
                 "stats": {"elapsed_ms": 5},
             })),
         };
-        // header + 10-row viewport + 1 separator strip below the tabs.
+        // header + 10-row viewport + 2 chrome rows above
+        // (tab bar + separator).
         assert_eq!(
             db_result_table_height(&b),
-            (1 + MAX_VISIBLE_ROWS + 1) as u16
+            (1 + MAX_VISIBLE_ROWS + 2) as u16
         );
     }
 
