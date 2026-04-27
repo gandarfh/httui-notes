@@ -79,6 +79,36 @@ impl Dialect {
     }
 }
 
+/// Wrap a query in the dialect's EXPLAIN keyword so the result
+/// contains the planner's execution plan instead of (or alongside)
+/// the actual rows. Postgres / MySQL use bare `EXPLAIN <query>`;
+/// SQLite uses `EXPLAIN QUERY PLAN <query>` (its plain `EXPLAIN`
+/// dumps VDBE bytecode which isn't useful to most users).
+///
+/// Trailing semicolon is stripped so `EXPLAIN SELECT 1;` reads as
+/// `EXPLAIN SELECT 1` — the executor's multi-statement splitter
+/// would otherwise see two statements (the EXPLAIN and an empty one)
+/// and emit a confusing extra result.
+///
+/// V1 only wraps the *first* statement when a multi-statement query
+/// is passed — explaining each individually is V2.
+pub fn explain_wrap(query: &str, dialect: Dialect) -> String {
+    // Find the first `;` outside of string / comment context. V1
+    // is naive and just splits on the first literal `;` — same
+    // approximation `is_unscoped_destructive` uses. Good enough
+    // for the common case (single SELECT / UPDATE).
+    let trimmed = query.trim();
+    let first_stmt = match trimmed.find(';') {
+        Some(idx) => trimmed[..idx].trim(),
+        None => trimmed,
+    };
+    let prefix = match dialect {
+        Dialect::Sqlite => "EXPLAIN QUERY PLAN ",
+        Dialect::Postgres | Dialect::MySql | Dialect::Generic => "EXPLAIN ",
+    };
+    format!("{prefix}{first_stmt}")
+}
+
 /// ANSI-ish keyword set shared across dialects. Covers the 80% the
 /// average note will type. Sorted, deduped, all-uppercase canonical
 /// form — the popup match is case-insensitive so `select` still
@@ -1458,5 +1488,43 @@ mod tests {
         assert_eq!(Dialect::from_block(&mk("db-mysql")), Dialect::MySql);
         assert_eq!(Dialect::from_block(&mk("db-sqlite")), Dialect::Sqlite);
         assert_eq!(Dialect::from_block(&mk("http")), Dialect::Generic);
+    }
+
+    // ───────────── explain_wrap (Story 05.2) ─────────────
+
+    #[test]
+    fn explain_wrap_postgres_uses_bare_explain() {
+        let got = explain_wrap("SELECT * FROM users", Dialect::Postgres);
+        assert_eq!(got, "EXPLAIN SELECT * FROM users");
+    }
+
+    #[test]
+    fn explain_wrap_mysql_uses_bare_explain() {
+        let got = explain_wrap("SELECT id FROM users", Dialect::MySql);
+        assert_eq!(got, "EXPLAIN SELECT id FROM users");
+    }
+
+    #[test]
+    fn explain_wrap_sqlite_uses_explain_query_plan() {
+        // SQLite's plain EXPLAIN dumps VDBE bytecode; QUERY PLAN
+        // is the human-readable variant — match desktop's choice.
+        let got = explain_wrap("SELECT * FROM users", Dialect::Sqlite);
+        assert_eq!(got, "EXPLAIN QUERY PLAN SELECT * FROM users");
+    }
+
+    #[test]
+    fn explain_wrap_strips_trailing_semicolon() {
+        // Otherwise the executor's `;`-splitter would see an empty
+        // second statement and emit a confusing extra result.
+        let got = explain_wrap("SELECT 1;", Dialect::Postgres);
+        assert_eq!(got, "EXPLAIN SELECT 1");
+    }
+
+    #[test]
+    fn explain_wrap_takes_only_first_statement() {
+        // V1 only explains the first statement when the user wrote
+        // multi-statement. Explaining each individually is V2.
+        let got = explain_wrap("SELECT 1; SELECT 2", Dialect::Postgres);
+        assert_eq!(got, "EXPLAIN SELECT 1");
     }
 }

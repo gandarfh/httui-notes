@@ -403,7 +403,23 @@ Após Story 04.2 (multi-statement), result panel precisa abas. Espelha desktop:
 
 ---
 
-### Story 05.2 — EXPLAIN integration 🚧 P2
+### Story 05.2 — EXPLAIN integration 🚧 P2 (helper landed)
+
+**V1 entregue:**
+- [x] `explain_wrap(query, dialect)` em `sql_completion.rs` — pure helper que encapsula a query no EXPLAIN apropriado:
+  - Postgres / MySQL / Generic: `EXPLAIN <query>`
+  - SQLite: `EXPLAIN QUERY PLAN <query>` (plain `EXPLAIN` dumpa VDBE bytecode, inútil)
+- [x] Strip de trailing `;` pra não confundir o split de multi-statement
+- [x] Multi-statement: V1 só pega a primeira (explicar cada individual é V2)
+- [x] 5 testes em `sql_completion::tests::explain_wrap_*`
+
+**Pendente (próxima slice):**
+- Ex command `:explain` ou keybind dedicado
+- Spawn separado que não escreve em `cached_result["results"]` (ou escreve em `plan` específico)
+- Auto-switch pra Plan tab (Story 05.1 já tem o tab)
+- Render do plan no Plan tab (hoje só pretty-print do JSON; pra desktop parity, tree formatting)
+
+Helper basta pra próxima slice plumbar tudo sem refactor.
 
 `<leader>e` (ou ex `:explain`) wrappa primeira statement em `EXPLAIN` (Postgres/MySQL) ou `EXPLAIN QUERY PLAN` (SQLite), executa one-off, popula tab Plan.
 
