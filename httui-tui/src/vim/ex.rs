@@ -118,9 +118,6 @@ pub fn execute(app: &mut App, cmd: ExCmd) -> ExResult {
             ExResult::Ok(String::new())
         }
         ExCmd::Explain => {
-            // Domain command lives in `commands::db`; the actual
-            // spawn still bridges through dispatch's
-            // `run_db_block_inner_for_explain` until that migrates.
             crate::commands::db::run_explain(app);
             ExResult::Ok(String::new())
         }

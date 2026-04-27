@@ -901,7 +901,12 @@ async fn main_loop(
                 kind,
                 outcome,
             }) => {
-                vim::dispatch::handle_db_block_result(app, segment_idx, kind, outcome);
+                crate::commands::db::handle_db_block_result(
+                    app,
+                    segment_idx,
+                    kind,
+                    outcome,
+                );
             }
             Some(AppEvent::SchemaLoaded {
                 connection_id,
