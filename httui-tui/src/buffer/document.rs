@@ -603,6 +603,113 @@ impl Document {
         self.undo.can_redo()
     }
 
+    /// Translate a `(segment_idx, offset)` pair to a flat char offset
+    /// inside `to_markdown()`. Inverse of segment-by-segment
+    /// reconstruction — used by cross-segment operators that need to
+    /// reason about the doc as one rope.
+    ///
+    /// Mirrors `to_markdown`'s separator logic: empty-prose padding
+    /// is filtered before counting, and a `\n` separator is added
+    /// between visible segments unless one already trails. Out-of-
+    /// range inputs clamp to the doc's end.
+    pub fn global_offset_for(&self, segment_idx: usize, offset: usize) -> usize {
+        let mut global = 0usize;
+        let last_idx = self
+            .segments
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| !is_empty_prose(s))
+            .map(|(i, _)| i)
+            .last()
+            .unwrap_or(0);
+        let mut emitted_so_far = String::new();
+        for (i, seg) in self.segments.iter().enumerate() {
+            if is_empty_prose(seg) {
+                if i == segment_idx {
+                    return global;
+                }
+                continue;
+            }
+            let seg_text = match seg {
+                Segment::Prose(r) => r.to_string(),
+                Segment::Block(b) => {
+                    // Mirror `to_markdown`'s serialize_block path so
+                    // global offsets line up with the on-disk text.
+                    let adapter = ParsedBlock {
+                        block_type: b.block_type.clone(),
+                        alias: b.alias.clone(),
+                        display_mode: b.display_mode.clone(),
+                        params: b.params.clone(),
+                        line_start: 0,
+                        line_end: 0,
+                    };
+                    httui_core::blocks::serialize_block(&adapter)
+                }
+            };
+            let seg_len = seg_text.chars().count();
+            if i == segment_idx {
+                return global + offset.min(seg_len);
+            }
+            global += seg_len;
+            emitted_so_far.push_str(&seg_text);
+            // Same separator rule as `to_markdown`: one `\n` unless
+            // the prior chunk already ended in one.
+            if i < last_idx && !emitted_so_far.ends_with('\n') {
+                global += 1;
+                emitted_so_far.push('\n');
+            }
+        }
+        global
+    }
+
+    /// Reparse the document from a fresh markdown string, preserving
+    /// the cursor (clamped) plus any cached block state we can recover.
+    /// Cached state (`state`, `cached_result`) is keyed by `alias`
+    /// across the rebuild — same convention the executor uses to look
+    /// up by-alias references.
+    ///
+    /// Used by cross-segment operators (visual yank/delete spanning
+    /// prose + blocks) that round-trip the doc through markdown so
+    /// they don't have to teach every operator about every segment
+    /// boundary. The undo stack and `next_block_id` counter are
+    /// preserved on this side; the new `Document` is folded in.
+    pub fn replace_with_text(&mut self, text: &str, new_cursor: Cursor) -> TuiResult<()> {
+        // Capture cached state by alias on the way out.
+        let mut cached: std::collections::HashMap<String, (ExecutionState, Option<serde_json::Value>)> =
+            std::collections::HashMap::new();
+        for seg in &self.segments {
+            if let Segment::Block(b) = seg {
+                if let Some(alias) = &b.alias {
+                    cached.insert(alias.clone(), (b.state.clone(), b.cached_result.clone()));
+                }
+            }
+        }
+        let fresh = Document::from_markdown(text)?;
+        let mut new_segments = fresh.segments;
+        // Restore cached state by alias on the rebuilt blocks. Blocks
+        // that lost their alias mid-edit (or had none) start fresh —
+        // matches the contract that cached_result lives off the markdown.
+        for seg in new_segments.iter_mut() {
+            if let Segment::Block(b) = seg {
+                if let Some(alias) = b.alias.as_deref() {
+                    if let Some((state, result)) = cached.remove(alias) {
+                        b.state = state;
+                        b.cached_result = result;
+                    }
+                }
+                // Mint fresh IDs from our own counter so we don't
+                // collide with previously-minted ones still alive
+                // in undo snapshots.
+                b.id = BlockId(self.next_block_id);
+                self.next_block_id += 1;
+            }
+        }
+        self.segments = new_segments;
+        self.cursor = clamp_cursor(&self.segments, new_cursor);
+        self.dirty = true;
+        Ok(())
+    }
+
     fn snapshot_of_self(&self) -> Snapshot {
         Snapshot {
             segments: self.segments.clone(),
@@ -619,6 +726,69 @@ impl Document {
         // restored state matches disk would require comparing against the
         // last-saved snapshot, which we don't track yet.
         self.dirty = true;
+    }
+}
+
+/// Clamp a `Cursor` to a fresh segment list — used after
+/// `replace_with_text` rebuilds the document. Out-of-range segments
+/// fall back to the first prose segment (or segment 0). Offsets
+/// past the segment's content clamp to its last valid position.
+fn clamp_cursor(segments: &[Segment], cursor: Cursor) -> Cursor {
+    let total_segs = segments.len();
+    let fallback = || -> Cursor {
+        // First Prose segment, offset 0. Always exists thanks to
+        // pad_with_prose's invariants.
+        for (i, seg) in segments.iter().enumerate() {
+            if matches!(seg, Segment::Prose(_)) {
+                return Cursor::InProse {
+                    segment_idx: i,
+                    offset: 0,
+                };
+            }
+        }
+        Cursor::InProse {
+            segment_idx: 0,
+            offset: 0,
+        }
+    };
+    match cursor {
+        Cursor::InProse {
+            segment_idx,
+            offset,
+        } => {
+            let Some(seg) = segments.get(segment_idx.min(total_segs.saturating_sub(1))) else {
+                return fallback();
+            };
+            match seg {
+                Segment::Prose(rope) => Cursor::InProse {
+                    segment_idx: segment_idx.min(total_segs.saturating_sub(1)),
+                    offset: offset.min(rope.len_chars()),
+                },
+                Segment::Block(b) => Cursor::InBlock {
+                    segment_idx: segment_idx.min(total_segs.saturating_sub(1)),
+                    offset: offset.min(b.raw.len_chars()),
+                },
+            }
+        }
+        Cursor::InBlock {
+            segment_idx,
+            offset,
+        } => {
+            let Some(seg) = segments.get(segment_idx.min(total_segs.saturating_sub(1))) else {
+                return fallback();
+            };
+            match seg {
+                Segment::Block(b) => Cursor::InBlock {
+                    segment_idx: segment_idx.min(total_segs.saturating_sub(1)),
+                    offset: offset.min(b.raw.len_chars()),
+                },
+                Segment::Prose(rope) => Cursor::InProse {
+                    segment_idx: segment_idx.min(total_segs.saturating_sub(1)),
+                    offset: offset.min(rope.len_chars()),
+                },
+            }
+        }
+        Cursor::InBlockResult { .. } => fallback(),
     }
 }
 
