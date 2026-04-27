@@ -505,30 +505,44 @@ fn db_footer_text(b: &BlockNode, names: &ConnectionNames) -> String {
 /// Build the inline run-status line for a DB block. Returns `None`
 /// when the block hasn't run yet — keeps idle blocks visually quiet.
 fn db_result_line(b: &BlockNode) -> Option<Line<'static>> {
+    // Compact run-status line. Colored badge for the state, dim
+    // grey for the metadata that follows — keeps the SQL above
+    // visually loud and the meta visually quiet (mirrors the
+    // desktop's chip + muted text pattern).
+    let dim = Style::default().fg(Color::DarkGray);
     match &b.state {
         ExecutionState::Idle => None,
         ExecutionState::Running => Some(Line::from(vec![
             Span::styled(
-                "… running",
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                "  running ",
+                Style::default().fg(Color::Black).bg(Color::Yellow),
             ),
-            Span::styled(
-                "  (Ctrl-C to cancel)",
-                Style::default().fg(Color::DarkGray),
-            ),
+            Span::styled("  Ctrl-C to cancel", dim),
         ])),
-        ExecutionState::Cached => Some(Line::from(Span::styled(
-            format!("⛁ cached · {}", db_summary(b).unwrap_or_default()),
-            Style::default().fg(Color::Blue),
-        ))),
-        ExecutionState::Success => Some(Line::from(Span::styled(
-            format!("✓ {}", db_summary(b).unwrap_or_else(|| "ok".into())),
-            Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
-        ))),
-        ExecutionState::Error(msg) => Some(Line::from(Span::styled(
-            format!("✗ {msg}"),
-            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-        ))),
+        ExecutionState::Cached => Some(Line::from(vec![
+            Span::styled(
+                "  cached  ",
+                Style::default().fg(Color::Black).bg(Color::Cyan),
+            ),
+            Span::raw("  "),
+            Span::styled(db_summary(b).unwrap_or_default(), dim),
+        ])),
+        ExecutionState::Success => Some(Line::from(vec![
+            Span::styled(
+                "  ok      ",
+                Style::default().fg(Color::Black).bg(Color::Green),
+            ),
+            Span::raw("  "),
+            Span::styled(db_summary(b).unwrap_or_else(|| "—".into()), dim),
+        ])),
+        ExecutionState::Error(msg) => Some(Line::from(vec![
+            Span::styled(
+                "  error   ",
+                Style::default().fg(Color::White).bg(Color::Red),
+            ),
+            Span::raw("  "),
+            Span::styled(msg.clone(), Style::default().fg(Color::Red)),
+        ])),
     }
 }
 
@@ -716,19 +730,13 @@ fn build_result_table(
     let end = (offset + MAX_VISIBLE_ROWS).min(total);
     let visible_rows: &[&serde_json::Value] = &rows[offset..end];
 
-    // Compute per-column widths from `name + " " + type` header
-    // text plus visible cells. Type label is rendered in dim
-    // alongside the bold name (`id integer`).
-    let mut widths: Vec<u16> = columns_meta
+    // First pass: compute per-column data width based on visible
+    // cells (cap at MAX_COL_WIDTH). The header itself never grows
+    // a column — only data does, so adding the type label can't
+    // push columns wider than the data demands.
+    let mut widths: Vec<u16> = columns
         .iter()
-        .map(|(name, ty)| {
-            let header_len = if ty.is_empty() {
-                name.chars().count()
-            } else {
-                name.chars().count() + 1 + ty.chars().count()
-            };
-            header_len.min(MAX_COL_WIDTH) as u16
-        })
+        .map(|n| n.chars().count().min(MAX_COL_WIDTH) as u16)
         .collect();
     for row in visible_rows.iter() {
         for (i, name) in columns.iter().enumerate() {
@@ -741,18 +749,32 @@ fn build_result_table(
     }
 
     let name_style = Style::default()
-        .fg(Color::Cyan)
+        .fg(Color::White)
         .add_modifier(Modifier::BOLD);
     let type_style = Style::default().fg(Color::DarkGray);
     let header = Row::new(
         columns_meta
             .iter()
-            .map(|(name, ty)| {
+            .enumerate()
+            .map(|(i, (name, ty))| {
+                let col_w = widths[i] as usize;
+                let name_chars = name.chars().count();
                 let mut spans: Vec<Span<'static>> = Vec::with_capacity(3);
-                spans.push(Span::styled(name.clone(), name_style));
+                spans.push(Span::styled(
+                    truncate_with_ellipsis(name, col_w),
+                    name_style,
+                ));
+                // Only render the type label when it fits AFTER the
+                // name with a 1-space gap — truncated types like
+                // `INTEGE` looked broken; better to omit the type
+                // entirely on tight columns.
                 if !ty.is_empty() {
-                    spans.push(Span::raw(" "));
-                    spans.push(Span::styled(ty.clone(), type_style));
+                    let used = name_chars.min(col_w);
+                    let remaining = col_w.saturating_sub(used + 1);
+                    if remaining >= ty.chars().count() {
+                        spans.push(Span::raw(" "));
+                        spans.push(Span::styled(ty.clone(), type_style));
+                    }
                 }
                 Cell::from(Line::from(spans))
             })
@@ -780,7 +802,7 @@ fn build_result_table(
     Some((
         Table::new(table_rows, constraints)
             .header(header)
-            .column_spacing(2),
+            .column_spacing(3),
         viewport_selected,
     ))
 }
@@ -929,9 +951,10 @@ fn render_result_separator(frame: &mut Frame, area: Rect) {
     );
 }
 
-/// Strip of `1: SELECT` / `2: SELECT` chips for multi-statement
-/// results — mirrors the desktop's per-result-set selector. Active
-/// chip uses a chrome-grey bg pill; inactive chips stay flat.
+/// Strip of chip-styled tabs for multi-statement results. Mirrors
+/// the desktop's per-result-set selector. Active chip fills with a
+/// soft bg + bold; inactive chips stay flat dim. Width-padded with
+/// 1 space on each side so chips don't crowd the separator.
 fn render_result_subtabs(
     frame: &mut Frame,
     area: Rect,
@@ -947,11 +970,12 @@ fn render_result_subtabs(
         return;
     };
     let active = Style::default()
-        .bg(Color::Rgb(40, 40, 50))
+        .bg(Color::Rgb(50, 60, 90))
         .fg(Color::White)
         .add_modifier(Modifier::BOLD);
     let inactive = Style::default().fg(Color::DarkGray);
-    let mut spans: Vec<Span<'static>> = Vec::with_capacity(results.len() * 3);
+    let mut spans: Vec<Span<'static>> = Vec::with_capacity(results.len() * 3 + 1);
+    spans.push(Span::raw(" "));
     for (i, r) in results.iter().enumerate() {
         let kind = r
             .get("kind")
@@ -959,8 +983,8 @@ fn render_result_subtabs(
             .unwrap_or("?")
             .to_uppercase();
         let style = if i == selected { active } else { inactive };
-        spans.push(Span::styled(format!(" {}: {} ", i + 1, kind), style));
-        spans.push(Span::raw(" "));
+        spans.push(Span::styled(format!(" {} {} ", i + 1, kind), style));
+        spans.push(Span::raw("  "));
     }
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }
@@ -972,13 +996,12 @@ fn render_result_tab_bar_inner(
     result_count: Option<usize>,
 ) {
     use crate::app::ResultPanelTab;
-    // Active tab: underline + bold, no bg fill — same look the
-    // desktop widget uses (Tailwind `border-b-2 border-primary`).
     let active_style = Style::default()
         .fg(Color::White)
         .add_modifier(Modifier::BOLD | Modifier::UNDERLINED);
     let inactive_style = Style::default().fg(Color::DarkGray);
     let mut spans: Vec<Span<'static>> = Vec::new();
+    spans.push(Span::raw(" "));
     for tab in [
         ResultPanelTab::Result,
         ResultPanelTab::Messages,
@@ -992,8 +1015,8 @@ fn render_result_tab_bar_inner(
             (ResultPanelTab::Result, Some(n)) if n > 1 => format!("Results ({n})"),
             _ => tab.label().to_string(),
         };
-        spans.push(Span::styled(format!(" {label} "), style));
-        spans.push(Span::raw("  "));
+        spans.push(Span::styled(label, style));
+        spans.push(Span::raw("    "));
     }
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }
