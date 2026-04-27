@@ -442,10 +442,6 @@ fn overlay_visual_selection(
     viewport_top: u16,
     overlay: VisualOverlay,
 ) {
-    // Both ends must address the same segment. Visual selection
-    // crossing block boundaries is refused by the operator engine
-    // anyway (InBlockSwap promotes one block at a time), so the
-    // highlight stays within a single segment.
     let (a_seg, a_off) = match overlay.anchor {
         Cursor::InProse { segment_idx, offset } => (segment_idx, offset),
         Cursor::InBlock { segment_idx, offset } => (segment_idx, offset),
@@ -456,54 +452,107 @@ fn overlay_visual_selection(
         Cursor::InBlock { segment_idx, offset } => (segment_idx, offset),
         Cursor::InBlockResult { .. } => return,
     };
-    if a_seg != c_seg {
-        return;
-    }
-    let layouts = layout_document(doc, area.width);
-    let layout = match layouts.iter().find(|l| l.segment_idx == a_seg) {
-        Some(l) => *l,
-        None => return,
-    };
-    // Pull the rope from whichever segment kind owns the cursor.
-    // For InBlock that's `b.raw` — the same rope motions and edits
-    // walk after Phases 3/5 — so the visual highlight maps line by
-    // line onto the block's reserved rows (header at y_start, body
-    // lines at y_start+1..N, closer at the last row).
-    let rope_owned: ropey::Rope;
-    let rope: &ropey::Rope = match doc.segments().get(a_seg) {
-        Some(Segment::Prose(r)) => r,
-        Some(Segment::Block(b)) => {
-            rope_owned = b.raw.clone();
-            &rope_owned
-        }
-        _ => return,
-    };
-    let total = rope.len_chars();
-    let (lo, hi) = (a_off.min(c_off).min(total), a_off.max(c_off).min(total));
-
-    // Translate to (line, col) ranges per visible row.
-    let (start_line, start_col, end_line, end_col_inclusive) = if overlay.linewise {
-        let lo_line = rope.char_to_line(lo);
-        let hi_line = rope.char_to_line(hi);
-        (lo_line, 0usize, hi_line, usize::MAX)
+    // Establish lo / hi by (segment, offset) so the highlight
+    // sweeps in document order regardless of which end is the
+    // anchor and which is the moving cursor.
+    let (lo_seg, lo_off, hi_seg, hi_off) = if (a_seg, a_off) <= (c_seg, c_off) {
+        (a_seg, a_off, c_seg, c_off)
     } else {
-        let lo_line = rope.char_to_line(lo);
-        let lo_col = lo - rope.line_to_char(lo_line);
-        let hi_line = rope.char_to_line(hi);
-        let hi_col = hi - rope.line_to_char(hi_line);
-        (lo_line, lo_col, hi_line, hi_col)
+        (c_seg, c_off, a_seg, a_off)
     };
 
-    // Solid bg, no fg/REVERSED tricks — keeps markdown styling
-    // (bold, code, link colors) readable inside the highlight.
+    let layouts = layout_document(doc, area.width);
     let style = Style::default().bg(Color::Rgb(60, 70, 110));
+
+    for seg_idx in lo_seg..=hi_seg {
+        let Some(seg) = doc.segments().get(seg_idx) else {
+            break;
+        };
+        let layout = match layouts.iter().find(|l| l.segment_idx == seg_idx) {
+            Some(l) => *l,
+            None => continue,
+        };
+        // Synthesize an owned rope for blocks (their raw rope is
+        // their on-screen content); prose segments hand us their
+        // rope directly.
+        let rope_owned: ropey::Rope;
+        let rope: &ropey::Rope = match seg {
+            Segment::Prose(r) => r,
+            Segment::Block(b) => {
+                rope_owned = b.raw.clone();
+                &rope_owned
+            }
+        };
+        let total = rope.len_chars();
+        // What slice of this segment is selected?
+        let seg_lo_off = if seg_idx == lo_seg { lo_off.min(total) } else { 0 };
+        let seg_hi_off = if seg_idx == hi_seg { hi_off.min(total) } else { total };
+        if seg_hi_off < seg_lo_off {
+            continue;
+        }
+
+        let (start_line, start_col, end_line, end_col_inclusive) = if overlay.linewise {
+            let lo_line = rope.char_to_line(seg_lo_off);
+            let hi_line = if total == 0 {
+                0
+            } else {
+                rope.char_to_line(seg_hi_off.saturating_sub(0).min(total))
+            };
+            (lo_line, 0usize, hi_line, usize::MAX)
+        } else {
+            let lo_line = rope.char_to_line(seg_lo_off);
+            let lo_col = seg_lo_off - rope.line_to_char(lo_line);
+            let hi_line = if total == 0 {
+                0
+            } else {
+                rope.char_to_line(seg_hi_off.min(total))
+            };
+            let hi_col = seg_hi_off.saturating_sub(rope.line_to_char(hi_line));
+            (lo_line, lo_col, hi_line, hi_col)
+        };
+
+        paint_segment_highlight(
+            frame,
+            area,
+            viewport_top,
+            layout.y_start,
+            rope,
+            start_line,
+            start_col,
+            end_line,
+            end_col_inclusive,
+            overlay.linewise,
+            style,
+            // Charwise selection is "inclusive at both ends" only
+            // when this segment owns the hi endpoint; mid-segment
+            // highlight paints the whole line.
+            seg_idx == hi_seg,
+        );
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn paint_segment_highlight(
+    frame: &mut Frame,
+    area: Rect,
+    viewport_top: u16,
+    seg_y_start: u16,
+    rope: &ropey::Rope,
+    start_line: usize,
+    start_col: usize,
+    end_line: usize,
+    end_col_inclusive: usize,
+    linewise: bool,
+    style: Style,
+    inclusive_hi: bool,
+) {
     let buf = frame.buffer_mut();
     let total_lines = rope.len_lines();
     for line in start_line..=end_line {
         if line >= total_lines {
             break;
         }
-        let absolute_y = layout.y_start.saturating_add(line as u16);
+        let absolute_y = seg_y_start.saturating_add(line as u16);
         if absolute_y < viewport_top {
             continue;
         }
@@ -513,18 +562,12 @@ fn overlay_visual_selection(
         }
         let line_text = rope.line(line).to_string();
         let line_chars = line_text.trim_end_matches('\n').chars().count();
-        // Charwise: paint exactly the inclusive char range. Linewise:
-        // extend to the right edge of the pane on every selected line
-        // (vim's V-mode bar feel).
         let from = if line == start_line { start_col } else { 0 };
-        let to = if overlay.linewise {
+        let to = if linewise {
             area.width as usize
-        } else if line == end_line {
+        } else if line == end_line && inclusive_hi {
             (end_col_inclusive + 1).min(line_chars.max(1))
         } else {
-            // Mid-line of a charwise block: paint the whole row up to
-            // the soft EOL plus a one-cell trailing marker so empty
-            // lines aren't invisible.
             line_chars.max(1)
         };
         if to <= from {
