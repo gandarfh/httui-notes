@@ -437,7 +437,20 @@ fn db_summary_from_value(value: Option<&serde_json::Value>, elapsed: u64) -> Str
         Some("error") => first
             .and_then(|f| f.get("message"))
             .and_then(|v| v.as_str())
-            .map(|m| format!("error: {m}{extras}"))
+            .map(|m| {
+                let pos = first
+                    .and_then(|f| f.get("line"))
+                    .and_then(|l| l.as_u64())
+                    .map(|line| {
+                        let col = first
+                            .and_then(|f| f.get("column"))
+                            .and_then(|c| c.as_u64())
+                            .unwrap_or(1);
+                        format!(" at {line}:{col}")
+                    })
+                    .unwrap_or_default();
+                format!("error: {m}{pos}{extras}")
+            })
             .unwrap_or_else(|| format!("error · {elapsed}ms")),
         _ => format!("ok · {elapsed}ms{extras}"),
     }
@@ -2778,7 +2791,16 @@ fn summarize_db_response(resp: &httui_core::executor::db::types::DbResponse) -> 
             DbResult::Mutation { rows_affected } => {
                 format!("{} affected · {}ms{}", rows_affected, elapsed, extras)
             }
-            DbResult::Error { message, .. } => format!("error: {message}{extras}"),
+            DbResult::Error { message, line, column } => {
+                // Append `at L:C` when the executor enriched the
+                // error with positional info (Postgres always; MySQL
+                // when the parser produced one). Same suffix the
+                // renderer's `db_summary` paints inside the block.
+                let pos = line
+                    .map(|l| format!(" at {l}:{}", column.unwrap_or(1)))
+                    .unwrap_or_default();
+                format!("error: {message}{pos}{extras}")
+            }
         }
     } else {
         format!("ok · {}ms", elapsed)
@@ -3609,6 +3631,46 @@ mod tests {
         let params =
             build_db_executor_params("conn-1", "SELECT 1", &[], 0, 100, None);
         assert!(params["timeout_ms"].is_null());
+    }
+
+    #[test]
+    fn db_summary_from_value_appends_line_column_for_error() {
+        // Postgres typically returns `position` byte offset which the
+        // executor enriches into `(line, column)`. The summary should
+        // surface that so users see *where* the parser tripped, not
+        // just the message.
+        let value = serde_json::json!({
+            "results": [
+                {
+                    "kind": "error",
+                    "message": "syntax error at or near \"FORM\"",
+                    "line": 2,
+                    "column": 5
+                }
+            ],
+            "stats": { "elapsed_ms": 4 }
+        });
+        let s = db_summary_from_value(Some(&value), 4);
+        assert_eq!(s, "error: syntax error at or near \"FORM\" at 2:5");
+    }
+
+    #[test]
+    fn db_summary_from_value_omits_position_when_absent() {
+        // Errors without positional info (older / generic driver
+        // failures, MySQL parse errors that don't expose location)
+        // should still render cleanly — just the message, no
+        // dangling `at :`.
+        let value = serde_json::json!({
+            "results": [
+                {
+                    "kind": "error",
+                    "message": "connection lost"
+                }
+            ],
+            "stats": { "elapsed_ms": 0 }
+        });
+        let s = db_summary_from_value(Some(&value), 0);
+        assert_eq!(s, "error: connection lost");
     }
 
     #[test]

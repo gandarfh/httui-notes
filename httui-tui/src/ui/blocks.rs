@@ -196,8 +196,24 @@ fn render_db_inner(
 
     // SQL body — tree-sitter highlight (cached parser, AST-driven).
     // Same parse will back autocomplete / goto-definition later.
+    // When the last execution returned an error with a line number,
+    // the offending line gets a dark-red background so the user
+    // sees *where* the parser tripped, not just the message at the
+    // bottom. Mirrors the desktop's squiggle, simplified for the
+    // TUI's character grid.
+    let mut sql_lines_styled = super::sql_highlight::highlight(query);
+    if let Some((err_line, _err_col)) = error_position(b) {
+        if let Some(target) = (err_line as usize)
+            .checked_sub(1)
+            .and_then(|i| sql_lines_styled.get_mut(i))
+        {
+            for span in target.iter_mut() {
+                span.style = span.style.bg(Color::Rgb(70, 25, 25));
+            }
+        }
+    }
     let sql_para = Paragraph::new(
-        super::sql_highlight::highlight(query)
+        sql_lines_styled
             .into_iter()
             .map(Line::from)
             .collect::<Vec<_>>(),
@@ -301,7 +317,8 @@ fn db_result_line(b: &BlockNode) -> Option<Line<'static>> {
 /// When the query returned multiple result sets (multi-statement),
 /// the summary describes `results[0]` and appends `(+N more)` so the
 /// user knows there's data the renderer isn't surfacing yet — Story
-/// 05.1 will wire up tabs to step through them.
+/// 05.1 will wire up tabs to step through them. Errors that carry a
+/// `(line, column)` from the executor get an `at L:C` suffix.
 fn db_summary(b: &BlockNode) -> Option<String> {
     let result = b.cached_result.as_ref()?;
     let elapsed = result.get("stats")?.get("elapsed_ms")?.as_u64()?;
@@ -325,11 +342,38 @@ fn db_summary(b: &BlockNode) -> Option<String> {
             let affected = first.get("rows_affected")?.as_u64()?;
             Some(format!("{affected} affected · {elapsed}ms{extras}"))
         }
-        "error" => first.get("message")
-            .and_then(|v| v.as_str())
-            .map(|m| format!("error: {m}{extras}")),
+        "error" => first.get("message").and_then(|v| v.as_str()).map(|m| {
+            let pos = first
+                .get("line")
+                .and_then(|l| l.as_u64())
+                .map(|line| {
+                    let col = first
+                        .get("column")
+                        .and_then(|c| c.as_u64())
+                        .unwrap_or(1);
+                    format!(" at {line}:{col}")
+                })
+                .unwrap_or_default();
+            format!("error: {m}{pos}{extras}")
+        }),
         _ => None,
     }
+}
+
+/// Extract `(line, column)` from the first result if it's an Error
+/// variant with positional info. Returns `None` for selects,
+/// mutations, errors without position, or anything that doesn't
+/// match the expected shape. Used by the renderer to paint a red
+/// background on the offending source line.
+fn error_position(b: &BlockNode) -> Option<(u64, u64)> {
+    let result = b.cached_result.as_ref()?;
+    let first = result.get("results")?.as_array()?.first()?;
+    if first.get("kind")?.as_str()? != "error" {
+        return None;
+    }
+    let line = first.get("line")?.as_u64()?;
+    let column = first.get("column").and_then(|c| c.as_u64()).unwrap_or(1);
+    Some((line, column))
 }
 
 /// Height (in rows) of the result table viewport inside a DB card.

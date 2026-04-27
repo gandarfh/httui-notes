@@ -291,16 +291,27 @@ Hoje TUI sempre re-executava em `r`. Agora consulta cache primeiro (per-file SQL
 
 ---
 
-### Story 04.8 — Errors com line/col + visual 🚧 P1
+### Story 04.8 — Errors com line/col + visual ✅ P1
 
-Postgres/MySQL retornam `position`/`line`/`column` em erros de syntax. Desktop pinta squiggle no editor + duplica na linha de status.
+**Achado**: core já enriquece o erro com `(line, column)` via `httui-core::db::connections::enrich_error_with_query` durante execução. `DbResult::Error` já carrega `line: Option<u32>` + `column: Option<u32>`. Story foi: (a) surfar a posição nos summaries, (b) pintar a linha errada de vermelho.
 
-**Tasks:**
-- [ ] Parser de erros no executor (3 dialetos): extrai `(line, col, message)`
-- [ ] Estado: `ExecutionState::Error` ganha campo `position: Option<(usize, usize)>`
-- [ ] Render: linha `line` ganha underline vermelho na faixa de col±N
-- [ ] Status bar: `error: <msg> at line:col`
-- [ ] Testes: erro do Postgres parseado, posição extraída, render aplica underline
+**Entregue:**
+- [x] `summarize_db_response` (status bar runtime) — `DbResult::Error` agora formata `error: <msg> at L:C` quando `line` é Some.
+- [x] `db_summary_from_value` (cached path) — mesma formatação, lendo de `cached_result["results"][0]["line"/"column"]`.
+- [x] `db_summary` em `ui::blocks` (badge dentro do bloco) — mesma formatação.
+- [x] **Visual indicator**: novo helper `error_position(b)` extrai `(line, column)` do cached_result quando first result é `kind=error`. Renderer em `render_db_inner` aplica `bg: Color::Rgb(70, 25, 25)` (vermelho escuro) em todos os spans da linha errada antes de `Paragraph::new`. Caso a linha esteja fora do range (cached errado, etc.) → no-op gracioso.
+- [x] Posição é 1-indexed (Postgres convention) — convertido pra 0-indexed no acesso ao `Vec<Vec<Span>>`.
+- [x] Coluna não é usada visualmente em V1 (linha inteira pinta), mas aparece no summary.
+- [x] 2 testes novos em `dispatch::tests`:
+  - Error com line/column → summary `at L:C`
+  - Error sem position → summary só com message (sem dangling `at :`)
+
+**Pra ver em ação:** numa nota com bloco DB, escreva uma query com syntax error (e.g. `SELECT * FORM users` — typo `FORM`). Roda `r` → linha 1 fica com bg vermelho escuro, status bar mostra `error: syntax error at or near "FORM" at 1:10`.
+
+**Não cobre (V2):**
+- Squiggle pixelado (TUI grid character não suporta — pintar linha inteira é o equivalente)
+- Position highlight inline (col só aparece na string)
+- Repintura quando user edita após erro (cached_result fica até nova run; mesmo comportamento desktop)
 
 ---
 
