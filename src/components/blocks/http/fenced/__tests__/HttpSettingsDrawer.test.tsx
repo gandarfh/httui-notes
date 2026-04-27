@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { renderWithProviders, screen } from "@/test/render";
 import userEvent from "@testing-library/user-event";
 import { HttpSettingsDrawer } from "@/components/blocks/http/fenced/HttpSettingsDrawer";

@@ -13,11 +13,16 @@ const mkConnection = (over: Partial<Connection> = {}): Connection => ({
   port: 5432,
   database_name: "mydb",
   username: "alice",
+  has_password: false,
   ssl_mode: "require",
   timeout_ms: 10000,
   query_timeout_ms: 30000,
   ttl_seconds: 300,
   max_pool_size: 5,
+  is_readonly: false,
+  last_tested_at: null,
+  created_at: "2026-01-01T00:00:00Z",
+  updated_at: "2026-01-01T00:00:00Z",
   ...over,
 });
 

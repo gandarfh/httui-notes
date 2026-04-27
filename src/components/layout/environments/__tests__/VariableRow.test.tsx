@@ -136,7 +136,7 @@ describe("VariableRow", () => {
     );
 
     await user.click(screen.getByText("abc123"));
-    const input = screen.getByDisplayValue("abc123");
+    screen.getByDisplayValue("abc123");
     // Blur via click outside
     await user.click(document.body);
 

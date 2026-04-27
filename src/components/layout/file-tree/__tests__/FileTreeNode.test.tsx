@@ -4,7 +4,6 @@ import {
   defaultSystem,
 } from "@chakra-ui/react";
 import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { DndContext } from "@dnd-kit/core";
 import {
   WorkspaceContext,

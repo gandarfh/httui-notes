@@ -157,7 +157,7 @@ describe("ResultTable", () => {
 
   it("clicking 'Copy row as JSON' calls clipboard.writeText with the row payload", async () => {
     const user = userEvent.setup();
-    const writeText = vi.fn(async () => {});
+    const writeText = vi.fn(async (_text: string) => {});
     Object.defineProperty(navigator, "clipboard", {
       value: { writeText },
       configurable: true,
