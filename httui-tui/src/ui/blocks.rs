@@ -361,32 +361,52 @@ fn render_db_inner(
     }
 
     if table_height > 0 {
-        // Carve a 1-row tab bar out of the table chunk's top so the
-        // result panel still fits in the layout's reserved height.
-        // When the tab is anything but Result we render the
-        // appropriate content into the remainder. The `Result` tab
-        // keeps the existing table render, just shifted down 1 row.
+        // Carve out chrome rows on top of the result panel, in
+        // order: tab bar (1) → separator line (1) → sub-tabs row (1,
+        // only when multi-statement) → content. Mirrors the
+        // desktop's `border-b` between tabs and panel content plus
+        // the per-result-set chip strip.
         let panel_chunk = chunks[idx];
-        let tab_bar_y = panel_chunk.y;
-        let tab_bar_rect = Rect {
-            x: panel_chunk.x,
-            y: tab_bar_y,
-            width: panel_chunk.width,
-            height: 1,
-        };
-        let content_rect = Rect {
-            x: panel_chunk.x,
-            y: tab_bar_y.saturating_add(1),
-            width: panel_chunk.width,
-            height: panel_chunk.height.saturating_sub(1),
-        };
         let result_count = b
             .cached_result
             .as_ref()
             .and_then(|v| v.get("results"))
             .and_then(|v| v.as_array())
-            .map(|a| a.len());
-        render_result_tab_bar_inner(frame, tab_bar_rect, result_tab, result_count);
+            .map(|a| a.len())
+            .unwrap_or(0);
+        let multi = result_count > 1;
+        let mut y = panel_chunk.y;
+        let row = |y: u16| Rect {
+            x: panel_chunk.x,
+            y,
+            width: panel_chunk.width,
+            height: 1,
+        };
+        let tab_bar_rect = row(y);
+        y = y.saturating_add(1);
+        let separator_rect = row(y);
+        y = y.saturating_add(1);
+        let subtabs_rect = if multi { Some(row(y)) } else { None };
+        if multi {
+            y = y.saturating_add(1);
+        }
+        let used = y.saturating_sub(panel_chunk.y);
+        let content_rect = Rect {
+            x: panel_chunk.x,
+            y,
+            width: panel_chunk.width,
+            height: panel_chunk.height.saturating_sub(used),
+        };
+        render_result_tab_bar_inner(
+            frame,
+            tab_bar_rect,
+            result_tab,
+            if multi { Some(result_count) } else { None },
+        );
+        render_result_separator(frame, separator_rect);
+        if let Some(rect) = subtabs_rect {
+            render_result_subtabs(frame, rect, b, 0);
+        }
         match result_tab {
             crate::app::ResultPanelTab::Result => {
                 if let Some((table, viewport_selected)) =
@@ -773,11 +793,8 @@ fn db_result_table_height(b: &BlockNode) -> u16 {
     let Some(result) = b.cached_result.as_ref() else {
         return 0;
     };
-    let Some(first) = result
-        .get("results")
-        .and_then(|v| v.as_array())
-        .and_then(|a| a.first())
-    else {
+    let results = result.get("results").and_then(|v| v.as_array());
+    let Some(first) = results.and_then(|a| a.first()) else {
         return 0;
     };
     if first.get("kind").and_then(|v| v.as_str()) != Some("select") {
@@ -788,12 +805,17 @@ fn db_result_table_height(b: &BlockNode) -> u16 {
         .and_then(|v| v.as_array())
         .map(|a| a.len())
         .unwrap_or(0);
-    if row_count == 0 {
-        // header-only.
-        return 1;
-    }
-    let visible = row_count.min(MAX_VISIBLE_ROWS);
-    (1 + visible) as u16 // +1 for header
+    let table_rows = if row_count == 0 {
+        1
+    } else {
+        let visible = row_count.min(MAX_VISIBLE_ROWS);
+        1 + visible
+    };
+    // Match `buffer::layout::db_table_height`: separator (1) plus
+    // sub-tabs (1 only when multi-statement) live above the table.
+    let multi = results.map(|a| a.len() > 1).unwrap_or(false);
+    let chrome_extra = 1 + if multi { 1 } else { 0 };
+    (table_rows + chrome_extra) as u16
 }
 
 fn truncate_with_ellipsis(s: &str, width: usize) -> String {
@@ -895,6 +917,54 @@ fn generic_body(b: &BlockNode) -> Vec<Line<'static>> {
 /// Selected tab gets a bright background; the rest stay dim. Only
 /// 4 fixed tabs for now (Result/Messages/Plan/Stats) — sub-tabs
 /// for multi-statement Result are V2.
+fn render_result_separator(frame: &mut Frame, area: Rect) {
+    if area.width == 0 || area.height == 0 {
+        return;
+    }
+    let line: String = "─".repeat(area.width as usize);
+    let style = Style::default().fg(Color::DarkGray);
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(line, style))),
+        area,
+    );
+}
+
+/// Strip of `1: SELECT` / `2: SELECT` chips for multi-statement
+/// results — mirrors the desktop's per-result-set selector. Active
+/// chip uses a chrome-grey bg pill; inactive chips stay flat.
+fn render_result_subtabs(
+    frame: &mut Frame,
+    area: Rect,
+    b: &BlockNode,
+    selected: usize,
+) {
+    let Some(results) = b
+        .cached_result
+        .as_ref()
+        .and_then(|v| v.get("results"))
+        .and_then(|v| v.as_array())
+    else {
+        return;
+    };
+    let active = Style::default()
+        .bg(Color::Rgb(40, 40, 50))
+        .fg(Color::White)
+        .add_modifier(Modifier::BOLD);
+    let inactive = Style::default().fg(Color::DarkGray);
+    let mut spans: Vec<Span<'static>> = Vec::with_capacity(results.len() * 3);
+    for (i, r) in results.iter().enumerate() {
+        let kind = r
+            .get("kind")
+            .and_then(|v| v.as_str())
+            .unwrap_or("?")
+            .to_uppercase();
+        let style = if i == selected { active } else { inactive };
+        spans.push(Span::styled(format!(" {}: {} ", i + 1, kind), style));
+        spans.push(Span::raw(" "));
+    }
+    frame.render_widget(Paragraph::new(Line::from(spans)), area);
+}
+
 fn render_result_tab_bar_inner(
     frame: &mut Frame,
     area: Rect,
@@ -1213,8 +1283,8 @@ mod tests {
                 "stats": {"elapsed_ms": 5},
             })),
         };
-        // header + 3 rows.
-        assert_eq!(db_result_table_height(&b), 4);
+        // header + 3 rows + 1 separator strip below the tabs.
+        assert_eq!(db_result_table_height(&b), 4 + 1);
     }
 
     #[test]
@@ -1238,8 +1308,11 @@ mod tests {
                 "stats": {"elapsed_ms": 5},
             })),
         };
-        // header + 10-row viewport, no extra "+ N more" line.
-        assert_eq!(db_result_table_height(&b), (1 + MAX_VISIBLE_ROWS) as u16);
+        // header + 10-row viewport + 1 separator strip below the tabs.
+        assert_eq!(
+            db_result_table_height(&b),
+            (1 + MAX_VISIBLE_ROWS + 1) as u16
+        );
     }
 
     #[test]

@@ -93,11 +93,8 @@ fn db_table_height(b: &BlockNode) -> u16 {
     let Some(result) = b.cached_result.as_ref() else {
         return 0;
     };
-    let Some(first) = result
-        .get("results")
-        .and_then(|v| v.as_array())
-        .and_then(|a| a.first())
-    else {
+    let results = result.get("results").and_then(|v| v.as_array());
+    let Some(first) = results.and_then(|a| a.first()) else {
         return 0;
     };
     if first.get("kind").and_then(|v| v.as_str()) != Some("select") {
@@ -108,14 +105,21 @@ fn db_table_height(b: &BlockNode) -> u16 {
         .and_then(|v| v.as_array())
         .map(|a| a.len())
         .unwrap_or(0);
-    if row_count == 0 {
-        // Header only.
-        return 1;
-    }
-    // Cap at the viewport size — extra rows are reachable via scroll,
-    // not by growing the card.
-    let visible = row_count.min(MAX_VISIBLE);
-    (1 + visible) as u16 // +1 for header
+    let table_rows = if row_count == 0 {
+        // Header-only.
+        1
+    } else {
+        // Cap at the viewport size — extra rows are reachable via
+        // scroll, not by growing the card.
+        let visible = row_count.min(MAX_VISIBLE);
+        1 + visible // +1 for the table header row
+    };
+    // Chrome rows the renderer carves on top of the panel:
+    //   +1 separator under the tab strip
+    //   +1 sub-tabs strip when results.len() > 1
+    let multi = results.map(|a| a.len() > 1).unwrap_or(false);
+    let chrome_extra = 1 + if multi { 1 } else { 0 };
+    (table_rows + chrome_extra) as u16
 }
 
 /// Walk all segments and produce their `(idx, y_start, height)` triples.
@@ -292,7 +296,8 @@ mod tests {
     fn db_split_mode_with_result_includes_sql_status_and_table() {
         // `display=split` with a `select` result: SQL body (3 lines)
         // + status banner (1) + result table (header + 2 rows) +
-        // chrome (3) = 10.
+        // chrome (3 borders + footer) + 1 separator under tabs = 11.
+        // No sub-tabs row because we only have one result set.
         let md = "```db-postgres alias=q\nSELECT *\nFROM users\nWHERE id > 10\n```\n";
         let mut doc = Document::from_markdown(md).unwrap();
         let idx = db_block_index(&doc);
@@ -314,6 +319,6 @@ mod tests {
             .find(|l| l.segment_idx == idx)
             .unwrap()
             .height;
-        assert_eq!(block_h, 3 + 1 + (1 + 2) + 3);
+        assert_eq!(block_h, 3 + 1 + (1 + 2 + 1) + 3);
     }
 }
