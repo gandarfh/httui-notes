@@ -43,8 +43,18 @@ fn block_height(b: &BlockNode, cursor_on_block: bool) -> u16 {
     let card = if b.is_http() {
         // chrome + request body lines (method/URL row + 1 row per
         // header + 1 row per query param + body separator + body
-        // lines).
-        chrome.saturating_add(http_request_lines(b))
+        // lines) + response panel rows (only when the block has a
+        // cached result).
+        let response_lines = if b.cached_result.is_some() {
+            // Tab bar (1) + separator (1) + viewport (8) — mirrors
+            // `ui::blocks::http_response_panel_height`.
+            10u16
+        } else {
+            0
+        };
+        chrome
+            .saturating_add(http_request_lines(b))
+            .saturating_add(response_lines)
     } else if b.is_db() {
         let mode = b.effective_display_mode();
         let sql_lines = if mode.shows_input() {

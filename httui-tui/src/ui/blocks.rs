@@ -120,14 +120,18 @@ pub fn render_block_with_selection(
         return;
     }
 
+    if b.is_http() {
+        render_http_inner(frame, middle, b, result_tab, selected);
+        return;
+    }
+
     if selected {
-        // Cursor on, non-DB: paint the raw body lines so what the
-        // user is editing is what they see (parity with CM6 desktop).
+        // Cursor on, non-DB / non-HTTP: paint the raw body lines so
+        // what the user is editing is what they see (parity with
+        // CM6 desktop).
         let body = raw_body_text(b);
         let lines: Vec<Line<'static>> = if body.is_empty() {
-            if b.is_http() {
-                http_body(b)
-            } else if b.is_e2e() {
+            if b.is_e2e() {
                 e2e_body(b)
             } else {
                 generic_body(b)
@@ -141,9 +145,7 @@ pub fn render_block_with_selection(
         return;
     }
 
-    let lines = if b.is_http() {
-        http_body(b)
-    } else if b.is_e2e() {
+    let lines = if b.is_e2e() {
         e2e_body(b)
     } else {
         generic_body(b)
@@ -604,6 +606,260 @@ fn raw_body_text(b: &BlockNode) -> String {
 /// Syntax: method as colored badge, header keys cyan, separators
 /// dim. Off-cursor — when the cursor enters, we paint the raw rope
 /// instead so the user edits exactly what they see.
+/// Mirror `render_db_inner` for HTTP blocks. Layout inside the
+/// chrome-bordered card middle:
+/// ```text
+/// request body  (http_request_lines rows)
+/// tab bar       (1 row, only when cached_result exists)
+/// separator     (1 row, only when cached_result exists)
+/// response panel (rest)
+/// ```
+fn render_http_inner(
+    frame: &mut Frame,
+    inner: Rect,
+    b: &BlockNode,
+    result_tab: crate::app::ResultPanelTab,
+    selected: bool,
+) {
+    if inner.width == 0 || inner.height == 0 {
+        return;
+    }
+
+    let request_lines = if selected {
+        // Cursor on: paint raw rope so the user sees exactly what
+        // they're editing (HTTP-message text). Off-cursor: parsed
+        // request panel.
+        let body = raw_body_text(b);
+        if body.is_empty() {
+            http_body(b)
+        } else {
+            body.lines()
+                .map(|l| Line::from(Span::raw(l.to_string())))
+                .collect()
+        }
+    } else {
+        http_body(b)
+    };
+    let request_height = request_lines.len() as u16;
+
+    let has_response = b.cached_result.is_some();
+    let response_height = if has_response {
+        http_response_panel_height(b)
+    } else {
+        0
+    };
+
+    let mut constraints: Vec<Constraint> = Vec::new();
+    constraints.push(Constraint::Length(request_height));
+    if response_height > 0 {
+        constraints.push(Constraint::Length(response_height));
+    }
+    if constraints.is_empty() {
+        return;
+    }
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(constraints)
+        .split(inner);
+
+    frame.render_widget(Paragraph::new(request_lines), chunks[0]);
+
+    if response_height > 0 {
+        let panel_chunk = chunks[1];
+        let mut y = panel_chunk.y;
+        let row = |y: u16| Rect {
+            x: panel_chunk.x,
+            y,
+            width: panel_chunk.width,
+            height: 1,
+        };
+        let tab_bar_rect = row(y);
+        y = y.saturating_add(1);
+        let separator_rect = row(y);
+        y = y.saturating_add(1);
+        let used = y.saturating_sub(panel_chunk.y);
+        let content_rect = Rect {
+            x: panel_chunk.x,
+            y,
+            width: panel_chunk.width,
+            height: panel_chunk.height.saturating_sub(used),
+        };
+        render_result_tab_bar_inner(
+            frame,
+            tab_bar_rect,
+            result_tab,
+            None, /* http never multi-statement */
+        );
+        render_result_separator(frame, separator_rect);
+        render_http_response_panel(frame, content_rect, b, result_tab);
+    }
+}
+
+/// Tabs map for HTTP: re-uses ResultPanelTab so the keymap that
+/// cycles tabs (`gt`/`gT`) keeps working — labels just change.
+/// Result → Body, Messages → Headers, Plan → Cookies, Stats →
+/// Stats. Raw is folded into Body for V1.
+fn render_http_response_panel(
+    frame: &mut Frame,
+    area: Rect,
+    b: &BlockNode,
+    tab: crate::app::ResultPanelTab,
+) {
+    use crate::app::ResultPanelTab;
+    let lines = match tab {
+        ResultPanelTab::Result => http_response_body_lines(b),
+        ResultPanelTab::Messages => http_response_headers_lines(b),
+        ResultPanelTab::Plan => http_response_cookies_lines(b),
+        ResultPanelTab::Stats => http_response_stats_lines(b),
+    };
+    frame.render_widget(Paragraph::new(lines), area);
+}
+
+fn http_response_body_lines(b: &BlockNode) -> Vec<Line<'static>> {
+    let placeholder = Line::from(Span::styled(
+        " (no body)",
+        Style::default().fg(Color::DarkGray),
+    ));
+    let Some(result) = b.cached_result.as_ref() else {
+        return vec![placeholder];
+    };
+    let body = result.get("body");
+    // The executor stores body as a JSON value: object/array for
+    // structured responses (Content-Type: application/json), string
+    // otherwise. Render objects pretty; strings as-is.
+    let text = match body {
+        Some(serde_json::Value::String(s)) => s.clone(),
+        Some(other) => serde_json::to_string_pretty(other).unwrap_or_default(),
+        None => return vec![placeholder],
+    };
+    if text.is_empty() {
+        return vec![placeholder];
+    }
+    text.lines()
+        .map(|l| Line::from(l.to_string()))
+        .collect()
+}
+
+fn http_response_headers_lines(b: &BlockNode) -> Vec<Line<'static>> {
+    let placeholder = Line::from(Span::styled(
+        " (no headers)",
+        Style::default().fg(Color::DarkGray),
+    ));
+    let Some(result) = b.cached_result.as_ref() else {
+        return vec![placeholder];
+    };
+    let Some(headers) = result.get("headers").and_then(|v| v.as_array()) else {
+        return vec![placeholder];
+    };
+    if headers.is_empty() {
+        return vec![placeholder];
+    }
+    headers
+        .iter()
+        .map(|h| {
+            let key = h.get("key").and_then(|v| v.as_str()).unwrap_or("");
+            let value = h.get("value").and_then(|v| v.as_str()).unwrap_or("");
+            Line::from(vec![
+                Span::styled(
+                    format!(" {key}"),
+                    Style::default().fg(Color::Cyan),
+                ),
+                Span::styled(": ", Style::default().fg(Color::DarkGray)),
+                Span::raw(value.to_string()),
+            ])
+        })
+        .collect()
+}
+
+fn http_response_cookies_lines(b: &BlockNode) -> Vec<Line<'static>> {
+    let placeholder = Line::from(Span::styled(
+        " (no cookies)",
+        Style::default().fg(Color::DarkGray),
+    ));
+    let Some(result) = b.cached_result.as_ref() else {
+        return vec![placeholder];
+    };
+    let Some(cookies) = result.get("cookies").and_then(|v| v.as_array()) else {
+        return vec![placeholder];
+    };
+    if cookies.is_empty() {
+        return vec![placeholder];
+    }
+    cookies
+        .iter()
+        .map(|c| {
+            let name = c.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            let value = c.get("value").and_then(|v| v.as_str()).unwrap_or("");
+            let domain = c.get("domain").and_then(|v| v.as_str()).unwrap_or("");
+            let mut spans = vec![
+                Span::styled(
+                    format!(" {name}"),
+                    Style::default().fg(Color::Cyan),
+                ),
+                Span::styled("=", Style::default().fg(Color::DarkGray)),
+                Span::raw(value.to_string()),
+            ];
+            if !domain.is_empty() {
+                spans.push(Span::styled(
+                    format!("  ({domain})"),
+                    Style::default().fg(Color::DarkGray),
+                ));
+            }
+            Line::from(spans)
+        })
+        .collect()
+}
+
+fn http_response_stats_lines(b: &BlockNode) -> Vec<Line<'static>> {
+    let placeholder = Line::from(Span::styled(
+        " (no stats)",
+        Style::default().fg(Color::DarkGray),
+    ));
+    let Some(result) = b.cached_result.as_ref() else {
+        return vec![placeholder];
+    };
+    let dim = Style::default().fg(Color::DarkGray);
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    let push_kv = |lines: &mut Vec<Line<'static>>, key: &str, value: String| {
+        lines.push(Line::from(vec![
+            Span::styled(format!(" {key}: "), dim),
+            Span::raw(value),
+        ]));
+    };
+    if let Some(status) = result.get("status").and_then(|v| v.as_u64()) {
+        let txt = result
+            .get("status_text")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        push_kv(&mut lines, "status", format!("{status} {txt}"));
+    }
+    if let Some(timing) = result.get("timing") {
+        if let Some(ms) = timing.get("total_ms").and_then(|v| v.as_u64()) {
+            push_kv(&mut lines, "total", format!("{ms} ms"));
+        }
+        if let Some(ms) = timing.get("ttfb_ms").and_then(|v| v.as_u64()) {
+            push_kv(&mut lines, "ttfb", format!("{ms} ms"));
+        }
+    }
+    if let Some(bytes) = result.get("size_bytes").and_then(|v| v.as_u64()) {
+        push_kv(&mut lines, "size", format_byte_size(bytes));
+    }
+    if lines.is_empty() {
+        vec![placeholder]
+    } else {
+        lines
+    }
+}
+
+fn http_response_panel_height(_b: &BlockNode) -> u16 {
+    // Tab bar (1) + separator (1) + content viewport (8). Body
+    // content scrolls beyond the viewport; we don't grow the card
+    // unboundedly to fit a 50 KB JSON response.
+    const VIEWPORT: u16 = 8;
+    1 + 1 + VIEWPORT
+}
+
 fn http_body(b: &BlockNode) -> Vec<Line<'static>> {
     let method = b
         .params
