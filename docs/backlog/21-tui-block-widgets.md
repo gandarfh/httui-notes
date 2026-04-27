@@ -16,8 +16,9 @@ Widgets de blocos executáveis (HTTP, DB, E2E) na TUI.
 
 ⏸ **Story 11 Slice 2 (limit) + Slice 3 (timeout)**: deferidas — viram modal único futuro com vários inputs (Tab navigation), provavelmente `gs` "go settings". Não shippar como chord-por-campo.
 
-**Próximo:**
-1. **Story 05.3 Export menu**: exportar resultado inteiro (CSV/MD/INSERT) — complementa o `y` JSON-de-uma-linha do row-detail modal.
+**Próximo (P1 prioritário):**
+1. **Story 12 Phases 2-5** (refactor text-as-rope): cursor unification + edits routam pra raw + render do raw + motions em raw. Phase 1 (`7b09f28`) entregue. Detalhes na Story 12 abaixo. Bloqueia paridade plena CM6 (edição inline de fence header, visual selection cross-segment).
+2. **Story 05.3 Export menu**: exportar resultado inteiro (CSV/MD/INSERT) — complementa o `y` JSON-de-uma-linha do row-detail modal.
 
 **Foco atual (2026-04-26):** **paridade do bloco DB com o desktop**. Stories de HTTP e E2E ficam pausadas até as P0–P1 da DB-parity entregarem. Stories existentes mantêm numeração de origem e ressurgem com status atualizado; gaps de paridade descobertos na auditoria de 2026-04-26 viram substories `04.x` / `05.x`.
 
@@ -510,6 +511,48 @@ Editar metadados do bloco DB sem sair (alias, connection, limit, timeout, displa
 - ⏸ Não shippar como `gl` / `gw` chord-por-campo. Usuário pediu (2026-04-26) modal único com vários inputs (Tab navigation entre campos, `<CR>` salva tudo, `<Esc>` cancela). Provavelmente `gs` "go settings" abre o modal. Reativar quando o restante da paridade DB-V1 estiver fechada.
 
 **Depende de:** Story 04.5 (timeout token) — quando o modal vier.
+
+---
+
+### Story 12 — Block as text-as-rope (CM6 parity refactor) 🚧 P1 — em andamento
+
+Refactor estrutural: `Cursor::InBlock` opera em `block.raw` (Rope) como prose. Desbloqueia paridade total com CM6 desktop — `h/l/i/a/x/v/V/d/y/p` funcionam dentro do fence header (`alias=foo` editável inline) e visual selection cobre block↔prose. Pedido pelo usuário em 2026-04-27 com diretiva "tem que funcionar igual ao documento".
+
+**Phase 1 ✅** (commit `7b09f28`):
+- `BlockNode.raw: Rope` field
+- Populated em `Document::from_markdown` + `reparse_prose_at` (linhas `[line_start..=line_end].join("\n")`)
+- 10 fixtures em `ui/blocks.rs` + `sql_completion.rs` patched com `raw: Rope::new()`
+- Ainda não consumido — comportamento intacto
+
+**Phase 2 ⏳ — Unify cursor model:**
+- Drop `Cursor::InBlockFence { segment_idx, position }` + `enum FencePosition`
+- Mudar `Cursor::InBlock { segment_idx, line, offset }` → `Cursor::InBlock { segment_idx, offset }` onde offset é char-index na `block.raw`
+- ~15-20 callsites em `vim/motions.rs`, `vim/operator.rs`, `vim/insert.rs`, `vim/dispatch.rs`, `vim/textobject.rs`, `vim/search.rs`, `ui/mod.rs`, `ui/status.rs`, `ui/cursor.rs`, `app.rs`, `buffer/document.rs`, `buffer/layout.rs`
+- Helpers em `buffer/block.rs`: `block_offset_to_line_col(raw, offset) -> (line, col)` + reverso
+
+**Phase 3 ⏳ — Edits routam pra raw:**
+- `Document::insert_char_at_cursor` quando `InBlock` → `block.raw.insert_char(offset, ch)` + `block.reparse_from_raw()`
+- `Document::delete_char_before/at_cursor` similar
+- `BlockNode::reparse_from_raw()` (parse_blocks(raw); se 1 bloco, atualiza derived; senão keep raw + last-good fields)
+- Helpers `block_query_insert/delete_*` em document.rs viram obsoletos
+
+**Phase 4 ⏳ — Render do raw:**
+- Quando `cursor on block`: pintar `block.raw` linha-a-linha como prose com SQL highlight só na região do body
+- Quando off: manter card bordered atual a partir dos parsed fields
+- `ui/cursor::render_inblock_cursor`: versão que recebe offset + raw e calcula (x,y) via line/col helper
+
+**Phase 5 ⏳ — Motions em raw:**
+- `apply_left/right/word_forward/word_back/line_start/line_end/down/up/...` pra `InBlock` operam em `block.raw` (não mais em `params.query`)
+- `j/k` no fence header → entra no body; no body → continua/sai pelo closer; no closer → sai pra prose abaixo (preserva semântica dos commits `3d26e7a` etc.)
+
+**Cuidados:**
+- `cached_result` e `state` sobrevivem a re-parses — ID estável, reparse só atualiza derived fields
+- Reparse com fence quebrada → keep raw + last-good fields (não dissolve em prose automaticamente)
+- Fixtures de teste: ~10 sites construindo `BlockNode { ... }` precisarão de `raw: Rope::from_str(&serialize_block(...))` ou similar pra consistência
+
+**Estimativa:** ~4-6h em sessão dedicada. Não combinar phases — cada uma é commit individual com tests verdes.
+
+**Depende de:** Phase 1 (✅). **Desbloqueia:** edição inline de fence header, visual selection cross-segment, fim das exceções `InBlockFence` em todo callsite que faz match em `Cursor`.
 
 ---
 
