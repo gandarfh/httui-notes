@@ -41,8 +41,10 @@ fn block_height(b: &BlockNode, cursor_on_block: bool) -> u16 {
     let chrome = 4u16;
 
     let card = if b.is_http() {
-        // chrome + URL line + meta line
-        chrome.saturating_add(2)
+        // chrome + request body lines (method/URL row + 1 row per
+        // header + 1 row per query param + body separator + body
+        // lines).
+        chrome.saturating_add(http_request_lines(b))
     } else if b.is_db() {
         let mode = b.effective_display_mode();
         let sql_lines = if mode.shows_input() {
@@ -78,6 +80,29 @@ fn block_height(b: &BlockNode, cursor_on_block: bool) -> u16 {
 /// How tall the DB result `Table` widget paints inside the card.
 /// Must mirror `ui::blocks::db_result_table_height` so the segment's
 /// reserved height matches what the renderer actually fills.
+/// Rows the HTTP block's request panel will paint inside the card.
+/// Mirrors `ui::blocks::http_body`: 1 row for the method+URL line +
+/// 1 per query param + 1 per header + (1 separator + body lines)
+/// when the body is non-empty. Used by `block_height` so the
+/// segment reservation matches what the renderer actually fills.
+fn http_request_lines(b: &BlockNode) -> u16 {
+    let mut rows: u16 = 1; // method+URL row
+    if let Some(params) = b.params.get("params").and_then(|v| v.as_array()) {
+        rows = rows.saturating_add(params.len() as u16);
+    }
+    if let Some(headers) = b.params.get("headers").and_then(|v| v.as_array()) {
+        rows = rows.saturating_add(headers.len() as u16);
+    }
+    if let Some(body) = b.params.get("body").and_then(|v| v.as_str()) {
+        let trimmed = body.trim_end_matches('\n');
+        if !trimmed.is_empty() {
+            rows = rows.saturating_add(1); // separator blank row
+            rows = rows.saturating_add(trimmed.lines().count() as u16);
+        }
+    }
+    rows
+}
+
 fn db_table_height(b: &BlockNode) -> u16 {
     const MAX_VISIBLE: usize = 10;
     let Some(result) = b.cached_result.as_ref() else {
@@ -164,9 +189,9 @@ mod tests {
     }
 
     #[test]
-    fn http_block_is_six_lines() {
+    fn http_block_height_includes_chrome_plus_request_lines() {
         // chrome (4: border + header bar + footer bar + border) +
-        // 2 body lines (URL line + meta line) = 6.
+        // 1 request line (method+URL only — empty headers/body) = 5.
         let md = "```http alias=h\n{\"method\":\"GET\",\"url\":\"https://x.com\",\"params\":[],\"headers\":[],\"body\":\"\"}\n```\n";
         let doc = Document::from_markdown(md).unwrap();
         let layouts = layout_document(&doc, 80);
@@ -179,7 +204,7 @@ mod tests {
                 ))
                 .unwrap()
                 .height,
-            6
+            5
         );
     }
 

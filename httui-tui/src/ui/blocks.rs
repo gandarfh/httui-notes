@@ -160,10 +160,10 @@ fn chrome_bg() -> Color {
     Color::Rgb(20, 22, 28)
 }
 
-/// Header bar paints `[DB] alias · vault [RW] type` on the left,
-/// keymap hints (`r run · gh history · gs settings`) on the right.
-/// Reads connection metadata from `b.params`, looking up the
-/// human-readable connection name via `names`.
+/// Header bar dispatcher — paints kind-specific content on a chrome
+/// bg row. DB blocks get `[DB] alias · vault [RW] subtype`; HTTP
+/// gets `[HTTP] alias · METHOD host`; E2E and unknown kinds get a
+/// minimal `[BLK] alias`. Right-aligned keymap hint applies to all.
 fn render_db_header_bar(
     frame: &mut Frame,
     area: Rect,
@@ -178,24 +178,36 @@ fn render_db_header_bar(
     let pad: String = " ".repeat(area.width as usize);
     frame.render_widget(Paragraph::new(Line::from(Span::styled(pad, bg))), area);
 
-    let kind_label = if b.is_db() {
-        "DB"
-    } else if b.is_http() {
-        "HTTP"
+    let left = if b.is_http() {
+        http_header_left_spans(b, bg)
+    } else if b.is_db() {
+        db_header_left_spans(b, names, bg)
     } else if b.is_e2e() {
-        "E2E"
+        generic_header_left_spans(b, "E2E", Color::Green, bg)
     } else {
-        "BLK"
+        generic_header_left_spans(b, "BLK", Color::DarkGray, bg)
     };
-    let badge_color = if b.is_db() {
-        Color::Blue
-    } else if b.is_http() {
-        Color::Magenta
-    } else if b.is_e2e() {
-        Color::Green
+
+    let used: u16 = left.iter().map(|s| s.content.chars().count() as u16).sum();
+    let hint = "r run  ·  gh history  ·  gs settings ";
+    let hint_len = hint.chars().count() as u16;
+    let space_for_hint = area.width.saturating_sub(used);
+    if space_for_hint >= hint_len {
+        let pad_len = space_for_hint.saturating_sub(hint_len);
+        let mut all_spans = left;
+        all_spans.push(Span::styled(" ".repeat(pad_len as usize), bg));
+        all_spans.push(Span::styled(hint.to_string(), bg.fg(Color::DarkGray)));
+        frame.render_widget(Paragraph::new(Line::from(all_spans)), area);
     } else {
-        Color::DarkGray
-    };
+        frame.render_widget(Paragraph::new(Line::from(left)), area);
+    }
+}
+
+fn db_header_left_spans(
+    b: &BlockNode,
+    names: &ConnectionNames,
+    bg: Style,
+) -> Vec<Span<'static>> {
     let alias = b.alias.clone().unwrap_or_else(|| "—".into());
     let conn_raw = b
         .params
@@ -211,68 +223,116 @@ fn render_db_header_bar(
             .cloned()
             .unwrap_or_else(|| conn_raw.to_string())
     };
-    // Subtype after the `db-` prefix, e.g. `postgres`. Falls back
-    // to `generic` when no subtype is set.
     let subtype = b
         .block_type
         .strip_prefix("db-")
         .unwrap_or("generic")
         .to_string();
+    vec![
+        Span::raw(" "),
+        Span::styled(
+            " DB ",
+            Style::default()
+                .bg(Color::Blue)
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("  ", bg),
+        Span::styled(alias, bg.fg(Color::White).add_modifier(Modifier::BOLD)),
+        Span::styled("  ·  ", bg.fg(Color::DarkGray)),
+        Span::styled(vault, bg.fg(Color::Gray)),
+        Span::styled("  ", bg),
+        Span::styled(
+            " RW ",
+            Style::default()
+                .bg(Color::Green)
+                .fg(Color::Black)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("  ", bg),
+        Span::styled(subtype, bg.fg(Color::DarkGray)),
+    ]
+}
 
-    let mut spans: Vec<Span<'static>> = Vec::new();
-    spans.push(Span::raw(" "));
-    spans.push(Span::styled(
-        format!(" {kind_label} "),
-        Style::default()
-            .bg(badge_color)
-            .fg(Color::White)
-            .add_modifier(Modifier::BOLD),
-    ));
-    spans.push(Span::styled("  ", bg));
-    spans.push(Span::styled(
-        alias,
-        bg.fg(Color::White).add_modifier(Modifier::BOLD),
-    ));
-    spans.push(Span::styled("  ·  ", bg.fg(Color::DarkGray)));
-    spans.push(Span::styled(vault, bg.fg(Color::Gray)));
-    spans.push(Span::styled("  ", bg));
-    spans.push(Span::styled(
-        " RW ",
-        Style::default()
-            .bg(Color::Green)
-            .fg(Color::Black)
-            .add_modifier(Modifier::BOLD),
-    ));
-    spans.push(Span::styled("  ", bg));
-    spans.push(Span::styled(subtype, bg.fg(Color::DarkGray)));
+fn http_header_left_spans(b: &BlockNode, bg: Style) -> Vec<Span<'static>> {
+    let alias = b.alias.clone().unwrap_or_else(|| "—".into());
+    let method = b
+        .params
+        .get("method")
+        .and_then(|v| v.as_str())
+        .unwrap_or("GET")
+        .to_string();
+    let url = b.params.get("url").and_then(|v| v.as_str()).unwrap_or("");
+    let host = http_host_of(url);
+    vec![
+        Span::raw(" "),
+        Span::styled(
+            " HTTP ",
+            Style::default()
+                .bg(Color::Magenta)
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("  ", bg),
+        Span::styled(alias, bg.fg(Color::White).add_modifier(Modifier::BOLD)),
+        Span::styled("  ·  ", bg.fg(Color::DarkGray)),
+        Span::styled(
+            format!(" {method} "),
+            Style::default()
+                .bg(method_color(&method))
+                .fg(Color::Black)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("  ", bg),
+        Span::styled(host, bg.fg(Color::Gray)),
+    ]
+}
 
-    // Right-side keymap hint. Compute width so it slots into the
-    // remaining row width; truncate if the alias / vault used
-    // everything up.
-    let left_line = Line::from(spans);
-    let used: u16 = left_line
-        .spans
-        .iter()
-        .map(|s| s.content.chars().count() as u16)
-        .sum();
-    let hint = "r run  ·  gh history  ·  gs settings ";
-    let hint_len = hint.chars().count() as u16;
-    let space_for_hint = area.width.saturating_sub(used);
-    if space_for_hint >= hint_len {
-        // Render left + padding + right hint as one Line.
-        let pad_len = space_for_hint.saturating_sub(hint_len);
-        let mut all_spans = left_line.spans.clone();
-        all_spans.push(Span::styled(" ".repeat(pad_len as usize), bg));
-        all_spans.push(Span::styled(hint.to_string(), bg.fg(Color::DarkGray)));
-        frame.render_widget(Paragraph::new(Line::from(all_spans)), area);
+fn generic_header_left_spans(
+    b: &BlockNode,
+    label: &str,
+    badge_bg: Color,
+    bg: Style,
+) -> Vec<Span<'static>> {
+    let alias = b.alias.clone().unwrap_or_else(|| "—".into());
+    vec![
+        Span::raw(" "),
+        Span::styled(
+            format!(" {label} "),
+            Style::default()
+                .bg(badge_bg)
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("  ", bg),
+        Span::styled(alias, bg.fg(Color::White).add_modifier(Modifier::BOLD)),
+    ]
+}
+
+/// Pull the host (and optional port) out of an HTTP URL — `https://
+/// api.x.com:443/v1/foo?q=1` → `api.x.com:443`. Returns the original
+/// string when it doesn't parse as a URL (incomplete fences, refs).
+fn http_host_of(url: &str) -> String {
+    let after_scheme = url
+        .find("://")
+        .map(|i| &url[i + 3..])
+        .unwrap_or(url);
+    let host_end = after_scheme
+        .find(|c| c == '/' || c == '?' || c == '#')
+        .unwrap_or(after_scheme.len());
+    let host = &after_scheme[..host_end];
+    if host.is_empty() {
+        "—".into()
     } else {
-        frame.render_widget(Paragraph::new(left_line), area);
+        host.to_string()
     }
 }
 
-/// Footer bar — connection + run summary + hotkey hint, with a
-/// subtle chrome bg. Mirrors the desktop's bottom strip:
-/// `● connected · Notes (rw) │ 100 rows · 7ms · cached · ⌘↵ to run`.
+/// Footer bar dispatcher — kind-specific summary on a chrome-bg
+/// row. DB blocks show `● connected · vault (rw) │ rows · elapsed
+/// · cached · press \`r\` to run`; HTTP shows `● connected ·
+/// METHOD url │ status · elapsed · size · cached · press \`r\` to
+/// run`; other kinds show the run hint only.
 fn render_db_footer_bar(
     frame: &mut Frame,
     area: Rect,
@@ -286,6 +346,47 @@ fn render_db_footer_bar(
     let pad: String = " ".repeat(area.width as usize);
     frame.render_widget(Paragraph::new(Line::from(Span::styled(pad, bg))), area);
 
+    let (dot_color, dot_label) = match &b.state {
+        ExecutionState::Idle => (Color::Green, "connected"),
+        ExecutionState::Running => (Color::Yellow, "running"),
+        ExecutionState::Cached => (Color::Green, "connected"),
+        ExecutionState::Success => (Color::Green, "connected"),
+        ExecutionState::Error(_) => (Color::Red, "error"),
+    };
+
+    let dim = bg.fg(Color::DarkGray);
+    let (left, right) = if b.is_http() {
+        http_footer_spans(b, bg, dot_color, dot_label)
+    } else if b.is_db() {
+        db_footer_spans(b, names, bg, dot_color, dot_label)
+    } else {
+        // Generic: status dot + run hint only.
+        let l = vec![
+            Span::raw(" "),
+            Span::styled("●", bg.fg(dot_color)),
+            Span::styled("  ", bg),
+            Span::styled(dot_label, bg.fg(Color::Gray)),
+        ];
+        let r = vec![Span::styled("press `r` to run ", dim)];
+        (l, r)
+    };
+
+    let used_left: u16 = left.iter().map(|s| s.content.chars().count() as u16).sum();
+    let used_right: u16 = right.iter().map(|s| s.content.chars().count() as u16).sum();
+    let mut spans = left;
+    let pad_w = area.width.saturating_sub(used_left + used_right);
+    spans.push(Span::styled(" ".repeat(pad_w as usize), bg));
+    spans.extend(right);
+    frame.render_widget(Paragraph::new(Line::from(spans)), area);
+}
+
+fn db_footer_spans(
+    b: &BlockNode,
+    names: &ConnectionNames,
+    bg: Style,
+    dot_color: Color,
+    dot_label: &'static str,
+) -> (Vec<Span<'static>>, Vec<Span<'static>>) {
     let dim = bg.fg(Color::DarkGray);
     let conn_raw = b
         .params
@@ -301,14 +402,6 @@ fn render_db_footer_bar(
             .cloned()
             .unwrap_or_else(|| conn_raw.to_string())
     };
-    let (dot_color, dot_label) = match &b.state {
-        ExecutionState::Idle => (Color::Green, "connected"),
-        ExecutionState::Running => (Color::Yellow, "running"),
-        ExecutionState::Cached => (Color::Green, "connected"),
-        ExecutionState::Success => (Color::Green, "connected"),
-        ExecutionState::Error(_) => (Color::Red, "error"),
-    };
-
     let mut left: Vec<Span<'static>> = Vec::new();
     left.push(Span::raw(" "));
     left.push(Span::styled("●", bg.fg(dot_color)));
@@ -319,10 +412,8 @@ fn render_db_footer_bar(
     left.push(Span::styled(" (rw)", dim));
     left.push(Span::styled("  │  ", dim));
 
-    // Right-side: rows · elapsed · cached · ran X ago · ⌘↵ to run.
-    let summary = db_summary(b);
     let mut right: Vec<Span<'static>> = Vec::new();
-    if let Some(s) = summary {
+    if let Some(s) = db_summary(b) {
         right.push(Span::styled(s, bg.fg(Color::Gray)));
         right.push(Span::styled("  ·  ", dim));
     }
@@ -331,14 +422,132 @@ fn render_db_footer_bar(
         right.push(Span::styled("  ·  ", dim));
     }
     right.push(Span::styled("press `r` to run ", dim));
+    (left, right)
+}
 
-    let used_left: u16 = left.iter().map(|s| s.content.chars().count() as u16).sum();
-    let used_right: u16 = right.iter().map(|s| s.content.chars().count() as u16).sum();
-    let mut spans = left;
-    let pad_w = area.width.saturating_sub(used_left + used_right);
-    spans.push(Span::styled(" ".repeat(pad_w as usize), bg));
-    spans.extend(right);
-    frame.render_widget(Paragraph::new(Line::from(spans)), area);
+fn http_footer_spans(
+    b: &BlockNode,
+    bg: Style,
+    dot_color: Color,
+    dot_label: &'static str,
+) -> (Vec<Span<'static>>, Vec<Span<'static>>) {
+    let dim = bg.fg(Color::DarkGray);
+    let method = b
+        .params
+        .get("method")
+        .and_then(|v| v.as_str())
+        .unwrap_or("GET")
+        .to_string();
+    let url = b
+        .params
+        .get("url")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    // Trim long URL to fit — `path` only when host fits in the badge.
+    let path = http_path_of(&url);
+
+    let mut left: Vec<Span<'static>> = Vec::new();
+    left.push(Span::raw(" "));
+    left.push(Span::styled("●", bg.fg(dot_color)));
+    left.push(Span::styled("  ", bg));
+    left.push(Span::styled(dot_label, bg.fg(Color::Gray)));
+    left.push(Span::styled("  ·  ", dim));
+    left.push(Span::styled(
+        format!(" {method} "),
+        Style::default()
+            .bg(method_color(&method))
+            .fg(Color::Black)
+            .add_modifier(Modifier::BOLD),
+    ));
+    left.push(Span::styled("  ", bg));
+    left.push(Span::styled(path, bg.fg(Color::Gray)));
+    left.push(Span::styled("  │  ", dim));
+
+    let mut right: Vec<Span<'static>> = Vec::new();
+    if let Some(s) = http_summary(b) {
+        right.push(Span::styled(s, bg.fg(Color::Gray)));
+        right.push(Span::styled("  ·  ", dim));
+    }
+    if matches!(b.state, ExecutionState::Cached) {
+        right.push(Span::styled("cached", bg.fg(Color::Cyan)));
+        right.push(Span::styled("  ·  ", dim));
+    }
+    right.push(Span::styled("press `r` to run ", dim));
+    (left, right)
+}
+
+/// Pull the path + query out of an HTTP URL. Returns `/` when the
+/// URL has no path (just a host) or empty.
+fn http_path_of(url: &str) -> String {
+    let after_scheme = url
+        .find("://")
+        .map(|i| &url[i + 3..])
+        .unwrap_or(url);
+    let path_start = after_scheme.find('/').unwrap_or(after_scheme.len());
+    let path = &after_scheme[path_start..];
+    if path.is_empty() {
+        "/".into()
+    } else {
+        path.to_string()
+    }
+}
+
+/// One-line summary of an HTTP block's `cached_result`. Returns
+/// `None` when the cache is empty / shape doesn't match. Format:
+/// `200 OK · 124ms · 4 KB`.
+fn http_summary(b: &BlockNode) -> Option<String> {
+    let result = b.cached_result.as_ref()?;
+    let status = result.get("status").and_then(|v| v.as_u64()).unwrap_or(0);
+    let status_text = result
+        .get("status_text")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let elapsed = result
+        .get("timing")
+        .and_then(|t| t.get("total_ms"))
+        .and_then(|v| v.as_u64())
+        .or_else(|| result.get("elapsed_ms").and_then(|v| v.as_u64()));
+    let size = result
+        .get("size_bytes")
+        .and_then(|v| v.as_u64())
+        .or_else(|| {
+            result
+                .get("body")
+                .and_then(|v| v.as_str())
+                .map(|s| s.len() as u64)
+        });
+    let mut parts: Vec<String> = Vec::new();
+    if status > 0 {
+        if status_text.is_empty() {
+            parts.push(format!("{status}"));
+        } else {
+            parts.push(format!("{status} {status_text}"));
+        }
+    }
+    if let Some(ms) = elapsed {
+        parts.push(format!("{ms}ms"));
+    }
+    if let Some(bytes) = size {
+        parts.push(format_byte_size(bytes));
+    }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join(" · "))
+    }
+}
+
+fn format_byte_size(bytes: u64) -> String {
+    if bytes < 1024 {
+        format!("{bytes} B")
+    } else if bytes < 1024 * 1024 {
+        format!("{:.1} KB", bytes as f64 / 1024.0)
+    } else if bytes < 1024 * 1024 * 1024 {
+        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+    } else {
+        format!("{:.1} GB", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
+    }
 }
 
 /// Paint the fence header row inside the inner area (just under the
@@ -389,6 +598,12 @@ fn raw_body_text(b: &BlockNode) -> String {
     body.join("\n")
 }
 
+/// Render the request side of an HTTP block as a multi-line panel:
+/// method+URL row, query-param continuations (`? key=value`), header
+/// rows (`Authorization: Bearer …`), and a body block when present.
+/// Syntax: method as colored badge, header keys cyan, separators
+/// dim. Off-cursor — when the cursor enters, we paint the raw rope
+/// instead so the user edits exactly what they see.
 fn http_body(b: &BlockNode) -> Vec<Line<'static>> {
     let method = b
         .params
@@ -402,44 +617,69 @@ fn http_body(b: &BlockNode) -> Vec<Line<'static>> {
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
-    let header_count = b
-        .params
-        .get("headers")
-        .and_then(|v| v.as_array())
-        .map(|a| a.len())
-        .unwrap_or(0);
-    let param_count = b
-        .params
-        .get("params")
-        .and_then(|v| v.as_array())
-        .map(|a| a.len())
-        .unwrap_or(0);
-    let body_len = b
-        .params
-        .get("body")
-        .and_then(|v| v.as_str())
-        .map(|s| s.len())
-        .unwrap_or(0);
 
-    vec![
-        Line::from(vec![
-            Span::styled(
-                format!(" {method} "),
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(method_color(&method))
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" "),
-            Span::raw(url),
-        ]),
-        Line::from(Span::styled(
-            format!(
-                "headers: {header_count} · params: {param_count} · body: {body_len} chars"
-            ),
-            Style::default().fg(Color::DarkGray),
-        )),
-    ]
+    let mut lines: Vec<Line<'static>> = Vec::new();
+
+    // Request line: colored method badge + URL.
+    lines.push(Line::from(vec![
+        Span::styled(
+            format!(" {method} "),
+            Style::default()
+                .fg(Color::Black)
+                .bg(method_color(&method))
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(" "),
+        Span::raw(url),
+    ]));
+
+    // Query params, one per row prefixed `? `.
+    if let Some(params) = b.params.get("params").and_then(|v| v.as_array()) {
+        for (i, p) in params.iter().enumerate() {
+            let key = p.get("key").and_then(|v| v.as_str()).unwrap_or("");
+            let value = p.get("value").and_then(|v| v.as_str()).unwrap_or("");
+            let prefix = if i == 0 { "  ? " } else { "  & " };
+            lines.push(Line::from(vec![
+                Span::styled(prefix, Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    key.to_string(),
+                    Style::default().fg(Color::Cyan),
+                ),
+                Span::styled("=", Style::default().fg(Color::DarkGray)),
+                Span::raw(value.to_string()),
+            ]));
+        }
+    }
+
+    // Headers, one per row.
+    if let Some(headers) = b.params.get("headers").and_then(|v| v.as_array()) {
+        for h in headers {
+            let key = h.get("key").and_then(|v| v.as_str()).unwrap_or("");
+            let value = h.get("value").and_then(|v| v.as_str()).unwrap_or("");
+            lines.push(Line::from(vec![
+                Span::styled(
+                    format!("  {key}"),
+                    Style::default().fg(Color::Cyan),
+                ),
+                Span::styled(": ", Style::default().fg(Color::DarkGray)),
+                Span::raw(value.to_string()),
+            ]));
+        }
+    }
+
+    // Body block (if any) — separator + text. Drop trailing
+    // newlines so the panel doesn't leave a blank row at the end.
+    if let Some(body) = b.params.get("body").and_then(|v| v.as_str()) {
+        let trimmed = body.trim_end_matches('\n');
+        if !trimmed.is_empty() {
+            lines.push(Line::from(""));
+            for body_line in trimmed.lines() {
+                lines.push(Line::from(format!("  {body_line}")));
+            }
+        }
+    }
+
+    lines
 }
 
 fn method_color(method: &str) -> Color {
@@ -1322,18 +1562,24 @@ mod tests {
     }
 
     #[test]
-    fn http_body_meta_line() {
+    fn http_body_renders_request_lines() {
+        // The HTTP body now reads as method+URL line + 1 row per
+        // header + (separator + body lines). Old `meta` summary
+        // ("headers: N · params: M · body: K chars") is gone — the
+        // user wanted the actual request text, not stats.
         let b = http_block();
         let lines = http_body(&b);
-        let meta: String = lines[1]
+        // Request line first; then 1 header (`Authorization: …`);
+        // then a blank separator + 1 body line.
+        assert!(lines.len() >= 4, "got {} lines", lines.len());
+        let request: String = lines[0]
             .spans
             .iter()
             .map(|s| s.content.as_ref())
             .collect::<Vec<_>>()
             .join("");
-        assert!(meta.contains("headers: 1"));
-        assert!(meta.contains("params: 0"));
-        assert!(meta.contains("body: 9 chars"));
+        assert!(request.contains("POST"));
+        assert!(request.contains("api.test.com"));
     }
 
     // db_footer_text / db_result_line tests dropped — the footer
