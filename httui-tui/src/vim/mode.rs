@@ -37,6 +37,10 @@ pub enum Mode {
     /// dismiss. Renders independently of mode (popup is painted
     /// while `App.connection_picker` is `Some`).
     ConnectionPicker,
+    /// Confirm gate before running an unscoped destructive query
+    /// (UPDATE/DELETE without WHERE). `y` runs anyway, `n`/Esc/
+    /// Ctrl-C cancels. State lives on `App.db_confirm_run`.
+    DbConfirmRun,
 }
 
 impl Mode {
@@ -53,6 +57,7 @@ impl Mode {
             Mode::VisualLine => "V-L",
             Mode::DbRowDetail => "ROW",
             Mode::ConnectionPicker => "CONN",
+            Mode::DbConfirmRun => "RUN?",
         }
     }
 
@@ -67,6 +72,7 @@ impl Mode {
             Mode::Visual | Mode::VisualLine => Color::LightRed,
             Mode::DbRowDetail => Color::LightBlue,
             Mode::ConnectionPicker => Color::LightBlue,
+            Mode::DbConfirmRun => Color::LightRed,
         }
     }
 

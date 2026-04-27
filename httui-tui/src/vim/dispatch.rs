@@ -13,9 +13,9 @@ use crate::vim::motions;
 use crate::vim::operator;
 use crate::pane::{FocusDir, SplitDir};
 use crate::vim::parser::{
-    parse_cmdline, parse_connection_picker, parse_db_row_detail, parse_insert, parse_normal,
-    parse_quickopen, parse_search, parse_tree, parse_tree_prompt, parse_visual, Action,
-    InsertPos, Motion, Operator, PastePos, TextObject, WindowCmd,
+    parse_cmdline, parse_connection_picker, parse_db_confirm_run, parse_db_row_detail,
+    parse_insert, parse_normal, parse_quickopen, parse_search, parse_tree, parse_tree_prompt,
+    parse_visual, Action, InsertPos, Motion, Operator, PastePos, TextObject, WindowCmd,
 };
 use crate::vim::search;
 use crate::tree::{TreePrompt, TreePromptKind};
@@ -78,6 +78,7 @@ pub fn dispatch(app: &mut App, key: KeyEvent) {
         Mode::Visual | Mode::VisualLine => parse_visual(&mut app.vim, key),
         Mode::DbRowDetail => parse_db_row_detail(&mut app.vim, key),
         Mode::ConnectionPicker => parse_connection_picker(key),
+        Mode::DbConfirmRun => parse_db_confirm_run(key),
     };
 
     // When the cursor is parked inside a block's editable body, swap
@@ -363,19 +364,11 @@ fn compute_db_cache_hash(
     httui_core::block_results::compute_block_hash(&keyed, None, conn_id)
 }
 
-/// Decide whether a query is safe to serve from cache. Read-only
-/// statements (SELECT/EXPLAIN/WITH/SHOW/PRAGMA/DESC) cache; anything
-/// else (UPDATE/DELETE/INSERT/DDL) bypasses the cache and always
-/// re-executes — matching desktop semantics. Walks past leading
-/// whitespace and `--` / `/* */` comments so a query that opens
-/// with a comment header is classified by its real first statement.
-///
-/// V1 only inspects the first non-comment word — multi-statement
-/// queries are classified by the first one. If the first is a
-/// SELECT but a later statement is a mutation, V1 may still cache.
-/// Story 04.2's multi-statement support hands us all results in one
-/// shot, so caching the whole bundle is what desktop does too.
-fn is_cacheable_query(query: &str) -> bool {
+/// Strip leading whitespace + line / block comments so query
+/// classifiers see the first *real* statement word. Used by
+/// `is_cacheable_query`, `is_writing_query`, and `is_unscoped_destructive`
+/// — they all care about the same opener but for different reasons.
+fn strip_leading_sql_comments(query: &str) -> &str {
     let mut s = query.trim_start();
     loop {
         if let Some(rest) = s.strip_prefix("--") {
@@ -392,12 +385,91 @@ fn is_cacheable_query(query: &str) -> bool {
             break;
         }
     }
+    s
+}
+
+/// Decide whether a query is safe to serve from cache. Read-only
+/// statements (SELECT/EXPLAIN/WITH/SHOW/PRAGMA/DESC) cache; anything
+/// else (UPDATE/DELETE/INSERT/DDL) bypasses the cache and always
+/// re-executes — matching desktop semantics.
+///
+/// V1 only inspects the first non-comment word — multi-statement
+/// queries are classified by the first one. If the first is a
+/// SELECT but a later statement is a mutation, V1 may still cache.
+/// Story 04.2's multi-statement support hands us all results in one
+/// shot, so caching the whole bundle is what desktop does too.
+fn is_cacheable_query(query: &str) -> bool {
+    let s = strip_leading_sql_comments(query);
     let first_word: String =
         s.chars().take_while(|c| c.is_ascii_alphabetic()).collect();
     matches!(
         first_word.to_ascii_uppercase().as_str(),
         "SELECT" | "WITH" | "EXPLAIN" | "SHOW" | "PRAGMA" | "DESC" | "DESCRIBE"
     )
+}
+
+/// Whether the query writes to the database. The read-only gate
+/// uses this to decide if a query against an `is_readonly`
+/// connection should be blocked. Strict list — anything not
+/// recognized as a write counts as a read (safer default for the
+/// gate: we'd rather let a weird read through than block one).
+fn is_writing_query(query: &str) -> bool {
+    let s = strip_leading_sql_comments(query);
+    let first_word: String =
+        s.chars().take_while(|c| c.is_ascii_alphabetic()).collect();
+    matches!(
+        first_word.to_ascii_uppercase().as_str(),
+        "UPDATE"
+            | "DELETE"
+            | "INSERT"
+            | "REPLACE"
+            | "MERGE"
+            | "CREATE"
+            | "DROP"
+            | "ALTER"
+            | "TRUNCATE"
+            | "GRANT"
+            | "REVOKE"
+            | "VACUUM"
+    )
+}
+
+/// Whether the query is an `UPDATE` or `DELETE` *without* a `WHERE`
+/// clause — the kind of slip that nukes an entire table. Used by
+/// the confirm gate; non-UPDATE/DELETE writes (CREATE/INSERT) skip
+/// the gate (they're either non-destructive or always intentional).
+fn is_unscoped_destructive(query: &str) -> bool {
+    let s = strip_leading_sql_comments(query);
+    let first_word: String =
+        s.chars().take_while(|c| c.is_ascii_alphabetic()).collect();
+    let kind = first_word.to_ascii_uppercase();
+    if kind != "UPDATE" && kind != "DELETE" {
+        return false;
+    }
+    // Look for a WHERE keyword anywhere in the rest of the first
+    // statement (terminating at `;` or end-of-string). Case-insensitive
+    // scan with word-boundary checks so column names like `whereabouts`
+    // don't get flagged.
+    let stmt_end = s.find(';').unwrap_or(s.len());
+    let stmt = &s[..stmt_end];
+    let upper = stmt.to_ascii_uppercase();
+    // Walk through the statement looking for the standalone word `WHERE`.
+    let mut start = 0;
+    while let Some(pos) = upper[start..].find("WHERE") {
+        let abs = start + pos;
+        let before_ok = abs == 0
+            || !upper.as_bytes()[abs - 1].is_ascii_alphanumeric()
+                && upper.as_bytes()[abs - 1] != b'_';
+        let after = abs + 5; // len("WHERE")
+        let after_ok = after >= upper.len()
+            || (!upper.as_bytes()[after].is_ascii_alphanumeric()
+                && upper.as_bytes()[after] != b'_');
+        if before_ok && after_ok {
+            return false;
+        }
+        start = abs + 5;
+    }
+    true
 }
 
 /// Format the same one-liner `db_summary` produces in the renderer
@@ -517,6 +589,28 @@ fn resolve_connection_id_sync(
         }
     }
     raw.to_string()
+}
+
+/// `y` (or `Enter`) inside the run-confirm modal — close the
+/// modal, drop back to normal mode, then re-run the original
+/// segment with the unscoped-destructive gate bypassed. The
+/// segment_idx comes from the modal state because the cursor may
+/// have moved while the modal was up.
+fn apply_confirm_db_run(app: &mut App) {
+    let Some(state) = app.db_confirm_run.take() else {
+        app.vim.enter_normal();
+        return;
+    };
+    app.vim.enter_normal();
+    run_db_block_inner(app, state.segment_idx, /* force_unscoped = */ true);
+}
+
+/// `n` / `Esc` / `Ctrl-C` — close the modal without running.
+fn apply_cancel_db_run(app: &mut App) {
+    if app.db_confirm_run.take().is_some() {
+        app.set_status(StatusKind::Info, "run cancelled");
+    }
+    app.vim.enter_normal();
 }
 
 fn apply_completion_next(app: &mut App) {
@@ -816,6 +910,8 @@ fn apply_action(app: &mut App, action: Action, recording: bool) {
         Action::CompletionPrev => apply_completion_prev(app),
         Action::CompletionAccept => apply_completion_accept(app),
         Action::CompletionDismiss => apply_completion_dismiss(app),
+        Action::ConfirmDbRun => apply_confirm_db_run(app),
+        Action::CancelDbRun => apply_cancel_db_run(app),
         Action::ExitInsert => {
             if let Some(doc) = app.document_mut() {
                 recoil_after_exit(doc);
@@ -1521,12 +1617,24 @@ fn apply_run_block(app: &mut App) {
         return;
     }
 
-    // Resolve the cursor → block.
+    // Resolve the cursor → block. The actual run logic lives in
+    // `run_db_block_inner` so the confirm-modal handler can re-enter
+    // it with a `force_unscoped: true` flag after the user OK's a
+    // destructive query.
     let Some(doc) = app.document() else { return; };
     let Cursor::InBlock { segment_idx, .. } = doc.cursor() else {
         app.set_status(StatusKind::Info, "no block at cursor (place cursor on a block first)");
         return;
     };
+    run_db_block_inner(app, segment_idx, /* force_unscoped = */ false);
+}
+
+/// Run the DB block at `segment_idx`. Shared entry for the
+/// cursor-based `r` keypress and the confirm-modal `y`. The
+/// `force_unscoped` flag bypasses the unscoped-destructive gate
+/// once — set only when the user explicitly confirmed the run.
+fn run_db_block_inner(app: &mut App, segment_idx: usize, force_unscoped: bool) {
+    let Some(doc) = app.document() else { return; };
     // Snapshot the block so we can release the immutable doc borrow
     // before mutating later.
     let block = match doc.segments().get(segment_idx) {
@@ -1630,6 +1738,56 @@ fn apply_run_block(app: &mut App) {
             return;
         }
     };
+
+    // Read-only gate: when the connection is flagged `is_readonly`,
+    // any write statement is blocked outright. There's no confirm
+    // path here — the user has to either flip the conn's flag or
+    // pick a different connection. Sync lookup via `block_in_place`,
+    // matching the rest of `apply_run_block` (already on the
+    // dispatch thread; small SQLite read).
+    let conn_meta = tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current().block_on(
+            httui_core::db::connections::get_connection(
+                app.pool_manager.app_pool(),
+                &connection_id,
+            ),
+        )
+    });
+    let is_readonly_conn = matches!(
+        &conn_meta,
+        Ok(Some(c)) if c.is_readonly
+    );
+    if is_readonly_conn && is_writing_query(&raw_query) {
+        let msg = "connection is read-only — flip the flag or pick a writable connection".to_string();
+        if let Some(doc) = app.tabs.active_document_mut() {
+            if let Some(b) = doc.block_at_mut(segment_idx) {
+                b.state = ExecutionState::Error(msg.clone());
+                b.cached_result = None;
+            }
+        }
+        app.set_status(StatusKind::Error, msg);
+        return;
+    }
+
+    // Confirm gate: unscoped UPDATE/DELETE (no WHERE) is the kind
+    // of slip that nukes a whole table. Pop a y/n modal so the user
+    // explicitly OKs it. Skipped when `force_unscoped` is true (the
+    // user already said yes from the previous popup).
+    if !force_unscoped && is_unscoped_destructive(&raw_query) {
+        let s = strip_leading_sql_comments(&raw_query);
+        let kind: String = s
+            .chars()
+            .take_while(|c| c.is_ascii_alphabetic())
+            .collect::<String>()
+            .to_ascii_uppercase();
+        let reason = format!("{kind} without WHERE will affect every row");
+        app.db_confirm_run = Some(crate::app::DbConfirmRunState {
+            segment_idx,
+            reason,
+        });
+        app.vim.mode = crate::vim::mode::Mode::DbConfirmRun;
+        return;
+    }
 
     // Cache check — only for read queries; mutations always
     // re-execute. Pulls the active pane's file path (cache is
@@ -3631,6 +3789,98 @@ mod tests {
         let params =
             build_db_executor_params("conn-1", "SELECT 1", &[], 0, 100, None);
         assert!(params["timeout_ms"].is_null());
+    }
+
+    // ───────────── Read-only / confirm gate (Story 04.9) ─────────────
+
+    #[test]
+    fn writing_query_recognizes_mutations() {
+        // The set the read-only gate refuses on RO connections.
+        for q in &[
+            "UPDATE users SET x=1",
+            "DELETE FROM users",
+            "INSERT INTO t VALUES (1)",
+            "REPLACE INTO t VALUES (1)",
+            "MERGE INTO t USING ...",
+            "CREATE TABLE x (id INT)",
+            "DROP TABLE x",
+            "ALTER TABLE x ADD COLUMN y INT",
+            "TRUNCATE TABLE x",
+            "GRANT SELECT ON t TO u",
+            "REVOKE SELECT ON t FROM u",
+            "VACUUM",
+        ] {
+            assert!(is_writing_query(q), "expected write: {q}");
+        }
+    }
+
+    #[test]
+    fn writing_query_rejects_reads() {
+        // Reads (and pseudo-reads) should NEVER be classified as
+        // writing — otherwise SELECT against a RO conn would be
+        // wrongly blocked.
+        for q in &[
+            "SELECT 1",
+            "SELECT * FROM users",
+            "WITH x AS (SELECT 1) SELECT * FROM x",
+            "EXPLAIN SELECT 1",
+            "PRAGMA table_info('x')",
+            "SHOW TABLES",
+            "DESC users",
+        ] {
+            assert!(!is_writing_query(q), "should not be write: {q}");
+        }
+    }
+
+    #[test]
+    fn unscoped_destructive_flags_update_without_where() {
+        // Bare UPDATE / DELETE — the slip we want to confirm.
+        assert!(is_unscoped_destructive("UPDATE users SET x = 1"));
+        assert!(is_unscoped_destructive("DELETE FROM users"));
+        assert!(is_unscoped_destructive("update users set name = 'x'"));
+    }
+
+    #[test]
+    fn unscoped_destructive_passes_when_where_present() {
+        // The whole point of the gate is to *not* prompt when
+        // there's a WHERE clause — power users hit `r` constantly
+        // and confirming every UPDATE would be obnoxious.
+        assert!(!is_unscoped_destructive("UPDATE users SET x = 1 WHERE id = 7"));
+        assert!(!is_unscoped_destructive("DELETE FROM users WHERE active = 0"));
+        // Case-insensitive WHERE detection.
+        assert!(!is_unscoped_destructive("delete from users where id < 10"));
+    }
+
+    #[test]
+    fn unscoped_destructive_is_word_boundary_aware() {
+        // A column literally named `whereabouts` shouldn't be
+        // mistaken for the WHERE keyword. Same goes for any
+        // identifier that contains the substring `where`.
+        assert!(is_unscoped_destructive(
+            "UPDATE users SET whereabouts = 'home'"
+        ));
+    }
+
+    #[test]
+    fn unscoped_destructive_skips_other_writes() {
+        // CREATE / INSERT / DROP aren't part of the confirm gate —
+        // they're either non-destructive (CREATE) or always
+        // intentional (DROP TABLE has its own context).
+        assert!(!is_unscoped_destructive("INSERT INTO users VALUES (1)"));
+        assert!(!is_unscoped_destructive("DROP TABLE users"));
+        assert!(!is_unscoped_destructive("CREATE TABLE t (id INT)"));
+    }
+
+    #[test]
+    fn unscoped_destructive_strips_leading_comments() {
+        // A `-- backup first` header above the DELETE shouldn't
+        // hide the destructive intent from the gate.
+        assert!(is_unscoped_destructive(
+            "-- run after midnight\nDELETE FROM users"
+        ));
+        assert!(!is_unscoped_destructive(
+            "-- legit\nDELETE FROM users WHERE inactive = 1"
+        ));
     }
 
     #[test]

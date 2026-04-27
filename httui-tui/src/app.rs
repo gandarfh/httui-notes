@@ -269,6 +269,19 @@ pub struct App {
     /// body; cleared on Accept/Dismiss or when the prefix becomes
     /// empty.
     pub completion_popup: Option<CompletionPopupState>,
+    /// `Some` while the run-confirm modal is up. Set by
+    /// `apply_run_block` when it detects an unscoped destructive
+    /// query (UPDATE/DELETE without WHERE); the user answers `y`
+    /// to run anyway or `n`/Esc/Ctrl-C to cancel.
+    pub db_confirm_run: Option<DbConfirmRunState>,
+}
+
+/// State for the run-confirm modal. Carries the segment to re-run
+/// (the cursor may have moved in between) and the human reason
+/// shown to the user (e.g. "UPDATE without WHERE").
+pub struct DbConfirmRunState {
+    pub segment_idx: usize,
+    pub reason: String,
 }
 
 impl App {
@@ -292,6 +305,7 @@ impl App {
             connection_picker: None,
             schema_cache: crate::schema::SchemaCache::new(),
             completion_popup: None,
+            db_confirm_run: None,
         };
         app.load_initial_document();
         app

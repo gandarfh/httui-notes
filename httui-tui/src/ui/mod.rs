@@ -5,6 +5,7 @@ mod blocks;
 mod completion_popup;
 mod connection_picker;
 mod cursor;
+mod db_confirm_run;
 pub mod db_row_detail;
 mod prose;
 mod quickopen;
@@ -236,6 +237,13 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     if let Some(state) = app.completion_popup.as_ref() {
         let anchor = compute_block_anchor(app, editor_area, state.segment_idx);
         completion_popup::render(frame, editor_area, state, anchor);
+    }
+
+    // Run-confirm modal — painted last so it floats over everything
+    // else (including a stuck completion popup, though both being up
+    // simultaneously shouldn't happen in practice).
+    if let Some(state) = app.db_confirm_run.as_ref() {
+        db_confirm_run::render(frame, editor_area, state);
     }
 }
 

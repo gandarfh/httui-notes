@@ -343,6 +343,12 @@ pub enum Action {
     /// `Esc` / `Ctrl+C` while the popup is open — close it without
     /// inserting anything; subsequent keys go to insert as usual.
     CompletionDismiss,
+    /// `y` (or `Enter`) while the unscoped-destructive confirm
+    /// modal is up — run the query anyway, bypassing the gate.
+    ConfirmDbRun,
+    /// `n`/`Esc`/`Ctrl+C` while the confirm modal is up — close
+    /// the modal without running.
+    CancelDbRun,
     Noop,
 }
 
@@ -1267,6 +1273,26 @@ pub fn parse_connection_picker(key: KeyEvent) -> Action {
         }
         (KeyModifiers::CONTROL, KeyCode::Char('n')) => Action::MoveConnectionPickerCursor(1),
         (KeyModifiers::CONTROL, KeyCode::Char('p')) => Action::MoveConnectionPickerCursor(-1),
+        _ => Action::Noop,
+    }
+}
+
+/// Translate one key while the unscoped-destructive run-confirm
+/// modal is up. `y` (or `Enter`) commits to the run; `n`/`Esc`/
+/// `Ctrl-C` back out. Anything else is a no-op — fat-fingering a
+/// motion keystroke shouldn't accidentally execute a `DELETE`.
+pub fn parse_db_confirm_run(key: KeyEvent) -> Action {
+    let KeyEvent {
+        code, modifiers, ..
+    } = key;
+    match (modifiers, code) {
+        (_, KeyCode::Esc) => Action::CancelDbRun,
+        (KeyModifiers::CONTROL, KeyCode::Char('c')) => Action::CancelDbRun,
+        (KeyModifiers::NONE, KeyCode::Char('n'))
+        | (KeyModifiers::NONE, KeyCode::Char('N')) => Action::CancelDbRun,
+        (KeyModifiers::NONE, KeyCode::Char('y'))
+        | (KeyModifiers::NONE, KeyCode::Char('Y'))
+        | (_, KeyCode::Enter) => Action::ConfirmDbRun,
         _ => Action::Noop,
     }
 }

@@ -315,16 +315,36 @@ Hoje TUI sempre re-executava em `r`. Agora consulta cache primeiro (per-file SQL
 
 ---
 
-### Story 04.9 — Read-only mode + confirm dialog 🚧 P1
+### Story 04.9 — Read-only mode + confirm dialog ✅ P1
 
-Connections têm flag `is_readonly`. Desktop bloqueia mutations em RO connections com confirm modal. Também avisa em `UPDATE`/`DELETE` sem `WHERE` mesmo em RW.
+**Entregue:**
+- [x] Detectores puros em `vim::dispatch`:
+  - `is_writing_query(query)` — true pra `UPDATE`/`DELETE`/`INSERT`/`REPLACE`/`MERGE`/`CREATE`/`DROP`/`ALTER`/`TRUNCATE`/`GRANT`/`REVOKE`/`VACUUM`. Strict — quando em dúvida, classifica como read (safer pro gate: melhor liberar uma read estranha do que bloquear).
+  - `is_unscoped_destructive(query)` — true pra `UPDATE`/`DELETE` sem `WHERE`. Word-boundary check evita falso-positivo em coluna chamada `whereabouts`. Para no `;` (multi-statement só checa primeira).
+  - `strip_leading_sql_comments` extraído como helper compartilhado entre `is_cacheable_query`, `is_writing_query`, `is_unscoped_destructive` — todos respeitam comentários `--` e `/* */` antes do statement.
+- [x] **Read-only gate**: `apply_run_block` busca `Connection.is_readonly` via `httui-core::db::connections::get_connection` (sync via `block_in_place`). Se `is_readonly && is_writing_query` → erro inline `"connection is read-only"` + status bar, sem modal, sem spawn.
+- [x] **Confirm gate**: se `is_unscoped_destructive` e flag `force_unscoped=false`, abre `Mode::DbConfirmRun` com mensagem `"UPDATE without WHERE will affect every row"`. Modal centrado, vermelho, com chips `y` (run anyway) / `n` (cancel).
+- [x] `apply_run_block` refatorado: extrai `run_db_block_inner(app, segment_idx, force_unscoped)` — entry point compartilhado entre `r` (cursor → segment, force=false) e o handler de confirm `apply_confirm_db_run` (segment vem do modal state, force=true pra bypassar o gate).
+- [x] Mode + handlers + parser: `Mode::DbConfirmRun`, `parse_db_confirm_run` (y/Y/Enter → ConfirmDbRun; n/N/Esc/Ctrl-C → CancelDbRun), `Action::ConfirmDbRun`/`CancelDbRun`, `apply_confirm_db_run` (close modal + re-run com force) / `apply_cancel_db_run` (close + status "run cancelled").
+- [x] Render `ui::db_confirm_run` — popup centrado 56x5, borda vermelha, warning ⚠ + reason + chip footer.
+- [x] 7 testes em `dispatch::tests`:
+  - `writing_query_recognizes_mutations` (12 statements)
+  - `writing_query_rejects_reads` (7 statements)
+  - `unscoped_destructive_flags_update_without_where`
+  - `unscoped_destructive_passes_when_where_present` (incluindo case-insensitive)
+  - `unscoped_destructive_is_word_boundary_aware` (`whereabouts`)
+  - `unscoped_destructive_skips_other_writes` (INSERT/CREATE/DROP)
+  - `unscoped_destructive_strips_leading_comments`
 
-**Tasks:**
-- [ ] Detector SQL: classifica statement como mutation/select via parsing leve (regex inicial — `^\s*(UPDATE|DELETE|INSERT|DROP|TRUNCATE|ALTER)`)
-- [ ] Detector "unscoped": `UPDATE` ou `DELETE` sem `WHERE` (regex + tree-sitter quando walker estabilizar)
-- [ ] Modal de confirmação: `Mode::DbConfirmRun` com mensagem + `[y]es / [n]o`
-- [ ] Bloqueio total quando RO + mutation: erro inline, sem modal
-- [ ] Testes: RO + UPDATE = blocked, RW + UPDATE sem WHERE = confirm, RW + UPDATE com WHERE = direto
+**Pra ver em ação:**
+- Em conn marcada RO, query `UPDATE foo SET x=1 WHERE id=1` → erro inline `connection is read-only`, sem rodar.
+- Em conn RW, query `DELETE FROM users` (sem WHERE) → modal vermelho centrado pergunta `Run anyway?`. `y` roda; `n` cancela com status `run cancelled`.
+- Em conn RW, query com `WHERE` → roda direto (sem modal).
+
+**Não cobre (V2):**
+- TRUNCATE / DROP TABLE confirm (são write mas detector atual só pega UPDATE/DELETE; a lista pode crescer)
+- Multi-statement: detector inspeciona só primeira statement (consistente com `is_cacheable_query`)
+- Per-connection RO badge no footer/picker (nice-to-have visual)
 
 ---
 
