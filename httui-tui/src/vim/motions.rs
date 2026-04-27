@@ -345,12 +345,23 @@ fn apply_down(doc: &Document) -> Cursor {
                 }
                 RawSection::Body { line, .. } => {
                     // Within the block body: drop down through the
-                    // SQL. When we run off the last SQL line, hop
-                    // into the result table (if there is one) or land
-                    // on the closing fence row.
+                    // editable region. When we run off the last
+                    // body line, the next stop depends on layout:
+                    //
+                    // - HTTP: closer sits between body and result,
+                    //   so j → closer (and the next j enters the
+                    //   result panel).
+                    // - DB / others: closer sits at the bottom of
+                    //   the card, below the result table, so j
+                    //   skips straight to the result row 0 when a
+                    //   result exists; only with no result does j
+                    //   fall through to the closer.
                     let lines = block_query_line_count(doc, segment_idx);
                     if line + 1 < lines {
                         return body_cursor(segment_idx, block, line + 1, 0);
+                    }
+                    if block.is_http() {
+                        return closer_cursor(segment_idx, block);
                     }
                     if block_result_row_count(doc, segment_idx) > 0 {
                         return Cursor::InBlockResult {
@@ -361,9 +372,21 @@ fn apply_down(doc: &Document) -> Cursor {
                     closer_cursor(segment_idx, block)
                 }
                 RawSection::Closer => {
-                    // Past the closing fence → leave the block for
-                    // the next segment (prose, or another block's
-                    // header).
+                    // For HTTP blocks the closer is sandwiched
+                    // between body and result. j from the closer
+                    // drops into the response panel (when there is
+                    // one); only after that does the next j leave
+                    // the block. DB / other blocks paint the closer
+                    // at the very bottom of the card, so j there
+                    // exits the block directly.
+                    if block.is_http()
+                        && block_result_row_count(doc, segment_idx) > 0
+                    {
+                        return Cursor::InBlockResult {
+                            segment_idx,
+                            row: 0,
+                        };
+                    }
                     jump_to_segment(doc, segment_idx + 1, true).unwrap_or(doc.cursor())
                 }
             }
@@ -376,11 +399,17 @@ fn apply_down(doc: &Document) -> Cursor {
                     row: row + 1,
                 };
             }
-            // Past the last result row → land on the ` ``` ` closer.
+            // End of the result panel. For HTTP the closer was
+            // already passed on the way in (closer sits above the
+            // panel), so j here exits the block. For DB the closer
+            // is below the table, so j drops onto it.
             let block = match block_at(doc, segment_idx) {
                 Some(b) => b,
                 None => return doc.cursor(),
             };
+            if block.is_http() {
+                return jump_to_segment(doc, segment_idx + 1, true).unwrap_or(doc.cursor());
+            }
             closer_cursor(segment_idx, block)
         }
     }
@@ -417,9 +446,16 @@ fn apply_up(doc: &Document) -> Cursor {
             match raw_section_at(&block.raw, offset) {
                 RawSection::Closer => {
                     // From the ` ``` ` closer, k goes back into the
-                    // block — result table's last row if any,
-                    // otherwise the SQL body's last line.
-                    if block_result_row_count(doc, segment_idx) > 0 {
+                    // block — but the section above the closer
+                    // depends on layout:
+                    //
+                    // - HTTP: closer sits ABOVE the result, so k
+                    //   goes back into the request body (not the
+                    //   response panel — that lives below).
+                    // - DB / others: closer sits BELOW the result
+                    //   table, so k pops onto the last result row
+                    //   when present, otherwise the body.
+                    if !block.is_http() && block_result_row_count(doc, segment_idx) > 0 {
                         let last = block_result_row_count(doc, segment_idx).saturating_sub(1);
                         return Cursor::InBlockResult {
                             segment_idx,
@@ -455,11 +491,16 @@ fn apply_up(doc: &Document) -> Cursor {
                     row: row - 1,
                 };
             }
-            // First row: hop back to the last line of the SQL body.
+            // First row of the result panel — go up to whatever
+            // sits visually above it: closer for HTTP, body's last
+            // line for DB / others.
             let block = match block_at(doc, segment_idx) {
                 Some(b) => b,
                 None => return doc.cursor(),
             };
+            if block.is_http() {
+                return closer_cursor(segment_idx, block);
+            }
             let last_line = block_query_line_count(doc, segment_idx).saturating_sub(1);
             body_cursor(segment_idx, block, last_line, 0)
         }
@@ -932,10 +973,10 @@ mod tests {
     }
 
     #[test]
-    fn down_lands_on_http_response_panel() {
-        // Cursor on the request line of an HTTP block; one `j`
-        // takes it to InBlockResult so `<CR>` opens the detail
-        // modal, instead of skipping straight to the closer.
+    fn down_walks_http_body_then_closer_then_response() {
+        // HTTP layout has the closer between body and response,
+        // so the natural top-to-bottom walk is body → closer →
+        // response → out. j follows that order.
         let mut d = http_doc_with_response();
         let block_idx = d
             .segments()
@@ -946,17 +987,19 @@ mod tests {
             Segment::Block(b) => b.clone(),
             _ => unreachable!(),
         };
-        // Position cursor on the request body line (offset right
-        // after the fence header newline).
-        let header_len = block
-            .raw
-            .line(0)
-            .to_string()
-            .len();
+        let header_len = block.raw.line(0).to_string().len();
         d.set_cursor(Cursor::InBlock {
             segment_idx: block_idx,
             offset: header_len, // start of body line 0
         });
+        // First j → fence closer (still InBlock).
+        apply(Motion::Down, &mut d, 1, 10);
+        assert!(
+            matches!(d.cursor(), Cursor::InBlock { segment_idx, .. } if segment_idx == block_idx),
+            "j from body should land on closer, got {:?}",
+            d.cursor()
+        );
+        // Second j → response panel.
         apply(Motion::Down, &mut d, 1, 10);
         assert_eq!(
             d.cursor(),
@@ -964,12 +1007,15 @@ mod tests {
                 segment_idx: block_idx,
                 row: 0,
             },
-            "j from body's last line should land on the response panel"
+            "j from closer should land on response panel"
         );
     }
 
     #[test]
-    fn up_from_http_response_returns_to_body() {
+    fn up_from_http_response_returns_to_closer() {
+        // For HTTP the closer sits visually above the response, so
+        // k from the response goes back to the closer (not the
+        // body).
         let mut d = http_doc_with_response();
         let block_idx = d
             .segments()
@@ -983,7 +1029,8 @@ mod tests {
         apply(Motion::Up, &mut d, 1, 10);
         assert!(
             matches!(d.cursor(), Cursor::InBlock { segment_idx, .. } if segment_idx == block_idx),
-            "k from the response panel should return to the request body"
+            "k from response should return to the closer, got {:?}",
+            d.cursor()
         );
     }
 
@@ -1028,7 +1075,15 @@ mod tests {
             "first j stays in block body, got {:?}",
             d.cursor()
         );
-        // Second j → InBlockResult { row: 0 } (response panel).
+        // Second j → fence closer (HTTP layout: closer between
+        // body and response).
+        apply(Motion::Down, &mut d, 1, 10);
+        assert!(
+            matches!(d.cursor(), Cursor::InBlock { segment_idx, .. } if segment_idx == block_idx),
+            "second j should land on closer, got {:?}",
+            d.cursor()
+        );
+        // Third j → response panel.
         apply(Motion::Down, &mut d, 1, 10);
         assert_eq!(
             d.cursor(),
@@ -1036,12 +1091,15 @@ mod tests {
                 segment_idx: block_idx,
                 row: 0,
             },
-            "second j should land on response panel"
+            "third j should land on response panel"
         );
     }
 
     #[test]
-    fn down_from_http_response_lands_on_closer() {
+    fn down_from_http_response_exits_block() {
+        // HTTP closer sits ABOVE the response, so j from the last
+        // response row exits the block — not back onto the closer
+        // (which would be a visual backstep).
         let mut d = http_doc_with_response();
         let block_idx = d
             .segments()
@@ -1053,12 +1111,13 @@ mod tests {
             row: 0,
         });
         apply(Motion::Down, &mut d, 1, 10);
-        // Past the response → fence closer (still InBlock). `<CR>`
-        // is then a no-op on the closer since dispatch checks
-        // `InBlockResult` only.
+        // Out of the block — the next segment may or may not exist
+        // (the fixture has a trailing prose run after the block).
         match d.cursor() {
-            Cursor::InBlock { segment_idx, .. } => assert_eq!(segment_idx, block_idx),
-            other => panic!("expected InBlock closer, got {other:?}"),
+            Cursor::InProse { segment_idx, .. } => {
+                assert!(segment_idx > block_idx, "j should exit the block, got {:?}", d.cursor());
+            }
+            other => panic!("expected to exit the block, got {other:?}"),
         }
     }
 
