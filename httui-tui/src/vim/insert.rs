@@ -248,14 +248,19 @@ fn open_line_below(doc: &mut Document) {
     }
 }
 
-/// Helper: text of a single SQL line in a block.
+/// Helper: text of a single body line in a block. Reads from `b.raw`
+/// so motions and edits share one source of truth (Phase 5 unifies
+/// motions on the rope).
 fn block_query_line_text(doc: &Document, segment_idx: usize, line: usize) -> Option<String> {
     let seg = doc.segments().get(segment_idx)?;
     let Segment::Block(b) = seg else { return None };
-    b.params
-        .get("query")
-        .and_then(|v| v.as_str())
-        .and_then(|s| s.lines().nth(line).map(|l| l.to_string()))
+    let raw = b.raw.to_string();
+    let lines: Vec<&str> = raw.lines().collect();
+    if lines.len() < 2 {
+        return None;
+    }
+    let body = &lines[1..lines.len().saturating_sub(1)];
+    body.get(line).map(|s| s.to_string())
 }
 
 /// Translate the `Cursor::InBlock` raw offset into a body `(line, col)`

@@ -104,17 +104,17 @@ fn apply_left(doc: &Document) -> Cursor {
             Some(b) => b,
             None => return doc.cursor(),
         };
-        match raw_section_at(&block.raw, offset) {
-            RawSection::Body { line, col } => {
-                if col == 0 {
-                    return doc.cursor();
-                }
-                return body_cursor(segment_idx, block, line, col - 1);
-            }
-            // No horizontal motion on the fence rows in V1 (Phase 5
-            // turns these into rope-backed motions).
-            RawSection::Header | RawSection::Closer => return doc.cursor(),
+        // Phase 5: `h` walks the raw rope as if it were prose —
+        // header / body / closer all participate. The only stop is
+        // line column 0 (don't fold into the line above).
+        let line_start = raw_line_start_offset(&block.raw, offset);
+        if offset > line_start {
+            return Cursor::InBlock {
+                segment_idx,
+                offset: offset - 1,
+            };
         }
+        return doc.cursor();
     }
     let Cursor::InProse {
         segment_idx,
@@ -151,20 +151,17 @@ fn apply_right(doc: &Document) -> Cursor {
             Some(b) => b,
             None => return doc.cursor(),
         };
-        match raw_section_at(&block.raw, offset) {
-            RawSection::Body { line, col } => {
-                let chars = block_query_line_chars(doc, segment_idx, line);
-                // `l` stops one short of EOL — vim doesn't park on
-                // the trailing newline. Empty lines pin the cursor
-                // at col 0.
-                let max = chars.saturating_sub(1);
-                if col >= max {
-                    return doc.cursor();
-                }
-                return body_cursor(segment_idx, block, line, col + 1);
-            }
-            RawSection::Header | RawSection::Closer => return doc.cursor(),
+        // Phase 5: `l` walks the raw rope. Stop one short of the
+        // trailing newline (vim's `l` doesn't park on `\n`); empty
+        // lines pin the cursor at col 0.
+        let line_end = raw_line_end_offset(&block.raw, offset);
+        if offset < line_end {
+            return Cursor::InBlock {
+                segment_idx,
+                offset: offset + 1,
+            };
         }
+        return doc.cursor();
     }
     let Cursor::InProse {
         segment_idx,
@@ -200,10 +197,10 @@ fn apply_line_start(doc: &Document) -> Cursor {
             Some(b) => b,
             None => return doc.cursor(),
         };
-        if let RawSection::Body { line, .. } = raw_section_at(&block.raw, offset) {
-            return body_cursor(segment_idx, block, line, 0);
-        }
-        return doc.cursor();
+        return Cursor::InBlock {
+            segment_idx,
+            offset: raw_line_start_offset(&block.raw, offset),
+        };
     }
     let Cursor::InProse {
         segment_idx,
@@ -232,12 +229,16 @@ fn apply_first_non_blank(doc: &Document) -> Cursor {
             Some(b) => b,
             None => return doc.cursor(),
         };
-        if let RawSection::Body { line, .. } = raw_section_at(&block.raw, offset) {
-            let text = block_query_line_text(doc, segment_idx, line).unwrap_or_default();
-            let col = text.chars().take_while(|c| c.is_whitespace()).count();
-            return body_cursor(segment_idx, block, line, col);
+        let start = raw_line_start_offset(&block.raw, offset);
+        let end = raw_line_end_offset(&block.raw, offset);
+        let mut i = start;
+        while i < end && block.raw.char(i).is_whitespace() {
+            i += 1;
         }
-        return doc.cursor();
+        return Cursor::InBlock {
+            segment_idx,
+            offset: i,
+        };
     }
     let Cursor::InProse {
         segment_idx,
@@ -276,12 +277,10 @@ fn apply_line_end(doc: &Document) -> Cursor {
             Some(b) => b,
             None => return doc.cursor(),
         };
-        if let RawSection::Body { line, .. } = raw_section_at(&block.raw, offset) {
-            let chars = block_query_line_chars(doc, segment_idx, line);
-            let col = chars.saturating_sub(1);
-            return body_cursor(segment_idx, block, line, col);
-        }
-        return doc.cursor();
+        return Cursor::InBlock {
+            segment_idx,
+            offset: raw_line_end_offset(&block.raw, offset),
+        };
     }
     let Cursor::InProse {
         segment_idx,
@@ -738,25 +737,10 @@ fn is_word_char(c: char) -> bool {
 /// blocks for now). Returns 1 for non-DB or empty bodies so motions
 /// always have at least one valid line to land on.
 fn block_query_line_count(doc: &Document, segment_idx: usize) -> usize {
-    block_query_str(doc, segment_idx)
-        .map(|s| s.lines().count().max(1))
-        .unwrap_or(1)
-}
-
-/// Char count of a single line in a block's editable body. Returns 0
-/// for missing blocks / lines so callers can clamp safely.
-fn block_query_line_chars(doc: &Document, segment_idx: usize, line: usize) -> usize {
-    block_query_line_text(doc, segment_idx, line)
-        .map(|s| s.chars().count())
-        .unwrap_or(0)
-}
-
-/// Text of a single line in a block's editable body. Returns the line
-/// without its trailing newline; `None` when the block / line doesn't
-/// exist.
-fn block_query_line_text(doc: &Document, segment_idx: usize, line: usize) -> Option<String> {
-    let raw = block_query_str(doc, segment_idx)?;
-    raw.lines().nth(line).map(|s| s.to_string())
+    let Some(b) = block_at(doc, segment_idx) else {
+        return 1;
+    };
+    crate::buffer::block::body_line_count(&b.raw).max(1)
 }
 
 /// Number of rows in a DB block's result table. Returns 0 for
@@ -794,17 +778,6 @@ fn block_result_row_count(doc: &Document, segment_idx: usize) -> usize {
         .unwrap_or(0)
 }
 
-/// Owned copy of the block's `query` param (the SQL body). Returns
-/// `None` for non-DB or non-string params.
-fn block_query_str(doc: &Document, segment_idx: usize) -> Option<String> {
-    let seg = doc.segments().get(segment_idx)?;
-    let Segment::Block(b) = seg else { return None };
-    b.params
-        .get("query")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-}
-
 fn jump_to_segment(doc: &Document, idx: usize, going_down: bool) -> Option<Cursor> {
     let seg = doc.segments().get(idx)?;
     Some(match seg {
@@ -837,6 +810,43 @@ fn jump_to_segment(doc: &Document, idx: usize, going_down: bool) -> Option<Curso
             }
         }
     })
+}
+
+/// Char offset at the start of the line containing `offset` in `rope`.
+/// Used by InBlock motions so they walk the raw rope as if it were
+/// prose (Phase 5 unification).
+fn raw_line_start_offset(rope: &Rope, offset: usize) -> usize {
+    let off = offset.min(rope.len_chars());
+    let line = rope.char_to_line(off);
+    rope.line_to_char(line)
+}
+
+/// Rightmost cursor position on the line containing `offset` —
+/// the offset of the last non-newline char. For an empty line this
+/// pins at the line start; for the final line (no trailing `\n`) it
+/// returns one before `len_chars`. Used by vim's `l`, `$`, and the
+/// raw-rope edge clamps.
+fn raw_line_end_offset(rope: &Rope, offset: usize) -> usize {
+    let off = offset.min(rope.len_chars());
+    let line = rope.char_to_line(off);
+    let line_start = rope.line_to_char(line);
+    let next_line_start = if line + 1 < rope.len_lines() {
+        rope.line_to_char(line + 1)
+    } else {
+        rope.len_chars()
+    };
+    let has_trailing_newline = next_line_start > line_start
+        && rope.get_char(next_line_start.saturating_sub(1)) == Some('\n');
+    let content_end = if has_trailing_newline {
+        next_line_start.saturating_sub(1)
+    } else {
+        next_line_start
+    };
+    if content_end > line_start {
+        content_end.saturating_sub(1)
+    } else {
+        line_start
+    }
 }
 
 /// Borrow the [`BlockNode`] living at `segment_idx`, if any. Wrapping
@@ -1182,6 +1192,74 @@ mod tests {
             return None;
         };
         Some(raw_section_at(&b.raw, offset))
+    }
+
+    #[test]
+    fn h_l_walk_the_fence_header_after_phase_5() {
+        // Phase 5 lifts the V1 restriction that horizontal motions
+        // were no-ops on fence rows. The cursor on the header now
+        // walks character-by-character via h / l just like prose,
+        // letting the user edit `alias=foo` etc. without leaving
+        // the block.
+        let mut d = doc("```db-postgres alias=q\nSELECT 1\n```\n");
+        // Park cursor at offset 0 (fence header).
+        let block_idx = d
+            .segments()
+            .iter()
+            .position(|s| matches!(s, Segment::Block(_)))
+            .unwrap();
+        d.set_cursor(Cursor::InBlock {
+            segment_idx: block_idx,
+            offset: 0,
+        });
+        assert!(is_header(&d));
+        // Five `l`s: cursor advances to offset 5 (mid-header), still header.
+        for _ in 0..5 {
+            apply(Motion::Right, &mut d, 1, 10);
+        }
+        assert!(is_header(&d));
+        if let Cursor::InBlock { offset, .. } = d.cursor() {
+            assert_eq!(offset, 5);
+        }
+        // `0` resets to start of the header.
+        apply(Motion::LineStart, &mut d, 1, 10);
+        assert!(is_header(&d));
+        if let Cursor::InBlock { offset, .. } = d.cursor() {
+            assert_eq!(offset, 0);
+        }
+        // `$` lands on last char of the header (one before the
+        // newline). Header is "```db-postgres alias=q" (22 chars),
+        // so EOL is offset 21.
+        apply(Motion::LineEnd, &mut d, 1, 10);
+        if let Cursor::InBlock { offset, .. } = d.cursor() {
+            assert_eq!(offset, 21);
+        }
+    }
+
+    #[test]
+    fn h_at_column_zero_does_not_cross_lines_in_block() {
+        // Vim's `h` never folds into the previous line — same
+        // contract for InBlock now that motions walk the raw rope.
+        let mut d = doc("```db-postgres alias=q\nSELECT 1\n```\n");
+        let block_idx = d
+            .segments()
+            .iter()
+            .position(|s| matches!(s, Segment::Block(_)))
+            .unwrap();
+        // Park cursor at body line 0 col 0 — first char of "SELECT".
+        let raw = match d.segments().get(block_idx) {
+            Some(Segment::Block(b)) => b.raw.clone(),
+            _ => panic!(),
+        };
+        let body_start = crate::buffer::block::body_line_to_raw_offset(&raw, 0);
+        d.set_cursor(Cursor::InBlock {
+            segment_idx: block_idx,
+            offset: body_start,
+        });
+        let before = d.cursor();
+        apply(Motion::Left, &mut d, 1, 10);
+        // Cursor stays put — refused to cross into the header line.
+        assert_eq!(d.cursor(), before);
     }
 
     fn is_header(d: &Document) -> bool {
