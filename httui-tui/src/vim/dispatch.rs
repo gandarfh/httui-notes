@@ -648,6 +648,15 @@ fn apply_action(app: &mut App, action: Action, recording: bool) {
         Action::ConfirmDbRun => apply_confirm_db_run(app),
         Action::CancelDbRun => apply_cancel_db_run(app),
         Action::ExitInsert => {
+            // Snapshot which prose segment the cursor was in BEFORE
+            // recoil — that's the segment we want to re-parse for any
+            // fence the user just finished typing. Re-parse only on
+            // Insert exit (not per keystroke) to avoid mid-word splice
+            // churn while typing.
+            let reparse_idx = match app.document().map(|d| d.cursor()) {
+                Some(Cursor::InProse { segment_idx, .. }) => Some(segment_idx),
+                _ => None,
+            };
             if let Some(doc) = app.document_mut() {
                 recoil_after_exit(doc);
             }
@@ -660,6 +669,15 @@ fn apply_action(app: &mut App, action: Action, recording: bool) {
                 // Discard the in-flight session without overwriting the
                 // existing `last_change` — replay path.
                 let _ = app.vim.insert_session.finish();
+            }
+            // CM6-equivalent block authoring: if the prose the user
+            // just left now contains a complete fence, splice the new
+            // block(s) into the document. Cursor lands sensibly via
+            // the helper.
+            if let (Some(idx), Some(doc)) = (reparse_idx, app.document_mut()) {
+                if doc.reparse_prose_at(idx) {
+                    app.set_status(StatusKind::Info, "block parsed");
+                }
             }
         }
         Action::InsertChar(c) => {

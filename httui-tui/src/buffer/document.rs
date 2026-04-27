@@ -180,6 +180,99 @@ impl Document {
         }
     }
 
+    /// Re-parse the prose segment at `segment_idx` and splice any
+    /// blocks the user just finished typing back into the document.
+    ///
+    /// The CM6 desktop does this on every keystroke via a transaction
+    /// filter; we do it on Insert→Normal transitions (cheaper, and the
+    /// failure mode of "fence half-typed mid-stream" doesn't pollute
+    /// the segment list). Returns `true` when the splice changed
+    /// anything — caller doesn't need to clear the dirty flag, this
+    /// already does.
+    ///
+    /// Block IDs are minted off `self.next_block_id` so subsequent
+    /// re-parses don't collide. Cursor lands on the first Prose
+    /// segment at or after `segment_idx` post-splice — typical flow
+    /// (user closed the fence at the bottom of a prose) puts them on
+    /// the freshly-created trailing prose ready to type more.
+    pub fn reparse_prose_at(&mut self, segment_idx: usize) -> bool {
+        let text = match self.segments.get(segment_idx) {
+            Some(Segment::Prose(rope)) => rope.to_string(),
+            _ => return false,
+        };
+        let parsed = parse_blocks(&text);
+        if parsed.is_empty() {
+            return false;
+        }
+
+        let lines: Vec<&str> = text.lines().collect();
+        let mut new_segs: Vec<Segment> = Vec::with_capacity(parsed.len() * 2 + 1);
+        let mut line_cursor = 0usize;
+        for block in &parsed {
+            if block.line_start > line_cursor {
+                let prose = lines[line_cursor..block.line_start].join("\n");
+                if !prose.is_empty() {
+                    new_segs.push(Segment::Prose(Rope::from_str(&prose)));
+                }
+            }
+            new_segs.push(Segment::Block(BlockNode {
+                id: BlockId(self.next_block_id),
+                block_type: block.block_type.clone(),
+                alias: block.alias.clone(),
+                display_mode: block.display_mode.clone(),
+                params: block.params.clone(),
+                state: ExecutionState::Idle,
+                cached_result: None,
+            }));
+            self.next_block_id += 1;
+            line_cursor = block.line_end + 1;
+        }
+        if line_cursor < lines.len() {
+            let prose = lines[line_cursor..].join("\n");
+            if !prose.is_empty() {
+                new_segs.push(Segment::Prose(Rope::from_str(&prose)));
+            }
+        }
+
+        // Replace the original prose with the splice; re-pad so we
+        // don't leave two adjacent blocks (or a trailing block that
+        // strands the cursor) — `pad_with_prose` is idempotent.
+        self.segments.splice(segment_idx..segment_idx + 1, new_segs);
+        self.segments = pad_with_prose(std::mem::take(&mut self.segments));
+
+        // Cursor: jump to the first Prose at or after `segment_idx`.
+        // Typical flow — user just typed the closing fence at the end
+        // of a paragraph — leaves them on the trailing empty prose
+        // pad_with_prose just appended. Falls back to the last
+        // segment if nothing matches (defensive — can't happen in
+        // practice because pad_with_prose guarantees a trailing
+        // Prose).
+        let landing = self
+            .segments
+            .iter()
+            .enumerate()
+            .skip(segment_idx)
+            .find_map(|(i, seg)| matches!(seg, Segment::Prose(_)).then_some(i))
+            .unwrap_or_else(|| self.segments.len().saturating_sub(1));
+        self.cursor = match self.segments.get(landing) {
+            Some(Segment::Prose(_)) => Cursor::InProse {
+                segment_idx: landing,
+                offset: 0,
+            },
+            Some(Segment::Block(_)) => Cursor::InBlock {
+                segment_idx: landing,
+                line: 0,
+                offset: 0,
+            },
+            None => Cursor::InProse {
+                segment_idx: 0,
+                offset: 0,
+            },
+        };
+        self.dirty = true;
+        true
+    }
+
     /// Mutable handle to the block at `segment_idx`. Used by the run
     /// dispatcher to flip [`ExecutionState`] and stash `cached_result`.
     pub fn block_at_mut(&mut self, segment_idx: usize) -> Option<&mut BlockNode> {
@@ -1046,5 +1139,79 @@ mod tests {
         d.snapshot();
         d.insert_char_at_cursor('B');
         assert!(!d.can_redo());
+    }
+
+    // ─── reparse_prose_at (Story: live block authoring) ───
+
+    #[test]
+    fn reparse_prose_promotes_typed_fence_into_block() {
+        // User starts with a plain prose paragraph and types a fence
+        // inside Insert mode; on Esc we re-parse that segment and the
+        // fence becomes a real `Segment::Block`.
+        let mut d =
+            Document::from_markdown("hello\n\n```db-postgres alias=q\nSELECT 1\n```\n").unwrap();
+        // Pretend the whole document was one prose run that just got
+        // typed (the constructor would already have split it; force
+        // the test condition by collapsing).
+        d.segments = vec![Segment::Prose(Rope::from_str(
+            "hello\n\n```db-postgres alias=q\nSELECT 1\n```\n",
+        ))];
+        let changed = d.reparse_prose_at(0);
+        assert!(changed, "fence should have been detected");
+        let block_count = d
+            .segments
+            .iter()
+            .filter(|s| matches!(s, Segment::Block(_)))
+            .count();
+        assert_eq!(block_count, 1, "exactly one block should appear");
+        // Cursor lands on a Prose (the trailing pad / continuation),
+        // not stranded on the new Block.
+        assert!(matches!(d.cursor, Cursor::InProse { .. }));
+    }
+
+    #[test]
+    fn reparse_prose_is_noop_when_no_fence_present() {
+        // Plain prose with no triple-backticks → re-parse changes
+        // nothing; no churn on every Insert exit.
+        let mut d = Document::from_markdown("just words\n").unwrap();
+        let segs_before = d.segments.len();
+        let changed = d.reparse_prose_at(0);
+        assert!(!changed);
+        assert_eq!(d.segments.len(), segs_before);
+    }
+
+    #[test]
+    fn reparse_prose_assigns_fresh_block_ids() {
+        // Newly-spliced blocks must not collide with IDs the document
+        // already minted — `next_block_id` is bumped per insert.
+        let mut d = Document::from_markdown(
+            "```db-postgres alias=existing\nSELECT 1\n```\n\n",
+        )
+        .unwrap();
+        let existing_id = match d.segments.iter().find(|s| matches!(s, Segment::Block(_))) {
+            Some(Segment::Block(b)) => b.id,
+            _ => panic!("expected a block"),
+        };
+        // Append a new fence to the trailing prose and re-parse.
+        let trailing_idx = d.segments.len() - 1;
+        if let Some(Segment::Prose(rope)) = d.segments.get_mut(trailing_idx) {
+            rope.append(Rope::from_str(
+                "```db-mysql alias=fresh\nSELECT 2\n```\n",
+            ));
+        }
+        assert!(d.reparse_prose_at(trailing_idx));
+        let new_ids: Vec<BlockId> = d
+            .segments
+            .iter()
+            .filter_map(|s| match s {
+                Segment::Block(b) => Some(b.id),
+                _ => None,
+            })
+            .collect();
+        assert!(new_ids.contains(&existing_id), "existing block kept its ID");
+        assert!(
+            new_ids.iter().all(|id| std::iter::once(id).count() == 1),
+            "no duplicate IDs"
+        );
     }
 }
