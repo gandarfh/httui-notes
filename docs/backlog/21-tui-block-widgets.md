@@ -16,9 +16,13 @@ Widgets de blocos executáveis (HTTP, DB, E2E) na TUI.
 
 ⏸ **Story 11 Slice 2 (limit) + Slice 3 (timeout)**: deferidas — viram modal único futuro com vários inputs (Tab navigation), provavelmente `gs` "go settings". Não shippar como chord-por-campo.
 
+**Status sessão 2026-04-27:**
+
+✅ **Story 12 — text-as-rope refactor concluído** (commits `42a5da5` Phase 2, `d8235b2` Phase 3, `9b09ebf` Phase 4, `899e659` Phase 5). Paridade CM6 desktop alcançada: cursor opera em `block.raw` como rope; h/l/i/a/x/o/O navegam fence header, body e closer indistintamente; j/k flow cross-region preservado. Detalhes na Story 12 abaixo.
+
 **Próximo (P1 prioritário):**
-1. **Story 12 Phases 2-5** (refactor text-as-rope): cursor unification + edits routam pra raw + render do raw + motions em raw. Phase 1 (`7b09f28`) entregue. Detalhes na Story 12 abaixo. Bloqueia paridade plena CM6 (edição inline de fence header, visual selection cross-segment).
-2. **Story 05.3 Export menu**: exportar resultado inteiro (CSV/MD/INSERT) — complementa o `y` JSON-de-uma-linha do row-detail modal.
+1. **Story 05.3 Export menu**: exportar resultado inteiro (CSV/MD/INSERT) — complementa o `y` JSON-de-uma-linha do row-detail modal.
+2. **Story 11 Slice 2/3 modal único** (limit + timeout): re-ativar quando outras P1 fecharem. `gs` "go settings" abre modal com Tab navigation entre campos.
 
 **Foco atual (2026-04-26):** **paridade do bloco DB com o desktop**. Stories de HTTP e E2E ficam pausadas até as P0–P1 da DB-parity entregarem. Stories existentes mantêm numeração de origem e ressurgem com status atualizado; gaps de paridade descobertos na auditoria de 2026-04-26 viram substories `04.x` / `05.x`.
 
@@ -514,45 +518,45 @@ Editar metadados do bloco DB sem sair (alias, connection, limit, timeout, displa
 
 ---
 
-### Story 12 — Block as text-as-rope (CM6 parity refactor) 🚧 P1 — em andamento
+### Story 12 — Block as text-as-rope (CM6 parity refactor) ✅ done
 
-Refactor estrutural: `Cursor::InBlock` opera em `block.raw` (Rope) como prose. Desbloqueia paridade total com CM6 desktop — `h/l/i/a/x/v/V/d/y/p` funcionam dentro do fence header (`alias=foo` editável inline) e visual selection cobre block↔prose. Pedido pelo usuário em 2026-04-27 com diretiva "tem que funcionar igual ao documento".
+Refactor estrutural concluído em sessão de 2026-04-27. Pedido pelo usuário com diretiva "tem que funcionar igual ao documento" — agora todos os 5 stages estão shippados e cursor opera em `block.raw` como rope.
 
-**Phase 1 ✅** (commit `7b09f28`):
-- `BlockNode.raw: Rope` field
-- Populated em `Document::from_markdown` + `reparse_prose_at` (linhas `[line_start..=line_end].join("\n")`)
-- 10 fixtures em `ui/blocks.rs` + `sql_completion.rs` patched com `raw: Rope::new()`
-- Ainda não consumido — comportamento intacto
+**Phase 1 ✅** (commit `7b09f28`): `BlockNode.raw: Rope` field, populado em `Document::from_markdown` + `reparse_prose_at`. 10 fixtures patched com `raw: Rope::new()`.
 
-**Phase 2 ⏳ — Unify cursor model:**
-- Drop `Cursor::InBlockFence { segment_idx, position }` + `enum FencePosition`
-- Mudar `Cursor::InBlock { segment_idx, line, offset }` → `Cursor::InBlock { segment_idx, offset }` onde offset é char-index na `block.raw`
-- ~15-20 callsites em `vim/motions.rs`, `vim/operator.rs`, `vim/insert.rs`, `vim/dispatch.rs`, `vim/textobject.rs`, `vim/search.rs`, `ui/mod.rs`, `ui/status.rs`, `ui/cursor.rs`, `app.rs`, `buffer/document.rs`, `buffer/layout.rs`
-- Helpers em `buffer/block.rs`: `block_offset_to_line_col(raw, offset) -> (line, col)` + reverso
+**Phase 2 ✅** (commit `42a5da5`): Cursor unification.
+- Drop `Cursor::InBlockFence { position }` + `FencePosition`. `InBlock { segment_idx, offset }` carrega só o offset em `block.raw`.
+- Helpers em `buffer/block.rs`: `RawSection`, `raw_section_at`, `body_line_count`, `body_line_to_raw_offset`, `body_line_col_to_raw_offset`, `header_raw_offset`, `closer_raw_offset`.
+- ~15 callsites migrados (app.rs, buffer/document.rs, buffer/layout.rs, ui/mod.rs, ui/status.rs, vim/dispatch.rs, vim/insert.rs, vim/motions.rs, vim/search.rs).
 
-**Phase 3 ⏳ — Edits routam pra raw:**
-- `Document::insert_char_at_cursor` quando `InBlock` → `block.raw.insert_char(offset, ch)` + `block.reparse_from_raw()`
-- `Document::delete_char_before/at_cursor` similar
-- `BlockNode::reparse_from_raw()` (parse_blocks(raw); se 1 bloco, atualiza derived; senão keep raw + last-good fields)
-- Helpers `block_query_insert/delete_*` em document.rs viram obsoletos
+**Phase 3 ✅** (commit `d8235b2`): Edits routam pra raw.
+- `BlockNode::reparse_from_raw()` re-deriva block_type/alias/display_mode/params do rope. Cached state (id, state, cached_result) survive every reparse.
+- `Document::insert_char_at_cursor`, `delete_char_before_cursor`, `delete_char_at_cursor` para `InBlock` agora editam `block.raw` direto + reparse.
+- Fence quebrada (parsed.len() != 1) → keep last-good fields, não dissolve em prose.
+- Helpers obsoletos deletados (`block_query_insert/delete_*`, `block_query_chars`, `write_block_query`).
 
-**Phase 4 ⏳ — Render do raw:**
-- Quando `cursor on block`: pintar `block.raw` linha-a-linha como prose com SQL highlight só na região do body
-- Quando off: manter card bordered atual a partir dos parsed fields
-- `ui/cursor::render_inblock_cursor`: versão que recebe offset + raw e calcula (x,y) via line/col helper
+**Phase 4 ✅** (commit `9b09ebf`): Render do raw.
+- `render_fence_lines` lê de `b.raw` em vez de `to_fence_markdown()` — user vê o que digita mid-edit.
+- `render_db_inner` ganha flag `selected: bool`. SQL body vem de `raw_body_text(b)` quando cursor on.
+- Non-DB blocks (HTTP / E2E / generic) on selected pintam raw body como prose.
 
-**Phase 5 ⏳ — Motions em raw:**
-- `apply_left/right/word_forward/word_back/line_start/line_end/down/up/...` pra `InBlock` operam em `block.raw` (não mais em `params.query`)
-- `j/k` no fence header → entra no body; no body → continua/sai pelo closer; no closer → sai pra prose abaixo (preserva semântica dos commits `3d26e7a` etc.)
+**Phase 5 ✅** (commit `899e659`): Motions em raw.
+- h/l/0/^/$ navegam fence header, body, e closer indistintamente. Phase 3 fez fence editável; Phase 5 fez navegável.
+- Helpers `raw_line_start_offset` / `raw_line_end_offset` em motions.rs (este último = vim `$` semantics: last non-newline char).
+- `block_query_line_count/text` migrados pra ler de raw.
+- `block_query_str` deletado (dead code).
+- j/k cross-region preservado: prose → header → body → result → closer → prose.
 
-**Cuidados:**
-- `cached_result` e `state` sobrevivem a re-parses — ID estável, reparse só atualiza derived fields
-- Reparse com fence quebrada → keep raw + last-good fields (não dissolve em prose automaticamente)
-- Fixtures de teste: ~10 sites construindo `BlockNode { ... }` precisarão de `raw: Rope::from_str(&serialize_block(...))` ou similar pra consistência
+**Resultados finais:**
+- httui-tui: 436 passed, 1 pre-existing layout fail fora de escopo (`e2e_block_height_grows_with_steps`).
+- httui-core: 288 passed.
+- src-tauri compila clean.
 
-**Estimativa:** ~4-6h em sessão dedicada. Não combinar phases — cada uma é commit individual com tests verdes.
+**Não cobre (V2 / fora do escopo):**
+- Visual selection (V/v) atravessando block↔prose — operator engine ainda só lida com prose via `InBlockSwap`. Quando o usuário pedir, fica natural com a infra atual.
+- Word motions (w/b/e) em InBlock seguem operando só em prose (Cursor::InProse early return). Migrar futuramente se necessário.
 
-**Depende de:** Phase 1 (✅). **Desbloqueia:** edição inline de fence header, visual selection cross-segment, fim das exceções `InBlockFence` em todo callsite que faz match em `Cursor`.
+**Desbloqueou:** edição inline de fence header (`alias=foo` editável), navegação uniforme entre header/body/closer, fim das exceções `InBlockFence` em todos os callsites do enum `Cursor`.
 
 ---
 
