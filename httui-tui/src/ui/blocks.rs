@@ -88,8 +88,16 @@ pub fn render_block_with_selection(
         return;
     }
 
+    // HTTP blocks paint the fence closer themselves — between the
+    // raw request and the response panel, so the ` ``` ` line
+    // visually fences the editable region only (the response panel
+    // belongs to the card chrome, not to the markdown source).
+    let http_owns_closer = b.is_http();
+
     // Carve fence rows when the cursor is on, just below header
-    // and just above footer.
+    // and just above footer. For HTTP only the header is carved
+    // here; the closer is positioned by `render_http_inner` between
+    // raw input and response panel.
     if selected && middle.height >= 2 {
         let fence_header_rect = Rect {
             x: middle.x,
@@ -97,20 +105,29 @@ pub fn render_block_with_selection(
             width: middle.width,
             height: 1,
         };
-        let fence_closer_rect = Rect {
-            x: middle.x,
-            y: middle.y.saturating_add(middle.height.saturating_sub(1)),
-            width: middle.width,
-            height: 1,
-        };
         render_fence_header_row(frame, fence_header_rect, b);
-        render_fence_closer_row(frame, fence_closer_rect, b);
-        middle = Rect {
-            x: middle.x,
-            y: middle.y.saturating_add(1),
-            width: middle.width,
-            height: middle.height.saturating_sub(2),
-        };
+        if !http_owns_closer {
+            let fence_closer_rect = Rect {
+                x: middle.x,
+                y: middle.y.saturating_add(middle.height.saturating_sub(1)),
+                width: middle.width,
+                height: 1,
+            };
+            render_fence_closer_row(frame, fence_closer_rect, b);
+            middle = Rect {
+                x: middle.x,
+                y: middle.y.saturating_add(1),
+                width: middle.width,
+                height: middle.height.saturating_sub(2),
+            };
+        } else {
+            middle = Rect {
+                x: middle.x,
+                y: middle.y.saturating_add(1),
+                width: middle.width,
+                height: middle.height.saturating_sub(1),
+            };
+        }
     }
 
     if b.is_db() {
@@ -792,10 +809,17 @@ fn raw_body_text(b: &BlockNode) -> String {
 /// chrome-bordered card middle:
 /// ```text
 /// request body  (http_request_lines rows)
+/// fence closer  (1 row, only when cursor is on the block)
 /// tab bar       (1 row, only when cached_result exists)
 /// separator     (1 row, only when cached_result exists)
 /// response panel (rest)
 /// ```
+///
+/// Note the `fence closer` slot: the ` ``` ` line lives between raw
+/// input and response panel, not at the very bottom of the card.
+/// This matches the user's mental model — ` ``` ` fences the
+/// editable region, and the response panel is card chrome (not
+/// markdown source).
 fn render_http_inner(
     frame: &mut Frame,
     inner: Rect,
@@ -831,9 +855,17 @@ fn render_http_inner(
     } else {
         0
     };
+    // Fence closer takes 1 row whenever the cursor is on the block.
+    // When the cursor is off, the raw text is hidden anyway and the
+    // closer would be visual noise — `render_block_with_selection`
+    // also gates fence rendering on `selected`.
+    let closer_height = if selected { 1 } else { 0 };
 
     let mut constraints: Vec<Constraint> = Vec::new();
     constraints.push(Constraint::Length(request_height));
+    if closer_height > 0 {
+        constraints.push(Constraint::Length(closer_height));
+    }
     if response_height > 0 {
         constraints.push(Constraint::Length(response_height));
     }
@@ -846,10 +878,16 @@ fn render_http_inner(
         .constraints(constraints)
         .split(inner);
 
-    frame.render_widget(Paragraph::new(request_lines), chunks[0]);
+    let mut idx = 0;
+    frame.render_widget(Paragraph::new(request_lines), chunks[idx]);
+    idx += 1;
+    if closer_height > 0 {
+        render_fence_closer_row(frame, chunks[idx], b);
+        idx += 1;
+    }
 
     if response_height > 0 {
-        let panel_chunk = chunks[1];
+        let panel_chunk = chunks[idx];
         let mut y = panel_chunk.y;
         let row = |y: u16| Rect {
             x: panel_chunk.x,

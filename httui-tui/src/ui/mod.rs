@@ -1001,9 +1001,21 @@ fn render_segment(
                                 .saturating_add(1)
                                 .saturating_add(col as u16)
                                 .min(max_x);
-                            let y = area
-                                .y
-                                .saturating_add(area.height.saturating_sub(3));
+                            // HTTP blocks paint the closer between
+                            // raw input and response panel — its row
+                            // is `area.y + 3 + request_height`
+                            // (border + header bar + fence header +
+                            // request lines). All other block types
+                            // paint the closer one row above the
+                            // footer bar.
+                            let y = if b.is_http() {
+                                let request_height =
+                                    crate::buffer::block::body_line_count(&b.raw)
+                                        .max(1) as u16;
+                                area.y.saturating_add(3 + request_height)
+                            } else {
+                                area.y.saturating_add(area.height.saturating_sub(3))
+                            };
                             frame.set_cursor_position((x, y));
                         }
                     }
