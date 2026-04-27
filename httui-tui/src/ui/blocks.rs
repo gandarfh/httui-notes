@@ -50,42 +50,11 @@ pub fn render_block_with_selection(
     // valid and the document doesn't reflow on enter/leave. Mirrors
     // the CM6 desktop behavior where entering a block exposes the
     // raw markdown source as if it were prose.
-    if selected {
-        render_fence_lines(frame, area, b);
-        let inner = Rect {
-            x: area.x,
-            y: area.y.saturating_add(1),
-            width: area.width,
-            height: area.height.saturating_sub(2),
-        };
-        if b.is_db() {
-            render_db_inner(
-                frame, inner, b, selected_row, viewport_top, names, result_tab, true,
-            );
-        } else {
-            // Cursor on, non-DB: paint the raw body lines so what
-            // the user is editing is what they see (parity with CM6
-            // desktop). For HTTP that means the actual request
-            // text — method line, headers, body — exactly as typed.
-            let body = raw_body_text(b);
-            let lines: Vec<Line<'static>> = if body.is_empty() {
-                if b.is_http() {
-                    http_body(b)
-                } else if b.is_e2e() {
-                    e2e_body(b)
-                } else {
-                    generic_body(b)
-                }
-            } else {
-                body.lines()
-                    .map(|l| Line::from(Span::raw(l.to_string())))
-                    .collect()
-            };
-            frame.render_widget(Paragraph::new(lines), inner);
-        }
-        return;
-    }
-
+    // Always paint the bordered card with its title — even when the
+    // cursor sits inside. The desktop widget keeps its chrome on
+    // through edits; we mirror that, with fence header / closer
+    // rendered just inside the top / bottom border rows when the
+    // cursor is on (Phase 6 visual parity).
     let title = block_title(b);
     let border_color = state_color(&b.state, selected);
     let outer = Block::default()
@@ -95,10 +64,44 @@ pub fn render_block_with_selection(
     let inner = outer.inner(area);
     frame.render_widget(outer, area);
 
+    // Carve fence rows out of the inner area when the cursor is on.
+    let body_inner = if selected {
+        render_fence_lines(frame, inner, b);
+        Rect {
+            x: inner.x,
+            y: inner.y.saturating_add(1),
+            width: inner.width,
+            height: inner.height.saturating_sub(2),
+        }
+    } else {
+        inner
+    };
+
     if b.is_db() {
         render_db_inner(
-            frame, inner, b, selected_row, viewport_top, names, result_tab, false,
+            frame, body_inner, b, selected_row, viewport_top, names, result_tab, selected,
         );
+        return;
+    }
+
+    if selected {
+        // Cursor on, non-DB: paint the raw body lines so what the
+        // user is editing is what they see (parity with CM6 desktop).
+        let body = raw_body_text(b);
+        let lines: Vec<Line<'static>> = if body.is_empty() {
+            if b.is_http() {
+                http_body(b)
+            } else if b.is_e2e() {
+                e2e_body(b)
+            } else {
+                generic_body(b)
+            }
+        } else {
+            body.lines()
+                .map(|l| Line::from(Span::raw(l.to_string())))
+                .collect()
+        };
+        frame.render_widget(Paragraph::new(lines), body_inner);
         return;
     }
 
@@ -110,7 +113,7 @@ pub fn render_block_with_selection(
         generic_body(b)
     };
 
-    frame.render_widget(Paragraph::new(lines), inner);
+    frame.render_widget(Paragraph::new(lines), body_inner);
 }
 
 /// Paint the fence delimiter rows (` ```<info> ` above, ` ``` `

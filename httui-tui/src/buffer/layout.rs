@@ -20,18 +20,20 @@ pub struct SegmentLayout {
 /// Lines a segment will occupy in the editor area.
 ///
 /// Width is accepted for forward-compat (prose wrap, multi-column
-/// blocks); current heuristic ignores it. `cursor_on_block` is a
-/// signal the *renderer* uses to swap chrome (bordered card vs raw
-/// fence text); both modes occupy the same number of rows so cursor
-/// motion doesn't reflow the document on enter/leave.
-pub fn segment_height(seg: &Segment, _width: u16, _cursor_on_block: bool) -> u16 {
+/// blocks); current heuristic ignores it. `cursor_on_block` reserves
+/// two extra rows inside the bordered card so the renderer can paint
+/// the fence header / closer text right above and below the body —
+/// keeps the card chrome visible while editing, matching the desktop
+/// widget's look.
+pub fn segment_height(seg: &Segment, _width: u16, cursor_on_block: bool) -> u16 {
     match seg {
         Segment::Prose(rope) => rope.len_lines().max(1) as u16,
-        Segment::Block(b) => block_height(b),
+        Segment::Block(b) => block_height(b, cursor_on_block),
     }
 }
 
-fn block_height(b: &BlockNode) -> u16 {
+fn block_height(b: &BlockNode, cursor_on_block: bool) -> u16 {
+    let fence_rows = if cursor_on_block { 2u16 } else { 0 };
 
     let card = if b.is_http() {
         // border + URL line + meta line + border
@@ -80,7 +82,7 @@ fn block_height(b: &BlockNode) -> u16 {
     } else {
         4u16
     };
-    card
+    card.saturating_add(fence_rows)
 }
 
 /// How tall the DB result `Table` widget paints inside the card.
@@ -129,7 +131,10 @@ pub fn layout_document(doc: &Document, viewport_width: u16) -> Vec<SegmentLayout
     let mut out = Vec::with_capacity(doc.segment_count());
     let mut y: u16 = 0;
     for (idx, seg) in doc.segments().iter().enumerate() {
-        let cursor_on_block = cursor_seg == Some(idx);
+        // Block-only flag: cursor_on_block reserves rows for the
+        // fence header / closer that the bordered card displays
+        // when the cursor is inside. Prose segments don't care.
+        let cursor_on_block = cursor_seg == Some(idx) && matches!(seg, Segment::Block(_));
         let height = segment_height(seg, viewport_width, cursor_on_block);
         out.push(SegmentLayout {
             segment_idx: idx,
@@ -248,12 +253,13 @@ mod tests {
     }
 
     #[test]
-    fn db_block_height_stays_constant_across_cursor_enter_leave() {
-        // The renderer swaps chrome (bordered card → raw fence text)
-        // when the cursor enters the block, but layout-wise both
-        // modes occupy the same number of rows — otherwise the
-        // document would reflow under the cursor on every
-        // motion-into / motion-out, which is jarring.
+    fn db_block_height_grows_by_two_when_cursor_enters() {
+        // Cursor-on-block adds a fence header row above the body
+        // and a fence closer row below — both inside the bordered
+        // card so the chrome stays consistent with the desktop
+        // widget. Layout therefore reserves two extra rows on the
+        // selected block; once the cursor leaves, those rows
+        // collapse back.
         let md = "```db-postgres alias=q\nSELECT *\nFROM users\nWHERE id > 10\n```\n";
         let mut doc = Document::from_markdown(md).unwrap();
         let block_idx = doc
@@ -279,7 +285,7 @@ mod tests {
             .find(|l| l.segment_idx == block_idx)
             .unwrap()
             .height;
-        assert_eq!(with_cursor, without_cursor);
+        assert_eq!(with_cursor, without_cursor + 2);
     }
 
     #[test]

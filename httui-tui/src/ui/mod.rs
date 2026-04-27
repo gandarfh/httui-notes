@@ -922,39 +922,44 @@ fn render_segment(
             if in_block {
                 if let Cursor::InBlock { offset, .. } = cursor {
                     use crate::buffer::block::{raw_section_at, RawSection};
-                    // Compute (col-within-line) for the section the
-                    // offset falls into. The terminal cursor needs a
-                    // real column so h/l motions and Insert-mode
-                    // typing land where the user expects — without
-                    // this, the cursor stays glued to area.x on
-                    // header / closer and edits visibly drift.
+                    // Cursor coords inside a bordered card. The
+                    // border occupies `area.x` and `area.x +
+                    // area.width - 1` on each side; fence header
+                    // lives at `area.y + 1`, body at `area.y + 2..`,
+                    // closer at `area.y + area.height - 2`. The
+                    // bottom border sits at `area.y + area.height -
+                    // 1`. Same shape regardless of selected, so
+                    // motions and edits drop the visual cursor on
+                    // the same cell the user is typing into.
                     let raw = &b.raw;
                     let line_idx = raw.char_to_line(offset.min(raw.len_chars()));
                     let line_start = raw.line_to_char(line_idx);
                     let col = offset.saturating_sub(line_start);
+                    let max_x = area
+                        .x
+                        .saturating_add(area.width.saturating_sub(2));
                     match raw_section_at(raw, offset) {
-                        // Body cursor: same `area` for both modes —
-                        // the renderer keeps the inner content rect
-                        // at `area.y + 1` height-2 in both bordered
-                        // (cursor-off) and raw (cursor-on) modes.
                         RawSection::Body { line, col } => {
                             cursor::render_inblock_cursor(frame, area, line, col);
                         }
                         RawSection::Header => {
-                            // Header sits at `area.y` (replaces the
-                            // top border glyph in raw view).
                             let x = area
                                 .x
+                                .saturating_add(1)
                                 .saturating_add(col as u16)
-                                .min(area.x.saturating_add(area.width.saturating_sub(1)));
-                            frame.set_cursor_position((x, area.y));
+                                .min(max_x);
+                            let y = area.y.saturating_add(1);
+                            frame.set_cursor_position((x, y));
                         }
                         RawSection::Closer => {
-                            let y = area.y.saturating_add(area.height.saturating_sub(1));
                             let x = area
                                 .x
+                                .saturating_add(1)
                                 .saturating_add(col as u16)
-                                .min(area.x.saturating_add(area.width.saturating_sub(1)));
+                                .min(max_x);
+                            let y = area
+                                .y
+                                .saturating_add(area.height.saturating_sub(2));
                             frame.set_cursor_position((x, y));
                         }
                     }
