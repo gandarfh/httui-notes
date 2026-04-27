@@ -208,24 +208,23 @@ describe("useDebounceSearch", () => {
     expect(loaded).toBe(2);
   });
 
-  it("safeIndex clamps to results.length-1", () => {
-    const searchFn = async () => [
-      { id: "a", label: "A" },
-      { id: "b", label: "B" },
-    ];
-
+  it("safeIndex clamps to results.length-1", async () => {
     const { result } = setup({
-      loadOnMount: searchFn,
+      loadOnMount: async () => [
+        { id: "a", label: "A" },
+        { id: "b", label: "B" },
+      ],
       searchFn: () => null,
     });
 
-    return act(async () => {
+    await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
-    }).then(() => {
-      act(() => result.current.setSelectedIndex(99));
-      expect(result.current.safeIndex).toBe(1);
     });
+    expect(result.current.results).toHaveLength(2);
+
+    act(() => result.current.setSelectedIndex(99));
+    expect(result.current.safeIndex).toBe(1);
   });
 
   it("ArrowDown advances selection with wrap", async () => {

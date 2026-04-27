@@ -51,8 +51,11 @@ export default defineConfig({
               "src/components/layout/StatusBar.tsx",
               "src/components/layout/TabBar.tsx",
               "src/components/layout/index.ts",
-              // Pending refactor — testing pre-split is throw-away work
-              "src/components/blocks/http/fenced/**",
+              // Post-split: HttpFencedPanel + body-mode editors stay excluded
+              // (orchestration, deep CM6 deps); the extracted sub-components
+              // (HttpToolbar / HttpStatusBar / HttpResultTabs / HttpFormMode /
+              // HttpSettingsDrawer) are now in scope and tested directly.
+              "src/components/blocks/http/fenced/HttpFencedPanel.tsx",
               "src/components/blocks/db/fenced/**",
               "src/components/editor/HttpWidgetPortals.tsx",
               "src/components/editor/DbWidgetPortals.tsx",
