@@ -2,10 +2,21 @@
 
 Widgets de blocos executáveis (HTTP, DB, E2E) na TUI.
 
-**Próxima sessão (2026-04-26):**
-1. **Continuar refactor**: mover restante do código DB de `vim::dispatch` pra `commands::db` — `apply_run_block`, `run_db_block_inner`, `spawn_db_query`, `handle_db_block_result`, `load_more_db_block`, `cancel_running_query`, helpers de ref (`resolve_block_refs`/`resolve_one_ref`/`value_for_bind`/`navigate_json`/`find_close_marker`/`is_db_response_shape`/`resolve_db_response_path`), `summarize_db_response`, `build_db_executor_params`, `load_active_env_vars`, `resolve_connection_id` (async). Bridge `run_db_block_inner_for_explain` em dispatch fica até esse passo terminar.
-2. **Stories pendentes P2** (em ordem sugerida): Story 08 (display modes), Story 11 (edição inline fence), Story 05.3 (export menu CSV/MD/INSERT).
-3. **Story 05.2 V2 polish**: spawn separado pra EXPLAIN escrever em `cached_result["plan"]`, auto-switch pra Plan tab, tree formatting do plan.
+**Status sessão 2026-04-26 (em curso):**
+
+✅ **Refactor concluído** (commit `e93aecb`): Toda a lógica DB que ainda morava em `vim::dispatch` virou `commands::db` (apply_run_block, run_db_block_inner, spawn_db_query, handle_db_block_result, load_more_db_block, cancel_running_query + 11 helpers de ref/bind/env/exec). Bridge `run_db_block_inner_for_explain` deletado. Tests duplicados em dispatch::tests removidos. dispatch.rs 3.7k → 2.0k linhas.
+
+✅ **`:explain` → `<C-x>` keymap** (commit `724694c`): Per directive "ações user-facing como keymap, não ex command". `:explain` removido; `<C-x>` em modo normal sobre DB block roda EXPLAIN.
+
+✅ **Story 08 — Display modes via `gd`** (commit `5fe1a40`): Cycle Input → Split → Output → Input. Persiste no fence (`display=`). Renderer e layout honram o mode (Input esconde result, Output esconde SQL).
+
+✅ **Story 11 — Slice 1 alias edit via `ga`** (commits `a5e6d56` + `b792deb`): Originalmente shippado como `<C-a>` mas rebinded pra `ga` (conflict com tmux prefix popular). Renderiza em popup ancorado encima do bloco (não status bar — usuário pediu reanchorar). Validação: alias único no doc.
+
+⏸ **Story 11 Slice 2 (limit) + Slice 3 (timeout)**: deferidas — viram modal único futuro com vários inputs (Tab navigation), provavelmente `gs` "go settings". Não shippar como chord-por-campo.
+
+**Próximo:**
+1. **Story 05.2 V2 polish**: spawn separado pra EXPLAIN escrever em `cached_result["plan"]`, auto-switch pra Plan tab, tree formatting do plan. Hoje EXPLAIN sobrescreve o `cached_result` da query principal — destrói o resultado anterior.
+2. **Story 05.3 Export menu**: exportar resultado inteiro (CSV/MD/INSERT) — complementa o `y` JSON-de-uma-linha do row-detail modal.
 
 **Foco atual (2026-04-26):** **paridade do bloco DB com o desktop**. Stories de HTTP e E2E ficam pausadas até as P0–P1 da DB-parity entregarem. Stories existentes mantêm numeração de origem e ressurgem com status atualizado; gaps de paridade descobertos na auditoria de 2026-04-26 viram substories `04.x` / `05.x`.
 
@@ -450,15 +461,17 @@ Hoje executor entrega `DbResponse` completa. Desktop tem channel preparado mas t
 
 ---
 
-### Story 08 — Display mode toggle (input/output/split) 🚧 P2
+### Story 08 — Display mode toggle (input/output/split) ✅ done
 
-**Tasks:**
-- [ ] Persistir `display_mode` no fence (`display=input|output|split`)
-- [ ] Toggle: `<C-d>` ou `:display <mode>` em `BlockSelected`
-- [ ] Render condicional baseado em mode + tem-resultado
-- [ ] Default: `input` quando idle, `split` quando tem resultado (espelha desktop)
-- [ ] Reflow do documento (recalcular altura)
-- [ ] Testes: cada modo renderiza conforme esperado, height correto
+Commit `5fe1a40`. Cycle: Input → Split → Output → Input.
+
+**Entregue:**
+- [x] Persistir `display_mode` no fence (`display=input|output|split`) — já era suportado pelo parser/serializer do `httui-core`; faltava só consumir
+- [x] Toggle via `gd` (g-prefix family, mnemonic "go display") — `<C-d>` rejeitado por colidir com vim half-page-down
+- [x] Render condicional em `ui::blocks::render_db_inner` honra `effective_display_mode()`
+- [x] Default contextual: `Input` quando sem result, `Split` quando tem (espelha desktop)
+- [x] Reflow: `buffer::layout::block_height` honra o mode em lockstep com renderer
+- [x] Tests: roundtrip wire format, cycle order, contextual default, layout heights por mode
 
 ---
 
@@ -477,23 +490,26 @@ Hoje executor entrega `DbResponse` completa. Desktop tem channel preparado mas t
 
 ---
 
-### Story 11 — Edição inline do fence info string (DB) 🚧 P2
+### Story 11 — Edição inline do fence info string (DB) ✅ parcial
 
 Editar metadados do bloco DB sem sair (alias, connection, limit, timeout, display_mode).
 
-**Tasks:**
-- [ ] `<C-a>` edita alias (prompt inline)
-- [ ] `<C-c>` edita connection — já existe via `Ctrl+L` picker; não duplicar
-- [ ] `<C-l>` edita limit (numérico)
-- [ ] `<C-t>` edita timeout (numérico, ms)
-- [ ] `<C-d>` edita display mode (input/output/split) — Story 08 cobre
-- [ ] `<CR>` confirma; `<Esc>` cancela
-- [ ] Validação: alias único no doc, limit > 0, timeout > 0
-- [ ] Erro → notification no status bar
-- [ ] Persiste no fence canônico (ordem: alias → connection → limit → timeout → display)
-- [ ] Testes: cada campo persiste, validação bloqueia inválido
+**Entregue:**
+- [x] `ga` edita alias (popup ancorado encima do bloco) — commits `a5e6d56` + `b792deb`
+  - Reuso de `LineEdit` + novo `Mode::FenceEdit` + `ui::fence_edit` popup
+  - Validação: alias único no doc; collision → status error + popup permanece aberto
+  - Persiste em `block.alias` + `block.params.alias`; serializer faz roundtrip via `display=`/`alias=` tokens
+  - Snapshot do doc pra undo
+  - Originalmente shippado como `<C-a>` mas rebinded pra `ga` (conflict com tmux prefix)
+- [x] `<C-d>` edita display mode (input/output/split) — Story 08 (`gd`)
+- [x] Connection edit — já existe via `<C-l>` picker (Story 04)
 
-**Depende de:** Story 04.5 (timeout token).
+**Deferido — vira modal único futuro:**
+- [ ] limit (numérico)
+- [ ] timeout (numérico, ms)
+- ⏸ Não shippar como `gl` / `gw` chord-por-campo. Usuário pediu (2026-04-26) modal único com vários inputs (Tab navigation entre campos, `<CR>` salva tudo, `<Esc>` cancela). Provavelmente `gs` "go settings" abre o modal. Reativar quando o restante da paridade DB-V1 estiver fechada.
+
+**Depende de:** Story 04.5 (timeout token) — quando o modal vier.
 
 ---
 
