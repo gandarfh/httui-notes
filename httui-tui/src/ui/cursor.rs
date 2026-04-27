@@ -42,21 +42,22 @@ pub fn render_prose_cursor(
 }
 
 /// Park the terminal cursor inside a focused block at the requested
-/// `(line, offset)`, accounting for the 1-row top border. Out-of-area
-/// positions get clamped to the visible region.
-pub fn render_inblock_cursor(frame: &mut Frame, area: Rect, line: usize, offset: usize) {
-    if area.width <= 1 || area.height <= 1 {
+/// `(line, col)` — `line` is body-relative (line 0 = first body
+/// row), `col` is the char column inside that line. Out-of-area
+/// positions clamp to the visible region.
+///
+/// Called from the cursor-on-block (raw view) path, where the
+/// renderer drops the bordered card chrome: fence header sits on
+/// `area.y`, body lines start at `area.y + 1`, closer at the bottom
+/// row, with no left / right border indent. So the first body cell
+/// is `(area.x, area.y + 1)`.
+pub fn render_inblock_cursor(frame: &mut Frame, area: Rect, line: usize, col: usize) {
+    if area.width == 0 || area.height <= 1 {
         return;
     }
-    // The block's content lives inside the 1-cell border on every
-    // side. So the first content cell is `(area.x + 1, area.y + 1)`.
-    let max_x = area.x.saturating_add(area.width.saturating_sub(2));
+    let max_x = area.x.saturating_add(area.width.saturating_sub(1));
     let max_y = area.y.saturating_add(area.height.saturating_sub(2));
-    let x = area
-        .x
-        .saturating_add(1)
-        .saturating_add(offset as u16)
-        .min(max_x);
+    let x = area.x.saturating_add(col as u16).min(max_x);
     let y = area
         .y
         .saturating_add(1)
