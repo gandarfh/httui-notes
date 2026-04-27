@@ -922,15 +922,13 @@ fn render_segment(
             if in_block {
                 if let Cursor::InBlock { offset, .. } = cursor {
                     use crate::buffer::block::{raw_section_at, RawSection};
-                    // Cursor coords inside a bordered card. The
-                    // border occupies `area.x` and `area.x +
-                    // area.width - 1` on each side; fence header
-                    // lives at `area.y + 1`, body at `area.y + 2..`,
-                    // closer at `area.y + area.height - 2`. The
-                    // bottom border sits at `area.y + area.height -
-                    // 1`. Same shape regardless of selected, so
-                    // motions and edits drop the visual cursor on
-                    // the same cell the user is typing into.
+                    // New card layout: top border → header bar →
+                    // fence header → body → fence closer → footer
+                    // bar → bottom border. Fence header sits at
+                    // `area.y + 2` (one past the chrome header bar);
+                    // body at `area.y + 3..`; closer at
+                    // `area.y + area.height - 3` (one above the
+                    // chrome footer bar).
                     let raw = &b.raw;
                     let line_idx = raw.char_to_line(offset.min(raw.len_chars()));
                     let line_start = raw.line_to_char(line_idx);
@@ -948,7 +946,7 @@ fn render_segment(
                                 .saturating_add(1)
                                 .saturating_add(col as u16)
                                 .min(max_x);
-                            let y = area.y.saturating_add(1);
+                            let y = area.y.saturating_add(2);
                             frame.set_cursor_position((x, y));
                         }
                         RawSection::Closer => {
@@ -959,7 +957,7 @@ fn render_segment(
                                 .min(max_x);
                             let y = area
                                 .y
-                                .saturating_add(area.height.saturating_sub(2));
+                                .saturating_add(area.height.saturating_sub(3));
                             frame.set_cursor_position((x, y));
                         }
                     }

@@ -1002,18 +1002,18 @@ fn cursor_y(doc: &Document, layouts: &[SegmentLayout]) -> u16 {
                     Some(Segment::Block(b)) => &b.raw,
                     _ => return l.y_start,
                 };
-                // The card now keeps its border on every render —
-                // top border at y_start, fence header at y_start+1,
-                // body lines at y_start+2.., fence closer at the
-                // row just above the bottom border, bottom border
-                // at y_start + height - 1.
+                // Card layout: top border (y_start) → header bar
+                // (y_start+1) → fence header (y_start+2, cursor on)
+                // → body (y_start+3..) → fence closer (above footer)
+                // → footer bar (y_start + height - 2) → bottom
+                // border (y_start + height - 1).
                 match raw_section_at(raw, offset) {
-                    RawSection::Header => l.y_start.saturating_add(1),
+                    RawSection::Header => l.y_start.saturating_add(2),
                     RawSection::Body { line, .. } => {
-                        l.y_start.saturating_add(2).saturating_add(line as u16)
+                        l.y_start.saturating_add(3).saturating_add(line as u16)
                     }
                     RawSection::Closer => {
-                        l.y_start.saturating_add(l.height.saturating_sub(2))
+                        l.y_start.saturating_add(l.height.saturating_sub(3))
                     }
                 }
             })

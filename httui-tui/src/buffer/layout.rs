@@ -4,7 +4,7 @@
 //! computed from its kind and current contents. Layout is recomputed
 //! every frame — cheap until documents grow big, optimisation can wait.
 
-use crate::buffer::block::{BlockNode, ExecutionState};
+use crate::buffer::block::BlockNode;
 use crate::buffer::cursor::Cursor;
 use crate::buffer::document::Document;
 use crate::buffer::segment::Segment;
@@ -35,13 +35,16 @@ pub fn segment_height(seg: &Segment, _width: u16, cursor_on_block: bool) -> u16 
 fn block_height(b: &BlockNode, cursor_on_block: bool) -> u16 {
     let fence_rows = if cursor_on_block { 2u16 } else { 0 };
 
+    // Chrome shared by every block kind: top border + header bar +
+    // footer bar + bottom border = 4 rows. Status banner is gone —
+    // its info now lives in the header / footer bars.
+    let chrome = 4u16;
+
     let card = if b.is_http() {
-        // border + URL line + meta line + border
-        4u16
+        // chrome + URL line + meta line
+        chrome.saturating_add(2)
     } else if b.is_db() {
         let mode = b.effective_display_mode();
-        // SQL body lines — counted only when Input or Split asks for
-        // them; Output mode hides the editable body entirely.
         let sql_lines = if mode.shows_input() {
             b.params
                 .get("query")
@@ -51,25 +54,12 @@ fn block_height(b: &BlockNode, cursor_on_block: bool) -> u16 {
         } else {
             0
         };
-        // Run-status banner + result table — only shown when Output
-        // or Split. Status banner appears as soon as the block has
-        // executed at least once (matches `db_result_line` in the
-        // renderer); the table appears when there are rows to show.
-        let (run_line, table_lines) = if mode.shows_output() {
-            let run = if matches!(b.state, ExecutionState::Idle) { 0 } else { 1 };
-            (run, db_table_height(b))
+        let table_lines = if mode.shows_output() {
+            db_table_height(b)
         } else {
-            (0, 0)
+            0
         };
-        // 3 chrome (top border + footer + bottom border) +
-        // optional sections. Tab bar (Result/Messages/Plan/Stats) is
-        // carved out of `table_lines` by the renderer, so it doesn't
-        // need its own row here — keeps behavior identical to the
-        // pre-display-mode layout for Split / Output users.
-        sql_lines
-            .saturating_add(3)
-            .saturating_add(run_line)
-            .saturating_add(table_lines)
+        chrome.saturating_add(sql_lines).saturating_add(table_lines)
     } else if b.is_e2e() {
         let steps = b
             .params
@@ -77,10 +67,10 @@ fn block_height(b: &BlockNode, cursor_on_block: bool) -> u16 {
             .and_then(|v| v.as_array())
             .map(|a| a.len())
             .unwrap_or(0);
-        // border + steps + base_url line + border
-        (steps as u16).saturating_add(3)
+        // chrome + steps + base_url line
+        chrome.saturating_add(steps as u16).saturating_add(1)
     } else {
-        4u16
+        chrome.saturating_add(1)
     };
     card.saturating_add(fence_rows)
 }
@@ -161,6 +151,7 @@ pub fn document_height(layouts: &[SegmentLayout]) -> u16 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::buffer::block::ExecutionState;
     use crate::buffer::Document;
 
     #[test]
@@ -172,13 +163,23 @@ mod tests {
     }
 
     #[test]
-    fn http_block_is_four_lines() {
+    fn http_block_is_six_lines() {
+        // chrome (4: border + header bar + footer bar + border) +
+        // 2 body lines (URL line + meta line) = 6.
         let md = "```http alias=h\n{\"method\":\"GET\",\"url\":\"https://x.com\",\"params\":[],\"headers\":[],\"body\":\"\"}\n```\n";
         let doc = Document::from_markdown(md).unwrap();
         let layouts = layout_document(&doc, 80);
-        assert_eq!(layouts.iter().find(|l| {
-            matches!(doc.segments()[l.segment_idx], crate::buffer::Segment::Block(_))
-        }).unwrap().height, 4);
+        assert_eq!(
+            layouts
+                .iter()
+                .find(|l| matches!(
+                    doc.segments()[l.segment_idx],
+                    crate::buffer::Segment::Block(_)
+                ))
+                .unwrap()
+                .height,
+            6
+        );
     }
 
     #[test]
@@ -191,8 +192,8 @@ mod tests {
             .find(|l| matches!(doc.segments()[l.segment_idx], crate::buffer::Segment::Block(_)))
             .unwrap()
             .height;
-        // 3 lines of SQL + 3 chrome (border + footer + border)
-        assert_eq!(block_h, 6);
+        // 3 SQL lines + chrome (4: border + header + footer + border).
+        assert_eq!(block_h, 7);
     }
 
     #[test]
@@ -205,8 +206,8 @@ mod tests {
             .find(|l| matches!(doc.segments()[l.segment_idx], crate::buffer::Segment::Block(_)))
             .unwrap()
             .height;
-        // 2 steps + 3 chrome
-        assert_eq!(block_h, 5);
+        // chrome (4) + 2 steps + 1 base_url line = 7.
+        assert_eq!(block_h, 7);
     }
 
     #[test]
@@ -242,7 +243,8 @@ mod tests {
     fn db_output_mode_drops_sql_lines_from_height() {
         // `display=output` hides the SQL body. With no cached result
         // and no run history, the block collapses to chrome-only
-        // (border + footer + border = 3 lines).
+        // (4 rows: top border + header bar + footer bar + bottom
+        // border).
         let md = "```db-postgres alias=q\nSELECT *\nFROM users\nWHERE id > 10\n```\n";
         let mut doc = Document::from_markdown(md).unwrap();
         let idx = db_block_index(&doc);
@@ -253,7 +255,7 @@ mod tests {
             .find(|l| l.segment_idx == idx)
             .unwrap()
             .height;
-        assert_eq!(block_h, 3);
+        assert_eq!(block_h, 4);
     }
 
     #[test]
@@ -294,10 +296,12 @@ mod tests {
 
     #[test]
     fn db_split_mode_with_result_includes_sql_status_and_table() {
-        // `display=split` with a `select` result: SQL body (3 lines)
-        // + status banner (1) + result table (header + 2 rows) +
-        // chrome (3 borders + footer) + 1 separator under tabs = 11.
-        // No sub-tabs row because we only have one result set.
+        // `display=split` with a `select` result. Layout:
+        //   chrome 4 (top border + header bar + footer bar + bottom)
+        //   SQL body 3 lines
+        //   tab bar 1 + separator 1 + result panel (header + 2 rows)
+        // = 4 + 3 + (1 + 1 + 1 + 2) = 12. No sub-tabs row because the
+        // response carries only one result set.
         let md = "```db-postgres alias=q\nSELECT *\nFROM users\nWHERE id > 10\n```\n";
         let mut doc = Document::from_markdown(md).unwrap();
         let idx = db_block_index(&doc);
@@ -319,6 +323,6 @@ mod tests {
             .find(|l| l.segment_idx == idx)
             .unwrap()
             .height;
-        assert_eq!(block_h, 3 + 1 + (1 + 2 + 1) + 3);
+        assert_eq!(block_h, 4 + 3 + (1 + 2 + 1));
     }
 }

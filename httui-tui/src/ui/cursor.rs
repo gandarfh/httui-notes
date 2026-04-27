@@ -46,17 +46,16 @@ pub fn render_prose_cursor(
 /// body row), `col` is the char column inside that line. Out-of-
 /// area positions clamp to the visible region.
 ///
-/// The card always renders bordered, with the fence header dropped
-/// just inside the top border when the cursor is on. So the first
-/// body cell is `(area.x + 1, area.y + 2)`: one column right of
-/// the left border, two rows below the top border (border + fence
-/// header).
+/// Card layout: top border → header bar → fence header → body →
+/// fence closer → footer bar → bottom border. Body starts at
+/// `area.y + 3` (border + chrome header + fence header) and the
+/// first body cell is one column right of the left border.
 pub fn render_inblock_cursor(frame: &mut Frame, area: Rect, line: usize, col: usize) {
-    if area.width <= 1 || area.height <= 2 {
+    if area.width <= 1 || area.height <= 4 {
         return;
     }
     let max_x = area.x.saturating_add(area.width.saturating_sub(2));
-    let max_y = area.y.saturating_add(area.height.saturating_sub(2));
+    let max_y = area.y.saturating_add(area.height.saturating_sub(3));
     let x = area
         .x
         .saturating_add(1)
@@ -64,7 +63,7 @@ pub fn render_inblock_cursor(frame: &mut Frame, area: Rect, line: usize, col: us
         .min(max_x);
     let y = area
         .y
-        .saturating_add(2)
+        .saturating_add(3)
         .saturating_add(line as u16)
         .min(max_y);
     frame.set_cursor_position((x, y));
