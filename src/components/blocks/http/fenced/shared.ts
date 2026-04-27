@@ -53,6 +53,28 @@ export function formatBytes(n: number): string {
   return `${(n / 1024 / 1024).toFixed(2)} MB`;
 }
 
+/**
+ * Convert an HTTP response body (string, JSON, or `{encoding:"base64"}` for
+ * binary) into a plain text representation for raw/pretty display.
+ */
+export function bodyAsText(body: unknown): string {
+  if (body === null || body === undefined) return "";
+  if (typeof body === "string") return body;
+  if (
+    typeof body === "object" &&
+    body !== null &&
+    "encoding" in body &&
+    (body as { encoding: string }).encoding === "base64"
+  ) {
+    return "[binary content — base64 encoded]";
+  }
+  try {
+    return JSON.stringify(body, null, 2);
+  } catch {
+    return String(body);
+  }
+}
+
 /** Round a `Date` into a "ran X ago" string ("just now" / "Xs ago" / etc). */
 export function relativeTimeAgo(date: Date | null): string | null {
   if (!date) return null;
