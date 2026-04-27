@@ -22,6 +22,10 @@ pub enum ExCmd {
     Edit { path: String, force: bool },
     /// `:noh` / `:nohlsearch` — clear the active search highlight.
     NoHighlight,
+    /// `:explain` / `:exp` — wrap the focused DB block's query in
+    /// the dialect's EXPLAIN keyword and run it. Output appears in
+    /// the block's result panel like a normal run.
+    Explain,
 }
 
 /// Outcome of an ex command. `Ok(msg)` carries a status string for the
@@ -74,6 +78,7 @@ pub fn parse(buf: &str) -> Result<ExCmd, ParseError> {
         "q!" => Ok(ExCmd::Quit { force: true }),
         "wq" | "x" => Ok(ExCmd::WriteQuit),
         "noh" | "nohl" | "nohls" | "nohlsearch" => Ok(ExCmd::NoHighlight),
+        "exp" | "explain" => Ok(ExCmd::Explain),
         other => Err(ParseError::Unknown(other.to_string())),
     }
 }
@@ -110,6 +115,13 @@ pub fn execute(app: &mut App, cmd: ExCmd) -> ExResult {
             // Hide matches without losing the pattern — `n`/`N` keep
             // navigating; the next `/`-search re-arms `search_highlight`.
             app.vim.search_highlight = false;
+            ExResult::Ok(String::new())
+        }
+        ExCmd::Explain => {
+            // Delegate to dispatch so the EXPLAIN run flows through
+            // the same spawn / cancel / status pipeline as a normal
+            // `r` press. Status feedback is handled inside.
+            crate::vim::dispatch::run_explain_block(app);
             ExResult::Ok(String::new())
         }
     }

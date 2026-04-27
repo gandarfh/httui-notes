@@ -602,7 +602,7 @@ fn apply_confirm_db_run(app: &mut App) {
         return;
     };
     app.vim.enter_normal();
-    run_db_block_inner(app, state.segment_idx, /* force_unscoped = */ true);
+    run_db_block_inner(app, state.segment_idx, /* force_unscoped = */ true, None);
 }
 
 /// `n` / `Esc` / `Ctrl-C` — close the modal without running.
@@ -1646,14 +1646,61 @@ fn apply_run_block(app: &mut App) {
         app.set_status(StatusKind::Info, "no block at cursor (place cursor on a block first)");
         return;
     };
-    run_db_block_inner(app, segment_idx, /* force_unscoped = */ false);
+    run_db_block_inner(app, segment_idx, /* force_unscoped = */ false, None);
+}
+
+/// `:explain` — wrap the focused DB block's query in the dialect's
+/// EXPLAIN keyword and run it. The block's own query text stays
+/// untouched (override only flows to the executor); the explain
+/// output lands in the block's `cached_result` like any other run,
+/// visible immediately in the Result tab. Force-unscoped is `true`
+/// so even an EXPLAIN of `DELETE FROM x` doesn't trip the confirm
+/// modal — the EXPLAIN itself is read-only.
+pub fn run_explain_block(app: &mut App) {
+    let Some(doc) = app.document() else { return };
+    let segment_idx = match doc.cursor() {
+        Cursor::InBlock { segment_idx, .. } => segment_idx,
+        Cursor::InBlockResult { segment_idx, .. } => segment_idx,
+        _ => {
+            app.set_status(
+                StatusKind::Info,
+                "place the cursor on a DB block first",
+            );
+            return;
+        }
+    };
+    let block = match doc.segments().get(segment_idx) {
+        Some(crate::buffer::Segment::Block(b)) => b.clone(),
+        _ => return,
+    };
+    if !block.is_db() {
+        app.set_status(StatusKind::Info, "not a DB block");
+        return;
+    }
+    let raw = block
+        .params
+        .get("query")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let dialect = crate::sql_completion::Dialect::from_block(&block);
+    let wrapped = crate::sql_completion::explain_wrap(raw, dialect);
+    run_db_block_inner(app, segment_idx, /* force_unscoped = */ true, Some(wrapped));
 }
 
 /// Run the DB block at `segment_idx`. Shared entry for the
-/// cursor-based `r` keypress and the confirm-modal `y`. The
-/// `force_unscoped` flag bypasses the unscoped-destructive gate
-/// once — set only when the user explicitly confirmed the run.
-fn run_db_block_inner(app: &mut App, segment_idx: usize, force_unscoped: bool) {
+/// cursor-based `r` keypress, the confirm-modal `y`, and `:explain`.
+/// The `force_unscoped` flag bypasses the unscoped-destructive gate
+/// once — set only when the user explicitly confirmed the run, or
+/// when the call is internal (EXPLAIN doesn't actually mutate).
+/// `query_override` lets callers (currently `run_explain_block`)
+/// substitute the SQL that's actually sent to the executor while
+/// keeping the block's `params["query"]` text untouched.
+fn run_db_block_inner(
+    app: &mut App,
+    segment_idx: usize,
+    force_unscoped: bool,
+    query_override: Option<String>,
+) {
     let Some(doc) = app.document() else { return; };
     // Snapshot the block so we can release the immutable doc borrow
     // before mutating later.
@@ -1687,13 +1734,15 @@ fn run_db_block_inner(app: &mut App, segment_idx: usize, force_unscoped: bool) {
         );
         return;
     }
-    let raw_query = block
-        .params
-        .get("query")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .trim()
-        .to_string();
+    let raw_query = query_override.unwrap_or_else(|| {
+        block
+            .params
+            .get("query")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string()
+    });
     if raw_query.is_empty() {
         app.set_status(StatusKind::Error, "empty SQL");
         return;
