@@ -479,6 +479,181 @@ fn http_footer_spans(
     (left, right)
 }
 
+/// Syntax-highlight the raw HTTP-message body the cursor is
+/// editing. Walks line-by-line tracking which section we're in:
+///
+///   line 0 (after blanks): request line — METHOD badge + URL with
+///                          `{{ref}}` placeholders cyan
+///   1..first blank:        headers — key cyan, `: `, value plain
+///   after blank:           body — JSON highlight when the text
+///                          parses as JSON; plain otherwise
+///   leading `#` lines:     dim grey (comments, ignored by parser)
+fn highlight_http_message(text: &str) -> Vec<Line<'static>> {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut out: Vec<Line<'static>> = Vec::with_capacity(lines.len());
+    let mut state = HttpHighlightState::PreRequest;
+    // Collect the body block as one string at the end so we can
+    // pretty-detect JSON; still emit individual lines.
+    for raw in &lines {
+        let line = *raw;
+        match state {
+            HttpHighlightState::PreRequest => {
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    out.push(Line::from(""));
+                    continue;
+                }
+                if trimmed.starts_with('#') {
+                    out.push(Line::from(Span::styled(
+                        line.to_string(),
+                        Style::default().fg(Color::DarkGray),
+                    )));
+                    continue;
+                }
+                out.push(Line::from(highlight_http_request_line(line)));
+                state = HttpHighlightState::Headers;
+            }
+            HttpHighlightState::Headers => {
+                if line.trim().is_empty() {
+                    out.push(Line::from(""));
+                    state = HttpHighlightState::Body;
+                    continue;
+                }
+                if line.trim_start().starts_with('#') {
+                    out.push(Line::from(Span::styled(
+                        line.to_string(),
+                        Style::default().fg(Color::DarkGray),
+                    )));
+                    continue;
+                }
+                if line.trim_start().starts_with('?') || line.trim_start().starts_with('&') {
+                    out.push(Line::from(highlight_http_query_continuation(line)));
+                    continue;
+                }
+                out.push(Line::from(highlight_http_header_line(line)));
+            }
+            HttpHighlightState::Body => {
+                // Try JSON-aware highlighting on each body line. The
+                // per-line lexer already handles comma / brace / etc.
+                // gracefully, so even non-JSON text won't blow up.
+                let spans = highlight_json_line(line);
+                out.push(Line::from(spans));
+            }
+        }
+    }
+    out
+}
+
+#[derive(Debug, Clone, Copy)]
+enum HttpHighlightState {
+    PreRequest,
+    Headers,
+    Body,
+}
+
+/// Highlight the request line `METHOD URL`. METHOD gets a colored
+/// badge matching the toolbar; URL renders with `{{...}}` refs in
+/// cyan so they pop against the URL text.
+fn highlight_http_request_line(line: &str) -> Vec<Span<'static>> {
+    let mut parts = line.splitn(2, char::is_whitespace);
+    let method = parts.next().unwrap_or("").to_string();
+    let url_rest = parts.next().unwrap_or("").trim_start();
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    spans.push(Span::styled(
+        format!(" {method} "),
+        Style::default()
+            .bg(method_color(&method))
+            .fg(Color::Black)
+            .add_modifier(Modifier::BOLD),
+    ));
+    spans.push(Span::raw(" "));
+    spans.extend(highlight_refs_in_text(url_rest));
+    spans
+}
+
+/// Highlight a header row `Key: value` — key cyan, separator dim,
+/// value plain (with refs cyan when present).
+fn highlight_http_header_line(line: &str) -> Vec<Span<'static>> {
+    if let Some(colon) = line.find(':') {
+        let key = &line[..colon];
+        let rest = &line[colon + 1..];
+        let mut spans = vec![
+            Span::styled(key.to_string(), Style::default().fg(Color::Cyan)),
+            Span::styled(":".to_string(), Style::default().fg(Color::DarkGray)),
+        ];
+        spans.extend(highlight_refs_in_text(rest));
+        spans
+    } else {
+        vec![Span::raw(line.to_string())]
+    }
+}
+
+/// Highlight `?key=value` / `&key=value` continuation rows used by
+/// the parser to extend the URL's query string.
+fn highlight_http_query_continuation(line: &str) -> Vec<Span<'static>> {
+    let prefix_len = line.len() - line.trim_start().len();
+    let prefix = &line[..prefix_len];
+    let rest = line[prefix_len..].chars().next().map(|c| c.to_string()).unwrap_or_default();
+    let body = &line[prefix_len + rest.len()..];
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    if !prefix.is_empty() {
+        spans.push(Span::raw(prefix.to_string()));
+    }
+    spans.push(Span::styled(rest, Style::default().fg(Color::DarkGray)));
+    if let Some(eq) = body.find('=') {
+        spans.push(Span::styled(
+            body[..eq].to_string(),
+            Style::default().fg(Color::Cyan),
+        ));
+        spans.push(Span::styled(
+            "=".to_string(),
+            Style::default().fg(Color::DarkGray),
+        ));
+        spans.extend(highlight_refs_in_text(&body[eq + 1..]));
+    } else {
+        spans.push(Span::raw(body.to_string()));
+    }
+    spans
+}
+
+/// Walk `text` emitting plain spans for normal characters and
+/// cyan-styled spans for `{{ref}}` placeholders. Used by URL /
+/// header values / body so refs visibly stand out from regular
+/// text. Unmatched `{{` (mid-edit) renders as plain text.
+fn highlight_refs_in_text(text: &str) -> Vec<Span<'static>> {
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let bytes = text.as_bytes();
+    let mut i = 0usize;
+    let mut buf = String::new();
+    while i < bytes.len() {
+        if i + 1 < bytes.len() && bytes[i] == b'{' && bytes[i + 1] == b'{' {
+            // Find matching `}}`.
+            if let Some(close) = (i + 2..bytes.len().saturating_sub(1))
+                .find(|&j| bytes[j] == b'}' && bytes[j + 1] == b'}')
+            {
+                if !buf.is_empty() {
+                    spans.push(Span::raw(std::mem::take(&mut buf)));
+                }
+                let chunk = &text[i..close + 2];
+                spans.push(Span::styled(
+                    chunk.to_string(),
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                ));
+                i = close + 2;
+                continue;
+            }
+        }
+        buf.push(bytes[i] as char);
+        i += 1;
+    }
+    if !buf.is_empty() {
+        spans.push(Span::raw(buf));
+    }
+    spans
+}
+
 /// Pull the path + query out of an HTTP URL. Returns `/` when the
 /// URL has no path (just a host) or empty.
 fn http_path_of(url: &str) -> String {
@@ -627,15 +802,15 @@ fn render_http_inner(
 
     let request_lines = if selected {
         // Cursor on: paint raw rope so the user sees exactly what
-        // they're editing (HTTP-message text). Off-cursor: parsed
-        // request panel.
+        // they're editing (HTTP-message text). Highlight per-line:
+        // method + URL on the first non-blank row, headers
+        // afterward (until the first blank), then body (JSON
+        // highlight when the text looks like JSON).
         let body = raw_body_text(b);
         if body.is_empty() {
             http_body(b)
         } else {
-            body.lines()
-                .map(|l| Line::from(Span::raw(l.to_string())))
-                .collect()
+            highlight_http_message(&body)
         }
     } else {
         http_body(b)
