@@ -6,6 +6,7 @@ mod completion_popup;
 mod connection_picker;
 mod cursor;
 mod db_confirm_run;
+mod fence_edit;
 pub mod db_row_detail;
 mod prose;
 mod quickopen;
@@ -232,6 +233,15 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     if let Some(state) = app.connection_picker.as_ref() {
         let anchor = compute_block_anchor(app, editor_area, state.segment_idx);
         connection_picker::render(frame, editor_area, state, anchor);
+    }
+
+    // Inline fence-metadata edit popup (alias today; limit / timeout
+    // soon). Anchored above the block being edited so the user keeps
+    // visual context — the previous status-bar prompt felt detached
+    // from the action.
+    if let Some(state) = app.fence_edit.as_ref() {
+        let anchor = compute_block_anchor(app, editor_area, state.segment_idx);
+        fence_edit::render(frame, editor_area, state, anchor);
     }
 
     // SQL completion popup — paints whenever its state is `Some`,

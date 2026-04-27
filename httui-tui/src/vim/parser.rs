@@ -331,10 +331,11 @@ pub enum Action {
     /// Output → Input). Persists via `display=` in the fence so the
     /// next save carries the choice. Mnemonic: "go display".
     CycleDisplayMode,
-    /// `<C-a>` on a block — open an inline alias-edit prompt
-    /// prefilled with the current alias. Confirm writes back to the
-    /// block + persists into the fence on the next save; cancel
-    /// leaves the alias untouched.
+    /// `ga` on a block — open an inline alias-edit popup prefilled
+    /// with the current alias. Confirm writes back to the block +
+    /// persists into the fence on the next save; cancel leaves the
+    /// alias untouched. Mnemonic: "go alias", `g`-prefix family
+    /// alongside `gd` (display mode).
     OpenFenceEditAlias,
     /// One typeable character into the fence-edit prompt's input
     /// buffer. Driven by `parse_fence_edit`; mirrors `TreePromptChar`.
@@ -645,6 +646,15 @@ pub fn parse_normal(state: &mut VimState, key: KeyEvent) -> Action {
             state.take_count();
             return Action::CycleDisplayMode;
         }
+        // `ga` — open the inline alias-edit popup over the focused
+        // block. Same count-drain rule as `gd`: counts are
+        // meaningless for a metadata edit. Picked over `<C-a>` so
+        // tmux users (whose default-alt prefix is `<C-a>`) don't
+        // have the chord intercepted before it reaches us.
+        if let KeyCode::Char('a') = code {
+            state.take_count();
+            return Action::OpenFenceEditAlias;
+        }
         // Drop the prefix and continue parsing.
     }
 
@@ -786,9 +796,6 @@ pub fn parse_normal(state: &mut VimState, key: KeyEvent) -> Action {
     }
     if kb::matches_explain_block(&key) {
         return Action::ExplainBlock;
-    }
-    if kb::matches_edit_block_alias(&key) {
-        return Action::OpenFenceEditAlias;
     }
 
     match (modifiers, code) {
@@ -1875,12 +1882,18 @@ mod tests {
     }
 
     #[test]
-    fn ctrl_a_opens_alias_edit_prompt() {
-        // `<C-a>` (vim's "increment" — we don't bind that) opens
-        // the inline alias-edit prompt for the focused block.
+    fn ga_opens_alias_edit_prompt() {
+        // `ga` chord opens the inline alias-edit popup for the
+        // focused block. Picked over `<C-a>` because that's a tmux
+        // prefix some users bind — letting tmux see the keystroke
+        // before we do is the right call.
         let mut s = VimState::new();
         assert_eq!(
-            parse_normal(&mut s, key_ctrl(KeyCode::Char('a'))),
+            parse_normal(&mut s, key(KeyCode::Char('g'))),
+            Action::Noop
+        );
+        assert_eq!(
+            parse_normal(&mut s, key(KeyCode::Char('a'))),
             Action::OpenFenceEditAlias
         );
     }
