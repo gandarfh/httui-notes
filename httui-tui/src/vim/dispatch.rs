@@ -14,8 +14,9 @@ use crate::commands::db::{load_active_env_vars, resolve_connection_id_sync};
 use crate::pane::{FocusDir, SplitDir};
 use crate::vim::parser::{
     parse_cmdline, parse_connection_picker, parse_db_confirm_run, parse_db_row_detail,
-    parse_insert, parse_normal, parse_quickopen, parse_search, parse_tree, parse_tree_prompt,
-    parse_visual, Action, InsertPos, Motion, Operator, PastePos, TextObject, WindowCmd,
+    parse_fence_edit, parse_insert, parse_normal, parse_quickopen, parse_search, parse_tree,
+    parse_tree_prompt, parse_visual, Action, InsertPos, Motion, Operator, PastePos,
+    TextObject, WindowCmd,
 };
 use crate::vim::search;
 use crate::tree::{TreePrompt, TreePromptKind};
@@ -79,6 +80,7 @@ pub fn dispatch(app: &mut App, key: KeyEvent) {
         Mode::DbRowDetail => parse_db_row_detail(&mut app.vim, key),
         Mode::ConnectionPicker => parse_connection_picker(key),
         Mode::DbConfirmRun => parse_db_confirm_run(key),
+        Mode::FenceEdit => parse_fence_edit(key),
     };
 
     // When the cursor is parked inside a block's editable body, swap
@@ -1022,6 +1024,55 @@ fn apply_action(app: &mut App, action: Action, recording: bool) {
             app.vim.mode = Mode::Tree;
             run_tree_prompt(app, prompt);
         }
+        Action::OpenFenceEditAlias => crate::commands::db::open_fence_edit_alias(app),
+        Action::FenceEditChar(c) => {
+            if let Some(prompt) = app.fence_edit.as_mut() {
+                prompt.input.insert_char(c);
+            }
+        }
+        Action::FenceEditBackspace => {
+            if let Some(prompt) = app.fence_edit.as_mut() {
+                // Backspace on an empty buffer cancels — same affordance
+                // as the tree prompt; users can hold backspace to bail.
+                if !prompt.input.delete_before() {
+                    app.fence_edit = None;
+                    app.vim.enter_normal();
+                }
+            } else {
+                app.vim.enter_normal();
+            }
+        }
+        Action::FenceEditDelete => {
+            if let Some(prompt) = app.fence_edit.as_mut() {
+                prompt.input.delete_after();
+            }
+        }
+        Action::FenceEditCursorLeft => {
+            if let Some(prompt) = app.fence_edit.as_mut() {
+                prompt.input.move_left();
+            }
+        }
+        Action::FenceEditCursorRight => {
+            if let Some(prompt) = app.fence_edit.as_mut() {
+                prompt.input.move_right();
+            }
+        }
+        Action::FenceEditCursorHome => {
+            if let Some(prompt) = app.fence_edit.as_mut() {
+                prompt.input.move_home();
+            }
+        }
+        Action::FenceEditCursorEnd => {
+            if let Some(prompt) = app.fence_edit.as_mut() {
+                prompt.input.move_end();
+            }
+        }
+        Action::FenceEditCancel => {
+            app.fence_edit = None;
+            app.vim.enter_normal();
+            app.set_status(StatusKind::Info, "edit cancelled");
+        }
+        Action::FenceEditConfirm => crate::commands::db::confirm_fence_edit(app),
     }
 }
 

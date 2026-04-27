@@ -88,6 +88,13 @@ pub const OPEN_CONNECTION_PICKER: KeyChord =
 pub const EXPLAIN_BLOCK: KeyChord =
     KeyChord::new(KeyModifiers::CONTROL, KeyCode::Char('x'));
 
+/// `Ctrl+A` — open the inline alias-edit prompt for the focused
+/// block. Vim's `Ctrl+A` is "increment number under cursor" (paired
+/// with `Ctrl+X`); we don't implement either, so the slot is free.
+/// Mnemonic: "A" = **A**lias.
+pub const EDIT_BLOCK_ALIAS: KeyChord =
+    KeyChord::new(KeyModifiers::CONTROL, KeyCode::Char('a'));
+
 // ───────────── helpers ─────────────
 
 pub fn matches_quick_open(key: &KeyEvent) -> bool {
@@ -118,4 +125,8 @@ pub fn matches_open_connection_picker(key: &KeyEvent) -> bool {
 
 pub fn matches_explain_block(key: &KeyEvent) -> bool {
     EXPLAIN_BLOCK.matches(key)
+}
+
+pub fn matches_edit_block_alias(key: &KeyEvent) -> bool {
+    EDIT_BLOCK_ALIAS.matches(key)
 }

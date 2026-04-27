@@ -278,6 +278,41 @@ pub struct App {
     /// every block's result section uses the same selection. Cycled
     /// via `gt` / `gT` while the cursor is on a result row.
     pub db_result_tab: ResultPanelTab,
+    /// `Some` while an inline fence-edit prompt is open (alias /
+    /// limit / timeout). Mode flips to `Mode::FenceEdit` so dispatch
+    /// routes typing into the prompt's `LineEdit`. Renders in the
+    /// status bar like `TreePrompt` so the editor underneath stays
+    /// visible. See `commands::db::open_fence_edit_*`.
+    pub fence_edit: Option<FenceEditState>,
+}
+
+/// State for the inline fence-edit prompt. `kind` carries the field
+/// being edited (alias today; limit / timeout once those slices land);
+/// `input` is the actual text-edit buffer that the prompt parser
+/// drives. `segment_idx` pins the block — the cursor may move while
+/// the prompt is up, but the edit always commits to the block the
+/// user opened the prompt against.
+#[derive(Debug, Clone)]
+pub struct FenceEditState {
+    pub segment_idx: usize,
+    pub kind: FenceEditKind,
+    pub input: crate::vim::lineedit::LineEdit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FenceEditKind {
+    /// `<C-a>` on a block — edit the alias used in `{{alias.path}}`
+    /// refs and shown in the block title. Blank input clears the
+    /// alias (block becomes anonymous).
+    Alias,
+}
+
+impl FenceEditKind {
+    pub fn label(self) -> &'static str {
+        match self {
+            FenceEditKind::Alias => "alias",
+        }
+    }
 }
 
 /// State for the run-confirm modal. Carries the segment to re-run
@@ -391,6 +426,7 @@ impl App {
             completion_popup: None,
             db_confirm_run: None,
             db_result_tab: ResultPanelTab::default(),
+            fence_edit: None,
         };
         app.load_initial_document();
         app

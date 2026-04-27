@@ -309,6 +309,136 @@ pub fn cycle_display_mode(app: &mut App) {
     );
 }
 
+/// `<C-a>` — open the inline alias-edit prompt for the block at the
+/// cursor. Prefills with the current alias so the user can either
+/// just hit Enter (no-op), edit it, or wipe it (Backspace clears →
+/// Enter commits a blank alias, making the block anonymous). The
+/// edit only commits via `confirm_fence_edit`; cancelling leaves
+/// the alias untouched.
+pub fn open_fence_edit_alias(app: &mut App) {
+    let segment_idx = match app.document().map(|d| d.cursor()) {
+        Some(Cursor::InBlock { segment_idx, .. })
+        | Some(Cursor::InBlockResult { segment_idx, .. }) => segment_idx,
+        _ => {
+            app.set_status(
+                StatusKind::Info,
+                "place the cursor on a block first",
+            );
+            return;
+        }
+    };
+    let prefill = match app
+        .document()
+        .and_then(|d| d.segments().get(segment_idx))
+    {
+        Some(Segment::Block(b)) => b.alias.clone().unwrap_or_default(),
+        _ => {
+            app.set_status(StatusKind::Info, "no block at cursor");
+            return;
+        }
+    };
+    app.fence_edit = Some(crate::app::FenceEditState {
+        segment_idx,
+        kind: crate::app::FenceEditKind::Alias,
+        input: crate::vim::lineedit::LineEdit::from_str(prefill),
+    });
+    app.vim.mode = crate::vim::mode::Mode::FenceEdit;
+    app.vim.reset_pending();
+}
+
+/// `<CR>` inside the fence-edit prompt — validate + commit the edit
+/// to the block. Today only the alias kind exists; once limit /
+/// timeout slices land, the per-kind validation lives in this match.
+/// On success: snapshot the doc (so undo can roll back), write the
+/// new value, drop the prompt, return to normal mode. On failure:
+/// the prompt stays open and the status bar surfaces the reason.
+pub fn confirm_fence_edit(app: &mut App) {
+    let Some(state) = app.fence_edit.as_ref() else {
+        app.vim.enter_normal();
+        return;
+    };
+    let segment_idx = state.segment_idx;
+    let kind = state.kind;
+    let raw = state.input.as_str().trim().to_string();
+
+    match kind {
+        crate::app::FenceEditKind::Alias => {
+            // Empty input = clear the alias (block becomes anonymous —
+            // valid; the block just stops being referencable as
+            // `{{alias.path}}`).
+            let new_alias: Option<String> = if raw.is_empty() {
+                None
+            } else {
+                let dup = app
+                    .document()
+                    .and_then(|d| validate_alias_unique(d, segment_idx, &raw).err());
+                if let Some(msg) = dup {
+                    app.set_status(StatusKind::Error, msg);
+                    return;
+                }
+                Some(raw)
+            };
+            let Some(doc) = app.tabs.active_document_mut() else { return };
+            doc.snapshot();
+            if let Some(block) = doc.block_at_mut(segment_idx) {
+                // Mirror `block.alias` into `params.alias` so the
+                // serializer's roundtrip stays lossless (the parser
+                // reads from the info-string token, but other code
+                // paths read from `params`).
+                block.alias = new_alias.clone();
+                if let Some(obj) = block.params.as_object_mut() {
+                    match &new_alias {
+                        Some(a) => {
+                            obj.insert(
+                                "alias".into(),
+                                serde_json::Value::String(a.clone()),
+                            );
+                        }
+                        None => {
+                            obj.remove("alias");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    app.fence_edit = None;
+    app.vim.enter_normal();
+    app.set_status(
+        StatusKind::Info,
+        format!("{} updated", kind.label()),
+    );
+}
+
+/// Reject duplicate aliases inside the same document. `{{alias.path}}`
+/// resolution walks blocks-above-current looking for the first matching
+/// alias, so two blocks with the same alias would silently shadow
+/// each other and hide the second's results from refs. Loud failure
+/// at edit time is the better experience.
+///
+/// Pure (`&Document` not `&App`) so it lives behind `cargo test`
+/// without an `App` fixture.
+fn validate_alias_unique(
+    doc: &crate::buffer::Document,
+    segment_idx: usize,
+    candidate: &str,
+) -> Result<(), String> {
+    for (idx, seg) in doc.segments().iter().enumerate() {
+        if idx == segment_idx {
+            continue;
+        }
+        if let Segment::Block(b) = seg {
+            if b.alias.as_deref() == Some(candidate) {
+                return Err(format!(
+                    "alias `{candidate}` already used by another block in this doc"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// `<C-x>` — wrap the focused DB block's query in the dialect's
 /// EXPLAIN keyword and run it. The block's own query text stays
 /// untouched (override flows only to the executor); the explain
@@ -2079,5 +2209,42 @@ mod tests {
         assert_eq!(params["bind_values"][0], 7);
         assert_eq!(params["bind_values"][1], "alice");
         assert_eq!(params["fetch_size"], 50);
+    }
+
+    // ───────────── Alias edit (Story 11 — slice 1) ─────────────
+
+    #[test]
+    fn alias_unique_passes_when_no_collision() {
+        // Two-block doc where only the first has an alias — picking
+        // a fresh name for the second block should succeed.
+        let md = "```http alias=existing\nGET /\n```\n\n```db-postgres\nSELECT 1\n```\n";
+        let doc = make_doc(md);
+        let blocks = block_indices(&doc);
+        assert!(validate_alias_unique(&doc, blocks[1], "fresh_name").is_ok());
+    }
+
+    #[test]
+    fn alias_unique_blocks_collision_with_other_block() {
+        // Picking an alias already used by ANOTHER block fails loudly
+        // — silent shadowing would hide downstream `{{alias.path}}`
+        // resolution from the second block.
+        let md = "```http alias=existing\nGET /\n```\n\n```db-postgres\nSELECT 1\n```\n";
+        let doc = make_doc(md);
+        let blocks = block_indices(&doc);
+        let err = validate_alias_unique(&doc, blocks[1], "existing")
+            .expect_err("collision must error");
+        assert!(err.contains("existing"), "got: {err}");
+    }
+
+    #[test]
+    fn alias_unique_allows_same_block_keeping_its_own_alias() {
+        // Editing block #0's alias to its current value (or any value
+        // that only matches itself) is fine — we skip the
+        // self-comparison so users can edit-with-no-changes without
+        // hitting a fake collision.
+        let md = "```http alias=existing\nGET /\n```\n";
+        let doc = make_doc(md);
+        let blocks = block_indices(&doc);
+        assert!(validate_alias_unique(&doc, blocks[0], "existing").is_ok());
     }
 }

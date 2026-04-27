@@ -41,6 +41,11 @@ pub enum Mode {
     /// (UPDATE/DELETE without WHERE). `y` runs anyway, `n`/Esc/
     /// Ctrl-C cancels. State lives on `App.db_confirm_run`.
     DbConfirmRun,
+    /// Inline fence-edit prompt for one of the block's metadata
+    /// fields (alias / limit / timeout). State lives on
+    /// `App.fence_edit`; the prompt renders in the status bar like
+    /// `TreePrompt` so the editor under it stays visible.
+    FenceEdit,
 }
 
 impl Mode {
@@ -58,6 +63,7 @@ impl Mode {
             Mode::DbRowDetail => "ROW",
             Mode::ConnectionPicker => "CONN",
             Mode::DbConfirmRun => "RUN?",
+            Mode::FenceEdit => "EDIT",
         }
     }
 
@@ -73,6 +79,7 @@ impl Mode {
             Mode::DbRowDetail => Color::LightBlue,
             Mode::ConnectionPicker => Color::LightBlue,
             Mode::DbConfirmRun => Color::LightRed,
+            Mode::FenceEdit => Color::LightYellow,
         }
     }
 

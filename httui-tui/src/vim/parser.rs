@@ -331,6 +331,24 @@ pub enum Action {
     /// Output → Input). Persists via `display=` in the fence so the
     /// next save carries the choice. Mnemonic: "go display".
     CycleDisplayMode,
+    /// `<C-a>` on a block — open an inline alias-edit prompt
+    /// prefilled with the current alias. Confirm writes back to the
+    /// block + persists into the fence on the next save; cancel
+    /// leaves the alias untouched.
+    OpenFenceEditAlias,
+    /// One typeable character into the fence-edit prompt's input
+    /// buffer. Driven by `parse_fence_edit`; mirrors `TreePromptChar`.
+    FenceEditChar(char),
+    FenceEditBackspace,
+    FenceEditDelete,
+    FenceEditCursorLeft,
+    FenceEditCursorRight,
+    FenceEditCursorHome,
+    FenceEditCursorEnd,
+    /// `<CR>` inside the prompt — validate + commit the edit.
+    FenceEditConfirm,
+    /// `<Esc>` / `<C-c>` inside the prompt — close without writing.
+    FenceEditCancel,
     /// `Esc` / `Ctrl-C` inside the picker — close without picking.
     CloseConnectionPicker,
     /// `j` / `Down` / `k` / `Up` inside the picker — move the
@@ -769,6 +787,9 @@ pub fn parse_normal(state: &mut VimState, key: KeyEvent) -> Action {
     if kb::matches_explain_block(&key) {
         return Action::ExplainBlock;
     }
+    if kb::matches_edit_block_alias(&key) {
+        return Action::OpenFenceEditAlias;
+    }
 
     match (modifiers, code) {
         // gg / G with optional count — these need state.
@@ -1091,6 +1112,40 @@ pub fn parse_tree_prompt(key: KeyEvent) -> Action {
         (KeyModifiers::CONTROL, KeyCode::Char('d')) => Action::TreePromptDelete,
         (mods, KeyCode::Char(c)) if !mods.contains(KeyModifiers::CONTROL) => {
             Action::TreePromptChar(c)
+        }
+        _ => Action::Noop,
+    }
+}
+
+/// Translate one key inside the inline fence-edit prompt (alias /
+/// limit / timeout). Same emacs-style shortcuts as the tree prompt
+/// — keeps muscle memory consistent across all TUI prompts.
+///
+/// Note: `Ctrl-A` here is `CursorHome`, NOT "open alias edit". The
+/// "open alias edit" chord (`<C-a>`) only fires in normal mode; once
+/// we're inside the prompt, the same chord becomes the standard
+/// emacs jump-to-line-start.
+pub fn parse_fence_edit(key: KeyEvent) -> Action {
+    let KeyEvent {
+        code, modifiers, ..
+    } = key;
+    match (modifiers, code) {
+        (_, KeyCode::Esc) => Action::FenceEditCancel,
+        (KeyModifiers::CONTROL, KeyCode::Char('c')) => Action::FenceEditCancel,
+        (_, KeyCode::Enter) => Action::FenceEditConfirm,
+        (_, KeyCode::Backspace) => Action::FenceEditBackspace,
+        (_, KeyCode::Delete) => Action::FenceEditDelete,
+        (_, KeyCode::Left) => Action::FenceEditCursorLeft,
+        (_, KeyCode::Right) => Action::FenceEditCursorRight,
+        (_, KeyCode::Home) => Action::FenceEditCursorHome,
+        (_, KeyCode::End) => Action::FenceEditCursorEnd,
+        (KeyModifiers::CONTROL, KeyCode::Char('a')) => Action::FenceEditCursorHome,
+        (KeyModifiers::CONTROL, KeyCode::Char('e')) => Action::FenceEditCursorEnd,
+        (KeyModifiers::CONTROL, KeyCode::Char('b')) => Action::FenceEditCursorLeft,
+        (KeyModifiers::CONTROL, KeyCode::Char('f')) => Action::FenceEditCursorRight,
+        (KeyModifiers::CONTROL, KeyCode::Char('d')) => Action::FenceEditDelete,
+        (mods, KeyCode::Char(c)) if !mods.contains(KeyModifiers::CONTROL) => {
+            Action::FenceEditChar(c)
         }
         _ => Action::Noop,
     }
@@ -1816,6 +1871,59 @@ mod tests {
         assert_eq!(
             parse_normal(&mut s, key(KeyCode::Char('d'))),
             Action::CycleDisplayMode
+        );
+    }
+
+    #[test]
+    fn ctrl_a_opens_alias_edit_prompt() {
+        // `<C-a>` (vim's "increment" — we don't bind that) opens
+        // the inline alias-edit prompt for the focused block.
+        let mut s = VimState::new();
+        assert_eq!(
+            parse_normal(&mut s, key_ctrl(KeyCode::Char('a'))),
+            Action::OpenFenceEditAlias
+        );
+    }
+
+    #[test]
+    fn parse_fence_edit_routes_typeable_chars() {
+        // Plain typing (no CONTROL) goes into the input buffer; the
+        // dispatch arm appends each char to `LineEdit`. Mirrors the
+        // tree-prompt behavior so users get the same feel.
+        assert_eq!(
+            parse_fence_edit(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE)),
+            Action::FenceEditChar('q')
+        );
+    }
+
+    #[test]
+    fn parse_fence_edit_routes_control_keys() {
+        // Enter / Esc / Backspace / Delete + the emacs-style cursor
+        // shortcuts. Lists the surface so a future refactor of the
+        // dispatch arms doesn't silently drop a binding.
+        assert_eq!(
+            parse_fence_edit(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
+            Action::FenceEditConfirm
+        );
+        assert_eq!(
+            parse_fence_edit(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
+            Action::FenceEditCancel
+        );
+        assert_eq!(
+            parse_fence_edit(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL)),
+            Action::FenceEditCancel
+        );
+        assert_eq!(
+            parse_fence_edit(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE)),
+            Action::FenceEditBackspace
+        );
+        assert_eq!(
+            parse_fence_edit(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL)),
+            Action::FenceEditCursorHome
+        );
+        assert_eq!(
+            parse_fence_edit(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::CONTROL)),
+            Action::FenceEditCursorEnd
         );
     }
 

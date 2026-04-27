@@ -50,6 +50,22 @@ pub fn render_status_bar(frame: &mut Frame, area: Rect, app: &App) {
         return;
     }
 
+    if app.vim.mode == Mode::FenceEdit {
+        if let Some(prompt) = app.fence_edit.as_ref() {
+            // Same status-bar prompt shape as the tree prompt — label
+            // in yellow, then the live buffer in default style. Blank
+            // input shows as just the label so users see the cursor
+            // position even before they type.
+            let label = format!("{}: ", prompt.kind.label());
+            let line = Line::from(vec![
+                Span::styled(label, Style::default().fg(Color::LightYellow)),
+                Span::raw(prompt.input.as_str().to_string()),
+            ]);
+            frame.render_widget(Paragraph::new(line), area);
+        }
+        return;
+    }
+
     if let Some(msg) = app.status_message.as_ref() {
         let style = match msg.kind {
             StatusKind::Info => Style::default(),
