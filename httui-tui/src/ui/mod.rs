@@ -442,13 +442,19 @@ fn overlay_visual_selection(
     viewport_top: u16,
     overlay: VisualOverlay,
 ) {
+    // Both ends must address the same segment. Visual selection
+    // crossing block boundaries is refused by the operator engine
+    // anyway (InBlockSwap promotes one block at a time), so the
+    // highlight stays within a single segment.
     let (a_seg, a_off) = match overlay.anchor {
         Cursor::InProse { segment_idx, offset } => (segment_idx, offset),
-        Cursor::InBlock { .. } | Cursor::InBlockResult { .. } => return,
+        Cursor::InBlock { segment_idx, offset } => (segment_idx, offset),
+        Cursor::InBlockResult { .. } => return,
     };
     let (c_seg, c_off) = match doc.cursor() {
         Cursor::InProse { segment_idx, offset } => (segment_idx, offset),
-        Cursor::InBlock { .. } | Cursor::InBlockResult { .. } => return,
+        Cursor::InBlock { segment_idx, offset } => (segment_idx, offset),
+        Cursor::InBlockResult { .. } => return,
     };
     if a_seg != c_seg {
         return;
@@ -458,8 +464,18 @@ fn overlay_visual_selection(
         Some(l) => *l,
         None => return,
     };
-    let rope = match doc.segments().get(a_seg) {
+    // Pull the rope from whichever segment kind owns the cursor.
+    // For InBlock that's `b.raw` — the same rope motions and edits
+    // walk after Phases 3/5 — so the visual highlight maps line by
+    // line onto the block's reserved rows (header at y_start, body
+    // lines at y_start+1..N, closer at the last row).
+    let rope_owned: ropey::Rope;
+    let rope: &ropey::Rope = match doc.segments().get(a_seg) {
         Some(Segment::Prose(r)) => r,
+        Some(Segment::Block(b)) => {
+            rope_owned = b.raw.clone();
+            &rope_owned
+        }
         _ => return,
     };
     let total = rope.len_chars();

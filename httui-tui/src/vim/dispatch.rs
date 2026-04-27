@@ -1367,12 +1367,47 @@ fn apply_visual_operator(app: &mut App, op: Operator, _recording: bool) {
     let linewise = matches!(app.vim.mode, Mode::VisualLine);
     let mut outcome = operator::OpOutcome::default();
     let mut unnamed = std::mem::take(&mut app.vim.unnamed);
+
+    // When the visual selection lives entirely inside a single block
+    // (anchor + cursor both InBlock, same segment), promote the
+    // block's raw rope to a Prose segment for the duration of the
+    // operator. Same trick `InBlockSwap` uses for d/y/c with motions
+    // — this lets v / V on the fence header / closer actually
+    // delete / yank the selected chars instead of silently no-oping.
+    let cursor_now = app.document().map(|d| d.cursor());
+    let in_block_swap = matches!(
+        (anchor, cursor_now),
+        (Cursor::InBlock { segment_idx: a, .. }, Some(Cursor::InBlock { segment_idx: c, .. })) if a == c
+    );
+    let swap = if in_block_swap {
+        InBlockSwap::maybe_enter(app)
+    } else {
+        None
+    };
+    // After the swap, both endpoints need to be InProse-shaped at
+    // the equivalent raw offsets so apply_visual operates on them
+    // as prose ranges.
+    let translated_anchor = if let Some(swap) = swap.as_ref() {
+        match anchor {
+            Cursor::InBlock { offset, .. } => Cursor::InProse {
+                segment_idx: swap.segment_idx,
+                offset,
+            },
+            other => other,
+        }
+    } else {
+        anchor
+    };
+
     if let Some(doc) = app.document_mut() {
         if !matches!(op, Operator::Yank) {
             doc.snapshot();
         }
         let cursor = doc.cursor();
-        outcome = operator::apply_visual(op, anchor, cursor, linewise, doc, &mut unnamed);
+        outcome = operator::apply_visual(op, translated_anchor, cursor, linewise, doc, &mut unnamed);
+    }
+    if let Some(swap) = swap {
+        swap.exit(app);
     }
     app.vim.unnamed = unnamed;
     sync_yank_to_clipboard(app, op);
