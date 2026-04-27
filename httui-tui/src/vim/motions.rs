@@ -760,6 +760,14 @@ fn block_result_row_count(doc: &Document, segment_idx: usize) -> usize {
         Some(r) => r,
         None => return 0,
     };
+    // HTTP blocks: treat the response panel as a single landing
+    // row so j/k can park the cursor on it (`<CR>` then opens the
+    // detail viewer). Body line counting could be exposed later
+    // for line-by-line scrolling, but parking-only suffices for
+    // V1 — the panel viewport is internally scrollable already.
+    if block.is_http() {
+        return 1;
+    }
     let first = match result
         .get("results")
         .and_then(|v| v.as_array())
