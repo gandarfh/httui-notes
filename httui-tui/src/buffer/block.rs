@@ -194,6 +194,43 @@ impl BlockNode {
         self.block_type == "e2e"
     }
 
+    /// Re-derive `block_type` / `alias` / `display_mode` / `params`
+    /// from the current `raw` rope. Preserves `id`, `state`, and
+    /// `cached_result` — those live on the BlockNode, not in the
+    /// markdown, and survive every edit.
+    ///
+    /// When `raw` parses cleanly to exactly one block, the derived
+    /// fields are replaced wholesale. When it parses to zero blocks
+    /// (e.g. user is mid-typing a fence and the closer is missing),
+    /// the derived fields stay at their last-good values — the user
+    /// can keep editing `raw` and the moment the fence becomes valid
+    /// again the next `reparse_from_raw` picks the new values up. We
+    /// deliberately do NOT dissolve the segment back into prose here:
+    /// that would surprise the user mid-edit and would lose the
+    /// block's `id` / `cached_result`.
+    ///
+    /// Returns `true` when a valid re-parse updated the derived
+    /// fields; `false` when the rope is currently malformed.
+    pub fn reparse_from_raw(&mut self) -> bool {
+        let text = self.raw.to_string();
+        let parsed = httui_core::blocks::parse_blocks(&text);
+        // A clean single-block parse is the only state where it's
+        // safe to replace the derived fields. The "zero blocks"
+        // branch keeps last-good fields so cached_result lookups
+        // and run gating stay sane while the user types.
+        let Some(p) = parsed.first() else {
+            return false;
+        };
+        if parsed.len() != 1 {
+            return false;
+        }
+        self.block_type = p.block_type.clone();
+        self.alias = p.alias.clone();
+        self.display_mode = p.display_mode.clone();
+        self.params = p.params.clone();
+        true
+    }
+
     /// Round-trip the block back to its canonical fence markdown.
     /// Bridges to `httui_core::blocks::serialize_block` by stuffing
     /// the BlockNode's fields into a synthetic `ParsedBlock` (line
@@ -446,5 +483,81 @@ mod tests {
     #[test]
     fn header_raw_offset_is_zero() {
         assert_eq!(header_raw_offset(), 0);
+    }
+
+    // ─── reparse_from_raw ───
+
+    fn block_with_raw(text: &str) -> BlockNode {
+        // Build through parse_blocks so the initial derived fields
+        // are already populated; the test then mutates `raw` and
+        // checks that reparse rederives them.
+        let parsed = httui_core::blocks::parse_blocks(text);
+        let p = parsed.into_iter().next().expect("fixture must parse");
+        BlockNode {
+            id: BlockId(0),
+            raw: Rope::from_str(text.trim_end_matches('\n')),
+            block_type: p.block_type,
+            alias: p.alias,
+            display_mode: p.display_mode,
+            params: p.params,
+            state: ExecutionState::Idle,
+            cached_result: None,
+        }
+    }
+
+    #[test]
+    fn reparse_from_raw_updates_alias_and_query() {
+        let mut b = block_with_raw("```db-postgres alias=q\nSELECT 1\n```\n");
+        // Mutate raw directly: rename alias and append a char to the body.
+        let new_text = "```db-postgres alias=renamed\nSELECT 11\n```";
+        b.raw = Rope::from_str(new_text);
+        assert!(b.reparse_from_raw());
+        assert_eq!(b.alias.as_deref(), Some("renamed"));
+        assert_eq!(
+            b.params.get("query").and_then(|v| v.as_str()),
+            Some("SELECT 11")
+        );
+    }
+
+    #[test]
+    fn reparse_preserves_id_and_cached_result() {
+        // Cached state survives a successful reparse — that's the
+        // whole point of the (id, cached_result) pair living off the
+        // markdown.
+        let mut b = block_with_raw("```db-postgres alias=q\nSELECT 1\n```\n");
+        b.id = BlockId(42);
+        b.state = ExecutionState::Success;
+        b.cached_result = Some(serde_json::json!({"results": [{"rows": []}]}));
+        b.raw = Rope::from_str("```db-postgres alias=q\nSELECT 2\n```");
+        assert!(b.reparse_from_raw());
+        assert_eq!(b.id, BlockId(42));
+        assert_eq!(b.state, ExecutionState::Success);
+        assert!(b.cached_result.is_some());
+    }
+
+    #[test]
+    fn reparse_keeps_last_good_when_raw_yields_multiple_blocks() {
+        // User types an extra ``` mid-body that splits the rope into
+        // two parsed blocks. We can't pick which one wins, so derived
+        // fields stay frozen until the user restores a single-block
+        // shape.
+        let mut b = block_with_raw("```db-postgres alias=q\nSELECT 1\n```\n");
+        let original_query =
+            b.params.get("query").and_then(|v| v.as_str()).map(String::from);
+        // Insert a stray closer and a new opener — now `parse_blocks`
+        // sees two blocks.
+        b.raw = Rope::from_str(
+            "```db-postgres alias=q\nSELECT 1\n```\n```db-postgres alias=q2\nSELECT 2\n```",
+        );
+        assert!(
+            !b.reparse_from_raw(),
+            "two-block raw must reject the reparse"
+        );
+        // last-good values stay put.
+        assert_eq!(b.alias.as_deref(), Some("q"));
+        assert_eq!(
+            b.params.get("query").and_then(|v| v.as_str()).map(String::from),
+            original_query
+        );
     }
 }

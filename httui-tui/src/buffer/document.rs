@@ -1,9 +1,7 @@
 use httui_core::blocks::{parse_blocks, parser::ParsedBlock, serialize_block};
 use ropey::Rope;
 
-use crate::buffer::block::{
-    body_line_col_to_raw_offset, raw_section_at, BlockId, BlockNode, ExecutionState, RawSection,
-};
+use crate::buffer::block::{BlockId, BlockNode, ExecutionState};
 use crate::buffer::cursor::Cursor;
 use crate::buffer::segment::Segment;
 use crate::error::TuiResult;
@@ -381,13 +379,16 @@ impl Document {
     }
 
     /// Insert one character at the cursor position. Routes to either
-    /// the prose rope (for `Cursor::InProse`) or the block's editable
-    /// body (for `Cursor::InBlock` — DB blocks' `query` field for now).
+    /// the prose rope (for `Cursor::InProse`) or the block's `raw`
+    /// rope (for `Cursor::InBlock`).
     ///
-    /// For `Cursor::InBlock`, the cursor's `offset` is a char index
-    /// into `block.raw`. Inserts that fall on the fence header or
-    /// closer line are no-ops (Phase 3 routes edits through the rope
-    /// directly; until then the body is the only writable region).
+    /// `Cursor::InBlock` edits go straight to `block.raw` and trigger
+    /// `reparse_from_raw` so the derived fields (`alias`,
+    /// `display_mode`, `params`) follow the source of truth. The
+    /// fence header and closer are now editable too — typing on
+    /// them mutates the rope and may flip the parse to "no longer
+    /// a valid block", in which case `reparse_from_raw` keeps
+    /// last-good derived fields and lets the user fix the typo.
     pub fn insert_char_at_cursor(&mut self, ch: char) {
         match self.cursor {
             Cursor::InProse {
@@ -408,25 +409,17 @@ impl Document {
                 segment_idx,
                 offset,
             } => {
-                let Some((body_line, body_col)) = body_line_col_at(self, segment_idx, offset)
-                else {
+                let Some(Segment::Block(b)) = self.segments.get_mut(segment_idx) else {
                     return;
                 };
-                if let Some((new_line, new_offset)) =
-                    block_query_insert(self, segment_idx, body_line, body_col, ch)
-                {
-                    let new_raw_offset = match self.segments.get(segment_idx) {
-                        Some(Segment::Block(b)) => {
-                            body_line_col_to_raw_offset(&b.raw, new_line, new_offset)
-                        }
-                        _ => offset,
-                    };
-                    self.cursor = Cursor::InBlock {
-                        segment_idx,
-                        offset: new_raw_offset,
-                    };
-                    self.dirty = true;
-                }
+                let off = offset.min(b.raw.len_chars());
+                b.raw.insert_char(off, ch);
+                b.reparse_from_raw();
+                self.cursor = Cursor::InBlock {
+                    segment_idx,
+                    offset: off + 1,
+                };
+                self.dirty = true;
             }
             // Result rows are read-only — typing in the table is a no-op.
             Cursor::InBlockResult { .. } => {}
@@ -464,25 +457,22 @@ impl Document {
                 segment_idx,
                 offset,
             } => {
-                let Some((body_line, body_col)) = body_line_col_at(self, segment_idx, offset)
-                else {
+                if offset == 0 {
+                    return;
+                }
+                let Some(Segment::Block(b)) = self.segments.get_mut(segment_idx) else {
                     return;
                 };
-                if let Some((new_line, new_offset)) =
-                    block_query_delete_before(self, segment_idx, body_line, body_col)
-                {
-                    let new_raw_offset = match self.segments.get(segment_idx) {
-                        Some(Segment::Block(b)) => {
-                            body_line_col_to_raw_offset(&b.raw, new_line, new_offset)
-                        }
-                        _ => offset,
-                    };
-                    self.cursor = Cursor::InBlock {
-                        segment_idx,
-                        offset: new_raw_offset,
-                    };
-                    self.dirty = true;
+                if offset > b.raw.len_chars() {
+                    return;
                 }
+                b.raw.remove(offset - 1..offset);
+                b.reparse_from_raw();
+                self.cursor = Cursor::InBlock {
+                    segment_idx,
+                    offset: offset - 1,
+                };
+                self.dirty = true;
             }
             Cursor::InBlockResult { .. } => {}
         }
@@ -506,11 +496,12 @@ impl Document {
                 segment_idx,
                 offset,
             } => {
-                let Some((body_line, body_col)) = body_line_col_at(self, segment_idx, offset)
-                else {
+                let Some(Segment::Block(b)) = self.segments.get_mut(segment_idx) else {
                     return;
                 };
-                if block_query_delete_at(self, segment_idx, body_line, body_col) {
+                if offset < b.raw.len_chars() {
+                    b.raw.remove(offset..offset + 1);
+                    b.reparse_from_raw();
                     self.dirty = true;
                 }
             }
@@ -663,121 +654,6 @@ fn is_empty_prose(seg: &Segment) -> bool {
     matches!(seg, Segment::Prose(r) if r.len_chars() == 0)
 }
 
-/// Insert `ch` into the block's `query` field at `(line, offset)`.
-/// Returns the new `(line, offset)` after the insert, or `None` if
-/// the block can't be edited (missing / non-DB / no `query`).
-fn block_query_insert(
-    doc: &mut Document,
-    segment_idx: usize,
-    line: usize,
-    offset: usize,
-    ch: char,
-) -> Option<(usize, usize)> {
-    let mut chars = block_query_chars(doc, segment_idx)?;
-    let abs = chars_index_for_line_col(&chars, line, offset);
-    chars.insert(abs, ch);
-    write_block_query(doc, segment_idx, &chars)?;
-    Some(if ch == '\n' {
-        (line + 1, 0)
-    } else {
-        (line, offset + 1)
-    })
-}
-
-/// Backspace inside a block. Joins the current line to the previous
-/// when the cursor is at column 0; otherwise removes the char before
-/// the cursor. Returns the new `(line, offset)`. `None` when nothing
-/// to delete (line 0 column 0) or the block isn't editable.
-fn block_query_delete_before(
-    doc: &mut Document,
-    segment_idx: usize,
-    line: usize,
-    offset: usize,
-) -> Option<(usize, usize)> {
-    if line == 0 && offset == 0 {
-        return None;
-    }
-    let mut chars = block_query_chars(doc, segment_idx)?;
-    let (new_line, new_offset) = if offset > 0 {
-        let abs = chars_index_for_line_col(&chars, line, offset);
-        if abs == 0 {
-            return None;
-        }
-        chars.remove(abs - 1);
-        (line, offset - 1)
-    } else {
-        // Beginning of line — join with previous line by removing the
-        // newline that separates them.
-        let prev_line_chars = chars
-            .split(|c| *c == '\n')
-            .nth(line - 1)
-            .map(|l| l.len())
-            .unwrap_or(0);
-        let abs = chars_index_for_line_col(&chars, line, 0);
-        if abs == 0 {
-            return None;
-        }
-        chars.remove(abs - 1);
-        (line - 1, prev_line_chars)
-    };
-    write_block_query(doc, segment_idx, &chars)?;
-    Some((new_line, new_offset))
-}
-
-/// Forward delete inside a block. Removes the char under the cursor.
-/// Returns `true` when something was actually deleted.
-fn block_query_delete_at(
-    doc: &mut Document,
-    segment_idx: usize,
-    line: usize,
-    offset: usize,
-) -> bool {
-    let Some(mut chars) = block_query_chars(doc, segment_idx) else {
-        return false;
-    };
-    let abs = chars_index_for_line_col(&chars, line, offset);
-    if abs >= chars.len() {
-        return false;
-    }
-    chars.remove(abs);
-    write_block_query(doc, segment_idx, &chars).is_some()
-}
-
-fn block_query_chars(doc: &Document, segment_idx: usize) -> Option<Vec<char>> {
-    let seg = doc.segments.get(segment_idx)?;
-    let Segment::Block(b) = seg else { return None };
-    let s = b.params.get("query")?.as_str()?;
-    Some(s.chars().collect())
-}
-
-fn write_block_query(doc: &mut Document, segment_idx: usize, chars: &[char]) -> Option<()> {
-    let seg = doc.segments.get_mut(segment_idx)?;
-    let Segment::Block(b) = seg else { return None };
-    let new_str: String = chars.iter().collect();
-    b.params
-        .as_object_mut()?
-        .insert("query".into(), serde_json::Value::String(new_str));
-    Some(())
-}
-
-/// Convert a `Cursor::InBlock` raw-rope offset to a body `(line, col)`
-/// pair if the offset lands inside the body region. Returns `None`
-/// when the offset is on the fence header or closer (those rows are
-/// not editable through the body's `params.query` field — Phase 2
-/// preserves the existing read-only-fence behavior).
-fn body_line_col_at(
-    doc: &Document,
-    segment_idx: usize,
-    offset: usize,
-) -> Option<(usize, usize)> {
-    let seg = doc.segments.get(segment_idx)?;
-    let Segment::Block(b) = seg else { return None };
-    match raw_section_at(&b.raw, offset) {
-        RawSection::Body { line, col } => Some((line, col)),
-        RawSection::Header | RawSection::Closer => None,
-    }
-}
-
 /// Translate a `(line, char_offset_in_line)` pair into an index into
 /// the flat char vector. Lines are split by `\n`; offsets past the end
 /// of a line clamp at the line's end (just before the newline).
@@ -810,6 +686,7 @@ fn chars_index_for_line_col(chars: &[char], line: usize, offset: usize) -> usize
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::buffer::block::body_line_col_to_raw_offset;
 
     // Fixtures. Each sample is a self-contained markdown doc exercising
     // a distinct topology (block count, surrounding prose, edge placement).
