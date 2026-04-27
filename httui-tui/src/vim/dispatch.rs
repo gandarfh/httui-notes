@@ -84,6 +84,14 @@ pub fn dispatch(app: &mut App, key: KeyEvent) {
         Mode::FenceEdit => parse_fence_edit(key),
     };
 
+    // Snapshot the pre-swap cursor so the post-action "reparse on
+    // ExitInsert" hook can tell whether the user was genuinely in
+    // prose (closing-fence-completion case) or inside a block via
+    // the swap (then `swap.exit` already rebuilds the block, and
+    // reparse would corrupt the cursor).
+    let cursor_before_swap = app.document().map(|d| d.cursor());
+    let was_exit_insert = matches!(action, Action::ExitInsert);
+
     // When the cursor is parked inside a block's editable body, swap
     // the block segment for a synthetic prose segment so the entire
     // motion/operator engine — built around `Cursor::InProse` — can
@@ -97,6 +105,23 @@ pub fn dispatch(app: &mut App, key: KeyEvent) {
     apply_action(app, action, /* recording = */ true);
     if let Some(s) = swap {
         s.exit(app);
+    }
+
+    // ExitInsert from genuine prose: the user might have just typed a
+    // closing fence, so re-scan the prose for newly complete blocks
+    // and splice them in. This *must* run after the swap is fully
+    // unwound — running it while the swap is active would splice the
+    // synthetic prose (= the original block's raw) back into the doc
+    // and teleport the cursor out of the block.
+    let was_in_prose = matches!(cursor_before_swap, Some(Cursor::InProse { .. }));
+    if was_exit_insert && was_in_prose {
+        if let Some(Cursor::InProse { segment_idx, .. }) = app.document().map(|d| d.cursor()) {
+            if let Some(doc) = app.document_mut() {
+                if doc.reparse_prose_at(segment_idx) {
+                    app.set_status(StatusKind::Info, "block parsed");
+                }
+            }
+        }
     }
     // After a typing-relevant action lands in a DB block, refresh
     // the completion popup against the new prefix. `InsertChar` and
@@ -618,15 +643,13 @@ fn apply_action(app: &mut App, action: Action, recording: bool) {
         Action::ConfirmDbRun => apply_confirm_db_run(app),
         Action::CancelDbRun => apply_cancel_db_run(app),
         Action::ExitInsert => {
-            // Snapshot which prose segment the cursor was in BEFORE
-            // recoil — that's the segment we want to re-parse for any
-            // fence the user just finished typing. Re-parse only on
-            // Insert exit (not per keystroke) to avoid mid-word splice
-            // churn while typing.
-            let reparse_idx = match app.document().map(|d| d.cursor()) {
-                Some(Cursor::InProse { segment_idx, .. }) => Some(segment_idx),
-                _ => None,
-            };
+            // Recoil the cursor one column (vim's `<Esc>` semantics)
+            // and flip the mode. The "did the user just finish a
+            // fence?" reparse is handled at the dispatch top level —
+            // running it here would fire while the in-block swap is
+            // still pretending the block is a Prose segment, which
+            // splices the synthetic prose back into the doc and
+            // jumps the cursor out of the block.
             if let Some(doc) = app.document_mut() {
                 recoil_after_exit(doc);
             }
@@ -639,15 +662,6 @@ fn apply_action(app: &mut App, action: Action, recording: bool) {
                 // Discard the in-flight session without overwriting the
                 // existing `last_change` — replay path.
                 let _ = app.vim.insert_session.finish();
-            }
-            // CM6-equivalent block authoring: if the prose the user
-            // just left now contains a complete fence, splice the new
-            // block(s) into the document. Cursor lands sensibly via
-            // the helper.
-            if let (Some(idx), Some(doc)) = (reparse_idx, app.document_mut()) {
-                if doc.reparse_prose_at(idx) {
-                    app.set_status(StatusKind::Info, "block parsed");
-                }
             }
         }
         Action::InsertChar(c) => {
