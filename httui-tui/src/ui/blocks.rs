@@ -42,23 +42,36 @@ pub fn render_block_with_selection(
     names: &ConnectionNames,
     result_tab: crate::app::ResultPanelTab,
 ) {
-    // Raw fence view when the cursor sits on the block: paint the
-    // ` ```<info> ` line above and the ` ``` ` closer below the card,
-    // matching CM6 desktop's behavior on cursor-enter. The layout
-    // module already reserved 2 extra rows for these (see
-    // `block_height`'s `cursor_on_block` branch); shrink `area` to
-    // the card's slice so border + body still fit.
-    let card_area = if selected {
+    // Raw view when the cursor sits on the block: drop the bordered
+    // card chrome entirely and paint the canonical fence header
+    // ` ```<info> ` where the top border was + the ` ``` ` closer
+    // where the bottom border was. The middle (content) keeps the
+    // same dimensions, so cursor coordinates inside the body stay
+    // valid and the document doesn't reflow on enter/leave. Mirrors
+    // the CM6 desktop behavior where entering a block exposes the
+    // raw markdown source as if it were prose.
+    if selected {
         render_fence_lines(frame, area, b);
-        Rect {
+        let inner = Rect {
             x: area.x,
             y: area.y.saturating_add(1),
             width: area.width,
             height: area.height.saturating_sub(2),
+        };
+        if b.is_db() {
+            render_db_inner(frame, inner, b, selected_row, viewport_top, names, result_tab);
+        } else {
+            let lines = if b.is_http() {
+                http_body(b)
+            } else if b.is_e2e() {
+                e2e_body(b)
+            } else {
+                generic_body(b)
+            };
+            frame.render_widget(Paragraph::new(lines), inner);
         }
-    } else {
-        area
-    };
+        return;
+    }
 
     let title = block_title(b);
     let border_color = state_color(&b.state, selected);
@@ -66,8 +79,8 @@ pub fn render_block_with_selection(
         .borders(Borders::ALL)
         .title(title)
         .border_style(Style::default().fg(border_color));
-    let inner = outer.inner(card_area);
-    frame.render_widget(outer, card_area);
+    let inner = outer.inner(area);
+    frame.render_widget(outer, area);
 
     if b.is_db() {
         render_db_inner(frame, inner, b, selected_row, viewport_top, names, result_tab);
