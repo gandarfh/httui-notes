@@ -118,10 +118,10 @@ pub fn execute(app: &mut App, cmd: ExCmd) -> ExResult {
             ExResult::Ok(String::new())
         }
         ExCmd::Explain => {
-            // Delegate to dispatch so the EXPLAIN run flows through
-            // the same spawn / cancel / status pipeline as a normal
-            // `r` press. Status feedback is handled inside.
-            crate::vim::dispatch::run_explain_block(app);
+            // Domain command lives in `commands::db`; the actual
+            // spawn still bridges through dispatch's
+            // `run_db_block_inner_for_explain` until that migrates.
+            crate::commands::db::run_explain(app);
             ExResult::Ok(String::new())
         }
     }

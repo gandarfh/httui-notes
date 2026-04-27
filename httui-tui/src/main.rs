@@ -8,6 +8,7 @@ mod app;
 mod buffer;
 mod cli;
 mod clipboard;
+mod commands;
 mod config;
 mod document_loader;
 mod error;
