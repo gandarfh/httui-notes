@@ -16,3 +16,4 @@
 //! the classic vim verbs (`:w`, `:q`, `:e`, `:noh`).
 
 pub mod db;
+pub mod http;

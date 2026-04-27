@@ -545,7 +545,7 @@ fn find_close_marker(b: &[u8]) -> Option<usize> {
     None
 }
 
-fn resolve_one_ref(
+pub(crate) fn resolve_one_ref(
     segments: &[crate::buffer::Segment],
     current_segment: usize,
     inner: &str,
@@ -841,26 +841,38 @@ pub fn apply_run_block(app: &mut App) {
     if app.running_query.is_some() {
         app.set_status(
             StatusKind::Info,
-            "another query is already running — Ctrl-C to cancel",
+            "another block is already running — Ctrl-C to cancel",
         );
         return;
     }
 
-    // Resolve the cursor → block. The actual run logic lives in
-    // `run_db_block_inner` so the confirm-modal handler can re-enter
-    // it with a `force_unscoped: true` flag after the user OK's a
-    // destructive query.
     let Some(doc) = app.document() else { return };
     let Cursor::InBlock { segment_idx, .. } = doc.cursor() else {
         app.set_status(StatusKind::Info, "no block at cursor (place cursor on a block first)");
         return;
     };
-    run_db_block_inner(
-        app,
-        segment_idx,
-        /* force_unscoped = */ false,
-        None,
-        /* as_explain = */ false,
+    let block_type = match doc.segments().get(segment_idx) {
+        Some(Segment::Block(b)) => b.block_type.clone(),
+        _ => return,
+    };
+
+    if block_type == "http" {
+        crate::commands::http::apply_run_http_block(app, segment_idx);
+        return;
+    }
+    if block_type.starts_with("db-") || block_type == "db" {
+        run_db_block_inner(
+            app,
+            segment_idx,
+            /* force_unscoped = */ false,
+            None,
+            /* as_explain = */ false,
+        );
+        return;
+    }
+    app.set_status(
+        StatusKind::Info,
+        format!("`{block_type}` blocks aren't runnable yet"),
     );
 }
 

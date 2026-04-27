@@ -2,6 +2,7 @@ use crossterm::event::{Event as CtEvent, KeyEvent};
 use futures::StreamExt;
 use httui_core::db::schema_cache::SchemaEntry;
 use httui_core::executor::db::types::DbResponse;
+use httui_core::executor::http::types::HttpResponse;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -28,6 +29,13 @@ pub enum AppEvent {
         segment_idx: usize,
         kind: DbBlockResultKind,
         outcome: Result<DbResponse, String>,
+    },
+    /// A backgrounded HTTP request finished. The main loop folds
+    /// the response into `block.cached_result` and clears the
+    /// `running_query` slot.
+    HttpBlockResult {
+        segment_idx: usize,
+        outcome: Result<HttpResponse, String>,
     },
     /// A backgrounded schema introspection finished. Spawned by
     /// `App::ensure_schema_loaded` (typically right after the user

@@ -949,6 +949,12 @@ async fn main_loop(
                     outcome,
                 );
             }
+            Some(AppEvent::HttpBlockResult {
+                segment_idx,
+                outcome,
+            }) => {
+                crate::commands::http::handle_http_block_result(app, segment_idx, outcome);
+            }
             Some(AppEvent::SchemaLoaded {
                 connection_id,
                 result,
