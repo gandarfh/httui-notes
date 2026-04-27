@@ -460,32 +460,20 @@ impl InBlockSwap {
         else {
             return None;
         };
-        // Operator engine swap only makes sense inside the body —
-        // header / closer don't have a `query` to splice into the
-        // prose. Bail out so callers see no swap (operator falls
-        // through to its no-op).
-        let doc_ref = app.document()?;
-        let (line, col) = match doc_ref.segments().get(segment_idx)? {
-            Segment::Block(b) => match crate::buffer::block::raw_section_at(&b.raw, raw_offset) {
-                crate::buffer::block::RawSection::Body { line, col } => (line, col),
-                _ => return None,
-            },
-            _ => return None,
-        };
         let doc = app.tabs.active_document_mut()?;
         let block = match doc.segments().get(segment_idx)? {
             Segment::Block(b) => b.clone(),
             _ => return None,
         };
-        let query = block
-            .params
-            .get("query")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        let chars: Vec<char> = query.chars().collect();
-        let abs = chars_index_for_line_col(&chars, line, col);
-        doc.replace_segment(segment_idx, Segment::Prose(Rope::from_str(&query)));
+        // Promote the entire raw rope (header + body + closer) to a
+        // Prose segment so the operator engine treats every row as
+        // editable text. After the operator runs, `exit` parses the
+        // mutated rope back into a block (or keeps last-good fields
+        // when the fence is broken mid-edit). This is what unlocks
+        // d / y / c on the fence header — `alias=foo` deletions, etc.
+        let raw_text = block.raw.to_string();
+        doc.replace_segment(segment_idx, Segment::Prose(Rope::from_str(&raw_text)));
+        let abs = raw_offset.min(raw_text.chars().count());
         doc.set_cursor(Cursor::InProse {
             segment_idx,
             offset: abs,
@@ -493,7 +481,7 @@ impl InBlockSwap {
         Some(Self {
             segment_idx,
             original_block: block,
-            original_query: query,
+            original_query: raw_text,
         })
     }
 
@@ -501,86 +489,39 @@ impl InBlockSwap {
         let Some(doc) = app.tabs.active_document_mut() else {
             return;
         };
-        let new_query = match doc.segments().get(self.segment_idx) {
+        let new_raw = match doc.segments().get(self.segment_idx) {
             Some(Segment::Prose(rope)) => rope.to_string(),
             _ => self.original_query.clone(),
         };
         let cursor_after = doc.cursor();
+        // Rebuild the block from the mutated raw rope. We try to
+        // reparse — clean parses update derived fields; broken
+        // parses keep last-good fields so the user can keep editing.
+        // Either way, id / state / cached_result survive (Phase 3
+        // contract).
         let mut new_block = self.original_block.clone();
-        if let Some(obj) = new_block.params.as_object_mut() {
-            obj.insert(
-                "query".into(),
-                serde_json::Value::String(new_query.clone()),
-            );
-        }
+        new_block.raw = Rope::from_str(&new_raw);
+        new_block.reparse_from_raw();
         doc.replace_segment(self.segment_idx, Segment::Block(new_block));
         // If the cursor still points at the swapped segment, convert
-        // back to InBlock at the equivalent body `(line, col)` and
-        // map it to the matching raw-rope offset on the rebuilt
-        // block. If the action moved the cursor out (j/k crossed the
-        // boundary, etc.) leave it where it landed.
+        // back to InBlock at the equivalent raw offset. The prose-mode
+        // operator may have moved it past the new rope's length —
+        // clamp.
         if let Cursor::InProse {
             segment_idx,
             offset: abs,
         } = cursor_after
         {
             if segment_idx == self.segment_idx {
-                let chars: Vec<char> = new_query.chars().collect();
-                let (line, col) = line_col_from_abs(&chars, abs);
-                let raw_offset = match doc.segments().get(segment_idx) {
-                    Some(Segment::Block(b)) => crate::buffer::block::body_line_col_to_raw_offset(
-                        &b.raw, line, col,
-                    ),
-                    _ => 0,
-                };
+                let new_len = new_raw.chars().count();
+                let clamped = abs.min(new_len);
                 doc.set_cursor(Cursor::InBlock {
                     segment_idx,
-                    offset: raw_offset,
+                    offset: clamped,
                 });
             }
         }
     }
-}
-
-fn chars_index_for_line_col(chars: &[char], line: usize, offset: usize) -> usize {
-    let mut current_line = 0usize;
-    let mut col = 0usize;
-    for (idx, c) in chars.iter().enumerate() {
-        if current_line == line {
-            if col == offset {
-                return idx;
-            }
-            if *c == '\n' {
-                return idx;
-            }
-            col += 1;
-        }
-        if *c == '\n' {
-            if current_line == line {
-                return idx;
-            }
-            current_line += 1;
-            col = 0;
-        }
-    }
-    chars.len()
-}
-
-fn line_col_from_abs(chars: &[char], abs: usize) -> (usize, usize) {
-    let mut line = 0usize;
-    let mut col = 0usize;
-    for (i, c) in chars.iter().enumerate() {
-        if i == abs {
-            return (line, col);
-        }
-        if *c == '\n' {
-            line += 1;
-            col = 0;
-        } else {
-            col += 1;
-        }
-    }
-    (line, col)
 }
 
 /// Run an action against the app. `recording` toggles whether the
