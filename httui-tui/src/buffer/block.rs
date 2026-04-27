@@ -1,6 +1,135 @@
 use ropey::Rope;
 use serde_json::Value;
 
+/// Where in a block's `raw` rope the cursor sits.
+///
+/// A block's `raw` text is `\`\`\`<info>\n<body>\n\`\`\`` — three
+/// regions the cursor model needs to discriminate so motions, render,
+/// and edits can act differently on each. `Body { line, col }` indexes
+/// the body sub-region (line 0 = first body line); `Header` is the
+/// info-string row at the top; `Closer` is the trailing ` \`\`\` ` row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RawSection {
+    Header,
+    Body { line: usize, col: usize },
+    Closer,
+}
+
+/// Resolve which section of the block's raw rope `offset` falls into,
+/// plus the line / column inside the body when applicable. Out-of-range
+/// offsets clamp to the last line.
+///
+/// Convention: a 1-line raw (degenerate, only opener) treats every
+/// offset as `Header`; a 2-line raw treats line 0 as `Header` and line
+/// 1 as `Closer`. The common 3+ line shape (header + body lines +
+/// closer) is what callers actually see.
+pub fn raw_section_at(raw: &Rope, offset: usize) -> RawSection {
+    let total = raw.len_chars();
+    let off = offset.min(total);
+    let raw_lines = raw.len_lines();
+    if raw_lines == 0 {
+        return RawSection::Header;
+    }
+    let line = raw.char_to_line(off);
+    let line_start = raw.line_to_char(line);
+    let col = off.saturating_sub(line_start);
+
+    // Last visible line is the closer when there are at least 2 lines.
+    // `len_lines` overcounts by 1 when the rope ends with `\n` — strip
+    // that virtual trailing line so the closer is the LAST line with
+    // content, not the synthetic empty one.
+    let visible_lines = if raw.len_chars() > 0
+        && raw.char(raw.len_chars().saturating_sub(1)) == '\n'
+    {
+        raw_lines.saturating_sub(1)
+    } else {
+        raw_lines
+    };
+    if line == 0 {
+        RawSection::Header
+    } else if visible_lines >= 2 && line + 1 >= visible_lines {
+        RawSection::Closer
+    } else {
+        RawSection::Body {
+            line: line - 1,
+            col,
+        }
+    }
+}
+
+/// Char offset at the start of body line `body_line` (0-indexed within
+/// body) inside `raw`. Body line 0 is raw line 1 (right after the
+/// fence header). Out-of-range body lines clamp to the last body line.
+pub fn body_line_to_raw_offset(raw: &Rope, body_line: usize) -> usize {
+    let raw_line = body_line.saturating_add(1);
+    let total_lines = raw.len_lines();
+    let line = raw_line.min(total_lines.saturating_sub(1));
+    raw.line_to_char(line)
+}
+
+/// Number of body lines in the block's raw rope (raw lines minus the
+/// fence header and closer). Returns 0 if the raw is degenerate
+/// (header only or header + closer with no body).
+pub fn body_line_count(raw: &Rope) -> usize {
+    let raw_lines = raw.len_lines();
+    let visible = if raw.len_chars() > 0
+        && raw.char(raw.len_chars().saturating_sub(1)) == '\n'
+    {
+        raw_lines.saturating_sub(1)
+    } else {
+        raw_lines
+    };
+    visible.saturating_sub(2).max(0)
+}
+
+/// Char offset where the closer line begins. For 1-line raws the
+/// closer is conceptually absent — returns the rope's length.
+pub fn closer_raw_offset(raw: &Rope) -> usize {
+    let raw_lines = raw.len_lines();
+    let visible = if raw.len_chars() > 0
+        && raw.char(raw.len_chars().saturating_sub(1)) == '\n'
+    {
+        raw_lines.saturating_sub(1)
+    } else {
+        raw_lines
+    };
+    if visible <= 1 {
+        return raw.len_chars();
+    }
+    raw.line_to_char(visible - 1)
+}
+
+/// Convert a body `(line, col)` pair into a char offset on the raw
+/// rope. Lines past the end of the body clamp to the last body line;
+/// columns past EOL clamp to the line's end (just before the trailing
+/// newline).
+pub fn body_line_col_to_raw_offset(raw: &Rope, body_line: usize, col: usize) -> usize {
+    let line_start = body_line_to_raw_offset(raw, body_line);
+    let line_idx = raw.char_to_line(line_start);
+    let next_start = if line_idx + 1 < raw.len_lines() {
+        raw.line_to_char(line_idx + 1)
+    } else {
+        raw.len_chars()
+    };
+    // Stop just before the trailing newline so we never hand a caller
+    // an offset that lands on `\n` itself.
+    let line_end = if next_start > line_start
+        && raw.get_char(next_start.saturating_sub(1)) == Some('\n')
+    {
+        next_start.saturating_sub(1)
+    } else {
+        next_start
+    };
+    line_start.saturating_add(col).min(line_end)
+}
+
+/// Char offset at the start of the fence header. Always 0 — the
+/// header is the first line of the raw rope. Provided as a named
+/// helper so callers don't sprinkle magic zeros.
+pub fn header_raw_offset() -> usize {
+    0
+}
+
 /// Document-scoped identifier for a block node.
 ///
 /// Stable across mutations for the lifetime of the [`Document`][doc] that
@@ -247,5 +376,75 @@ mod tests {
         // Unknown token → fall through to the contextual default,
         // not panic.
         assert_eq!(b.effective_display_mode(), DisplayMode::Input);
+    }
+
+    // ─── raw-rope section helpers ───
+
+    fn raw_for(text: &str) -> Rope {
+        Rope::from_str(text)
+    }
+
+    #[test]
+    fn raw_section_at_classifies_header_body_closer() {
+        // ```http alias=q\nGET /\nHEADERS\n```\n
+        // line 0: "```http alias=q"
+        // line 1: "GET /"           (body line 0)
+        // line 2: "HEADERS"         (body line 1)
+        // line 3: "```"             (closer)
+        let raw = raw_for("```http alias=q\nGET /\nHEADERS\n```\n");
+        // Offset 0 → header.
+        assert_eq!(raw_section_at(&raw, 0), RawSection::Header);
+        // Mid-header still header.
+        assert_eq!(raw_section_at(&raw, 5), RawSection::Header);
+        // First body line, col 0.
+        let body0 = body_line_to_raw_offset(&raw, 0);
+        assert_eq!(
+            raw_section_at(&raw, body0),
+            RawSection::Body { line: 0, col: 0 }
+        );
+        // Mid-body line 1.
+        let body1 = body_line_to_raw_offset(&raw, 1);
+        assert_eq!(
+            raw_section_at(&raw, body1 + 3),
+            RawSection::Body { line: 1, col: 3 }
+        );
+        // Closer.
+        let closer = closer_raw_offset(&raw);
+        assert_eq!(raw_section_at(&raw, closer), RawSection::Closer);
+    }
+
+    #[test]
+    fn body_line_count_excludes_fence_lines() {
+        let raw = raw_for("```db-postgres\nSELECT 1\nFROM users\n```\n");
+        assert_eq!(body_line_count(&raw), 2);
+    }
+
+    #[test]
+    fn body_line_count_zero_when_no_body() {
+        let raw = raw_for("```http\n```\n");
+        assert_eq!(body_line_count(&raw), 0);
+    }
+
+    #[test]
+    fn body_line_col_clamps_past_eol() {
+        let raw = raw_for("```db\nABC\n```\n");
+        // Body line 0 is "ABC" (len 3). Asking for col 99 clamps to 3.
+        let off = body_line_col_to_raw_offset(&raw, 0, 99);
+        let line0_start = body_line_to_raw_offset(&raw, 0);
+        assert_eq!(off, line0_start + 3);
+    }
+
+    #[test]
+    fn closer_raw_offset_points_to_closer_line_start() {
+        let raw = raw_for("```db\nSELECT 1\n```\n");
+        let off = closer_raw_offset(&raw);
+        // The 3 chars at `off..off+3` should be the backticks.
+        let s: String = raw.slice(off..off + 3).to_string();
+        assert_eq!(s, "```");
+    }
+
+    #[test]
+    fn header_raw_offset_is_zero() {
+        assert_eq!(header_raw_offset(), 0);
     }
 }

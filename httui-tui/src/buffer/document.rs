@@ -1,7 +1,9 @@
 use httui_core::blocks::{parse_blocks, parser::ParsedBlock, serialize_block};
 use ropey::Rope;
 
-use crate::buffer::block::{BlockId, BlockNode, ExecutionState};
+use crate::buffer::block::{
+    body_line_col_to_raw_offset, raw_section_at, BlockId, BlockNode, ExecutionState, RawSection,
+};
 use crate::buffer::cursor::Cursor;
 use crate::buffer::segment::Segment;
 use crate::error::TuiResult;
@@ -84,7 +86,6 @@ impl Document {
             },
             Some(Segment::Block(_)) => Cursor::InBlock {
                 segment_idx: 0,
-                line: 0,
                 offset: 0,
             },
             None => {
@@ -269,7 +270,6 @@ impl Document {
             },
             Some(Segment::Block(_)) => Cursor::InBlock {
                 segment_idx: landing,
-                line: 0,
                 offset: 0,
             },
             None => Cursor::InProse {
@@ -383,6 +383,11 @@ impl Document {
     /// Insert one character at the cursor position. Routes to either
     /// the prose rope (for `Cursor::InProse`) or the block's editable
     /// body (for `Cursor::InBlock` — DB blocks' `query` field for now).
+    ///
+    /// For `Cursor::InBlock`, the cursor's `offset` is a char index
+    /// into `block.raw`. Inserts that fall on the fence header or
+    /// closer line are no-ops (Phase 3 routes edits through the rope
+    /// directly; until then the body is the only writable region).
     pub fn insert_char_at_cursor(&mut self, ch: char) {
         match self.cursor {
             Cursor::InProse {
@@ -401,27 +406,30 @@ impl Document {
             }
             Cursor::InBlock {
                 segment_idx,
-                line,
                 offset,
             } => {
+                let Some((body_line, body_col)) = body_line_col_at(self, segment_idx, offset)
+                else {
+                    return;
+                };
                 if let Some((new_line, new_offset)) =
-                    block_query_insert(self, segment_idx, line, offset, ch)
+                    block_query_insert(self, segment_idx, body_line, body_col, ch)
                 {
+                    let new_raw_offset = match self.segments.get(segment_idx) {
+                        Some(Segment::Block(b)) => {
+                            body_line_col_to_raw_offset(&b.raw, new_line, new_offset)
+                        }
+                        _ => offset,
+                    };
                     self.cursor = Cursor::InBlock {
                         segment_idx,
-                        line: new_line,
-                        offset: new_offset,
+                        offset: new_raw_offset,
                     };
                     self.dirty = true;
                 }
             }
             // Result rows are read-only — typing in the table is a no-op.
             Cursor::InBlockResult { .. } => {}
-            // Fence header / closer rows are render-only landing spots
-            // for `dd`/`yy`-on-block; inline editing of the fence text
-            // is deferred to a follow-up slice (would need re-parse on
-            // every keystroke).
-            Cursor::InBlockFence { .. } => {}
         }
     }
 
@@ -454,22 +462,29 @@ impl Document {
             }
             Cursor::InBlock {
                 segment_idx,
-                line,
                 offset,
             } => {
+                let Some((body_line, body_col)) = body_line_col_at(self, segment_idx, offset)
+                else {
+                    return;
+                };
                 if let Some((new_line, new_offset)) =
-                    block_query_delete_before(self, segment_idx, line, offset)
+                    block_query_delete_before(self, segment_idx, body_line, body_col)
                 {
+                    let new_raw_offset = match self.segments.get(segment_idx) {
+                        Some(Segment::Block(b)) => {
+                            body_line_col_to_raw_offset(&b.raw, new_line, new_offset)
+                        }
+                        _ => offset,
+                    };
                     self.cursor = Cursor::InBlock {
                         segment_idx,
-                        line: new_line,
-                        offset: new_offset,
+                        offset: new_raw_offset,
                     };
                     self.dirty = true;
                 }
             }
             Cursor::InBlockResult { .. } => {}
-            Cursor::InBlockFence { .. } => {}
         }
     }
 
@@ -489,15 +504,17 @@ impl Document {
             }
             Cursor::InBlock {
                 segment_idx,
-                line,
                 offset,
             } => {
-                if block_query_delete_at(self, segment_idx, line, offset) {
+                let Some((body_line, body_col)) = body_line_col_at(self, segment_idx, offset)
+                else {
+                    return;
+                };
+                if block_query_delete_at(self, segment_idx, body_line, body_col) {
                     self.dirty = true;
                 }
             }
             Cursor::InBlockResult { .. } => {}
-            Cursor::InBlockFence { .. } => {}
         }
     }
 
@@ -743,6 +760,24 @@ fn write_block_query(doc: &mut Document, segment_idx: usize, chars: &[char]) -> 
     Some(())
 }
 
+/// Convert a `Cursor::InBlock` raw-rope offset to a body `(line, col)`
+/// pair if the offset lands inside the body region. Returns `None`
+/// when the offset is on the fence header or closer (those rows are
+/// not editable through the body's `params.query` field — Phase 2
+/// preserves the existing read-only-fence behavior).
+fn body_line_col_at(
+    doc: &Document,
+    segment_idx: usize,
+    offset: usize,
+) -> Option<(usize, usize)> {
+    let seg = doc.segments.get(segment_idx)?;
+    let Segment::Block(b) = seg else { return None };
+    match raw_section_at(&b.raw, offset) {
+        RawSection::Body { line, col } => Some((line, col)),
+        RawSection::Header | RawSection::Closer => None,
+    }
+}
+
 /// Translate a `(line, char_offset_in_line)` pair into an index into
 /// the flat char vector. Lines are split by `\n`; offsets past the end
 /// of a line clamp at the line's end (just before the newline).
@@ -965,14 +1000,24 @@ mod tests {
         );
     }
 
+    /// Helper for tests: build an `InBlock` cursor at body `(line, col)`
+    /// for the block at `segment_idx`. Mirrors what production code uses
+    /// via `body_line_col_to_raw_offset`.
+    fn cursor_in_body(doc: &Document, segment_idx: usize, line: usize, col: usize) -> Cursor {
+        let raw = match doc.segments().get(segment_idx) {
+            Some(Segment::Block(b)) => &b.raw,
+            _ => panic!("expected block segment at {segment_idx}"),
+        };
+        Cursor::InBlock {
+            segment_idx,
+            offset: body_line_col_to_raw_offset(raw, line, col),
+        }
+    }
+
     #[test]
     fn set_cursor_persists() {
         let mut doc = Document::from_markdown(COMPLEX).unwrap();
-        let target = Cursor::InBlock {
-            segment_idx: 1,
-            line: 0,
-            offset: 0,
-        };
+        let target = cursor_in_body(&doc, 1, 0, 0);
         doc.set_cursor(target);
         assert_eq!(doc.cursor(), target);
     }
@@ -987,12 +1032,9 @@ mod tests {
             .iter()
             .position(|s| s.is_block())
             .unwrap();
-        // Park cursor at end of first SQL line.
-        doc.set_cursor(Cursor::InBlock {
-            segment_idx: block_idx,
-            line: 0,
-            offset: 8, // end of "SELECT 1"
-        });
+        // Park cursor at end of first SQL line ("SELECT 1" has 8
+        // chars, so col 8 is EOL).
+        doc.set_cursor(cursor_in_body(&doc, block_idx, 0, 8));
         doc.insert_char_at_cursor('!');
         let query = doc.segments()[block_idx]
             .as_block()
@@ -1003,12 +1045,14 @@ mod tests {
             .unwrap()
             .to_string();
         assert_eq!(query, "SELECT 1!");
+        // After inserting one char the cursor advances one column —
+        // body (line 0, col 9) under the new model.
+        let raw = doc.segments()[block_idx].as_block().unwrap().raw.clone();
         assert_eq!(
             doc.cursor(),
             Cursor::InBlock {
                 segment_idx: block_idx,
-                line: 0,
-                offset: 9,
+                offset: body_line_col_to_raw_offset(&raw, 0, 9),
             }
         );
     }
@@ -1018,11 +1062,7 @@ mod tests {
         let md = "# t\n\n```db-sqlite alias=q\nSELECT 1\n```\n";
         let mut doc = Document::from_markdown(md).unwrap();
         let block_idx = doc.segments().iter().position(|s| s.is_block()).unwrap();
-        doc.set_cursor(Cursor::InBlock {
-            segment_idx: block_idx,
-            line: 0,
-            offset: 6, // after "SELECT"
-        });
+        doc.set_cursor(cursor_in_body(&doc, block_idx, 0, 6));
         doc.insert_newline_at_cursor();
         let query = doc.segments()[block_idx]
             .as_block()
@@ -1033,12 +1073,12 @@ mod tests {
             .unwrap()
             .to_string();
         assert_eq!(query, "SELECT\n 1");
+        let raw = doc.segments()[block_idx].as_block().unwrap().raw.clone();
         assert_eq!(
             doc.cursor(),
             Cursor::InBlock {
                 segment_idx: block_idx,
-                line: 1,
-                offset: 0,
+                offset: body_line_col_to_raw_offset(&raw, 1, 0),
             }
         );
     }
@@ -1048,11 +1088,7 @@ mod tests {
         let md = "# t\n\n```db-sqlite alias=q\nA\nB\n```\n";
         let mut doc = Document::from_markdown(md).unwrap();
         let block_idx = doc.segments().iter().position(|s| s.is_block()).unwrap();
-        doc.set_cursor(Cursor::InBlock {
-            segment_idx: block_idx,
-            line: 1,
-            offset: 0,
-        });
+        doc.set_cursor(cursor_in_body(&doc, block_idx, 1, 0));
         doc.delete_char_before_cursor();
         let query = doc.segments()[block_idx]
             .as_block()
@@ -1063,12 +1099,12 @@ mod tests {
             .unwrap()
             .to_string();
         assert_eq!(query, "AB");
+        let raw = doc.segments()[block_idx].as_block().unwrap().raw.clone();
         assert_eq!(
             doc.cursor(),
             Cursor::InBlock {
                 segment_idx: block_idx,
-                line: 0,
-                offset: 1,
+                offset: body_line_col_to_raw_offset(&raw, 0, 1),
             }
         );
     }

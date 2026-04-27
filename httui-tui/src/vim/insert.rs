@@ -1,5 +1,6 @@
 use ropey::Rope;
 
+use crate::buffer::block::{body_line_col_to_raw_offset, raw_section_at, RawSection};
 use crate::buffer::{Cursor, Document, Segment};
 use crate::vim::parser::InsertPos;
 
@@ -41,19 +42,16 @@ pub fn recoil_after_exit(doc: &mut Document) {
         }
         Cursor::InBlock {
             segment_idx,
-            line,
             offset,
         } => {
-            if offset > 0 {
-                doc.set_cursor(Cursor::InBlock {
-                    segment_idx,
-                    line,
-                    offset: offset - 1,
-                });
+            let Some((line, col)) = body_at(doc, segment_idx, offset) else {
+                return;
+            };
+            if col > 0 {
+                set_body(doc, segment_idx, line, col - 1);
             }
         }
         Cursor::InBlockResult { .. } => {}
-        Cursor::InBlockFence { .. } => {}
     }
 }
 
@@ -80,24 +78,21 @@ fn move_right_within_line(doc: &mut Document) {
         }
         Cursor::InBlock {
             segment_idx,
-            line,
             offset,
         } => {
+            let Some((line, col)) = body_at(doc, segment_idx, offset) else {
+                return;
+            };
             // `a` lands one past the cursor — on the EOL position so
             // typing extends the line.
             let line_chars = block_query_line_text(doc, segment_idx, line)
                 .map(|s| s.chars().count())
                 .unwrap_or(0);
-            if offset < line_chars {
-                doc.set_cursor(Cursor::InBlock {
-                    segment_idx,
-                    line,
-                    offset: offset + 1,
-                });
+            if col < line_chars {
+                set_body(doc, segment_idx, line, col + 1);
             }
         }
         Cursor::InBlockResult { .. } => {}
-        Cursor::InBlockFence { .. } => {}
     }
 }
 
@@ -128,19 +123,16 @@ fn move_to_first_non_blank(doc: &mut Document) {
         }
         Cursor::InBlock {
             segment_idx,
-            line,
-            ..
+            offset,
         } => {
+            let Some((line, _)) = body_at(doc, segment_idx, offset) else {
+                return;
+            };
             let text = block_query_line_text(doc, segment_idx, line).unwrap_or_default();
-            let off = text.chars().take_while(|c| c.is_whitespace()).count();
-            doc.set_cursor(Cursor::InBlock {
-                segment_idx,
-                line,
-                offset: off,
-            });
+            let col = text.chars().take_while(|c| c.is_whitespace()).count();
+            set_body(doc, segment_idx, line, col);
         }
         Cursor::InBlockResult { .. } => {}
-        Cursor::InBlockFence { .. } => {}
     }
 }
 
@@ -166,20 +158,17 @@ fn move_to_line_end(doc: &mut Document) {
         }
         Cursor::InBlock {
             segment_idx,
-            line,
-            ..
+            offset,
         } => {
+            let Some((line, _)) = body_at(doc, segment_idx, offset) else {
+                return;
+            };
             let chars = block_query_line_text(doc, segment_idx, line)
                 .map(|s| s.chars().count())
                 .unwrap_or(0);
-            doc.set_cursor(Cursor::InBlock {
-                segment_idx,
-                line,
-                offset: chars,
-            });
+            set_body(doc, segment_idx, line, chars);
         }
         Cursor::InBlockResult { .. } => {}
-        Cursor::InBlockFence { .. } => {}
     }
 }
 
@@ -206,24 +195,19 @@ fn open_line_above(doc: &mut Document) {
             });
         }
         Cursor::InBlock {
-            segment_idx, line, ..
+            segment_idx,
+            offset,
         } => {
+            let Some((line, _)) = body_at(doc, segment_idx, offset) else {
+                return;
+            };
             // Move to col 0 of current line, insert newline (cursor
             // advances down), then jump back up to the now-empty new line.
-            doc.set_cursor(Cursor::InBlock {
-                segment_idx,
-                line,
-                offset: 0,
-            });
+            set_body(doc, segment_idx, line, 0);
             doc.insert_char_at_cursor('\n');
-            doc.set_cursor(Cursor::InBlock {
-                segment_idx,
-                line,
-                offset: 0,
-            });
+            set_body(doc, segment_idx, line, 0);
         }
         Cursor::InBlockResult { .. } => {}
-        Cursor::InBlockFence { .. } => {}
     }
 }
 
@@ -246,22 +230,21 @@ fn open_line_below(doc: &mut Document) {
             doc.insert_char_at_cursor('\n');
         }
         Cursor::InBlock {
-            segment_idx, line, ..
+            segment_idx,
+            offset,
         } => {
+            let Some((line, _)) = body_at(doc, segment_idx, offset) else {
+                return;
+            };
             let line_chars = block_query_line_text(doc, segment_idx, line)
                 .map(|s| s.chars().count())
                 .unwrap_or(0);
             // Land on EOL of current line, then `\n` pushes us to the
             // start of a new line.
-            doc.set_cursor(Cursor::InBlock {
-                segment_idx,
-                line,
-                offset: line_chars,
-            });
+            set_body(doc, segment_idx, line, line_chars);
             doc.insert_char_at_cursor('\n');
         }
         Cursor::InBlockResult { .. } => {}
-        Cursor::InBlockFence { .. } => {}
     }
 }
 
@@ -273,6 +256,33 @@ fn block_query_line_text(doc: &Document, segment_idx: usize, line: usize) -> Opt
         .get("query")
         .and_then(|v| v.as_str())
         .and_then(|s| s.lines().nth(line).map(|l| l.to_string()))
+}
+
+/// Translate the `Cursor::InBlock` raw offset into a body `(line, col)`
+/// pair when applicable. Returns `None` for fence header / closer
+/// rows so the caller falls through to its no-op branch.
+fn body_at(doc: &Document, segment_idx: usize, offset: usize) -> Option<(usize, usize)> {
+    let Some(Segment::Block(b)) = doc.segments().get(segment_idx) else {
+        return None;
+    };
+    match raw_section_at(&b.raw, offset) {
+        RawSection::Body { line, col } => Some((line, col)),
+        _ => None,
+    }
+}
+
+/// Park the cursor at body `(line, col)` for `segment_idx`, mapping
+/// back to the raw offset that the new `Cursor::InBlock` model
+/// stores.
+fn set_body(doc: &mut Document, segment_idx: usize, line: usize, col: usize) {
+    let raw_offset = match doc.segments().get(segment_idx) {
+        Some(Segment::Block(b)) => body_line_col_to_raw_offset(&b.raw, line, col),
+        _ => 0,
+    };
+    doc.set_cursor(Cursor::InBlock {
+        segment_idx,
+        offset: raw_offset,
+    });
 }
 
 fn line_start_of_offset(rope: &Rope, offset: usize) -> usize {

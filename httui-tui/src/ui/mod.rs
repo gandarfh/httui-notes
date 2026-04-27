@@ -444,15 +444,11 @@ fn overlay_visual_selection(
 ) {
     let (a_seg, a_off) = match overlay.anchor {
         Cursor::InProse { segment_idx, offset } => (segment_idx, offset),
-        Cursor::InBlock { .. }
-        | Cursor::InBlockResult { .. }
-        | Cursor::InBlockFence { .. } => return,
+        Cursor::InBlock { .. } | Cursor::InBlockResult { .. } => return,
     };
     let (c_seg, c_off) = match doc.cursor() {
         Cursor::InProse { segment_idx, offset } => (segment_idx, offset),
-        Cursor::InBlock { .. }
-        | Cursor::InBlockResult { .. }
-        | Cursor::InBlockFence { .. } => return,
+        Cursor::InBlock { .. } | Cursor::InBlockResult { .. } => return,
     };
     if a_seg != c_seg {
         return;
@@ -820,7 +816,7 @@ fn render_segment(
             // The block is "focused" whenever the cursor lives inside
             // it — drives the border highlight and tells the cursor
             // renderer where to park the terminal caret.
-            let in_body = matches!(
+            let in_block = matches!(
                 cursor,
                 Cursor::InBlock { segment_idx, .. } if segment_idx == layout.segment_idx
             );
@@ -828,11 +824,7 @@ fn render_segment(
                 cursor,
                 Cursor::InBlockResult { segment_idx, .. } if segment_idx == layout.segment_idx
             );
-            let in_fence = matches!(
-                cursor,
-                Cursor::InBlockFence { segment_idx, .. } if segment_idx == layout.segment_idx
-            );
-            let focused = in_body || in_result || in_fence;
+            let focused = in_block || in_result;
             let selected_row = match cursor {
                 Cursor::InBlockResult { segment_idx, row }
                     if segment_idx == layout.segment_idx =>
@@ -868,28 +860,32 @@ fn render_segment(
                 connection_names,
                 result_tab,
             );
-            if in_body {
-                if let Cursor::InBlock { line, offset, .. } = cursor {
-                    // Same `area` for both modes — the renderer
-                    // keeps the inner content rect at `area.y + 1`
-                    // height-2 in both bordered (cursor-off) and raw
-                    // (cursor-on) modes, so cursor positioning is
-                    // identical.
-                    cursor::render_inblock_cursor(frame, area, line, offset);
-                }
-            }
-            if in_fence {
-                if let Cursor::InBlockFence { position, .. } = cursor {
-                    // Park the terminal caret on the fence row itself.
-                    // Header sits at `area.y` (replaces the top border
-                    // glyph in raw view); closer at the bottom row.
-                    let y = match position {
-                        crate::buffer::cursor::FencePosition::Header => area.y,
-                        crate::buffer::cursor::FencePosition::Closer => {
-                            area.y.saturating_add(area.height.saturating_sub(1))
+            if in_block {
+                if let Cursor::InBlock { offset, .. } = cursor {
+                    use crate::buffer::block::{raw_section_at, RawSection};
+                    match raw_section_at(&b.raw, offset) {
+                        // Body cursor: same `area` for both modes —
+                        // the renderer keeps the inner content rect
+                        // at `area.y + 1` height-2 in both bordered
+                        // (cursor-off) and raw (cursor-on) modes, so
+                        // positioning is identical to the previous
+                        // model.
+                        RawSection::Body { line, col } => {
+                            cursor::render_inblock_cursor(frame, area, line, col);
                         }
-                    };
-                    frame.set_cursor_position((area.x, y));
+                        // Header sits at `area.y` (replaces the top
+                        // border glyph in raw view); closer at the
+                        // bottom row. Match offset 0 / closer-line
+                        // start to keep the previous fence-row
+                        // landings byte-identical.
+                        RawSection::Header => {
+                            frame.set_cursor_position((area.x, area.y));
+                        }
+                        RawSection::Closer => {
+                            let y = area.y.saturating_add(area.height.saturating_sub(1));
+                            frame.set_cursor_position((area.x, y));
+                        }
+                    }
                 }
             }
         }

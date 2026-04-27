@@ -991,13 +991,32 @@ fn cursor_y(doc: &Document, layouts: &[SegmentLayout]) -> u16 {
         }
         Cursor::InBlock {
             segment_idx,
-            line,
-            ..
+            offset,
         } => layouts
             .iter()
             .find(|l| l.segment_idx == segment_idx)
-            // +1 to skip the block's top border row.
-            .map(|l| l.y_start.saturating_add(1).saturating_add(line as u16))
+            .map(|l| {
+                use crate::buffer::block::{raw_section_at, RawSection};
+                use crate::buffer::Segment;
+                let raw = match doc.segments().get(segment_idx) {
+                    Some(Segment::Block(b)) => &b.raw,
+                    _ => return l.y_start,
+                };
+                match raw_section_at(raw, offset) {
+                    // Header sits on the block's top row.
+                    RawSection::Header => l.y_start,
+                    // Body lines render starting one row below the
+                    // top border (rendered chrome) — keep the same
+                    // `+1` offset the previous model used.
+                    RawSection::Body { line, .. } => {
+                        l.y_start.saturating_add(1).saturating_add(line as u16)
+                    }
+                    // Closer sits on the block's last row.
+                    RawSection::Closer => {
+                        l.y_start.saturating_add(l.height.saturating_sub(1))
+                    }
+                }
+            })
             .unwrap_or(0),
         Cursor::InBlockResult { segment_idx, .. } => layouts
             .iter()
@@ -1006,17 +1025,6 @@ fn cursor_y(doc: &Document, layouts: &[SegmentLayout]) -> u16 {
             // already keeps the result table in view. A more precise
             // landing requires knowing each row's y inside the table.
             .map(|l| l.y_start.saturating_add(l.height.saturating_sub(2)))
-            .unwrap_or(0),
-        Cursor::InBlockFence { segment_idx, position } => layouts
-            .iter()
-            .find(|l| l.segment_idx == segment_idx)
-            // Header sits on the block's top row; closer on the bottom.
-            .map(|l| match position {
-                crate::buffer::cursor::FencePosition::Header => l.y_start,
-                crate::buffer::cursor::FencePosition::Closer => {
-                    l.y_start.saturating_add(l.height.saturating_sub(1))
-                }
-            })
             .unwrap_or(0),
     }
 }

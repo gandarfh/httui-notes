@@ -160,8 +160,7 @@ fn rebuild_completion_popup(app: &mut App, allow_empty_prefix: bool) {
     };
     let Cursor::InBlock {
         segment_idx,
-        line,
-        offset,
+        offset: raw_offset,
     } = doc.cursor()
     else {
         app.completion_popup = None;
@@ -179,6 +178,16 @@ fn rebuild_completion_popup(app: &mut App, allow_empty_prefix: bool) {
         app.completion_popup = None;
         return;
     }
+    // The completion engine speaks body `(line, col)` — convert the
+    // cursor's raw-rope offset to body coords and bail out on
+    // header / closer rows (no completion in fence text).
+    let (line, offset) = match crate::buffer::block::raw_section_at(&block.raw, raw_offset) {
+        crate::buffer::block::RawSection::Body { line, col } => (line, col),
+        _ => {
+            app.completion_popup = None;
+            return;
+        }
+    };
     let body = match block.params.get("query").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
         None => {
@@ -446,11 +455,22 @@ impl InBlockSwap {
         let cursor = app.document()?.cursor();
         let Cursor::InBlock {
             segment_idx,
-            line,
-            offset,
+            offset: raw_offset,
         } = cursor
         else {
             return None;
+        };
+        // Operator engine swap only makes sense inside the body —
+        // header / closer don't have a `query` to splice into the
+        // prose. Bail out so callers see no swap (operator falls
+        // through to its no-op).
+        let doc_ref = app.document()?;
+        let (line, col) = match doc_ref.segments().get(segment_idx)? {
+            Segment::Block(b) => match crate::buffer::block::raw_section_at(&b.raw, raw_offset) {
+                crate::buffer::block::RawSection::Body { line, col } => (line, col),
+                _ => return None,
+            },
+            _ => return None,
         };
         let doc = app.tabs.active_document_mut()?;
         let block = match doc.segments().get(segment_idx)? {
@@ -464,7 +484,7 @@ impl InBlockSwap {
             .unwrap_or("")
             .to_string();
         let chars: Vec<char> = query.chars().collect();
-        let abs = chars_index_for_line_col(&chars, line, offset);
+        let abs = chars_index_for_line_col(&chars, line, col);
         doc.replace_segment(segment_idx, Segment::Prose(Rope::from_str(&query)));
         doc.set_cursor(Cursor::InProse {
             segment_idx,
@@ -495,9 +515,10 @@ impl InBlockSwap {
         }
         doc.replace_segment(self.segment_idx, Segment::Block(new_block));
         // If the cursor still points at the swapped segment, convert
-        // back to InBlock at the equivalent (line, offset). If the
-        // action moved the cursor out (j/k crossed the boundary, etc.)
-        // leave it where it landed.
+        // back to InBlock at the equivalent body `(line, col)` and
+        // map it to the matching raw-rope offset on the rebuilt
+        // block. If the action moved the cursor out (j/k crossed the
+        // boundary, etc.) leave it where it landed.
         if let Cursor::InProse {
             segment_idx,
             offset: abs,
@@ -506,10 +527,15 @@ impl InBlockSwap {
             if segment_idx == self.segment_idx {
                 let chars: Vec<char> = new_query.chars().collect();
                 let (line, col) = line_col_from_abs(&chars, abs);
+                let raw_offset = match doc.segments().get(segment_idx) {
+                    Some(Segment::Block(b)) => crate::buffer::block::body_line_col_to_raw_offset(
+                        &b.raw, line, col,
+                    ),
+                    _ => 0,
+                };
                 doc.set_cursor(Cursor::InBlock {
                     segment_idx,
-                    line,
-                    offset: col,
+                    offset: raw_offset,
                 });
             }
         }
@@ -1265,8 +1291,7 @@ fn apply_op_linewise(app: &mut App, op: Operator, count: usize, recording: bool)
     // cut/paste without needing visible fence delimiters.
     let block_idx = match app.document().map(|d| d.cursor()) {
         Some(Cursor::InBlock { segment_idx, .. })
-        | Some(Cursor::InBlockResult { segment_idx, .. })
-        | Some(Cursor::InBlockFence { segment_idx, .. }) => Some(segment_idx),
+        | Some(Cursor::InBlockResult { segment_idx, .. }) => Some(segment_idx),
         _ => None,
     };
     if let Some(idx) = block_idx {

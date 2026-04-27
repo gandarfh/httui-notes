@@ -1,5 +1,9 @@
 use ropey::Rope;
 
+use crate::buffer::block::{
+    body_line_col_to_raw_offset, closer_raw_offset, header_raw_offset, raw_section_at,
+    BlockNode, RawSection,
+};
 use crate::buffer::layout::layout_document;
 use crate::buffer::{Cursor, Document, Segment};
 use crate::vim::parser::Motion;
@@ -93,18 +97,24 @@ fn half_page(doc: &mut Document, delta: i32) {
 fn apply_left(doc: &Document) -> Cursor {
     if let Cursor::InBlock {
         segment_idx,
-        line,
         offset,
     } = doc.cursor()
     {
-        if offset == 0 {
-            return doc.cursor();
-        }
-        return Cursor::InBlock {
-            segment_idx,
-            line,
-            offset: offset - 1,
+        let block = match block_at(doc, segment_idx) {
+            Some(b) => b,
+            None => return doc.cursor(),
         };
+        match raw_section_at(&block.raw, offset) {
+            RawSection::Body { line, col } => {
+                if col == 0 {
+                    return doc.cursor();
+                }
+                return body_cursor(segment_idx, block, line, col - 1);
+            }
+            // No horizontal motion on the fence rows in V1 (Phase 5
+            // turns these into rope-backed motions).
+            RawSection::Header | RawSection::Closer => return doc.cursor(),
+        }
     }
     let Cursor::InProse {
         segment_idx,
@@ -134,22 +144,27 @@ fn apply_left(doc: &Document) -> Cursor {
 fn apply_right(doc: &Document) -> Cursor {
     if let Cursor::InBlock {
         segment_idx,
-        line,
         offset,
     } = doc.cursor()
     {
-        let chars = block_query_line_chars(doc, segment_idx, line);
-        // `l` stops one short of EOL — vim doesn't park on the trailing
-        // newline. Empty lines pin the cursor at offset 0.
-        let max = chars.saturating_sub(1);
-        if offset >= max {
-            return doc.cursor();
-        }
-        return Cursor::InBlock {
-            segment_idx,
-            line,
-            offset: offset + 1,
+        let block = match block_at(doc, segment_idx) {
+            Some(b) => b,
+            None => return doc.cursor(),
         };
+        match raw_section_at(&block.raw, offset) {
+            RawSection::Body { line, col } => {
+                let chars = block_query_line_chars(doc, segment_idx, line);
+                // `l` stops one short of EOL — vim doesn't park on
+                // the trailing newline. Empty lines pin the cursor
+                // at col 0.
+                let max = chars.saturating_sub(1);
+                if col >= max {
+                    return doc.cursor();
+                }
+                return body_cursor(segment_idx, block, line, col + 1);
+            }
+            RawSection::Header | RawSection::Closer => return doc.cursor(),
+        }
     }
     let Cursor::InProse {
         segment_idx,
@@ -177,14 +192,18 @@ fn apply_right(doc: &Document) -> Cursor {
 
 fn apply_line_start(doc: &Document) -> Cursor {
     if let Cursor::InBlock {
-        segment_idx, line, ..
+        segment_idx,
+        offset,
     } = doc.cursor()
     {
-        return Cursor::InBlock {
-            segment_idx,
-            line,
-            offset: 0,
+        let block = match block_at(doc, segment_idx) {
+            Some(b) => b,
+            None => return doc.cursor(),
         };
+        if let RawSection::Body { line, .. } = raw_section_at(&block.raw, offset) {
+            return body_cursor(segment_idx, block, line, 0);
+        }
+        return doc.cursor();
     }
     let Cursor::InProse {
         segment_idx,
@@ -205,16 +224,20 @@ fn apply_line_start(doc: &Document) -> Cursor {
 
 fn apply_first_non_blank(doc: &Document) -> Cursor {
     if let Cursor::InBlock {
-        segment_idx, line, ..
+        segment_idx,
+        offset,
     } = doc.cursor()
     {
-        let text = block_query_line_text(doc, segment_idx, line).unwrap_or_default();
-        let off = text.chars().take_while(|c| c.is_whitespace()).count();
-        return Cursor::InBlock {
-            segment_idx,
-            line,
-            offset: off,
+        let block = match block_at(doc, segment_idx) {
+            Some(b) => b,
+            None => return doc.cursor(),
         };
+        if let RawSection::Body { line, .. } = raw_section_at(&block.raw, offset) {
+            let text = block_query_line_text(doc, segment_idx, line).unwrap_or_default();
+            let col = text.chars().take_while(|c| c.is_whitespace()).count();
+            return body_cursor(segment_idx, block, line, col);
+        }
+        return doc.cursor();
     }
     let Cursor::InProse {
         segment_idx,
@@ -245,16 +268,20 @@ fn apply_first_non_blank(doc: &Document) -> Cursor {
 
 fn apply_line_end(doc: &Document) -> Cursor {
     if let Cursor::InBlock {
-        segment_idx, line, ..
+        segment_idx,
+        offset,
     } = doc.cursor()
     {
-        let chars = block_query_line_chars(doc, segment_idx, line);
-        let off = chars.saturating_sub(1);
-        return Cursor::InBlock {
-            segment_idx,
-            line,
-            offset: off,
+        let block = match block_at(doc, segment_idx) {
+            Some(b) => b,
+            None => return doc.cursor(),
         };
+        if let RawSection::Body { line, .. } = raw_section_at(&block.raw, offset) {
+            let chars = block_query_line_chars(doc, segment_idx, line);
+            let col = chars.saturating_sub(1);
+            return body_cursor(segment_idx, block, line, col);
+        }
+        return doc.cursor();
     }
     let Cursor::InProse {
         segment_idx,
@@ -285,7 +312,6 @@ fn apply_line_end(doc: &Document) -> Cursor {
 // ───── vertical (cross-segment) ─────
 
 fn apply_down(doc: &Document) -> Cursor {
-    use crate::buffer::cursor::FencePosition;
     match doc.cursor() {
         Cursor::InProse {
             segment_idx,
@@ -302,44 +328,45 @@ fn apply_down(doc: &Document) -> Cursor {
             }
             jump_to_segment(doc, segment_idx + 1, true).unwrap_or(doc.cursor())
         }
-        Cursor::InBlockFence {
-            segment_idx,
-            position: FencePosition::Header,
-        } => {
-            // From the ` ```<info> ` row, j drops into the body's
-            // first line — the renderer kept that row at the same
-            // visual position whether we're in raw or render mode.
-            Cursor::InBlock {
-                segment_idx,
-                line: 0,
-                offset: 0,
-            }
-        }
         Cursor::InBlock {
             segment_idx,
-            line,
-            ..
+            offset,
         } => {
-            // Within the block body: drop down through the SQL. When
-            // we run off the last SQL line, hop into the result table
-            // (if there is one) or land on the closing fence row.
-            let lines = block_query_line_count(doc, segment_idx);
-            if line + 1 < lines {
-                return Cursor::InBlock {
-                    segment_idx,
-                    line: line + 1,
-                    offset: 0,
-                };
-            }
-            if block_result_row_count(doc, segment_idx) > 0 {
-                return Cursor::InBlockResult {
-                    segment_idx,
-                    row: 0,
-                };
-            }
-            Cursor::InBlockFence {
-                segment_idx,
-                position: FencePosition::Closer,
+            let block = match block_at(doc, segment_idx) {
+                Some(b) => b,
+                None => return doc.cursor(),
+            };
+            match raw_section_at(&block.raw, offset) {
+                RawSection::Header => {
+                    // From the ` ```<info> ` row, j drops into the
+                    // body's first line — the renderer kept that row
+                    // at the same visual position whether we're in
+                    // raw or render mode.
+                    body_cursor(segment_idx, block, 0, 0)
+                }
+                RawSection::Body { line, .. } => {
+                    // Within the block body: drop down through the
+                    // SQL. When we run off the last SQL line, hop
+                    // into the result table (if there is one) or land
+                    // on the closing fence row.
+                    let lines = block_query_line_count(doc, segment_idx);
+                    if line + 1 < lines {
+                        return body_cursor(segment_idx, block, line + 1, 0);
+                    }
+                    if block_result_row_count(doc, segment_idx) > 0 {
+                        return Cursor::InBlockResult {
+                            segment_idx,
+                            row: 0,
+                        };
+                    }
+                    closer_cursor(segment_idx, block)
+                }
+                RawSection::Closer => {
+                    // Past the closing fence → leave the block for
+                    // the next segment (prose, or another block's
+                    // header).
+                    jump_to_segment(doc, segment_idx + 1, true).unwrap_or(doc.cursor())
+                }
             }
         }
         Cursor::InBlockResult { segment_idx, row } => {
@@ -351,24 +378,16 @@ fn apply_down(doc: &Document) -> Cursor {
                 };
             }
             // Past the last result row → land on the ` ``` ` closer.
-            Cursor::InBlockFence {
-                segment_idx,
-                position: FencePosition::Closer,
-            }
-        }
-        Cursor::InBlockFence {
-            segment_idx,
-            position: FencePosition::Closer,
-        } => {
-            // Past the closing fence → leave the block for the next
-            // segment (prose, or another block's header).
-            jump_to_segment(doc, segment_idx + 1, true).unwrap_or(doc.cursor())
+            let block = match block_at(doc, segment_idx) {
+                Some(b) => b,
+                None => return doc.cursor(),
+            };
+            closer_cursor(segment_idx, block)
         }
     }
 }
 
 fn apply_up(doc: &Document) -> Cursor {
-    use crate::buffer::cursor::FencePosition;
     match doc.cursor() {
         Cursor::InProse {
             segment_idx,
@@ -388,44 +407,46 @@ fn apply_up(doc: &Document) -> Cursor {
             }
             jump_to_segment(doc, segment_idx - 1, false).unwrap_or(doc.cursor())
         }
-        Cursor::InBlockFence {
-            segment_idx,
-            position: FencePosition::Closer,
-        } => {
-            // From the ` ``` ` closer, k goes back into the block —
-            // result table's last row if any, otherwise the SQL body's
-            // last line.
-            if block_result_row_count(doc, segment_idx) > 0 {
-                let last = block_result_row_count(doc, segment_idx).saturating_sub(1);
-                return Cursor::InBlockResult {
-                    segment_idx,
-                    row: last,
-                };
-            }
-            let last_line = block_query_line_count(doc, segment_idx).saturating_sub(1);
-            Cursor::InBlock {
-                segment_idx,
-                line: last_line,
-                offset: 0,
-            }
-        }
         Cursor::InBlock {
             segment_idx,
-            line,
-            ..
+            offset,
         } => {
-            if line > 0 {
-                return Cursor::InBlock {
-                    segment_idx,
-                    line: line - 1,
-                    offset: 0,
-                };
-            }
-            // Top of the body → land on the fence header instead of
-            // jumping out of the block. Another `k` takes us out.
-            Cursor::InBlockFence {
-                segment_idx,
-                position: FencePosition::Header,
+            let block = match block_at(doc, segment_idx) {
+                Some(b) => b,
+                None => return doc.cursor(),
+            };
+            match raw_section_at(&block.raw, offset) {
+                RawSection::Closer => {
+                    // From the ` ``` ` closer, k goes back into the
+                    // block — result table's last row if any,
+                    // otherwise the SQL body's last line.
+                    if block_result_row_count(doc, segment_idx) > 0 {
+                        let last = block_result_row_count(doc, segment_idx).saturating_sub(1);
+                        return Cursor::InBlockResult {
+                            segment_idx,
+                            row: last,
+                        };
+                    }
+                    let last_line = block_query_line_count(doc, segment_idx).saturating_sub(1);
+                    body_cursor(segment_idx, block, last_line, 0)
+                }
+                RawSection::Body { line, .. } => {
+                    if line > 0 {
+                        return body_cursor(segment_idx, block, line - 1, 0);
+                    }
+                    // Top of the body → land on the fence header
+                    // instead of jumping out of the block. Another
+                    // `k` takes us out.
+                    header_cursor(segment_idx)
+                }
+                RawSection::Header => {
+                    // Above the header — leave the block for the
+                    // previous segment.
+                    if segment_idx == 0 {
+                        return doc.cursor();
+                    }
+                    jump_to_segment(doc, segment_idx - 1, false).unwrap_or(doc.cursor())
+                }
             }
         }
         Cursor::InBlockResult { segment_idx, row } => {
@@ -436,23 +457,12 @@ fn apply_up(doc: &Document) -> Cursor {
                 };
             }
             // First row: hop back to the last line of the SQL body.
+            let block = match block_at(doc, segment_idx) {
+                Some(b) => b,
+                None => return doc.cursor(),
+            };
             let last_line = block_query_line_count(doc, segment_idx).saturating_sub(1);
-            Cursor::InBlock {
-                segment_idx,
-                line: last_line,
-                offset: 0,
-            }
-        }
-        Cursor::InBlockFence {
-            segment_idx,
-            position: FencePosition::Header,
-        } => {
-            // Above the header — leave the block for the previous
-            // segment.
-            if segment_idx == 0 {
-                return doc.cursor();
-            }
-            jump_to_segment(doc, segment_idx - 1, false).unwrap_or(doc.cursor())
+            body_cursor(segment_idx, block, last_line, 0)
         }
     }
 }
@@ -464,7 +474,7 @@ fn apply_doc_start(doc: &Document) -> Cursor {
                 segment_idx: 0,
                 offset: 0,
             },
-            Segment::Block(_) => Cursor::InBlock { segment_idx: 0, line: 0, offset: 0 },
+            Segment::Block(b) => body_cursor(0, b, 0, 0),
         }
     } else {
         doc.cursor()
@@ -490,11 +500,7 @@ fn apply_doc_end(doc: &Document) -> Cursor {
                 offset: off,
             }
         }
-        Segment::Block(_) => Cursor::InBlock {
-            segment_idx: last,
-            line: 0,
-            offset: 0,
-        },
+        Segment::Block(b) => body_cursor(last, b, 0, 0),
     }
 }
 
@@ -521,11 +527,7 @@ fn apply_goto_line(doc: &Document, n: usize) -> Cursor {
                         offset: off,
                     }
                 }
-                Segment::Block(_) => Cursor::InBlock {
-                    segment_idx: layout.segment_idx,
-                    line: 0,
-                    offset: 0,
-                },
+                Segment::Block(b) => body_cursor(layout.segment_idx, b, 0, 0),
             };
         }
         accum += height;
@@ -804,25 +806,18 @@ fn block_query_str(doc: &Document, segment_idx: usize) -> Option<String> {
 }
 
 fn jump_to_segment(doc: &Document, idx: usize, going_down: bool) -> Option<Cursor> {
-    use crate::buffer::cursor::FencePosition;
     let seg = doc.segments().get(idx)?;
     Some(match seg {
-        Segment::Block(_) => {
+        Segment::Block(b) => {
             // CM6 parity: entering a block via cross-segment motion
             // lands on the visible fence row first (` ```<info> ` from
             // above, ` ``` ` from below). Another `j`/`k` then steps
             // into the body — same flow the desktop's "enter block"
             // gesture produces.
             if going_down {
-                Cursor::InBlockFence {
-                    segment_idx: idx,
-                    position: FencePosition::Header,
-                }
+                header_cursor(idx)
             } else {
-                Cursor::InBlockFence {
-                    segment_idx: idx,
-                    position: FencePosition::Closer,
-                }
+                closer_cursor(idx, b)
             }
         }
         Segment::Prose(rope) => {
@@ -842,6 +837,44 @@ fn jump_to_segment(doc: &Document, idx: usize, going_down: bool) -> Option<Curso
             }
         }
     })
+}
+
+/// Borrow the [`BlockNode`] living at `segment_idx`, if any. Wrapping
+/// the segment lookup keeps the InBlock-flavoured motions readable —
+/// they almost always need the raw rope to resolve a section.
+fn block_at(doc: &Document, segment_idx: usize) -> Option<&BlockNode> {
+    match doc.segments().get(segment_idx)? {
+        Segment::Block(b) => Some(b),
+        _ => None,
+    }
+}
+
+/// Build a `Cursor::InBlock` whose offset corresponds to the body
+/// `(line, col)` position on the block's raw rope. Used everywhere the
+/// previous `Cursor::InBlock { line, offset }` constructor lived.
+fn body_cursor(segment_idx: usize, block: &BlockNode, body_line: usize, body_col: usize) -> Cursor {
+    Cursor::InBlock {
+        segment_idx,
+        offset: body_line_col_to_raw_offset(&block.raw, body_line, body_col),
+    }
+}
+
+/// Build a `Cursor::InBlock` parked on the fence header row (offset 0
+/// of the raw rope).
+fn header_cursor(segment_idx: usize) -> Cursor {
+    Cursor::InBlock {
+        segment_idx,
+        offset: header_raw_offset(),
+    }
+}
+
+/// Build a `Cursor::InBlock` parked on the ` \`\`\` ` closer row
+/// (start of the closer line in the raw rope).
+fn closer_cursor(segment_idx: usize, block: &BlockNode) -> Cursor {
+    Cursor::InBlock {
+        segment_idx,
+        offset: closer_raw_offset(&block.raw),
+    }
 }
 
 #[cfg(test)]
@@ -1093,8 +1126,9 @@ mod tests {
     fn down_walks_through_fence_header_into_body_and_out_through_closer() {
         // CM6 parity: stepping `j` from prose above a block lands on
         // the fence header first, then into the body, then onto the
-        // closer, then out the other side. Mirror with `k`.
-        use crate::buffer::cursor::FencePosition;
+        // closer, then out the other side. Mirror with `k`. Now that
+        // the cursor is unified on `Cursor::InBlock { offset }`, we
+        // discriminate header / body / closer via `raw_section_at`.
         let mut d = doc(
             "head\n\n```db-postgres alias=q\nSELECT 1\n```\n\ntail\n",
         );
@@ -1108,10 +1142,7 @@ mod tests {
         loop {
             apply(Motion::Down, &mut d, 1, 10);
             steps += 1;
-            if matches!(
-                d.cursor(),
-                Cursor::InBlockFence { position: FencePosition::Header, .. }
-            ) {
+            if is_header(&d) {
                 break;
             }
             assert!(steps < 10, "didn't reach the fence header in 10 j's");
@@ -1119,14 +1150,11 @@ mod tests {
 
         // Next `j` enters the body.
         apply(Motion::Down, &mut d, 1, 10);
-        assert!(matches!(d.cursor(), Cursor::InBlock { line: 0, .. }));
+        assert!(is_body(&d, 0));
 
         // Past the last body line → closer.
         apply(Motion::Down, &mut d, 1, 10);
-        assert!(matches!(
-            d.cursor(),
-            Cursor::InBlockFence { position: FencePosition::Closer, .. }
-        ));
+        assert!(is_closer(&d));
 
         // Past the closer → leave the block (next prose).
         apply(Motion::Down, &mut d, 1, 10);
@@ -1134,21 +1162,37 @@ mod tests {
 
         // `k` from the prose below climbs back into the closer.
         apply(Motion::Up, &mut d, 1, 10);
-        assert!(matches!(
-            d.cursor(),
-            Cursor::InBlockFence { position: FencePosition::Closer, .. }
-        ));
+        assert!(is_closer(&d));
         // Then back into the body (last line).
         apply(Motion::Up, &mut d, 1, 10);
-        assert!(matches!(d.cursor(), Cursor::InBlock { line: 0, .. }));
+        assert!(is_body(&d, 0));
         // Then onto the header.
         apply(Motion::Up, &mut d, 1, 10);
-        assert!(matches!(
-            d.cursor(),
-            Cursor::InBlockFence { position: FencePosition::Header, .. }
-        ));
+        assert!(is_header(&d));
         // Then out into the prose above.
         apply(Motion::Up, &mut d, 1, 10);
         assert!(matches!(d.cursor(), Cursor::InProse { .. }));
+    }
+
+    fn cursor_section(d: &Document) -> Option<RawSection> {
+        let Cursor::InBlock { segment_idx, offset } = d.cursor() else {
+            return None;
+        };
+        let Segment::Block(b) = d.segments().get(segment_idx)? else {
+            return None;
+        };
+        Some(raw_section_at(&b.raw, offset))
+    }
+
+    fn is_header(d: &Document) -> bool {
+        matches!(cursor_section(d), Some(RawSection::Header))
+    }
+
+    fn is_closer(d: &Document) -> bool {
+        matches!(cursor_section(d), Some(RawSection::Closer))
+    }
+
+    fn is_body(d: &Document, line: usize) -> bool {
+        matches!(cursor_section(d), Some(RawSection::Body { line: l, .. }) if l == line)
     }
 }

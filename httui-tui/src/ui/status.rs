@@ -131,20 +131,26 @@ fn describe_cursor(doc: &Document) -> String {
         }
         Cursor::InBlock {
             segment_idx,
-            line,
             offset,
         } => {
+            use crate::buffer::block::{raw_section_at, RawSection};
             let block_idx = doc
                 .segments()
                 .iter()
                 .take(segment_idx + 1)
                 .filter(|s| matches!(s, Segment::Block(_)))
                 .count();
-            format!(
-                "Block #{block_idx} · Ln {} Col {}",
-                line + 1,
-                offset + 1
-            )
+            let raw = match doc.segments().get(segment_idx) {
+                Some(Segment::Block(b)) => &b.raw,
+                _ => return format!("Block #{block_idx} · ?"),
+            };
+            match raw_section_at(raw, offset) {
+                RawSection::Header => format!("Block #{block_idx} · fence ```"),
+                RawSection::Closer => format!("Block #{block_idx} · fence ```"),
+                RawSection::Body { line, col } => {
+                    format!("Block #{block_idx} · Ln {} Col {}", line + 1, col + 1)
+                }
+            }
         }
         Cursor::InBlockResult { segment_idx, row } => {
             let block_idx = doc
@@ -154,19 +160,6 @@ fn describe_cursor(doc: &Document) -> String {
                 .filter(|s| matches!(s, Segment::Block(_)))
                 .count();
             format!("Block #{block_idx} · Result row {}", row + 1)
-        }
-        Cursor::InBlockFence { segment_idx, position } => {
-            let block_idx = doc
-                .segments()
-                .iter()
-                .take(segment_idx + 1)
-                .filter(|s| matches!(s, Segment::Block(_)))
-                .count();
-            let label = match position {
-                crate::buffer::cursor::FencePosition::Header => "fence ```",
-                crate::buffer::cursor::FencePosition::Closer => "fence ```",
-            };
-            format!("Block #{block_idx} · {label}")
         }
     }
 }
