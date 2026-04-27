@@ -19,17 +19,23 @@ export function formatElapsed(ms: number): string {
   return `${(ms / 1000).toFixed(2)}s`;
 }
 
-/** Round a relative timestamp into a "ran X ago" string. */
+/**
+ * Human-friendly relative timestamp: "just now", "3m ago", "2h ago", "1d ago".
+ * Used to render the "last run" hint in the status bar without a dependency
+ * on a date library. Capped at days — anything older is suspiciously stale
+ * and we render the ISO date instead.
+ */
 export function formatRelativeTime(from: number, now: number): string {
-  const seconds = Math.round((now - from) / 1000);
-  if (seconds < 5) return "just now";
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.round(seconds / 60);
+  const delta = Math.max(0, Math.floor((now - from) / 1000)); // seconds
+  if (delta < 5) return "just now";
+  if (delta < 60) return `${delta}s ago`;
+  const minutes = Math.floor(delta / 60);
   if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
+  const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  return `${days}d ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(from).toISOString().slice(0, 10);
 }
 
 /** Lightweight type guard used by result-tab views. */
