@@ -271,6 +271,44 @@ pub fn resolve_connection_id_sync(
     raw.to_string()
 }
 
+/// `gd` — cycle the focused block's `display_mode` (Input → Split
+/// → Output → Input) and persist the new value into the fence so
+/// the choice survives save/reload. Snapshots the document for
+/// undo. Works on any block type (HTTP / DB / E2E) since
+/// `display_mode` lives on `BlockNode`, but the renderer only
+/// honors it for DB today (HTTP/E2E render single-mode for now).
+pub fn cycle_display_mode(app: &mut App) {
+    let segment_idx = match app.document().map(|d| d.cursor()) {
+        Some(Cursor::InBlock { segment_idx, .. })
+        | Some(Cursor::InBlockResult { segment_idx, .. }) => segment_idx,
+        _ => {
+            app.set_status(
+                StatusKind::Info,
+                "place the cursor on a block first",
+            );
+            return;
+        }
+    };
+    let next = {
+        let Some(doc) = app.tabs.active_document_mut() else { return };
+        // Snapshot before mutating so undo can roll the mode back.
+        // The mode lives on `BlockNode.display_mode`, which the
+        // snapshot already captures along with the rest of the
+        // segment slice.
+        doc.snapshot();
+        let Some(block) = doc.block_at_mut(segment_idx) else {
+            return;
+        };
+        let next = block.effective_display_mode().next();
+        block.display_mode = Some(next.as_str().to_string());
+        next
+    };
+    app.set_status(
+        StatusKind::Info,
+        format!("display: {}", next.as_str()),
+    );
+}
+
 /// `<C-x>` — wrap the focused DB block's query in the dialect's
 /// EXPLAIN keyword and run it. The block's own query text stays
 /// untouched (override flows only to the executor); the explain

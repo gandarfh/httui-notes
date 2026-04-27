@@ -166,6 +166,10 @@ fn render_db_inner(
         return;
     }
 
+    let mode = b.effective_display_mode();
+    let show_input = mode.shows_input();
+    let show_output = mode.shows_output();
+
     let query = b
         .params
         .get("query")
@@ -173,15 +177,19 @@ fn render_db_inner(
         .unwrap_or("");
     let sql_lines = query.lines().count().max(1) as u16;
     let status_line = db_result_line(b);
-    let has_status = status_line.is_some();
-    let table_height = db_result_table_height(b);
+    // Status banner + result table belong to the output region — gate
+    // them on the mode so Input-only blocks render just the SQL body.
+    let has_status = show_output && status_line.is_some();
+    let table_height = if show_output { db_result_table_height(b) } else { 0 };
     let footer_text = db_footer_text(b, names);
 
     // Vertical layout. `Length` for the fixed-size sections; `Min(0)`
     // for the table so it absorbs leftover space if the card was
     // sized larger than expected.
     let mut constraints: Vec<Constraint> = Vec::new();
-    constraints.push(Constraint::Length(sql_lines));
+    if show_input {
+        constraints.push(Constraint::Length(sql_lines));
+    }
     if has_status {
         constraints.push(Constraint::Length(1));
     }
@@ -197,36 +205,40 @@ fn render_db_inner(
 
     let mut idx = 0;
 
-    // SQL body — tree-sitter highlight (cached parser, AST-driven).
-    // Same parse will back autocomplete / goto-definition later.
-    // When the last execution returned an error with a line number,
-    // the offending line gets a dark-red background so the user
-    // sees *where* the parser tripped, not just the message at the
-    // bottom. Mirrors the desktop's squiggle, simplified for the
-    // TUI's character grid.
-    let mut sql_lines_styled = super::sql_highlight::highlight(query);
-    if let Some((err_line, _err_col)) = error_position(b) {
-        if let Some(target) = (err_line as usize)
-            .checked_sub(1)
-            .and_then(|i| sql_lines_styled.get_mut(i))
-        {
-            for span in target.iter_mut() {
-                span.style = span.style.bg(Color::Rgb(70, 25, 25));
+    if show_input {
+        // SQL body — tree-sitter highlight (cached parser, AST-driven).
+        // Same parse will back autocomplete / goto-definition later.
+        // When the last execution returned an error with a line number,
+        // the offending line gets a dark-red background so the user
+        // sees *where* the parser tripped, not just the message at the
+        // bottom. Mirrors the desktop's squiggle, simplified for the
+        // TUI's character grid.
+        let mut sql_lines_styled = super::sql_highlight::highlight(query);
+        if let Some((err_line, _err_col)) = error_position(b) {
+            if let Some(target) = (err_line as usize)
+                .checked_sub(1)
+                .and_then(|i| sql_lines_styled.get_mut(i))
+            {
+                for span in target.iter_mut() {
+                    span.style = span.style.bg(Color::Rgb(70, 25, 25));
+                }
             }
         }
-    }
-    let sql_para = Paragraph::new(
-        sql_lines_styled
-            .into_iter()
-            .map(Line::from)
-            .collect::<Vec<_>>(),
-    );
-    frame.render_widget(sql_para, chunks[idx]);
-    idx += 1;
-
-    if let Some(line) = status_line {
-        frame.render_widget(Paragraph::new(line), chunks[idx]);
+        let sql_para = Paragraph::new(
+            sql_lines_styled
+                .into_iter()
+                .map(Line::from)
+                .collect::<Vec<_>>(),
+        );
+        frame.render_widget(sql_para, chunks[idx]);
         idx += 1;
+    }
+
+    if has_status {
+        if let Some(line) = status_line {
+            frame.render_widget(Paragraph::new(line), chunks[idx]);
+            idx += 1;
+        }
     }
 
     if table_height > 0 {

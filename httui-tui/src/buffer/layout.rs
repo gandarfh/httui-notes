@@ -32,18 +32,37 @@ fn block_height(b: &BlockNode) -> u16 {
         // border + URL line + meta line + border
         4
     } else if b.is_db() {
-        let lines = b
-            .params
-            .get("query")
-            .and_then(|v| v.as_str())
-            .map(|s| s.lines().count().max(1))
-            .unwrap_or(1);
-        // border + lines + footer + border (+ 1 for run-status line
-        // once the block has executed at least once + N for the
-        // result table when present).
-        let run_line = if matches!(b.state, ExecutionState::Idle) { 0 } else { 1 };
-        let table_lines = db_table_height(b);
-        (lines as u16).saturating_add(3 + run_line + table_lines)
+        let mode = b.effective_display_mode();
+        // SQL body lines — counted only when Input or Split asks for
+        // them; Output mode hides the editable body entirely.
+        let sql_lines = if mode.shows_input() {
+            b.params
+                .get("query")
+                .and_then(|v| v.as_str())
+                .map(|s| s.lines().count().max(1))
+                .unwrap_or(1) as u16
+        } else {
+            0
+        };
+        // Run-status banner + result table — only shown when Output
+        // or Split. Status banner appears as soon as the block has
+        // executed at least once (matches `db_result_line` in the
+        // renderer); the table appears when there are rows to show.
+        let (run_line, table_lines) = if mode.shows_output() {
+            let run = if matches!(b.state, ExecutionState::Idle) { 0 } else { 1 };
+            (run, db_table_height(b))
+        } else {
+            (0, 0)
+        };
+        // 3 chrome (top border + footer + bottom border) +
+        // optional sections. Tab bar (Result/Messages/Plan/Stats) is
+        // carved out of `table_lines` by the renderer, so it doesn't
+        // need its own row here — keeps behavior identical to the
+        // pre-display-mode layout for Split / Output users.
+        sql_lines
+            .saturating_add(3)
+            .saturating_add(run_line)
+            .saturating_add(table_lines)
     } else if b.is_e2e() {
         let steps = b
             .params
@@ -185,5 +204,60 @@ mod tests {
         let layouts = layout_document(&doc, 80);
         let sum: u16 = layouts.iter().map(|l| l.height).sum();
         assert_eq!(document_height(&layouts), sum);
+    }
+
+    fn db_block_index(doc: &Document) -> usize {
+        doc.segments()
+            .iter()
+            .enumerate()
+            .find_map(|(i, s)| matches!(s, crate::buffer::Segment::Block(_)).then_some(i))
+            .expect("doc has a block")
+    }
+
+    #[test]
+    fn db_output_mode_drops_sql_lines_from_height() {
+        // `display=output` hides the SQL body. With no cached result
+        // and no run history, the block collapses to chrome-only
+        // (border + footer + border = 3 lines).
+        let md = "```db-postgres alias=q\nSELECT *\nFROM users\nWHERE id > 10\n```\n";
+        let mut doc = Document::from_markdown(md).unwrap();
+        let idx = db_block_index(&doc);
+        doc.block_at_mut(idx).unwrap().display_mode = Some("output".into());
+        let layouts = layout_document(&doc, 80);
+        let block_h = layouts
+            .iter()
+            .find(|l| l.segment_idx == idx)
+            .unwrap()
+            .height;
+        assert_eq!(block_h, 3);
+    }
+
+    #[test]
+    fn db_split_mode_with_result_includes_sql_status_and_table() {
+        // `display=split` with a `select` result: SQL body (3 lines)
+        // + status banner (1) + result table (header + 2 rows) +
+        // chrome (3) = 10.
+        let md = "```db-postgres alias=q\nSELECT *\nFROM users\nWHERE id > 10\n```\n";
+        let mut doc = Document::from_markdown(md).unwrap();
+        let idx = db_block_index(&doc);
+        let block = doc.block_at_mut(idx).unwrap();
+        block.display_mode = Some("split".into());
+        block.state = ExecutionState::Success;
+        block.cached_result = Some(serde_json::json!({
+            "results": [{
+                "kind": "select",
+                "columns": [{"name": "id"}],
+                "rows": [{"id": 1}, {"id": 2}],
+                "has_more": false
+            }],
+            "stats": { "elapsed_ms": 7 }
+        }));
+        let layouts = layout_document(&doc, 80);
+        let block_h = layouts
+            .iter()
+            .find(|l| l.segment_idx == idx)
+            .unwrap()
+            .height;
+        assert_eq!(block_h, 3 + 1 + (1 + 2) + 3);
     }
 }

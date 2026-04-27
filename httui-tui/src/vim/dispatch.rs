@@ -632,6 +632,7 @@ fn apply_action(app: &mut App, action: Action, recording: bool) {
             }
         }
         Action::ExplainBlock => crate::commands::db::run_explain(app),
+        Action::CycleDisplayMode => crate::commands::db::cycle_display_mode(app),
         Action::CloseConnectionPicker => apply_close_connection_picker(app),
         Action::MoveConnectionPickerCursor(delta) => {
             apply_move_connection_picker_cursor(app, delta)

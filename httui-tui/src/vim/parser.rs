@@ -327,6 +327,10 @@ pub enum Action {
     /// stays untouched). Output replaces the result tab like a
     /// normal run. Mnemonic: "X" = E**X**plain.
     ExplainBlock,
+    /// `gd` on a block — cycle the display mode (Input → Split →
+    /// Output → Input). Persists via `display=` in the fence so the
+    /// next save carries the choice. Mnemonic: "go display".
+    CycleDisplayMode,
     /// `Esc` / `Ctrl-C` inside the picker — close without picking.
     CloseConnectionPicker,
     /// `j` / `Down` / `k` / `Up` inside the picker — move the
@@ -614,6 +618,14 @@ pub fn parse_normal(state: &mut VimState, key: KeyEvent) -> Action {
         if let KeyCode::Char('T') = code {
             state.take_count();
             return Action::TabPrev;
+        }
+        // `gd` — cycle the focused block's display mode. Doesn't
+        // consume the leading count (mode-cycle is per-press, not
+        // per-N), but we still drain `pending_count` so a stale
+        // count doesn't leak into the next keystroke.
+        if let KeyCode::Char('d') = code {
+            state.take_count();
+            return Action::CycleDisplayMode;
         }
         // Drop the prefix and continue parsing.
     }
@@ -1788,6 +1800,42 @@ mod tests {
         assert_eq!(
             parse_normal(&mut s, key_ctrl(KeyCode::Char('x'))),
             Action::ExplainBlock
+        );
+    }
+
+    #[test]
+    fn gd_cycles_focused_block_display_mode() {
+        // `gd` chord — first `g` arms the prefix and is a no-op,
+        // second `d` resolves to the display-mode cycle action. Uses
+        // the same `pending_g` plumbing as `gg`/`gt`/`gT`.
+        let mut s = VimState::new();
+        assert_eq!(
+            parse_normal(&mut s, key(KeyCode::Char('g'))),
+            Action::Noop
+        );
+        assert_eq!(
+            parse_normal(&mut s, key(KeyCode::Char('d'))),
+            Action::CycleDisplayMode
+        );
+    }
+
+    #[test]
+    fn gd_drops_stale_count_prefix() {
+        // `5gd` shouldn't cycle five times — the count is meaningful
+        // for `5gg` (goto line 5) but not for the per-press mode
+        // cycle. We drain it instead of leaking it into the next
+        // keystroke.
+        let mut s = VimState::new();
+        parse_normal(&mut s, key(KeyCode::Char('5')));
+        parse_normal(&mut s, key(KeyCode::Char('g')));
+        assert_eq!(
+            parse_normal(&mut s, key(KeyCode::Char('d'))),
+            Action::CycleDisplayMode
+        );
+        // Count drained — next plain `j` is a 1-step Down, not 5.
+        assert_eq!(
+            parse_normal(&mut s, key(KeyCode::Char('j'))),
+            Action::Motion(Motion::Down, 1)
         );
     }
 
