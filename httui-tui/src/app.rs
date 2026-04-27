@@ -1007,6 +1007,17 @@ fn cursor_y(doc: &Document, layouts: &[SegmentLayout]) -> u16 {
             // landing requires knowing each row's y inside the table.
             .map(|l| l.y_start.saturating_add(l.height.saturating_sub(2)))
             .unwrap_or(0),
+        Cursor::InBlockFence { segment_idx, position } => layouts
+            .iter()
+            .find(|l| l.segment_idx == segment_idx)
+            // Header sits on the block's top row; closer on the bottom.
+            .map(|l| match position {
+                crate::buffer::cursor::FencePosition::Header => l.y_start,
+                crate::buffer::cursor::FencePosition::Closer => {
+                    l.y_start.saturating_add(l.height.saturating_sub(1))
+                }
+            })
+            .unwrap_or(0),
     }
 }
 

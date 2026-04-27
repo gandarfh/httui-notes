@@ -285,6 +285,7 @@ fn apply_line_end(doc: &Document) -> Cursor {
 // ───── vertical (cross-segment) ─────
 
 fn apply_down(doc: &Document) -> Cursor {
+    use crate::buffer::cursor::FencePosition;
     match doc.cursor() {
         Cursor::InProse {
             segment_idx,
@@ -301,14 +302,27 @@ fn apply_down(doc: &Document) -> Cursor {
             }
             jump_to_segment(doc, segment_idx + 1, true).unwrap_or(doc.cursor())
         }
+        Cursor::InBlockFence {
+            segment_idx,
+            position: FencePosition::Header,
+        } => {
+            // From the ` ```<info> ` row, j drops into the body's
+            // first line — the renderer kept that row at the same
+            // visual position whether we're in raw or render mode.
+            Cursor::InBlock {
+                segment_idx,
+                line: 0,
+                offset: 0,
+            }
+        }
         Cursor::InBlock {
             segment_idx,
             line,
             ..
         } => {
-            // Within the block: drop down through the SQL body. When
+            // Within the block body: drop down through the SQL. When
             // we run off the last SQL line, hop into the result table
-            // (if there is one) or fall through to the next segment.
+            // (if there is one) or land on the closing fence row.
             let lines = block_query_line_count(doc, segment_idx);
             if line + 1 < lines {
                 return Cursor::InBlock {
@@ -323,7 +337,10 @@ fn apply_down(doc: &Document) -> Cursor {
                     row: 0,
                 };
             }
-            jump_to_segment(doc, segment_idx + 1, true).unwrap_or(doc.cursor())
+            Cursor::InBlockFence {
+                segment_idx,
+                position: FencePosition::Closer,
+            }
         }
         Cursor::InBlockResult { segment_idx, row } => {
             let total = block_result_row_count(doc, segment_idx);
@@ -333,12 +350,25 @@ fn apply_down(doc: &Document) -> Cursor {
                     row: row + 1,
                 };
             }
+            // Past the last result row → land on the ` ``` ` closer.
+            Cursor::InBlockFence {
+                segment_idx,
+                position: FencePosition::Closer,
+            }
+        }
+        Cursor::InBlockFence {
+            segment_idx,
+            position: FencePosition::Closer,
+        } => {
+            // Past the closing fence → leave the block for the next
+            // segment (prose, or another block's header).
             jump_to_segment(doc, segment_idx + 1, true).unwrap_or(doc.cursor())
         }
     }
 }
 
 fn apply_up(doc: &Document) -> Cursor {
+    use crate::buffer::cursor::FencePosition;
     match doc.cursor() {
         Cursor::InProse {
             segment_idx,
@@ -358,6 +388,27 @@ fn apply_up(doc: &Document) -> Cursor {
             }
             jump_to_segment(doc, segment_idx - 1, false).unwrap_or(doc.cursor())
         }
+        Cursor::InBlockFence {
+            segment_idx,
+            position: FencePosition::Closer,
+        } => {
+            // From the ` ``` ` closer, k goes back into the block —
+            // result table's last row if any, otherwise the SQL body's
+            // last line.
+            if block_result_row_count(doc, segment_idx) > 0 {
+                let last = block_result_row_count(doc, segment_idx).saturating_sub(1);
+                return Cursor::InBlockResult {
+                    segment_idx,
+                    row: last,
+                };
+            }
+            let last_line = block_query_line_count(doc, segment_idx).saturating_sub(1);
+            Cursor::InBlock {
+                segment_idx,
+                line: last_line,
+                offset: 0,
+            }
+        }
         Cursor::InBlock {
             segment_idx,
             line,
@@ -370,10 +421,12 @@ fn apply_up(doc: &Document) -> Cursor {
                     offset: 0,
                 };
             }
-            if segment_idx == 0 {
-                return doc.cursor();
+            // Top of the body → land on the fence header instead of
+            // jumping out of the block. Another `k` takes us out.
+            Cursor::InBlockFence {
+                segment_idx,
+                position: FencePosition::Header,
             }
-            jump_to_segment(doc, segment_idx - 1, false).unwrap_or(doc.cursor())
         }
         Cursor::InBlockResult { segment_idx, row } => {
             if row > 0 {
@@ -389,6 +442,17 @@ fn apply_up(doc: &Document) -> Cursor {
                 line: last_line,
                 offset: 0,
             }
+        }
+        Cursor::InBlockFence {
+            segment_idx,
+            position: FencePosition::Header,
+        } => {
+            // Above the header — leave the block for the previous
+            // segment.
+            if segment_idx == 0 {
+                return doc.cursor();
+            }
+            jump_to_segment(doc, segment_idx - 1, false).unwrap_or(doc.cursor())
         }
     }
 }
@@ -740,34 +804,24 @@ fn block_query_str(doc: &Document, segment_idx: usize) -> Option<String> {
 }
 
 fn jump_to_segment(doc: &Document, idx: usize, going_down: bool) -> Option<Cursor> {
+    use crate::buffer::cursor::FencePosition;
     let seg = doc.segments().get(idx)?;
     Some(match seg {
         Segment::Block(_) => {
-            // Entering a block from above (j) lands on the first SQL
-            // line. Coming from below (k) lands on the last *row of
-            // the result table* if there is one — that's the last
-            // visual element of the block — otherwise the last SQL
-            // line.
+            // CM6 parity: entering a block via cross-segment motion
+            // lands on the visible fence row first (` ```<info> ` from
+            // above, ` ``` ` from below). Another `j`/`k` then steps
+            // into the body — same flow the desktop's "enter block"
+            // gesture produces.
             if going_down {
-                Cursor::InBlock {
+                Cursor::InBlockFence {
                     segment_idx: idx,
-                    line: 0,
-                    offset: 0,
+                    position: FencePosition::Header,
                 }
             } else {
-                let result_rows = block_result_row_count(doc, idx);
-                if result_rows > 0 {
-                    Cursor::InBlockResult {
-                        segment_idx: idx,
-                        row: result_rows - 1,
-                    }
-                } else {
-                    let last = block_query_line_count(doc, idx).saturating_sub(1);
-                    Cursor::InBlock {
-                        segment_idx: idx,
-                        line: last,
-                        offset: 0,
-                    }
+                Cursor::InBlockFence {
+                    segment_idx: idx,
+                    position: FencePosition::Closer,
                 }
             }
         }
@@ -1033,5 +1087,68 @@ mod tests {
             Cursor::InProse { offset, .. } => assert_eq!(offset, 0),
             _ => panic!(),
         }
+    }
+
+    #[test]
+    fn down_walks_through_fence_header_into_body_and_out_through_closer() {
+        // CM6 parity: stepping `j` from prose above a block lands on
+        // the fence header first, then into the body, then onto the
+        // closer, then out the other side. Mirror with `k`.
+        use crate::buffer::cursor::FencePosition;
+        let mut d = doc(
+            "head\n\n```db-postgres alias=q\nSELECT 1\n```\n\ntail\n",
+        );
+        d.set_cursor(Cursor::InProse {
+            segment_idx: 0,
+            offset: 0,
+        });
+
+        // Walk down until we land on the fence header.
+        let mut steps = 0;
+        loop {
+            apply(Motion::Down, &mut d, 1, 10);
+            steps += 1;
+            if matches!(
+                d.cursor(),
+                Cursor::InBlockFence { position: FencePosition::Header, .. }
+            ) {
+                break;
+            }
+            assert!(steps < 10, "didn't reach the fence header in 10 j's");
+        }
+
+        // Next `j` enters the body.
+        apply(Motion::Down, &mut d, 1, 10);
+        assert!(matches!(d.cursor(), Cursor::InBlock { line: 0, .. }));
+
+        // Past the last body line → closer.
+        apply(Motion::Down, &mut d, 1, 10);
+        assert!(matches!(
+            d.cursor(),
+            Cursor::InBlockFence { position: FencePosition::Closer, .. }
+        ));
+
+        // Past the closer → leave the block (next prose).
+        apply(Motion::Down, &mut d, 1, 10);
+        assert!(matches!(d.cursor(), Cursor::InProse { .. }));
+
+        // `k` from the prose below climbs back into the closer.
+        apply(Motion::Up, &mut d, 1, 10);
+        assert!(matches!(
+            d.cursor(),
+            Cursor::InBlockFence { position: FencePosition::Closer, .. }
+        ));
+        // Then back into the body (last line).
+        apply(Motion::Up, &mut d, 1, 10);
+        assert!(matches!(d.cursor(), Cursor::InBlock { line: 0, .. }));
+        // Then onto the header.
+        apply(Motion::Up, &mut d, 1, 10);
+        assert!(matches!(
+            d.cursor(),
+            Cursor::InBlockFence { position: FencePosition::Header, .. }
+        ));
+        // Then out into the prose above.
+        apply(Motion::Up, &mut d, 1, 10);
+        assert!(matches!(d.cursor(), Cursor::InProse { .. }));
     }
 }

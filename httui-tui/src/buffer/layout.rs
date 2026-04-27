@@ -121,9 +121,9 @@ fn db_table_height(b: &BlockNode) -> u16 {
 /// can paint the fence header / closer in raw view.
 pub fn layout_document(doc: &Document, viewport_width: u16) -> Vec<SegmentLayout> {
     let cursor_seg = match doc.cursor() {
-        Cursor::InBlock { segment_idx, .. } | Cursor::InBlockResult { segment_idx, .. } => {
-            Some(segment_idx)
-        }
+        Cursor::InBlock { segment_idx, .. }
+        | Cursor::InBlockResult { segment_idx, .. }
+        | Cursor::InBlockFence { segment_idx, .. } => Some(segment_idx),
         _ => None,
     };
     let mut out = Vec::with_capacity(doc.segment_count());

@@ -1265,7 +1265,8 @@ fn apply_op_linewise(app: &mut App, op: Operator, count: usize, recording: bool)
     // cut/paste without needing visible fence delimiters.
     let block_idx = match app.document().map(|d| d.cursor()) {
         Some(Cursor::InBlock { segment_idx, .. })
-        | Some(Cursor::InBlockResult { segment_idx, .. }) => Some(segment_idx),
+        | Some(Cursor::InBlockResult { segment_idx, .. })
+        | Some(Cursor::InBlockFence { segment_idx, .. }) => Some(segment_idx),
         _ => None,
     };
     if let Some(idx) = block_idx {

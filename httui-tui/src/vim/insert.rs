@@ -53,6 +53,7 @@ pub fn recoil_after_exit(doc: &mut Document) {
             }
         }
         Cursor::InBlockResult { .. } => {}
+        Cursor::InBlockFence { .. } => {}
     }
 }
 
@@ -96,6 +97,7 @@ fn move_right_within_line(doc: &mut Document) {
             }
         }
         Cursor::InBlockResult { .. } => {}
+        Cursor::InBlockFence { .. } => {}
     }
 }
 
@@ -138,6 +140,7 @@ fn move_to_first_non_blank(doc: &mut Document) {
             });
         }
         Cursor::InBlockResult { .. } => {}
+        Cursor::InBlockFence { .. } => {}
     }
 }
 
@@ -176,6 +179,7 @@ fn move_to_line_end(doc: &mut Document) {
             });
         }
         Cursor::InBlockResult { .. } => {}
+        Cursor::InBlockFence { .. } => {}
     }
 }
 
@@ -219,6 +223,7 @@ fn open_line_above(doc: &mut Document) {
             });
         }
         Cursor::InBlockResult { .. } => {}
+        Cursor::InBlockFence { .. } => {}
     }
 }
 
@@ -256,6 +261,7 @@ fn open_line_below(doc: &mut Document) {
             doc.insert_char_at_cursor('\n');
         }
         Cursor::InBlockResult { .. } => {}
+        Cursor::InBlockFence { .. } => {}
     }
 }
 

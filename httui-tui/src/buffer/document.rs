@@ -409,6 +409,11 @@ impl Document {
             }
             // Result rows are read-only — typing in the table is a no-op.
             Cursor::InBlockResult { .. } => {}
+            // Fence header / closer rows are render-only landing spots
+            // for `dd`/`yy`-on-block; inline editing of the fence text
+            // is deferred to a follow-up slice (would need re-parse on
+            // every keystroke).
+            Cursor::InBlockFence { .. } => {}
         }
     }
 
@@ -456,6 +461,7 @@ impl Document {
                 }
             }
             Cursor::InBlockResult { .. } => {}
+            Cursor::InBlockFence { .. } => {}
         }
     }
 
@@ -483,6 +489,7 @@ impl Document {
                 }
             }
             Cursor::InBlockResult { .. } => {}
+            Cursor::InBlockFence { .. } => {}
         }
     }
 

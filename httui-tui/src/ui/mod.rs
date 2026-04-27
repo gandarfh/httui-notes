@@ -444,11 +444,15 @@ fn overlay_visual_selection(
 ) {
     let (a_seg, a_off) = match overlay.anchor {
         Cursor::InProse { segment_idx, offset } => (segment_idx, offset),
-        Cursor::InBlock { .. } | Cursor::InBlockResult { .. } => return,
+        Cursor::InBlock { .. }
+        | Cursor::InBlockResult { .. }
+        | Cursor::InBlockFence { .. } => return,
     };
     let (c_seg, c_off) = match doc.cursor() {
         Cursor::InProse { segment_idx, offset } => (segment_idx, offset),
-        Cursor::InBlock { .. } | Cursor::InBlockResult { .. } => return,
+        Cursor::InBlock { .. }
+        | Cursor::InBlockResult { .. }
+        | Cursor::InBlockFence { .. } => return,
     };
     if a_seg != c_seg {
         return;
@@ -824,7 +828,11 @@ fn render_segment(
                 cursor,
                 Cursor::InBlockResult { segment_idx, .. } if segment_idx == layout.segment_idx
             );
-            let focused = in_body || in_result;
+            let in_fence = matches!(
+                cursor,
+                Cursor::InBlockFence { segment_idx, .. } if segment_idx == layout.segment_idx
+            );
+            let focused = in_body || in_result || in_fence;
             let selected_row = match cursor {
                 Cursor::InBlockResult { segment_idx, row }
                     if segment_idx == layout.segment_idx =>
@@ -868,6 +876,20 @@ fn render_segment(
                     // (cursor-on) modes, so cursor positioning is
                     // identical.
                     cursor::render_inblock_cursor(frame, area, line, offset);
+                }
+            }
+            if in_fence {
+                if let Cursor::InBlockFence { position, .. } = cursor {
+                    // Park the terminal caret on the fence row itself.
+                    // Header sits at `area.y` (replaces the top border
+                    // glyph in raw view); closer at the bottom row.
+                    let y = match position {
+                        crate::buffer::cursor::FencePosition::Header => area.y,
+                        crate::buffer::cursor::FencePosition::Closer => {
+                            area.y.saturating_add(area.height.saturating_sub(1))
+                        }
+                    };
+                    frame.set_cursor_position((area.x, y));
                 }
             }
         }

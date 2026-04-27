@@ -82,9 +82,9 @@ pub fn search(doc: &Document, pattern: &str, forward: bool) -> Option<Cursor> {
             segment_idx,
             offset,
         } => (segment_idx, offset),
-        Cursor::InBlock { segment_idx, .. } | Cursor::InBlockResult { segment_idx, .. } => {
-            (segment_idx, 0)
-        }
+        Cursor::InBlock { segment_idx, .. }
+        | Cursor::InBlockResult { segment_idx, .. }
+        | Cursor::InBlockFence { segment_idx, .. } => (segment_idx, 0),
     };
 
     if forward {

@@ -155,5 +155,18 @@ fn describe_cursor(doc: &Document) -> String {
                 .count();
             format!("Block #{block_idx} · Result row {}", row + 1)
         }
+        Cursor::InBlockFence { segment_idx, position } => {
+            let block_idx = doc
+                .segments()
+                .iter()
+                .take(segment_idx + 1)
+                .filter(|s| matches!(s, Segment::Block(_)))
+                .count();
+            let label = match position {
+                crate::buffer::cursor::FencePosition::Header => "fence ```",
+                crate::buffer::cursor::FencePosition::Closer => "fence ```",
+            };
+            format!("Block #{block_idx} · {label}")
+        }
     }
 }
