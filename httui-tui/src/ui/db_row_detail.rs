@@ -15,7 +15,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, BorderType, Borders, Paragraph},
     Frame,
 };
 
@@ -55,6 +55,7 @@ pub fn render(
 
     let outer = Block::default()
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .title(state.title.clone())
         .style(bg_style)
         .border_style(Style::default().fg(Color::LightBlue).bg(Color::Black));
