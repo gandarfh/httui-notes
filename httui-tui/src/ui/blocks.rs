@@ -380,7 +380,13 @@ fn render_db_inner(
             width: panel_chunk.width,
             height: panel_chunk.height.saturating_sub(1),
         };
-        render_result_tab_bar(frame, tab_bar_rect, result_tab);
+        let result_count = b
+            .cached_result
+            .as_ref()
+            .and_then(|v| v.get("results"))
+            .and_then(|v| v.as_array())
+            .map(|a| a.len());
+        render_result_tab_bar_inner(frame, tab_bar_rect, result_tab, result_count);
         match result_tab {
             crate::app::ResultPanelTab::Result => {
                 if let Some((table, viewport_selected)) =
@@ -450,10 +456,27 @@ fn db_footer_text(b: &BlockNode, names: &ConnectionNames) -> String {
             .cloned()
             .unwrap_or_else(|| conn_raw.to_string())
     };
-    let limit = b.params.get("limit").and_then(|v| v.as_u64());
-    let mut footer = format!("connection: {conn_display}");
-    if let Some(l) = limit {
+
+    // Mirror the desktop footer's segment ordering: status dot ·
+    // connection name · (rows · elapsed · cached, when applicable)
+    // · press `r` to run. Idle blocks just show conn + hint.
+    let dot = match &b.state {
+        ExecutionState::Idle => '○',
+        ExecutionState::Running => '◐',
+        ExecutionState::Cached => '●',
+        ExecutionState::Success => '●',
+        ExecutionState::Error(_) => '●',
+    };
+    let mut footer = format!("{dot} {conn_display}");
+    if let Some(l) = b.params.get("limit").and_then(|v| v.as_u64()) {
         footer.push_str(&format!(" · limit: {l}"));
+    }
+    if let Some(summary) = db_summary(b) {
+        footer.push_str(" · ");
+        footer.push_str(&summary);
+    }
+    if matches!(b.state, ExecutionState::Cached) {
+        footer.push_str(" · cached");
     }
     footer.push_str(" · press `r` to run");
     footer
@@ -620,20 +643,31 @@ fn build_result_table(
     if first.get("kind").and_then(|v| v.as_str()) != Some("select") {
         return None;
     }
-    let columns: Vec<String> = first
+    // Pair (name, type) so the header can render the type in dim
+    // beside the bold column name — same convention as the desktop
+    // (`id integer`, `created_at datetime`).
+    let columns_meta: Vec<(String, String)> = first
         .get("columns")
         .and_then(|v| v.as_array())?
         .iter()
         .map(|c| {
-            c.get("name")
+            let name = c
+                .get("name")
                 .and_then(|n| n.as_str())
                 .unwrap_or("?")
-                .to_string()
+                .to_string();
+            let ty = c
+                .get("type")
+                .and_then(|n| n.as_str())
+                .unwrap_or("")
+                .to_string();
+            (name, ty)
         })
         .collect();
-    if columns.is_empty() {
+    if columns_meta.is_empty() {
         return None;
     }
+    let columns: Vec<String> = columns_meta.iter().map(|(n, _)| n.clone()).collect();
     let rows: Vec<&serde_json::Value> = first
         .get("rows")
         .and_then(|v| v.as_array())?
@@ -662,10 +696,19 @@ fn build_result_table(
     let end = (offset + MAX_VISIBLE_ROWS).min(total);
     let visible_rows: &[&serde_json::Value] = &rows[offset..end];
 
-    // Compute per-column widths from header + visible cells.
-    let mut widths: Vec<u16> = columns
+    // Compute per-column widths from `name + " " + type` header
+    // text plus visible cells. Type label is rendered in dim
+    // alongside the bold name (`id integer`).
+    let mut widths: Vec<u16> = columns_meta
         .iter()
-        .map(|n| n.chars().count().min(MAX_COL_WIDTH) as u16)
+        .map(|(name, ty)| {
+            let header_len = if ty.is_empty() {
+                name.chars().count()
+            } else {
+                name.chars().count() + 1 + ty.chars().count()
+            };
+            header_len.min(MAX_COL_WIDTH) as u16
+        })
         .collect();
     for row in visible_rows.iter() {
         for (i, name) in columns.iter().enumerate() {
@@ -677,13 +720,22 @@ fn build_result_table(
         }
     }
 
-    let header_style = Style::default()
+    let name_style = Style::default()
         .fg(Color::Cyan)
         .add_modifier(Modifier::BOLD);
+    let type_style = Style::default().fg(Color::DarkGray);
     let header = Row::new(
-        columns
+        columns_meta
             .iter()
-            .map(|c| Cell::from(c.clone()).style(header_style))
+            .map(|(name, ty)| {
+                let mut spans: Vec<Span<'static>> = Vec::with_capacity(3);
+                spans.push(Span::styled(name.clone(), name_style));
+                if !ty.is_empty() {
+                    spans.push(Span::raw(" "));
+                    spans.push(Span::styled(ty.clone(), type_style));
+                }
+                Cell::from(Line::from(spans))
+            })
             .collect::<Vec<_>>(),
     )
     .height(1);
@@ -843,16 +895,18 @@ fn generic_body(b: &BlockNode) -> Vec<Line<'static>> {
 /// Selected tab gets a bright background; the rest stay dim. Only
 /// 4 fixed tabs for now (Result/Messages/Plan/Stats) — sub-tabs
 /// for multi-statement Result are V2.
-fn render_result_tab_bar(
+fn render_result_tab_bar_inner(
     frame: &mut Frame,
     area: Rect,
     selected: crate::app::ResultPanelTab,
+    result_count: Option<usize>,
 ) {
     use crate::app::ResultPanelTab;
+    // Active tab: underline + bold, no bg fill — same look the
+    // desktop widget uses (Tailwind `border-b-2 border-primary`).
     let active_style = Style::default()
-        .bg(Color::Rgb(60, 70, 110))
         .fg(Color::White)
-        .add_modifier(Modifier::BOLD);
+        .add_modifier(Modifier::BOLD | Modifier::UNDERLINED);
     let inactive_style = Style::default().fg(Color::DarkGray);
     let mut spans: Vec<Span<'static>> = Vec::new();
     for tab in [
@@ -862,8 +916,14 @@ fn render_result_tab_bar(
         ResultPanelTab::Stats,
     ] {
         let style = if tab == selected { active_style } else { inactive_style };
-        spans.push(Span::styled(format!(" {} ", tab.label()), style));
-        spans.push(Span::raw(" "));
+        let label = match (tab, result_count) {
+            // Pluralize Result(s) when multi-statement returned >1
+            // result set — same convention the desktop uses.
+            (ResultPanelTab::Result, Some(n)) if n > 1 => format!("Results ({n})"),
+            _ => tab.label().to_string(),
+        };
+        spans.push(Span::styled(format!(" {label} "), style));
+        spans.push(Span::raw("  "));
     }
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }
@@ -1085,7 +1145,10 @@ mod tests {
             cached_result: None,
         };
         let footer = db_footer_text(&b, &ConnectionNames::new());
-        assert!(footer.contains("connection: prod"));
+        // The footer now drops the literal "connection:" label in
+        // favor of a status dot + connection name pair, mirroring the
+        // desktop widget. Limit + run hint stay verbatim.
+        assert!(footer.contains(" prod"), "got: {footer}");
         assert!(footer.contains("limit: 50"));
         assert!(footer.contains("press `r` to run"));
     }
@@ -1109,7 +1172,9 @@ mod tests {
         let mut names = ConnectionNames::new();
         names.insert(uuid.into(), "prod-db".into());
         let footer = db_footer_text(&b, &names);
-        assert!(footer.contains("connection: prod-db"));
+        // Status-dot prefix replaced "connection: " — the human
+        // name is rendered free of any leading label.
+        assert!(footer.contains(" prod-db"), "got: {footer}");
         assert!(!footer.contains(uuid));
     }
 
