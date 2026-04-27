@@ -1258,6 +1258,43 @@ fn apply_op_motion(
 }
 
 fn apply_op_linewise(app: &mut App, op: Operator, count: usize, recording: bool) {
+    // Block-on-cursor short-circuit: `dd`/`yy`/`cc` on a Block (or
+    // its result panel) treats the whole segment as one logical
+    // line. The yanked text is the canonical fence markdown — paste
+    // anywhere else + re-parse rebuilds the block. CM6-equivalent
+    // cut/paste without needing visible fence delimiters.
+    let block_idx = match app.document().map(|d| d.cursor()) {
+        Some(Cursor::InBlock { segment_idx, .. })
+        | Some(Cursor::InBlockResult { segment_idx, .. }) => Some(segment_idx),
+        _ => None,
+    };
+    if let Some(idx) = block_idx {
+        let mut yanked: Option<String> = None;
+        if let Some(doc) = app.document_mut() {
+            if op_mutates(op) {
+                doc.snapshot();
+            }
+            yanked = match op {
+                Operator::Yank => doc.yank_block_at(idx),
+                Operator::Delete | Operator::Change => doc.delete_block_at(idx),
+            };
+        }
+        if let Some(text) = yanked {
+            app.vim.unnamed.set_linewise(text);
+        }
+        sync_yank_to_clipboard(app, op);
+        if matches!(op, Operator::Change) {
+            app.vim.enter_insert();
+            app.vim
+                .insert_session
+                .start_change(ChangeOrigin::Linewise { op_count: count });
+        } else if recording && op_mutates(op) {
+            app.vim.last_change = Some(ChangeRecord::OperatorLinewise(op, count));
+        }
+        app.refresh_viewport_for_cursor();
+        return;
+    }
+
     let mut outcome = operator::OpOutcome::default();
     let mut unnamed = std::mem::take(&mut app.vim.unnamed);
     if let Some(doc) = app.document_mut() {
@@ -1320,6 +1357,16 @@ fn apply_paste(app: &mut App, pos: PastePos, count: usize, recording: bool) {
     }
     if recording {
         app.vim.last_change = Some(ChangeRecord::Paste(pos, count));
+    }
+    // Paste lands in prose. If the register held fence text (the
+    // common case after `dd` on a block), the just-inserted prose
+    // now contains a complete fence — re-parse so the block is
+    // reinstated at the destination. Cheap when there's no fence
+    // (parse_blocks returns empty and the helper bails).
+    if let Some(Cursor::InProse { segment_idx, .. }) = app.document().map(|d| d.cursor()) {
+        if let Some(doc) = app.document_mut() {
+            doc.reparse_prose_at(segment_idx);
+        }
     }
     app.refresh_viewport_for_cursor();
 }

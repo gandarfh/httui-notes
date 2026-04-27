@@ -56,6 +56,24 @@ impl BlockNode {
         self.block_type == "e2e"
     }
 
+    /// Round-trip the block back to its canonical fence markdown.
+    /// Bridges to `httui_core::blocks::serialize_block` by stuffing
+    /// the BlockNode's fields into a synthetic `ParsedBlock` (line
+    /// numbers stubbed — the serializer doesn't read them). Used by
+    /// the cut/yank path to produce register text that, when pasted
+    /// into prose and re-parsed, recreates the block faithfully.
+    pub fn to_fence_markdown(&self) -> String {
+        let parsed = httui_core::blocks::parser::ParsedBlock {
+            block_type: self.block_type.clone(),
+            alias: self.alias.clone(),
+            display_mode: self.display_mode.clone(),
+            params: self.params.clone(),
+            line_start: 0,
+            line_end: 0,
+        };
+        httui_core::blocks::serialize_block(&parsed)
+    }
+
     /// Resolve the block's *effective* display mode for the renderer.
     /// Honors the explicit `display_mode` token from the fence when
     /// present; otherwise falls back to "input" while idle (no result

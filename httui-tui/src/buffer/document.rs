@@ -273,6 +273,80 @@ impl Document {
         true
     }
 
+    /// Yank the block at `segment_idx` as canonical fence markdown,
+    /// terminated with `\n`. Returns `None` when the segment isn't a
+    /// block. Doesn't mutate the document — used by the linewise
+    /// `yy`-on-block path so the user can paste the block somewhere
+    /// else and have re-parse rebuild it.
+    pub fn yank_block_at(&self, segment_idx: usize) -> Option<String> {
+        let Segment::Block(b) = self.segments.get(segment_idx)? else {
+            return None;
+        };
+        let mut text = b.to_fence_markdown();
+        if !text.ends_with('\n') {
+            text.push('\n');
+        }
+        Some(text)
+    }
+
+    /// Yank + remove the block segment. Adjacent prose runs are
+    /// merged so we don't strand empty Prose pads next to each
+    /// other. Cursor lands at the start of the merged-or-adjacent
+    /// prose. Returns the yanked fence markdown so the caller can
+    /// drop it into the unnamed register.
+    pub fn delete_block_at(&mut self, segment_idx: usize) -> Option<String> {
+        let yanked = self.yank_block_at(segment_idx)?;
+        self.segments.remove(segment_idx);
+
+        // Merge a Prose neighbor pair into one segment if removing
+        // the block left two Proses adjacent. Keeps the segment
+        // list clean and keeps subsequent re-parses cheap (one
+        // segment to scan instead of two).
+        let prev_is_prose = segment_idx > 0
+            && matches!(self.segments.get(segment_idx - 1), Some(Segment::Prose(_)));
+        let next_is_prose = matches!(self.segments.get(segment_idx), Some(Segment::Prose(_)));
+        let landing_idx = if prev_is_prose && next_is_prose {
+            // Take the trailing prose, append it (with a newline
+            // separator) to the leading prose, drop the trailing one.
+            let trailing = match self.segments.remove(segment_idx) {
+                Segment::Prose(r) => r,
+                _ => Rope::new(),
+            };
+            if let Some(Segment::Prose(leading)) = self.segments.get_mut(segment_idx - 1) {
+                if leading.len_chars() > 0 && trailing.len_chars() > 0 {
+                    leading.append(Rope::from_str("\n"));
+                }
+                leading.append(trailing);
+            }
+            segment_idx - 1
+        } else if prev_is_prose {
+            segment_idx - 1
+        } else if next_is_prose {
+            segment_idx
+        } else {
+            // Ended up with a block neighbor on at least one side —
+            // re-pad will splice an empty prose; cursor lands on
+            // whichever pad is closest to the deletion point.
+            segment_idx.min(self.segments.len().saturating_sub(1))
+        };
+
+        self.segments = pad_with_prose(std::mem::take(&mut self.segments));
+        // Re-pad may have shifted indices; clamp.
+        let landing_idx = landing_idx.min(self.segments.len().saturating_sub(1));
+        self.cursor = match self.segments.get(landing_idx) {
+            Some(Segment::Prose(_)) => Cursor::InProse {
+                segment_idx: landing_idx,
+                offset: 0,
+            },
+            _ => Cursor::InProse {
+                segment_idx: 0,
+                offset: 0,
+            },
+        };
+        self.dirty = true;
+        Some(yanked)
+    }
+
     /// Mutable handle to the block at `segment_idx`. Used by the run
     /// dispatcher to flip [`ExecutionState`] and stash `cached_result`.
     pub fn block_at_mut(&mut self, segment_idx: usize) -> Option<&mut BlockNode> {
@@ -1178,6 +1252,113 @@ mod tests {
         let changed = d.reparse_prose_at(0);
         assert!(!changed);
         assert_eq!(d.segments.len(), segs_before);
+    }
+
+    #[test]
+    fn yank_block_at_returns_canonical_fence_markdown() {
+        // The yanked text should round-trip through `parse_blocks` to
+        // the same logical block — that's the contract paste relies
+        // on. Ends with `\n` so paste's linewise semantics insert a
+        // clean line.
+        let d = Document::from_markdown(
+            "```db-postgres alias=q\nSELECT 1\n```\n",
+        )
+        .unwrap();
+        let blk_idx = d
+            .segments
+            .iter()
+            .position(|s| matches!(s, Segment::Block(_)))
+            .unwrap();
+        let yanked = d.yank_block_at(blk_idx).unwrap();
+        assert!(yanked.starts_with("```db-postgres"), "got: {yanked}");
+        assert!(yanked.contains("alias=q"));
+        assert!(yanked.contains("SELECT 1"));
+        assert!(yanked.ends_with('\n'));
+        // Round-trip: parse the yanked text → exactly one block.
+        let reparsed = httui_core::blocks::parse_blocks(&yanked);
+        assert_eq!(reparsed.len(), 1);
+        assert_eq!(reparsed[0].alias.as_deref(), Some("q"));
+    }
+
+    #[test]
+    fn yank_block_at_returns_none_for_prose_segment() {
+        // Defensive — caller is supposed to gate on cursor being
+        // `InBlock`/`InBlockResult`, but the helper still no-ops
+        // gracefully if asked about a prose segment.
+        let d = Document::from_markdown("hello\n").unwrap();
+        assert!(d.yank_block_at(0).is_none());
+    }
+
+    #[test]
+    fn delete_block_at_removes_segment_and_yanks_text() {
+        // After delete the document has no Block segments and the
+        // returned yank carries the original fence text. The two
+        // surrounding prose runs (one is the synthetic empty pad)
+        // collapse into one merged Prose so the segment list stays
+        // clean.
+        let mut d = Document::from_markdown(
+            "before\n\n```db-postgres alias=q\nSELECT 1\n```\n\nafter\n",
+        )
+        .unwrap();
+        let blk_idx = d
+            .segments
+            .iter()
+            .position(|s| matches!(s, Segment::Block(_)))
+            .unwrap();
+        let yanked = d.delete_block_at(blk_idx).expect("yanked something");
+        assert!(yanked.contains("alias=q"));
+        assert!(d
+            .segments
+            .iter()
+            .all(|s| !matches!(s, Segment::Block(_))));
+        // Document text now has both `before` and `after` prose
+        // contents reachable.
+        let text: String = d
+            .segments
+            .iter()
+            .filter_map(|s| match s {
+                Segment::Prose(r) => Some(r.to_string()),
+                _ => None,
+            })
+            .collect();
+        assert!(text.contains("before"));
+        assert!(text.contains("after"));
+    }
+
+    #[test]
+    fn delete_then_paste_round_trips_block() {
+        // Cut → paste cycle: the fence text yanked from `delete_block_at`
+        // can be inserted into another prose and a re-parse rebuilds
+        // the block. This is the cut/paste-to-move-block flow.
+        let mut d = Document::from_markdown(
+            "head\n\n```db-postgres alias=q\nSELECT 1\n```\n\ntail\n",
+        )
+        .unwrap();
+        let blk_idx = d
+            .segments
+            .iter()
+            .position(|s| matches!(s, Segment::Block(_)))
+            .unwrap();
+        let yanked = d.delete_block_at(blk_idx).unwrap();
+        // Pretend we pasted the yanked text into the only remaining
+        // prose, then reparsed (this is what `apply_paste` does).
+        let target_idx = d
+            .segments
+            .iter()
+            .position(|s| matches!(s, Segment::Prose(_)))
+            .unwrap();
+        if let Some(Segment::Prose(rope)) = d.segments.get_mut(target_idx) {
+            rope.append(Rope::from_str(&format!("\n{yanked}")));
+        }
+        assert!(d.reparse_prose_at(target_idx));
+        assert_eq!(
+            d.segments
+                .iter()
+                .filter(|s| matches!(s, Segment::Block(_)))
+                .count(),
+            1,
+            "block reappears after paste + reparse"
+        );
     }
 
     #[test]
