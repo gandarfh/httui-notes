@@ -279,3 +279,143 @@ fn find_close(bytes: &[u8]) -> Option<usize> {
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use httui_core::executor::http::types::{Cookie, TimingBreakdown};
+    use std::collections::HashMap;
+
+    fn empty_segs() -> Vec<Segment> {
+        Vec::new()
+    }
+
+    fn env(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn resolve_text_refs_substitutes_env_vars() {
+        let segs = empty_segs();
+        let env = env(&[("TOKEN", "abc123"), ("HOST", "api.x.com")]);
+        let out = resolve_text_refs(
+            "https://{{HOST}}/v1?t={{TOKEN}}",
+            &segs,
+            0,
+            &env,
+        )
+        .unwrap();
+        assert_eq!(out, "https://api.x.com/v1?t=abc123");
+    }
+
+    #[test]
+    fn resolve_text_refs_passes_through_text_without_refs() {
+        let segs = empty_segs();
+        let env = env(&[]);
+        let out = resolve_text_refs("plain text", &segs, 0, &env).unwrap();
+        assert_eq!(out, "plain text");
+    }
+
+    #[test]
+    fn resolve_text_refs_keeps_unmatched_open_brace() {
+        // A bare `{{` with no `}}` close is treated as literal text
+        // (defensive — protects from runaway substitution mid-edit).
+        let segs = empty_segs();
+        let env = env(&[]);
+        let out = resolve_text_refs("oops {{ nope", &segs, 0, &env).unwrap();
+        assert!(out.contains("{ nope"), "got: {out}");
+    }
+
+    #[test]
+    fn resolve_text_refs_errors_on_missing_env_var() {
+        let segs = empty_segs();
+        let env = env(&[]);
+        let err = resolve_text_refs("{{MISSING}}", &segs, 0, &env).unwrap_err();
+        assert!(
+            err.contains("MISSING") || err.to_lowercase().contains("missing"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn resolve_in_http_params_walks_url_headers_body() {
+        let segs = empty_segs();
+        let env = env(&[("TOKEN", "secret")]);
+        let mut params = serde_json::json!({
+            "method": "POST",
+            "url": "https://api.x.com?key={{TOKEN}}",
+            "headers": [
+                { "key": "Authorization", "value": "Bearer {{TOKEN}}" }
+            ],
+            "params": [
+                { "key": "tok", "value": "{{TOKEN}}" }
+            ],
+            "body": "{\"t\":\"{{TOKEN}}\"}"
+        });
+        resolve_in_http_params(&mut params, &segs, 0, &env).unwrap();
+        assert_eq!(
+            params.get("url").and_then(|v| v.as_str()),
+            Some("https://api.x.com?key=secret")
+        );
+        let auth = params
+            .get("headers")
+            .and_then(|v| v.as_array())
+            .and_then(|a| a.first())
+            .and_then(|h| h.get("value"))
+            .and_then(|v| v.as_str())
+            .unwrap();
+        assert_eq!(auth, "Bearer secret");
+        let body = params.get("body").and_then(|v| v.as_str()).unwrap();
+        assert_eq!(body, "{\"t\":\"secret\"}");
+    }
+
+    #[test]
+    fn http_response_to_json_translates_executor_shape_to_renderer_shape() {
+        let mut headers = HashMap::new();
+        headers.insert("Content-Type".to_string(), "application/json".to_string());
+        let response = HttpResponse {
+            status_code: 200,
+            status_text: "OK".into(),
+            headers,
+            body: serde_json::json!({"ok": true}),
+            size_bytes: 11,
+            elapsed_ms: 42,
+            timing: TimingBreakdown {
+                ttfb_ms: Some(30),
+                ..Default::default()
+            },
+            cookies: vec![Cookie {
+                name: "session".into(),
+                value: "abc".into(),
+                domain: Some("x.com".into()),
+                path: Some("/".into()),
+                expires: None,
+                secure: false,
+                http_only: false,
+            }],
+        };
+        let v = http_response_to_json(&response);
+        assert_eq!(v.get("status").and_then(|x| x.as_u64()), Some(200));
+        assert_eq!(
+            v.get("status_text").and_then(|x| x.as_str()),
+            Some("OK")
+        );
+        let headers_arr = v.get("headers").and_then(|x| x.as_array()).unwrap();
+        assert_eq!(headers_arr.len(), 1);
+        assert_eq!(
+            headers_arr[0].get("key").and_then(|x| x.as_str()),
+            Some("Content-Type")
+        );
+        let timing = v.get("timing").unwrap();
+        assert_eq!(timing.get("total_ms").and_then(|x| x.as_u64()), Some(42));
+        assert_eq!(timing.get("ttfb_ms").and_then(|x| x.as_u64()), Some(30));
+        let cookies = v.get("cookies").and_then(|x| x.as_array()).unwrap();
+        assert_eq!(
+            cookies[0].get("name").and_then(|x| x.as_str()),
+            Some("session")
+        );
+    }
+}
