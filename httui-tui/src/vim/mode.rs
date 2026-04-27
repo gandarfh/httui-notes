@@ -31,6 +31,12 @@ pub enum Mode {
     /// keys flow into the modal until it's dismissed; the editor
     /// underneath is frozen but kept painted.
     DbRowDetail,
+    /// `<CR>` on an HTTP response panel opens a centered modal with
+    /// the full response body + status/headers/timing summary. Same
+    /// rendering trick as `DbRowDetail`: a sub-`Document` on the
+    /// state struct receives every motion via `parse_normal`, so the
+    /// editor's full vim vocabulary navigates the modal.
+    HttpResponseDetail,
     /// `:conn` on a DB block opens a small popup anchored to the
     /// block to swap its connection without leaving the editor.
     /// Up/Down (or `j`/`k`) navigate, Enter picks, Esc/Ctrl-C
@@ -61,6 +67,7 @@ impl Mode {
             Mode::Visual => "VIS",
             Mode::VisualLine => "V-L",
             Mode::DbRowDetail => "ROW",
+            Mode::HttpResponseDetail => "RESP",
             Mode::ConnectionPicker => "CONN",
             Mode::DbConfirmRun => "RUN?",
             Mode::FenceEdit => "EDIT",
@@ -77,6 +84,7 @@ impl Mode {
             Mode::Tree | Mode::TreePrompt => Color::Yellow,
             Mode::Visual | Mode::VisualLine => Color::LightRed,
             Mode::DbRowDetail => Color::LightBlue,
+            Mode::HttpResponseDetail => Color::LightBlue,
             Mode::ConnectionPicker => Color::LightBlue,
             Mode::DbConfirmRun => Color::LightRed,
             Mode::FenceEdit => Color::LightYellow,

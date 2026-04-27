@@ -316,6 +316,12 @@ pub enum Action {
     /// `y` inside the row-detail modal — copy the current row's
     /// values to the system clipboard as pretty-printed JSON.
     CopyDbRowDetailJson,
+    /// `Ctrl-c` inside the HTTP response-detail modal — close it and
+    /// return to normal mode.
+    CloseHttpResponseDetail,
+    /// `Y` inside the HTTP response-detail modal — copy the full
+    /// response body to the system clipboard.
+    CopyHttpResponseBody,
     /// `gc` chord on a DB block — open the connection picker popup
     /// anchored to that block. Mnemonic: `g`-prefixed "goto" family
     /// (gg, gt, gd, gf …) extended with `gc` = goto connection.
@@ -1332,7 +1338,43 @@ fn is_blocked_in_modal(action: &Action) -> bool {
             | Action::Quit
             | Action::RunBlock
             | Action::OpenDbRowDetail
+            | Action::ExplainBlock
+            | Action::OpenConnectionPicker
     )
+}
+
+/// Parser for `Mode::HttpResponseDetail`. Mirrors
+/// [`parse_db_row_detail`]: read-only modal, motions are routed at the
+/// modal's sub-`Document`, mutations + focus escapes are filtered out.
+/// Two modal-specific shortcuts:
+///
+/// - `Ctrl-C` → close the modal.
+/// - `Y` (uppercase) → copy the full response body to the clipboard.
+///
+/// `Esc` and `q` keep their normal vim semantics (cancel pending
+/// chord and macro-record start, respectively) so a stray keystroke
+/// during a `yi{` chord doesn't teleport-close the modal.
+pub fn parse_http_response_detail(state: &mut VimState, key: KeyEvent) -> Action {
+    let KeyEvent {
+        code, modifiers, ..
+    } = key;
+    match (modifiers, code) {
+        (KeyModifiers::CONTROL, KeyCode::Char('c')) => return Action::CloseHttpResponseDetail,
+        (KeyModifiers::SHIFT, KeyCode::Char('Y'))
+            if state.pending_count.is_none()
+                && state.pending_operator.is_none()
+                && !state.pending_window =>
+        {
+            return Action::CopyHttpResponseBody;
+        }
+        _ => {}
+    }
+    let action = parse_normal(state, key);
+    if is_blocked_in_modal(&action) {
+        Action::Noop
+    } else {
+        action
+    }
 }
 
 /// Translate one key while the connection picker popup is open.
@@ -2615,4 +2657,79 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn http_response_detail_close_keys() {
+        // Modal close is `Ctrl-C` only, mirroring the DB row-detail
+        // modal — `Esc` and `q` must keep their normal vim semantics
+        // so a stray keystroke during `yi{` doesn't teleport-close.
+        let mut s = VimState::new();
+        assert!(matches!(
+            parse_http_response_detail(&mut s, key_ctrl(KeyCode::Char('c'))),
+            Action::CloseHttpResponseDetail
+        ));
+        let mut s = VimState::new();
+        assert!(matches!(
+            parse_http_response_detail(&mut s, key(KeyCode::Esc)),
+            Action::Noop
+        ));
+        let mut s = VimState::new();
+        assert!(matches!(
+            parse_http_response_detail(&mut s, key(KeyCode::Char('q'))),
+            Action::Noop
+        ));
+    }
+
+    #[test]
+    fn http_response_detail_uppercase_y_copies_body() {
+        let mut s = VimState::new();
+        let action = parse_http_response_detail(
+            &mut s,
+            KeyEvent::new(KeyCode::Char('Y'), KeyModifiers::SHIFT),
+        );
+        assert!(matches!(action, Action::CopyHttpResponseBody));
+    }
+
+    #[test]
+    fn http_response_detail_forwards_motions_from_normal() {
+        let mut s = VimState::new();
+        for code in [
+            KeyCode::Char('j'),
+            KeyCode::Char('k'),
+            KeyCode::Char('h'),
+            KeyCode::Char('l'),
+            KeyCode::Char('$'),
+            KeyCode::Char('0'),
+            KeyCode::Char('G'),
+        ] {
+            let action = parse_http_response_detail(&mut s, key(code));
+            assert!(
+                matches!(action, Action::Motion(_, _)),
+                "expected Motion for {code:?}, got {action:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn http_response_detail_blocks_mutations_and_focus_escapes() {
+        // Same read-only contract as `db_row_detail`: no insert,
+        // paste, undo, ex, search, run-block, etc.
+        for code in [
+            KeyCode::Char('i'),
+            KeyCode::Char('a'),
+            KeyCode::Char('o'),
+            KeyCode::Char('p'),
+            KeyCode::Char(':'),
+            KeyCode::Char('/'),
+            KeyCode::Char('?'),
+            KeyCode::Char('u'),
+            KeyCode::Char('r'),
+        ] {
+            let mut s = VimState::new();
+            let action = parse_http_response_detail(&mut s, key(code));
+            assert!(
+                matches!(action, Action::Noop),
+                "expected Noop for {code:?}, got {action:?}"
+            );
+        }
+    }
 }

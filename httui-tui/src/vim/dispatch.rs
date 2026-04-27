@@ -14,9 +14,9 @@ use crate::commands::db::{load_active_env_vars, resolve_connection_id_sync};
 use crate::pane::{FocusDir, SplitDir};
 use crate::vim::parser::{
     parse_cmdline, parse_connection_picker, parse_db_confirm_run, parse_db_row_detail,
-    parse_fence_edit, parse_insert, parse_normal, parse_quickopen, parse_search, parse_tree,
-    parse_tree_prompt, parse_visual, Action, InsertPos, Motion, Operator, PastePos,
-    TextObject, WindowCmd,
+    parse_fence_edit, parse_http_response_detail, parse_insert, parse_normal, parse_quickopen,
+    parse_search, parse_tree, parse_tree_prompt, parse_visual, Action, InsertPos, Motion,
+    Operator, PastePos, TextObject, WindowCmd,
 };
 use crate::vim::search;
 use crate::tree::{TreePrompt, TreePromptKind};
@@ -78,6 +78,7 @@ pub fn dispatch(app: &mut App, key: KeyEvent) {
         Mode::TreePrompt => parse_tree_prompt(key),
         Mode::Visual | Mode::VisualLine => parse_visual(&mut app.vim, key),
         Mode::DbRowDetail => parse_db_row_detail(&mut app.vim, key),
+        Mode::HttpResponseDetail => parse_http_response_detail(&mut app.vim, key),
         Mode::ConnectionPicker => parse_connection_picker(key),
         Mode::DbConfirmRun => parse_db_confirm_run(key),
         Mode::FenceEdit => parse_fence_edit(key),
@@ -593,9 +594,11 @@ fn apply_action(app: &mut App, action: Action, recording: bool) {
             apply_visual_select_textobject(app, textobj);
         }
         Action::RunBlock => crate::commands::db::apply_run_block(app),
-        Action::OpenDbRowDetail => apply_open_db_row_detail(app),
+        Action::OpenDbRowDetail => apply_open_result_detail(app),
         Action::CloseDbRowDetail => apply_close_db_row_detail(app),
         Action::CopyDbRowDetailJson => apply_copy_db_row_detail_json(app),
+        Action::CloseHttpResponseDetail => apply_close_http_response_detail(app),
+        Action::CopyHttpResponseBody => apply_copy_http_response_body(app),
         Action::OpenConnectionPicker => {
             if let Err(msg) = open_connection_picker(app) {
                 app.set_status(StatusKind::Error, msg);
@@ -1881,7 +1884,28 @@ fn apply_confirm_connection_picker(app: &mut App) {
     );
 }
 
-// ───────────── DB row-detail modal ─────────────
+// ───────────── result-detail modals (DB row + HTTP response) ─────────────
+
+/// `<CR>` dispatcher: routes to the right modal based on the block
+/// type the cursor is parked on. DB blocks open the row-detail modal
+/// (column → value pairs of the focused row); HTTP blocks open the
+/// response-detail modal (status line + headers + full body). For any
+/// other position the action is a no-op.
+fn apply_open_result_detail(app: &mut App) {
+    let Some(doc) = app.document() else { return };
+    let Cursor::InBlockResult { segment_idx, .. } = doc.cursor() else {
+        return;
+    };
+    let Some(seg) = doc.segments().get(segment_idx) else {
+        return;
+    };
+    let Segment::Block(block) = seg else { return };
+    if block.is_http() {
+        apply_open_http_response_detail(app);
+    } else if block.is_db() {
+        apply_open_db_row_detail(app);
+    }
+}
 
 /// `<CR>` in normal mode → open the row-detail modal. Validates the
 /// cursor is parked on a real result row of a `select`, snapshots
@@ -2120,6 +2144,199 @@ fn db_row_payload(
     Some(serde_json::Value::Object(out))
 }
 
+// ───────────── HTTP response-detail modal ─────────────
+
+/// Open the HTTP response-detail modal. Validates the cursor is on
+/// an HTTP block with a cached response, snapshots the response
+/// (status line + headers + body) into a fresh `Document`, flips
+/// the mode. Pending vim state is reset to keep stale counts /
+/// operators from leaking into the modal.
+fn apply_open_http_response_detail(app: &mut App) {
+    let Some(doc) = app.document() else { return };
+    let Cursor::InBlockResult { segment_idx, .. } = doc.cursor() else {
+        return;
+    };
+    let Some(seg) = doc.segments().get(segment_idx) else {
+        return;
+    };
+    let Segment::Block(block) = seg else { return };
+    if !block.is_http() {
+        return;
+    }
+    let title = build_http_response_modal_title(block);
+    let body_text = match build_http_response_body_text(block) {
+        Some(t) => t,
+        None => {
+            app.set_status(StatusKind::Info, "no cached response on this block");
+            return;
+        }
+    };
+    // Sanitize triple-backticks so a body that carries ``` doesn't
+    // open a fence and split the modal doc — we want a single Prose
+    // segment for the motion engine to operate on.
+    let safe_body = body_text.replace("```", "ʼʼʼ");
+    let modal_doc = match crate::buffer::Document::from_markdown(&safe_body) {
+        Ok(d) => d,
+        Err(_) => return,
+    };
+    app.http_response_detail = Some(crate::app::HttpResponseDetailState {
+        segment_idx,
+        title,
+        doc: modal_doc,
+        viewport_height: 1,
+        viewport_top: 0,
+    });
+    app.vim.mode = Mode::HttpResponseDetail;
+    app.vim.reset_pending();
+}
+
+/// `Ctrl-c` inside the HTTP response-detail modal → drop the state
+/// and return to normal mode.
+fn apply_close_http_response_detail(app: &mut App) {
+    app.http_response_detail = None;
+    app.vim.enter_normal();
+}
+
+/// `Y` inside the modal → copy the full response body (raw, not the
+/// rendered modal text) to the clipboard. Falls back gracefully when
+/// the clipboard isn't reachable or no body is cached.
+fn apply_copy_http_response_body(app: &mut App) {
+    let Some(state) = app.http_response_detail.as_ref() else { return };
+    let Some(text) = http_response_raw_body(app, state.segment_idx) else {
+        app.set_status(StatusKind::Error, "no response body to copy");
+        return;
+    };
+    match crate::clipboard::set_text(&text) {
+        Ok(()) => app.set_status(StatusKind::Info, "response body copied"),
+        Err(msg) => app.set_status(StatusKind::Error, msg),
+    }
+}
+
+/// Title line for the modal. Reuses the alias when present so the
+/// header reads naturally: ` Response · 200 · 1.4 kB · login `.
+fn build_http_response_modal_title(block: &BlockNode) -> String {
+    let cached = match block.cached_result.as_ref() {
+        Some(c) => c,
+        None => return " Response ".to_string(),
+    };
+    let status = cached
+        .get("status")
+        .and_then(|v| v.as_u64())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "?".into());
+    let size = cached
+        .get("size_bytes")
+        .and_then(|v| v.as_u64())
+        .map(format_size)
+        .unwrap_or_default();
+    let mut parts: Vec<String> = vec![format!("Response · {status}")];
+    if !size.is_empty() {
+        parts.push(size);
+    }
+    if let Some(alias) = block.alias.as_deref() {
+        parts.push(alias.to_string());
+    }
+    format!(" {} ", parts.join(" · "))
+}
+
+/// Render the cached response into the body text the modal's motion
+/// engine will navigate. Layout (fixed): a status line, blank,
+/// `Headers` section (`name: value` each), blank, `Body` heading,
+/// then the body — pretty-printed JSON when possible, raw text
+/// otherwise.
+fn build_http_response_body_text(block: &BlockNode) -> Option<String> {
+    let cached = block.cached_result.as_ref()?;
+    let mut out = String::new();
+    let status = cached.get("status").and_then(|v| v.as_u64()).unwrap_or(0);
+    let status_text = cached
+        .get("status_text")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let elapsed_ms = cached
+        .get("timing")
+        .and_then(|t| t.get("total_ms"))
+        .and_then(|v| v.as_u64());
+    let size_bytes = cached.get("size_bytes").and_then(|v| v.as_u64());
+    out.push_str(&format!("{status} {status_text}"));
+    if let Some(ms) = elapsed_ms {
+        out.push_str(&format!("  ·  {ms} ms"));
+    }
+    if let Some(sz) = size_bytes {
+        out.push_str(&format!("  ·  {}", format_size(sz)));
+    }
+    out.push('\n');
+
+    out.push_str("\nHeaders\n");
+    if let Some(headers) = cached.get("headers").and_then(|v| v.as_array()) {
+        if headers.is_empty() {
+            out.push_str("  (none)\n");
+        } else {
+            for h in headers {
+                let key = h.get("key").and_then(|v| v.as_str()).unwrap_or("");
+                let value = h.get("value").and_then(|v| v.as_str()).unwrap_or("");
+                out.push_str(&format!("  {key}: {value}\n"));
+            }
+        }
+    } else {
+        out.push_str("  (none)\n");
+    }
+
+    out.push_str("\nBody\n");
+    let body_text = render_http_body(cached);
+    if body_text.is_empty() {
+        out.push_str("  (empty)\n");
+    } else {
+        // Indent each line by two spaces so the body lines up with
+        // header values — a small visual cue that they share the same
+        // "section body" role.
+        for line in body_text.lines() {
+            out.push_str("  ");
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    Some(out)
+}
+
+/// Format a byte count as a short human-readable string (`1.4 kB`,
+/// `12 B`, `2.0 MB`). Mirrors the footer/status formatting in
+/// `ui::blocks` so the modal title matches the editor chrome.
+fn format_size(bytes: u64) -> String {
+    if bytes < 1024 {
+        return format!("{bytes} B");
+    }
+    let kb = bytes as f64 / 1024.0;
+    if kb < 1024.0 {
+        return format!("{kb:.1} kB");
+    }
+    let mb = kb / 1024.0;
+    format!("{mb:.1} MB")
+}
+
+/// Render the body as text. Tries pretty-JSON first (covers the
+/// common API path), falls back to whatever string representation
+/// the cached value carries.
+fn render_http_body(cached: &serde_json::Value) -> String {
+    let body = cached.get("body");
+    match body {
+        Some(serde_json::Value::String(s)) => s.clone(),
+        Some(v) => serde_json::to_string_pretty(v).unwrap_or_else(|_| v.to_string()),
+        None => String::new(),
+    }
+}
+
+/// Raw body for the `Y`-copy path. Same fallback chain as
+/// [`render_http_body`], minus the leading section labels.
+fn http_response_raw_body(app: &App, segment_idx: usize) -> Option<String> {
+    let doc = app.document()?;
+    let Segment::Block(block) = doc.segments().get(segment_idx)? else {
+        return None;
+    };
+    let cached = block.cached_result.as_ref()?;
+    let body = render_http_body(cached);
+    if body.is_empty() { None } else { Some(body) }
+}
+
 // ───────────── window / split commands ─────────────
 
 fn apply_window_cmd(app: &mut App, cmd: WindowCmd) {
@@ -2313,5 +2530,81 @@ mod tests {
         // empty result anyway).
         assert!(should_prefetch(0, 0, true, 5));
         assert!(!should_prefetch(0, 0, false, 5));
+    }
+
+    #[test]
+    fn format_size_picks_unit_by_magnitude() {
+        assert_eq!(format_size(0), "0 B");
+        assert_eq!(format_size(512), "512 B");
+        assert_eq!(format_size(2048), "2.0 kB");
+        assert_eq!(format_size(1_500_000), "1.4 MB");
+    }
+
+    #[test]
+    fn build_http_response_body_text_lays_out_status_headers_and_body() {
+        // Synthesize a fenced HTTP block + cached_result mimicking the
+        // shape `http_response_to_json` emits, then check the rendered
+        // modal body has the section headings, status line and an
+        // indented body line.
+        let block_md = "```http alias=req1\nGET https://api.example.com/users\n```\n";
+        let doc = crate::buffer::Document::from_markdown(block_md).unwrap();
+        let mut block = doc
+            .segments()
+            .iter()
+            .find_map(|s| match s {
+                Segment::Block(b) => Some(b.clone()),
+                _ => None,
+            })
+            .expect("block segment in parsed doc");
+        block.cached_result = Some(serde_json::json!({
+            "status": 200,
+            "status_text": "OK",
+            "headers": [
+                {"key": "content-type", "value": "application/json"},
+                {"key": "x-trace", "value": "abc"},
+            ],
+            "cookies": [],
+            "body": serde_json::json!({"ok": true}),
+            "size_bytes": 42,
+            "timing": {"total_ms": 142, "ttfb_ms": 30},
+        }));
+
+        let text = build_http_response_body_text(&block).expect("body text");
+        // Status line is line zero with code and human label.
+        assert!(text.starts_with("200 OK"), "got: {text}");
+        assert!(text.contains("142 ms"));
+        assert!(text.contains("42 B"));
+        // Section heading + a header pair.
+        assert!(text.contains("\nHeaders\n"));
+        assert!(text.contains("  content-type: application/json"));
+        // Body section + pretty JSON line.
+        assert!(text.contains("\nBody\n"));
+        assert!(text.contains("  \"ok\": true"));
+    }
+
+    #[test]
+    fn build_http_response_modal_title_includes_status_size_alias() {
+        let block_md = "```http alias=login\nPOST https://example.com/login\n```\n";
+        let doc = crate::buffer::Document::from_markdown(block_md).unwrap();
+        let mut block = doc
+            .segments()
+            .iter()
+            .find_map(|s| match s {
+                Segment::Block(b) => Some(b.clone()),
+                _ => None,
+            })
+            .expect("block segment in parsed doc");
+        block.cached_result = Some(serde_json::json!({
+            "status": 201,
+            "size_bytes": 1500,
+        }));
+        let title = build_http_response_modal_title(&block);
+        // Padded with spaces (it's a window title, ratatui paints it
+        // with a space-buffer so it doesn't kiss the corner).
+        assert!(title.starts_with(' '));
+        assert!(title.ends_with(' '));
+        assert!(title.contains("201"));
+        assert!(title.contains("1.5 kB"));
+        assert!(title.contains("login"));
     }
 }

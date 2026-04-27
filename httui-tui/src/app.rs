@@ -217,6 +217,26 @@ pub struct DbRowDetailState {
     pub viewport_top: u16,
 }
 
+/// Open instance of the HTTP response-detail modal. Mirrors
+/// [`DbRowDetailState`]: a sub-`Document` carries the rendered text
+/// (status line + headers + body) so the editor's full motion engine
+/// — built around [`Cursor::InProse`] — navigates the modal without
+/// any extra wiring. The body is snapshotted at open time; running
+/// the underlying block again while the modal is up doesn't mutate
+/// it.
+pub struct HttpResponseDetailState {
+    /// Back-pointer to the source HTTP block. Kept for a future
+    /// "jump back to block" command and for the title.
+    #[allow(dead_code)]
+    pub segment_idx: usize,
+    pub title: String,
+    pub doc: Document,
+    pub viewport_height: u16,
+    /// Top line of the visible window inside the modal. Same
+    /// persistent-viewport contract as [`DbRowDetailState::viewport_top`].
+    pub viewport_top: u16,
+}
+
 /// Global application state.
 pub struct App {
     pub config: Config,
@@ -239,6 +259,11 @@ pub struct App {
     /// `Mode::DbRowDetail` in lockstep so the dispatcher routes keys
     /// to the modal's parser.
     pub db_row_detail: Option<DbRowDetailState>,
+    /// `Some` while the HTTP response-detail modal is open. Mode
+    /// flips to `Mode::HttpResponseDetail` in lockstep. Same modal
+    /// trick as `db_row_detail` — the modal's body lives in a
+    /// sub-`Document` so motions/visual/yank work out of the box.
+    pub http_response_detail: Option<HttpResponseDetailState>,
     /// Sender for the main loop's `AppEvent` channel — handed to
     /// spawned async tasks (currently the DB executor) so they can
     /// notify the loop when their work completes. Optional so unit
@@ -439,6 +464,7 @@ impl App {
             pool_manager,
             connection_names,
             db_row_detail: None,
+            http_response_detail: None,
             event_sender: None,
             running_query: None,
             result_viewport_top: std::collections::HashMap::new(),
@@ -588,6 +614,9 @@ impl App {
         if let Some(state) = self.db_row_detail.as_ref() {
             return Some(&state.doc);
         }
+        if let Some(state) = self.http_response_detail.as_ref() {
+            return Some(&state.doc);
+        }
         self.active_pane().and_then(|p| p.document.as_ref())
     }
 
@@ -604,6 +633,9 @@ impl App {
         if self.db_row_detail.is_some() {
             return self.db_row_detail.as_mut().map(|s| &mut s.doc);
         }
+        if self.http_response_detail.is_some() {
+            return self.http_response_detail.as_mut().map(|s| &mut s.doc);
+        }
         self.active_pane_mut().and_then(|p| p.document.as_mut())
     }
 
@@ -616,6 +648,9 @@ impl App {
     /// reasoning as [`Self::document`].
     pub fn viewport_height(&self) -> u16 {
         if let Some(state) = self.db_row_detail.as_ref() {
+            return state.viewport_height;
+        }
+        if let Some(state) = self.http_response_detail.as_ref() {
             return state.viewport_height;
         }
         self.active_pane().map(|p| p.viewport_height).unwrap_or(0)

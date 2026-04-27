@@ -8,6 +8,7 @@ mod cursor;
 mod db_confirm_run;
 mod fence_edit;
 pub mod db_row_detail;
+pub mod http_response_detail;
 mod prose;
 mod quickopen;
 mod sql_highlight;
@@ -107,8 +108,10 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             | Mode::Tree
             | Mode::TreePrompt
             | Mode::DbRowDetail
+            | Mode::HttpResponseDetail
             | Mode::ConnectionPicker
     ) || app.db_row_detail.is_some()
+        || app.http_response_detail.is_some()
         || app.connection_picker.is_some();
 
     // Snapshot the current result-panel tab so the render tree can
@@ -224,6 +227,17 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             _ => None,
         };
         db_row_detail::render(frame, editor_area, state, visual);
+    }
+    // HTTP response-detail modal — same paint-while-state-is-Some
+    // rule as the DB row-detail modal so visual mode keeps the modal
+    // up.
+    if let Some(state) = app.http_response_detail.as_mut() {
+        let visual = match (app.vim.mode, app.vim.visual_anchor) {
+            (Mode::Visual, Some(anchor)) => Some(VisualOverlay { anchor, linewise: false }),
+            (Mode::VisualLine, Some(anchor)) => Some(VisualOverlay { anchor, linewise: true }),
+            _ => None,
+        };
+        http_response_detail::render(frame, editor_area, state, visual);
     }
 
     // Connection picker popup — same independence-from-mode rule as
