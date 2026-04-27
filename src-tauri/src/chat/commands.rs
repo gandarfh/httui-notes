@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use serde::Deserialize;
 use sqlx::sqlite::SqlitePool;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -532,7 +532,6 @@ pub async fn delete_tool_permission(
 
 #[tauri::command]
 pub async fn save_attachment_tmp(
-    app: AppHandle,
     bytes: Vec<u8>,
     media_type: String,
 ) -> Result<String, String> {
@@ -544,10 +543,8 @@ pub async fn save_attachment_tmp(
         _ => "bin",
     };
 
-    let tmp_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("Failed to get app data dir: {e}"))?
+    let tmp_dir = httui_core::paths::default_data_dir()
+        .map_err(|e| format!("Failed to resolve data dir: {e}"))?
         .join("tmp");
 
     tokio::fs::create_dir_all(&tmp_dir)

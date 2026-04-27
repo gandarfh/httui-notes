@@ -754,10 +754,20 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
-            let app_data_dir = app
-                .path()
-                .app_data_dir()
-                .expect("failed to resolve app data dir");
+            let app_data_dir = httui_core::paths::default_data_dir()
+                .expect("failed to resolve data dir");
+
+            match httui_core::paths::migrate_legacy_data(&app_data_dir) {
+                Ok(httui_core::paths::MigrationOutcome::Migrated { from }) => {
+                    eprintln!(
+                        "[migration] copied legacy data from {} to {}",
+                        from.display(),
+                        app_data_dir.display()
+                    );
+                }
+                Ok(_) => {}
+                Err(e) => eprintln!("[migration] failed: {e}"),
+            }
 
             let pool = tauri::async_runtime::block_on(async {
                 httui_notes::db::init_db(&app_data_dir)
