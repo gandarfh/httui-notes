@@ -59,14 +59,27 @@ pub fn render_block_with_selection(
             height: area.height.saturating_sub(2),
         };
         if b.is_db() {
-            render_db_inner(frame, inner, b, selected_row, viewport_top, names, result_tab);
+            render_db_inner(
+                frame, inner, b, selected_row, viewport_top, names, result_tab, true,
+            );
         } else {
-            let lines = if b.is_http() {
-                http_body(b)
-            } else if b.is_e2e() {
-                e2e_body(b)
+            // Cursor on, non-DB: paint the raw body lines so what
+            // the user is editing is what they see (parity with CM6
+            // desktop). For HTTP that means the actual request
+            // text — method line, headers, body — exactly as typed.
+            let body = raw_body_text(b);
+            let lines: Vec<Line<'static>> = if body.is_empty() {
+                if b.is_http() {
+                    http_body(b)
+                } else if b.is_e2e() {
+                    e2e_body(b)
+                } else {
+                    generic_body(b)
+                }
             } else {
-                generic_body(b)
+                body.lines()
+                    .map(|l| Line::from(Span::raw(l.to_string())))
+                    .collect()
             };
             frame.render_widget(Paragraph::new(lines), inner);
         }
@@ -83,7 +96,9 @@ pub fn render_block_with_selection(
     frame.render_widget(outer, area);
 
     if b.is_db() {
-        render_db_inner(frame, inner, b, selected_row, viewport_top, names, result_tab);
+        render_db_inner(
+            frame, inner, b, selected_row, viewport_top, names, result_tab, false,
+        );
         return;
     }
 
@@ -101,18 +116,23 @@ pub fn render_block_with_selection(
 /// Paint the fence delimiter rows (` ```<info> ` above, ` ``` `
 /// below) around the block's card. Called when the cursor sits on
 /// the block — the layout reserved the rows; we just fill them with
-/// dim-colored monospace text so the user can see (and yank, once
-/// motion crosses these rows) the canonical fence text.
+/// dim-colored monospace text so the user can see (and edit, now
+/// that Phase 3 routes edits to `b.raw`) the actual fence markdown.
+///
+/// Reads directly from `b.raw` instead of synthesizing via
+/// `to_fence_markdown` — when the fence is mid-edit and the
+/// last-good derived fields don't match, what the user types is
+/// what we paint. Otherwise, on a clean parse, the two paths agree
+/// byte-for-byte because the serializer's canonical output matches
+/// the rope.
 fn render_fence_lines(frame: &mut Frame, area: Rect, b: &BlockNode) {
     if area.height < 2 {
         return;
     }
     let dim = Style::default().fg(Color::DarkGray);
-    // Header line — first line of the canonical fence markdown
-    // (` ```<type> alias=... ` etc.). We don't reach into the body
-    // because it's already rendered inside the card.
-    let fence = b.to_fence_markdown();
-    let header = fence.lines().next().unwrap_or("```").to_string();
+    // Header line — first line of the raw rope.
+    let raw_text = b.raw.to_string();
+    let header = raw_text.lines().next().unwrap_or("```").to_string();
     let header_rect = Rect {
         x: area.x,
         y: area.y,
@@ -123,8 +143,9 @@ fn render_fence_lines(frame: &mut Frame, area: Rect, b: &BlockNode) {
         Paragraph::new(Line::from(Span::styled(header, dim))),
         header_rect,
     );
-    // Closer line — always the literal ` ``` ` for parity with the
-    // serializer's output. Painted at the bottom of the reserved area.
+    // Closer line — last visible line of the raw rope. Falls back
+    // to ` ``` ` when the rope is degenerate / mid-edit.
+    let closer = raw_text.lines().last().unwrap_or("```").to_string();
     let closer_rect = Rect {
         x: area.x,
         y: area.y.saturating_add(area.height.saturating_sub(1)),
@@ -132,9 +153,23 @@ fn render_fence_lines(frame: &mut Frame, area: Rect, b: &BlockNode) {
         height: 1,
     };
     frame.render_widget(
-        Paragraph::new(Line::from(Span::styled("```".to_string(), dim))),
+        Paragraph::new(Line::from(Span::styled(closer, dim))),
         closer_rect,
     );
+}
+
+/// Extract the body region (lines between the fence header and the
+/// closer) from a block's raw rope, joined with `\n`. Returns an
+/// empty string when the rope is degenerate.
+fn raw_body_text(b: &BlockNode) -> String {
+    let raw = b.raw.to_string();
+    let lines: Vec<&str> = raw.lines().collect();
+    if lines.len() < 2 {
+        return String::new();
+    }
+    // Drop the fence header (line 0) and the closer (last line).
+    let body = &lines[1..lines.len().saturating_sub(1)];
+    body.join("\n")
 }
 
 fn block_title(b: &BlockNode) -> String {
@@ -231,6 +266,7 @@ fn render_db_inner(
     viewport_top: Option<&mut u16>,
     names: &ConnectionNames,
     result_tab: crate::app::ResultPanelTab,
+    selected: bool,
 ) {
     if inner.width == 0 || inner.height == 0 {
         return;
@@ -240,11 +276,21 @@ fn render_db_inner(
     let show_input = mode.shows_input();
     let show_output = mode.shows_output();
 
-    let query = b
-        .params
-        .get("query")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    // Source of truth for the SQL body: when the cursor is on the
+    // block we paint `b.raw`'s body region directly so the user
+    // sees exactly what they're editing (parity with CM6 desktop).
+    // Off-cursor we keep the structured `params.query` view because
+    // it sidesteps weird mid-edit states.
+    let query_string;
+    let query: &str = if selected {
+        query_string = raw_body_text(b);
+        &query_string
+    } else {
+        b.params
+            .get("query")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+    };
     let sql_lines = query.lines().count().max(1) as u16;
     let status_line = db_result_line(b);
     // Status banner + result table belong to the output region — gate
