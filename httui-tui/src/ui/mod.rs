@@ -110,6 +110,10 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     ) || app.db_row_detail.is_some()
         || app.connection_picker.is_some();
 
+    // Snapshot the current result-panel tab so the render tree can
+    // pass it down without re-borrowing `app` at every level.
+    let result_tab_global = app.db_result_tab;
+
     // Capture the visual-selection overlay (only painted on the focused
     // leaf — the moving end of the selection is the cursor, the anchor
     // lives on `VimState`).
@@ -153,6 +157,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
                 visual_overlay,
                 &connection_names,
                 result_viewport_top,
+                result_tab_global,
             );
         }
     } else {
@@ -314,6 +319,7 @@ fn render_pane_tree(
     visual_overlay: Option<VisualOverlay>,
     connection_names: &blocks::ConnectionNames,
     result_viewport_top: &mut std::collections::HashMap<usize, u16>,
+    result_tab: crate::app::ResultPanelTab,
 ) {
     if area.width == 0 || area.height == 0 {
         return;
@@ -333,6 +339,7 @@ fn render_pane_tree(
                             search_pattern,
                             connection_names,
                             result_viewport_top,
+                            result_tab,
                         );
                     } else {
                         render_document_no_cursor(
@@ -343,6 +350,7 @@ fn render_pane_tree(
                             search_pattern,
                             connection_names,
                             result_viewport_top,
+                            result_tab,
                         );
                     }
                     // Selection highlight only on the focused leaf —
@@ -395,6 +403,7 @@ fn render_pane_tree(
                 visual_overlay,
                 connection_names,
                 result_viewport_top,
+                result_tab,
             );
             render_pane_tree(
                 frame,
@@ -406,6 +415,7 @@ fn render_pane_tree(
                 visual_overlay,
                 connection_names,
                 result_viewport_top,
+                result_tab,
             );
         }
     }
@@ -621,6 +631,7 @@ fn render_document_no_cursor(
     search_pattern: Option<&str>,
     connection_names: &blocks::ConnectionNames,
     result_viewport_top: &mut std::collections::HashMap<usize, u16>,
+    result_tab: crate::app::ResultPanelTab,
 ) {
     // Same logic as `render_document`, but skip the cursor draw step.
     // Used while the prompt is open so the terminal caret isn't fighting
@@ -643,6 +654,7 @@ fn render_document_no_cursor(
             search_pattern,
             connection_names,
             result_viewport_top,
+            result_tab,
         );
     }
 }
@@ -657,6 +669,7 @@ fn render_segment_no_cursor(
     search_pattern: Option<&str>,
     connection_names: &blocks::ConnectionNames,
     result_viewport_top: &mut std::collections::HashMap<usize, u16>,
+    result_tab: crate::app::ResultPanelTab,
 ) {
     let seg = match doc.segments().get(layout.segment_idx) {
         Some(s) => s,
@@ -698,6 +711,7 @@ fn render_segment_no_cursor(
                 None,
                 viewport_slot,
                 connection_names,
+                result_tab,
             );
         }
     }
@@ -712,6 +726,7 @@ fn render_document(
     search_pattern: Option<&str>,
     connection_names: &blocks::ConnectionNames,
     result_viewport_top: &mut std::collections::HashMap<usize, u16>,
+    result_tab: crate::app::ResultPanelTab,
 ) {
     let layouts = layout_document(doc, area.width);
     let cursor = doc.cursor();
@@ -734,6 +749,7 @@ fn render_document(
             search_pattern,
             connection_names,
             result_viewport_top,
+            result_tab,
         );
     }
 }
@@ -749,6 +765,7 @@ fn render_segment(
     search_pattern: Option<&str>,
     connection_names: &blocks::ConnectionNames,
     result_viewport_top: &mut std::collections::HashMap<usize, u16>,
+    result_tab: crate::app::ResultPanelTab,
 ) {
     let seg = match doc.segments().get(layout.segment_idx) {
         Some(s) => s,
@@ -831,6 +848,7 @@ fn render_segment(
                 selected_row,
                 viewport_slot,
                 connection_names,
+                result_tab,
             );
             if in_body {
                 if let Cursor::InBlock { line, offset, .. } = cursor {

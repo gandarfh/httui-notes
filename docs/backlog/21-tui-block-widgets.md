@@ -363,7 +363,28 @@ Hoje TUI sempre re-executava em `r`. Agora consulta cache primeiro (per-file SQL
 
 ---
 
-### Story 05.1 — Result tabs (Result(s)/Messages/Plan/Stats) 🚧 P2
+### Story 05.1 — Result tabs (Result/Messages/Plan/Stats) ✅ P2
+
+**Entregue (V1 scaffolding):**
+- [x] `ResultPanelTab` enum (`Result`/`Messages`/`Plan`/`Stats`) + `App.db_result_tab` (single global state)
+- [x] Tab bar rendered as 1-row header inside o panel result; selected tem bg cyan-blue, outros DarkGray dim
+- [x] Content dispatch por tab:
+  - **Result**: tabela existente
+  - **Messages**: lista `[severity] text` lendo `cached_result["messages"]`; placeholder `(no messages)` se vazio
+  - **Plan**: pretty-print do `cached_result["plan"]`; placeholder pedindo EXPLAIN (Story 05.2 popula)
+  - **Stats**: rows formatadas `elapsed: Xms · results: N · rows: M · cached: yes/no`
+- [x] Cycling via `gt`/`gT` quando cursor está em `InBlockResult` — interceptamos `Action::TabNext`/`TabPrev` em dispatch e roteamos pra `db_result_tab.next()`/`prev()` (wrap). Fora do result, `gt` continua sendo editor-tab cycle.
+- [x] 2 testes em `app::tab_tests`: `tab_next_cycles_forward_with_wrap`, `tab_prev_inverts_next`
+
+**Pra usar:**
+- Roda um SELECT, parka o cursor numa row (`<CR>` abre row detail; `j`/`k` navegam)
+- `gt` cicla pra Messages → Plan → Stats → Result
+- `gT` volta. Stats tab mostra rows totais somando results se multi-statement.
+
+**Não cobre (V2):**
+- Sub-tabs `[1] [2]` dentro de Result quando multi-statement (Story 04.2 já entrega o array; só faltaria UI)
+- Hide tabs vazias (Plan/Messages que não têm dados ainda mostram placeholder)
+- Plan tab fica útil quando Story 05.2 (EXPLAIN integration) entregar dados
 
 Após Story 04.2 (multi-statement), result panel precisa abas. Espelha desktop:
 - **Result(s)** — uma sub-aba numerada por result set se 2+

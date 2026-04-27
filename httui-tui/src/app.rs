@@ -274,6 +274,10 @@ pub struct App {
     /// query (UPDATE/DELETE without WHERE); the user answers `y`
     /// to run anyway or `n`/Esc/Ctrl-C to cancel.
     pub db_confirm_run: Option<DbConfirmRunState>,
+    /// Selected tab in the DB result panel. Single global state —
+    /// every block's result section uses the same selection. Cycled
+    /// via `gt` / `gT` while the cursor is on a result row.
+    pub db_result_tab: ResultPanelTab,
 }
 
 /// State for the run-confirm modal. Carries the segment to re-run
@@ -282,6 +286,86 @@ pub struct App {
 pub struct DbConfirmRunState {
     pub segment_idx: usize,
     pub reason: String,
+}
+
+/// Selected tab in the DB result panel. Single global state — every
+/// DB block uses the same selection so cycling on one block carries
+/// over when you jump to another. Default `Result`.
+///
+/// Order matches the visual order of the tab bar; `next()` / `prev()`
+/// wrap so cycling is keyboard-friendly.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum ResultPanelTab {
+    #[default]
+    Result,
+    Messages,
+    Plan,
+    Stats,
+}
+
+impl ResultPanelTab {
+    pub fn label(self) -> &'static str {
+        match self {
+            ResultPanelTab::Result => "Result",
+            ResultPanelTab::Messages => "Messages",
+            ResultPanelTab::Plan => "Plan",
+            ResultPanelTab::Stats => "Stats",
+        }
+    }
+
+    pub fn next(self) -> Self {
+        match self {
+            ResultPanelTab::Result => ResultPanelTab::Messages,
+            ResultPanelTab::Messages => ResultPanelTab::Plan,
+            ResultPanelTab::Plan => ResultPanelTab::Stats,
+            ResultPanelTab::Stats => ResultPanelTab::Result,
+        }
+    }
+
+    pub fn prev(self) -> Self {
+        match self {
+            ResultPanelTab::Result => ResultPanelTab::Stats,
+            ResultPanelTab::Messages => ResultPanelTab::Result,
+            ResultPanelTab::Plan => ResultPanelTab::Messages,
+            ResultPanelTab::Stats => ResultPanelTab::Plan,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tab_tests {
+    use super::ResultPanelTab;
+
+    #[test]
+    fn tab_next_cycles_forward_with_wrap() {
+        // Result → Messages → Plan → Stats → Result. The wrap is
+        // important: `gt` keeps spinning instead of getting stuck
+        // at the end.
+        let mut t = ResultPanelTab::default();
+        assert_eq!(t, ResultPanelTab::Result);
+        t = t.next();
+        assert_eq!(t, ResultPanelTab::Messages);
+        t = t.next();
+        assert_eq!(t, ResultPanelTab::Plan);
+        t = t.next();
+        assert_eq!(t, ResultPanelTab::Stats);
+        t = t.next();
+        assert_eq!(t, ResultPanelTab::Result);
+    }
+
+    #[test]
+    fn tab_prev_inverts_next() {
+        // Walking back is the mirror of walking forward — useful
+        // when the user overshoots with `gt` and needs `gT` to
+        // back out.
+        let mut t = ResultPanelTab::default();
+        for _ in 0..4 {
+            let forward = t.next();
+            let back = forward.prev();
+            assert_eq!(back, t);
+            t = forward;
+        }
+    }
 }
 
 impl App {
@@ -306,6 +390,7 @@ impl App {
             schema_cache: crate::schema::SchemaCache::new(),
             completion_popup: None,
             db_confirm_run: None,
+            db_result_tab: ResultPanelTab::default(),
         };
         app.load_initial_document();
         app

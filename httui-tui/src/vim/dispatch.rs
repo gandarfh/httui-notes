@@ -1161,12 +1161,32 @@ fn apply_action(app: &mut App, action: Action, recording: bool) {
             }
         }
         Action::TabNext => {
-            app.next_tab();
-            app.refresh_viewport_for_cursor();
+            // When the cursor sits on a result row, `gt` cycles
+            // the result-panel tab (Result → Messages → Plan →
+            // Stats → Result) instead of switching editor tabs —
+            // the editor-tab swap wouldn't be useful from inside a
+            // table, and the result-panel needs *some* keyboard
+            // affordance.
+            if matches!(
+                app.document().map(|d| d.cursor()),
+                Some(Cursor::InBlockResult { .. })
+            ) {
+                app.db_result_tab = app.db_result_tab.next();
+            } else {
+                app.next_tab();
+                app.refresh_viewport_for_cursor();
+            }
         }
         Action::TabPrev => {
-            app.prev_tab();
-            app.refresh_viewport_for_cursor();
+            if matches!(
+                app.document().map(|d| d.cursor()),
+                Some(Cursor::InBlockResult { .. })
+            ) {
+                app.db_result_tab = app.db_result_tab.prev();
+            } else {
+                app.prev_tab();
+                app.refresh_viewport_for_cursor();
+            }
         }
         Action::TabGoto(n) => {
             app.goto_tab(n);

@@ -31,6 +31,7 @@ pub type ConnectionNames = HashMap<String, String>;
 /// cursor would otherwise leave it (`clamp_result_viewport`).
 /// Other blocks pass `None` and default to viewport_top = 0
 /// (rows 0..MAX_VISIBLE).
+#[allow(clippy::too_many_arguments)]
 pub fn render_block_with_selection(
     frame: &mut Frame,
     area: Rect,
@@ -39,6 +40,7 @@ pub fn render_block_with_selection(
     selected_row: Option<usize>,
     viewport_top: Option<&mut u16>,
     names: &ConnectionNames,
+    result_tab: crate::app::ResultPanelTab,
 ) {
     let title = block_title(b);
     let border_color = state_color(&b.state, selected);
@@ -50,7 +52,7 @@ pub fn render_block_with_selection(
     frame.render_widget(outer, area);
 
     if b.is_db() {
-        render_db_inner(frame, inner, b, selected_row, viewport_top, names);
+        render_db_inner(frame, inner, b, selected_row, viewport_top, names, result_tab);
         return;
     }
 
@@ -158,6 +160,7 @@ fn render_db_inner(
     selected_row: Option<usize>,
     viewport_top: Option<&mut u16>,
     names: &ConnectionNames,
+    result_tab: crate::app::ResultPanelTab,
 ) {
     if inner.width == 0 || inner.height == 0 {
         return;
@@ -227,24 +230,69 @@ fn render_db_inner(
     }
 
     if table_height > 0 {
-        if let Some((table, viewport_selected)) =
-            build_result_table(b, selected_row, viewport_top)
-        {
-            // `TableState` is rebuilt every frame; the row index passed
-            // to `select` is *relative to the visible window* — the
-            // table builder already sliced rows by the resolved offset,
-            // so the highlight lands on the right cell.
-            let mut state = ratatui::widgets::TableState::default();
-            state.select(viewport_selected);
-            let table = table.row_highlight_style(
-                Style::default()
-                    .bg(Color::Rgb(60, 70, 110))
-                    .add_modifier(Modifier::BOLD),
-            );
-            frame.render_stateful_widget(table, chunks[idx], &mut state);
+        // Carve a 1-row tab bar out of the table chunk's top so the
+        // result panel still fits in the layout's reserved height.
+        // When the tab is anything but Result we render the
+        // appropriate content into the remainder. The `Result` tab
+        // keeps the existing table render, just shifted down 1 row.
+        let panel_chunk = chunks[idx];
+        let tab_bar_y = panel_chunk.y;
+        let tab_bar_rect = Rect {
+            x: panel_chunk.x,
+            y: tab_bar_y,
+            width: panel_chunk.width,
+            height: 1,
+        };
+        let content_rect = Rect {
+            x: panel_chunk.x,
+            y: tab_bar_y.saturating_add(1),
+            width: panel_chunk.width,
+            height: panel_chunk.height.saturating_sub(1),
+        };
+        render_result_tab_bar(frame, tab_bar_rect, result_tab);
+        match result_tab {
+            crate::app::ResultPanelTab::Result => {
+                if let Some((table, viewport_selected)) =
+                    build_result_table(b, selected_row, viewport_top)
+                {
+                    let mut state = ratatui::widgets::TableState::default();
+                    state.select(viewport_selected);
+                    let table = table.row_highlight_style(
+                        Style::default()
+                            .bg(Color::Rgb(60, 70, 110))
+                            .add_modifier(Modifier::BOLD),
+                    );
+                    frame.render_stateful_widget(table, content_rect, &mut state);
+                }
+            }
+            crate::app::ResultPanelTab::Messages => {
+                let lines = build_messages_lines(b);
+                frame.render_widget(Paragraph::new(lines), content_rect);
+            }
+            crate::app::ResultPanelTab::Plan => {
+                let lines = build_plan_lines(b);
+                frame.render_widget(Paragraph::new(lines), content_rect);
+            }
+            crate::app::ResultPanelTab::Stats => {
+                let lines = build_stats_lines(b);
+                frame.render_widget(Paragraph::new(lines), content_rect);
+            }
         }
         idx += 1;
+        // Skip the original table render branch below — we already
+        // drew (and shifted) it into `content_rect`.
+        let footer_para = Paragraph::new(Line::from(Span::styled(
+            footer_text,
+            Style::default().fg(Color::DarkGray),
+        )));
+        frame.render_widget(footer_para, chunks[idx]);
+        return;
     }
+    // No result panel allocated (idle block, no rows, etc.) —
+    // skip straight to the footer below. `selected_row` /
+    // `viewport_top` are unused on this branch; we only need them
+    // when the table actually paints.
+    let _ = (selected_row, viewport_top);
 
     let footer_para = Paragraph::new(Line::from(Span::styled(
         footer_text,
@@ -658,6 +706,149 @@ fn generic_body(b: &BlockNode) -> Vec<Line<'static>> {
         raw,
         Style::default().fg(Color::DarkGray),
     ))]
+}
+
+/// One-line tab header rendered above the result panel content.
+/// Selected tab gets a bright background; the rest stay dim. Only
+/// 4 fixed tabs for now (Result/Messages/Plan/Stats) — sub-tabs
+/// for multi-statement Result are V2.
+fn render_result_tab_bar(
+    frame: &mut Frame,
+    area: Rect,
+    selected: crate::app::ResultPanelTab,
+) {
+    use crate::app::ResultPanelTab;
+    let active_style = Style::default()
+        .bg(Color::Rgb(60, 70, 110))
+        .fg(Color::White)
+        .add_modifier(Modifier::BOLD);
+    let inactive_style = Style::default().fg(Color::DarkGray);
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    for tab in [
+        ResultPanelTab::Result,
+        ResultPanelTab::Messages,
+        ResultPanelTab::Plan,
+        ResultPanelTab::Stats,
+    ] {
+        let style = if tab == selected { active_style } else { inactive_style };
+        spans.push(Span::styled(format!(" {} ", tab.label()), style));
+        spans.push(Span::raw(" "));
+    }
+    frame.render_widget(Paragraph::new(Line::from(spans)), area);
+}
+
+/// Render content for the Messages tab — pulls `messages[]` off the
+/// cached response and lists them as `[severity] text`. Empty list
+/// shows a dim placeholder so users know the tab is wired but
+/// nothing came back.
+fn build_messages_lines(b: &BlockNode) -> Vec<Line<'static>> {
+    let placeholder = Line::from(Span::styled(
+        " (no messages)",
+        Style::default().fg(Color::DarkGray),
+    ));
+    let Some(value) = b.cached_result.as_ref() else { return vec![placeholder] };
+    let Some(messages) = value.get("messages").and_then(|v| v.as_array()) else {
+        return vec![placeholder];
+    };
+    if messages.is_empty() {
+        return vec![placeholder];
+    }
+    messages
+        .iter()
+        .filter_map(|m| {
+            let sev = m.get("severity").and_then(|v| v.as_str()).unwrap_or("notice");
+            let text = m.get("text").and_then(|v| v.as_str()).unwrap_or("");
+            Some(Line::from(vec![
+                Span::styled(
+                    format!(" [{sev}] "),
+                    Style::default().fg(match sev {
+                        "error" => Color::Red,
+                        "warning" => Color::Yellow,
+                        _ => Color::LightBlue,
+                    }),
+                ),
+                Span::raw(text.to_string()),
+            ]))
+        })
+        .collect()
+}
+
+/// Plan tab — renders cached_result["plan"] when present (Story 05.2
+/// will populate it via EXPLAIN), otherwise shows a hint.
+fn build_plan_lines(b: &BlockNode) -> Vec<Line<'static>> {
+    let placeholder = Line::from(Span::styled(
+        " (no plan — run EXPLAIN to populate)",
+        Style::default().fg(Color::DarkGray),
+    ));
+    let Some(value) = b.cached_result.as_ref() else { return vec![placeholder] };
+    let plan = match value.get("plan") {
+        Some(p) if !p.is_null() => p,
+        _ => return vec![placeholder],
+    };
+    // V1: dump the plan as serialized JSON, one line per source line.
+    // Story 05.2 can render the tree more nicely.
+    let json = serde_json::to_string_pretty(plan).unwrap_or_else(|_| String::from("(plan)"));
+    json.lines()
+        .map(|l| Line::from(Span::raw(l.to_string())))
+        .collect()
+}
+
+/// Stats tab — formats the connection meta + per-execution stats so
+/// the user gets at-a-glance "what just ran". Useful especially for
+/// cached hits where the result table is identical to last run.
+fn build_stats_lines(b: &BlockNode) -> Vec<Line<'static>> {
+    let label_style = Style::default().fg(Color::DarkGray);
+    let value_style = Style::default().fg(Color::White);
+    let row = |label: &str, value: String| {
+        Line::from(vec![
+            Span::styled(format!(" {label}: "), label_style),
+            Span::styled(value, value_style),
+        ])
+    };
+
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    let Some(value) = b.cached_result.as_ref() else {
+        return vec![Line::from(Span::styled(
+            " (no result yet — run with `r`)",
+            label_style,
+        ))];
+    };
+
+    let elapsed = value
+        .get("stats")
+        .and_then(|s| s.get("elapsed_ms"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let results = value
+        .get("results")
+        .and_then(|v| v.as_array())
+        .map(|a| a.len())
+        .unwrap_or(0);
+    let total_rows: u64 = value
+        .get("results")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|r| {
+                    if r.get("kind").and_then(|k| k.as_str()) == Some("select") {
+                        r.get("rows").and_then(|rs| rs.as_array()).map(|rs| rs.len() as u64)
+                    } else {
+                        None
+                    }
+                })
+                .sum()
+        })
+        .unwrap_or(0);
+    let cached = matches!(b.state, ExecutionState::Cached);
+
+    lines.push(row("elapsed", format!("{elapsed}ms")));
+    lines.push(row("results", results.to_string()));
+    lines.push(row("rows", total_rows.to_string()));
+    lines.push(row(
+        "cached",
+        if cached { "yes" } else { "no" }.to_string(),
+    ));
+    lines
 }
 
 #[cfg(test)]
