@@ -8,14 +8,16 @@
 //! - The on-screen status formatter for cached results
 //!   (`db_summary_from_value`)
 //! - Connection slug → UUID resolver (`resolve_connection_id_sync`)
-//! - The `:explain` entry point (`run_explain`)
-//!
-//! What's *not* yet here: the main `apply_run_block` flow + the
-//! event-loop result handler. Those touch a lot of vim state and
-//! are interleaved with the dispatch's other apply_* fns; they'll
-//! migrate in a follow-up. New code should still prefer this
-//! module — adding more DB stuff to dispatch makes the eventual
-//! migration noisier.
+//! - Ref / bind resolution (`resolve_block_refs` and friends)
+//! - Env vars + connection lookup (`load_active_env_vars`,
+//!   `resolve_connection_id`)
+//! - Executor params builder + response summary
+//!   (`build_db_executor_params`, `summarize_db_response`)
+//! - The full block-execution flow (`apply_run_block`,
+//!   `run_db_block_inner`, `spawn_db_query`,
+//!   `handle_db_block_result`, `cancel_running_query`,
+//!   `load_more_db_block`)
+//! - The EXPLAIN entry point (`run_explain`, bound to `<C-x>`)
 
 use tokio_util::sync::CancellationToken;
 
@@ -269,13 +271,10 @@ pub fn resolve_connection_id_sync(
     raw.to_string()
 }
 
-/// `:explain` — wrap the focused DB block's query in the dialect's
+/// `<C-x>` — wrap the focused DB block's query in the dialect's
 /// EXPLAIN keyword and run it. The block's own query text stays
 /// untouched (override flows only to the executor); the explain
 /// output lands in the block's `cached_result` like any other run.
-/// The actual spawn lives in `vim::dispatch::run_db_block_inner`
-/// for now (still tied to a lot of vim state); migrating that here
-/// is the next refactor step.
 pub fn run_explain(app: &mut App) {
     let Some(doc) = app.document() else { return };
     let segment_idx = match doc.cursor() {
@@ -686,7 +685,7 @@ pub fn apply_run_block(app: &mut App) {
 }
 
 /// Run the DB block at `segment_idx`. Shared entry for the
-/// cursor-based `r` keypress, the confirm-modal `y`, and `:explain`.
+/// cursor-based `r` keypress, the confirm-modal `y`, and `<C-x>`.
 /// The `force_unscoped` flag bypasses the unscoped-destructive gate
 /// once — set only when the user explicitly confirmed the run, or
 /// when the call is internal (EXPLAIN doesn't actually mutate).

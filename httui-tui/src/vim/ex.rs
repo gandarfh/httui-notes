@@ -22,10 +22,6 @@ pub enum ExCmd {
     Edit { path: String, force: bool },
     /// `:noh` / `:nohlsearch` — clear the active search highlight.
     NoHighlight,
-    /// `:explain` / `:exp` — wrap the focused DB block's query in
-    /// the dialect's EXPLAIN keyword and run it. Output appears in
-    /// the block's result panel like a normal run.
-    Explain,
 }
 
 /// Outcome of an ex command. `Ok(msg)` carries a status string for the
@@ -78,7 +74,6 @@ pub fn parse(buf: &str) -> Result<ExCmd, ParseError> {
         "q!" => Ok(ExCmd::Quit { force: true }),
         "wq" | "x" => Ok(ExCmd::WriteQuit),
         "noh" | "nohl" | "nohls" | "nohlsearch" => Ok(ExCmd::NoHighlight),
-        "exp" | "explain" => Ok(ExCmd::Explain),
         other => Err(ParseError::Unknown(other.to_string())),
     }
 }
@@ -115,10 +110,6 @@ pub fn execute(app: &mut App, cmd: ExCmd) -> ExResult {
             // Hide matches without losing the pattern — `n`/`N` keep
             // navigating; the next `/`-search re-arms `search_highlight`.
             app.vim.search_highlight = false;
-            ExResult::Ok(String::new())
-        }
-        ExCmd::Explain => {
-            crate::commands::db::run_explain(app);
             ExResult::Ok(String::new())
         }
     }
@@ -240,6 +231,21 @@ mod tests {
         match parse("frobnicate") {
             Err(ParseError::Unknown(s)) => assert_eq!(s, "frobnicate"),
             other => panic!("expected unknown, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_explain_no_longer_recognized() {
+        // EXPLAIN moved off ex commands and onto the `<C-x>` keymap
+        // (per project directive: surface new actions as keymaps,
+        // not ex commands). `:explain` / `:exp` must report unknown
+        // so users notice the rebind instead of silently dropping
+        // the keystroke into a no-op.
+        for alias in ["explain", "exp"] {
+            match parse(alias) {
+                Err(ParseError::Unknown(s)) => assert_eq!(s, alias),
+                other => panic!("expected unknown for `:{alias}`, got {other:?}"),
+            }
         }
     }
 

@@ -81,6 +81,13 @@ pub const OPEN_DB_ROW_DETAIL: KeyChord =
 pub const OPEN_CONNECTION_PICKER: KeyChord =
     KeyChord::new(KeyModifiers::CONTROL, KeyCode::Char('l'));
 
+/// `Ctrl+X` — wrap the focused DB block's query in the dialect's
+/// EXPLAIN keyword and run it. Vim binds `Ctrl+X` to "decrement
+/// number under cursor" (the counterpart to `Ctrl+A`); we don't
+/// implement either, so the slot is free. Mnemonic: "X" = E**X**plain.
+pub const EXPLAIN_BLOCK: KeyChord =
+    KeyChord::new(KeyModifiers::CONTROL, KeyCode::Char('x'));
+
 // ───────────── helpers ─────────────
 
 pub fn matches_quick_open(key: &KeyEvent) -> bool {
@@ -107,4 +114,8 @@ pub fn matches_open_db_row_detail(key: &KeyEvent) -> bool {
 
 pub fn matches_open_connection_picker(key: &KeyEvent) -> bool {
     OPEN_CONNECTION_PICKER.matches(key)
+}
+
+pub fn matches_explain_block(key: &KeyEvent) -> bool {
+    EXPLAIN_BLOCK.matches(key)
 }

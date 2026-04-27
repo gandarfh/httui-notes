@@ -322,6 +322,11 @@ pub enum Action {
     /// Dispatch validates the cursor; on a non-DB position it
     /// surfaces a status hint.
     OpenConnectionPicker,
+    /// `<C-x>` on a DB block — wrap its query in the dialect's
+    /// EXPLAIN keyword and run it (the block's own `params["query"]`
+    /// stays untouched). Output replaces the result tab like a
+    /// normal run. Mnemonic: "X" = E**X**plain.
+    ExplainBlock,
     /// `Esc` / `Ctrl-C` inside the picker — close without picking.
     CloseConnectionPicker,
     /// `j` / `Down` / `k` / `Up` inside the picker — move the
@@ -748,6 +753,9 @@ pub fn parse_normal(state: &mut VimState, key: KeyEvent) -> Action {
     }
     if kb::matches_open_connection_picker(&key) {
         return Action::OpenConnectionPicker;
+    }
+    if kb::matches_explain_block(&key) {
+        return Action::ExplainBlock;
     }
 
     match (modifiers, code) {
@@ -1766,6 +1774,20 @@ mod tests {
         assert_eq!(
             parse_normal(&mut s, key(KeyCode::Char('x'))),
             Action::OperatorMotion(Operator::Delete, Motion::Right, 1)
+        );
+    }
+
+    #[test]
+    fn ctrl_x_explains_focused_block() {
+        // `<C-x>` is wired to EXPLAIN against the DB block at the
+        // cursor. Plain `x` stays bound to delete-right (covered
+        // above) — only the CONTROL modifier changes the action.
+        // Replaces the old `:explain` ex command (per project
+        // directive: keymap > ex command).
+        let mut s = VimState::new();
+        assert_eq!(
+            parse_normal(&mut s, key_ctrl(KeyCode::Char('x'))),
+            Action::ExplainBlock
         );
     }
 
