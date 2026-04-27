@@ -121,7 +121,14 @@ pub fn render_block_with_selection(
     }
 
     if b.is_http() {
-        render_http_inner(frame, middle, b, result_tab, selected);
+        // `selected_row.is_some()` means cursor is parked in the
+        // response panel (`InBlockResult`). The panel uses this to
+        // paint a subtle "focused" cue so the user sees that `j`
+        // landed there — without this nothing changes visually
+        // when entering the response, since HTTP doesn't have a
+        // selected-row highlight like DB tables do.
+        let cursor_in_result = selected_row.is_some();
+        render_http_inner(frame, middle, b, result_tab, selected, cursor_in_result);
         return;
     }
 
@@ -795,6 +802,7 @@ fn render_http_inner(
     b: &BlockNode,
     result_tab: crate::app::ResultPanelTab,
     selected: bool,
+    cursor_in_result: bool,
 ) {
     if inner.width == 0 || inner.height == 0 {
         return;
@@ -860,6 +868,14 @@ fn render_http_inner(
             width: panel_chunk.width,
             height: panel_chunk.height.saturating_sub(used),
         };
+        // Subtle background tint over the whole response panel when
+        // the cursor is parked there — without this nothing changes
+        // visually as `j` walks into the panel, so users think the
+        // motion didn't do anything. The tint is dim enough to leave
+        // text readable but distinct from the editor background.
+        if cursor_in_result {
+            paint_panel_focus_bg(frame, panel_chunk);
+        }
         render_result_tab_bar_for(
             frame,
             tab_bar_rect,
@@ -869,7 +885,62 @@ fn render_http_inner(
         );
         render_result_separator(frame, separator_rect);
         render_http_response_panel(frame, content_rect, b, result_tab);
+        // Hint paragraph at the bottom of the panel: tells the user
+        // they can `<CR>` for the full body. Painted last so it
+        // overwrites whatever the body lines wrote on the bottom row.
+        if cursor_in_result {
+            paint_panel_focus_hint(frame, panel_chunk);
+        }
     }
+}
+
+/// Paint a faint bg over `area` to signal "cursor lives here". Used
+/// when the cursor enters the HTTP response panel via `j` — without
+/// it nothing changes visually (HTTP has no selected-row highlight
+/// like DB tables) and the motion looks like a no-op.
+fn paint_panel_focus_bg(frame: &mut Frame, area: Rect) {
+    let buf = frame.buffer_mut();
+    let tint = Style::default().bg(Color::Rgb(30, 35, 50));
+    for y in area.y..area.y.saturating_add(area.height) {
+        for x in area.x..area.x.saturating_add(area.width) {
+            if let Some(cell) = buf.cell_mut((x, y)) {
+                cell.set_style(cell.style().patch(tint));
+            }
+        }
+    }
+}
+
+/// Bottom-right hint chip on the focused response panel: `<CR>
+/// detail`. Cheap discoverability signal — the user just walked
+/// into the panel with `j`; they need to know `<CR>` opens a fuller
+/// view. Renders only when there's room (panel ≥ 3 rows tall).
+fn paint_panel_focus_hint(frame: &mut Frame, area: Rect) {
+    if area.height < 3 || area.width < 16 {
+        return;
+    }
+    let chip_key = Style::default()
+        .bg(Color::LightBlue)
+        .fg(Color::Black)
+        .add_modifier(Modifier::BOLD);
+    let chip_label = Style::default()
+        .fg(Color::Gray)
+        .bg(Color::Rgb(30, 35, 50));
+    let hint = Line::from(vec![
+        Span::styled(" <CR> ", chip_key),
+        Span::styled(" detail ", chip_label),
+    ]);
+    let hint_width: u16 = hint.spans.iter().map(|s| s.content.chars().count() as u16).sum();
+    let x = area
+        .x
+        .saturating_add(area.width.saturating_sub(hint_width.saturating_add(1)));
+    let y = area.y.saturating_add(area.height.saturating_sub(1));
+    let hint_rect = Rect {
+        x,
+        y,
+        width: hint_width.min(area.width),
+        height: 1,
+    };
+    frame.render_widget(Paragraph::new(hint), hint_rect);
 }
 
 /// Tabs map for HTTP: re-uses ResultPanelTab so the keymap that

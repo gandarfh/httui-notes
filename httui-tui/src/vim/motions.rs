@@ -904,6 +904,164 @@ mod tests {
         Document::from_markdown(md).unwrap()
     }
 
+    /// Helper: spawn a doc with a single HTTP block and a cached
+    /// response so `block_result_row_count` returns 1 and `j` can
+    /// land on `InBlockResult`.
+    fn http_doc_with_response() -> Document {
+        let md = "```http alias=req1\nGET https://example.com/users\n```\n";
+        let mut d = doc(md);
+        let block_idx = d
+            .segments()
+            .iter()
+            .position(|s| matches!(s, Segment::Block(_)))
+            .expect("block in fixture");
+        let mut block = match d.segments()[block_idx].clone() {
+            Segment::Block(b) => b,
+            _ => unreachable!(),
+        };
+        block.cached_result = Some(serde_json::json!({
+            "status": 200,
+            "status_text": "OK",
+            "headers": [],
+            "body": serde_json::json!({"ok": true}),
+            "size_bytes": 13,
+            "timing": {"total_ms": 50, "ttfb_ms": 30},
+        }));
+        d.replace_segment(block_idx, Segment::Block(block));
+        d
+    }
+
+    #[test]
+    fn down_lands_on_http_response_panel() {
+        // Cursor on the request line of an HTTP block; one `j`
+        // takes it to InBlockResult so `<CR>` opens the detail
+        // modal, instead of skipping straight to the closer.
+        let mut d = http_doc_with_response();
+        let block_idx = d
+            .segments()
+            .iter()
+            .position(|s| matches!(s, Segment::Block(_)))
+            .unwrap();
+        let block = match &d.segments()[block_idx] {
+            Segment::Block(b) => b.clone(),
+            _ => unreachable!(),
+        };
+        // Position cursor on the request body line (offset right
+        // after the fence header newline).
+        let header_len = block
+            .raw
+            .line(0)
+            .to_string()
+            .len();
+        d.set_cursor(Cursor::InBlock {
+            segment_idx: block_idx,
+            offset: header_len, // start of body line 0
+        });
+        apply(Motion::Down, &mut d, 1, 10);
+        assert_eq!(
+            d.cursor(),
+            Cursor::InBlockResult {
+                segment_idx: block_idx,
+                row: 0,
+            },
+            "j from body's last line should land on the response panel"
+        );
+    }
+
+    #[test]
+    fn up_from_http_response_returns_to_body() {
+        let mut d = http_doc_with_response();
+        let block_idx = d
+            .segments()
+            .iter()
+            .position(|s| matches!(s, Segment::Block(_)))
+            .unwrap();
+        d.set_cursor(Cursor::InBlockResult {
+            segment_idx: block_idx,
+            row: 0,
+        });
+        apply(Motion::Up, &mut d, 1, 10);
+        assert!(
+            matches!(d.cursor(), Cursor::InBlock { segment_idx, .. } if segment_idx == block_idx),
+            "k from the response panel should return to the request body"
+        );
+    }
+
+    #[test]
+    fn down_through_multi_line_http_lands_on_response() {
+        // Multi-line HTTP body (request line + header). The cursor
+        // must walk every body line, then drop into the response
+        // panel — mirrors what the user sees in the real app.
+        let md = "```http alias=req1\nGET https://example.com/users\nAuthorization: Bearer abc\n```\n";
+        let mut d = doc(md);
+        let block_idx = d
+            .segments()
+            .iter()
+            .position(|s| matches!(s, Segment::Block(_)))
+            .unwrap();
+        let mut block = match d.segments()[block_idx].clone() {
+            Segment::Block(b) => b,
+            _ => unreachable!(),
+        };
+        block.cached_result = Some(serde_json::json!({
+            "status": 200,
+            "status_text": "OK",
+            "headers": [],
+            "body": "{}",
+            "size_bytes": 2,
+            "timing": {"total_ms": 5, "ttfb_ms": 5},
+        }));
+        d.replace_segment(block_idx, Segment::Block(block));
+        // Start on body line 0 (request line).
+        let header_len = match &d.segments()[block_idx] {
+            Segment::Block(b) => b.raw.line(0).to_string().len(),
+            _ => unreachable!(),
+        };
+        d.set_cursor(Cursor::InBlock {
+            segment_idx: block_idx,
+            offset: header_len,
+        });
+        // First j → body line 1 (Authorization header).
+        apply(Motion::Down, &mut d, 1, 10);
+        assert!(
+            matches!(d.cursor(), Cursor::InBlock { segment_idx, .. } if segment_idx == block_idx),
+            "first j stays in block body, got {:?}",
+            d.cursor()
+        );
+        // Second j → InBlockResult { row: 0 } (response panel).
+        apply(Motion::Down, &mut d, 1, 10);
+        assert_eq!(
+            d.cursor(),
+            Cursor::InBlockResult {
+                segment_idx: block_idx,
+                row: 0,
+            },
+            "second j should land on response panel"
+        );
+    }
+
+    #[test]
+    fn down_from_http_response_lands_on_closer() {
+        let mut d = http_doc_with_response();
+        let block_idx = d
+            .segments()
+            .iter()
+            .position(|s| matches!(s, Segment::Block(_)))
+            .unwrap();
+        d.set_cursor(Cursor::InBlockResult {
+            segment_idx: block_idx,
+            row: 0,
+        });
+        apply(Motion::Down, &mut d, 1, 10);
+        // Past the response → fence closer (still InBlock). `<CR>`
+        // is then a no-op on the closer since dispatch checks
+        // `InBlockResult` only.
+        match d.cursor() {
+            Cursor::InBlock { segment_idx, .. } => assert_eq!(segment_idx, block_idx),
+            other => panic!("expected InBlock closer, got {other:?}"),
+        }
+    }
+
     #[test]
     fn left_stops_at_line_start() {
         let mut d = doc("hello\n");
