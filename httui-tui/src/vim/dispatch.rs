@@ -776,6 +776,7 @@ fn apply_action(app: &mut App, action: Action, recording: bool) {
                 _ => {}
             }
         }
+        Action::WriteAll => apply_write_all(app),
         Action::OpenBlockTemplatePicker => {
             app.block_template_picker = Some(crate::app::BlockTemplatePickerState::new());
             app.vim.mode = Mode::BlockTemplatePicker;
@@ -2252,6 +2253,76 @@ fn apply_rerun_last_block(app: &mut App) {
     }
     app.refresh_viewport_for_cursor();
     crate::commands::db::apply_run_block(app);
+}
+
+// ───────────── write-all (gW) ─────────────
+
+/// `gW` — walk every tab, save the active leaf when it has unsaved
+/// edits. Hits `:w` semantics for each one (path-required, error
+/// on missing file name) but rolls them up into a single status
+/// line: "N files written" / "N files written, M errored".
+///
+/// Strategy: capture the currently-active tab idx, then loop by
+/// flipping `tabs.active` to each dirty tab and calling
+/// `ex::execute(ExCmd::Write)`. The flip is cheap (just an index)
+/// and lets us reuse the existing single-doc save path without
+/// duplicating its keychain / dirty-bit / `mark_clean` logic.
+/// Restores the original active tab at the end.
+fn apply_write_all(app: &mut App) {
+    let original_active = app.tabs.active;
+    let total = app.tabs.len();
+    let mut written = 0usize;
+    let mut errored = 0usize;
+    let mut last_err: Option<String> = None;
+
+    for idx in 0..total {
+        let dirty = app
+            .tabs
+            .tabs
+            .get(idx)
+            .and_then(|t| t.active_leaf().document.as_ref())
+            .is_some_and(|d| d.is_dirty());
+        if !dirty {
+            continue;
+        }
+        // Path-less buffers (`(no name)`) can't be written. Skip
+        // silently rather than counting them as errors — `gW` is a
+        // bulk action; we want the user to see the successes.
+        let has_path = app
+            .tabs
+            .tabs
+            .get(idx)
+            .and_then(|t| t.active_leaf().document_path.as_ref())
+            .is_some();
+        if !has_path {
+            continue;
+        }
+        app.tabs.active = idx;
+        match ex::execute(app, ex::ExCmd::Write) {
+            ex::ExResult::Ok(_) => written += 1,
+            ex::ExResult::Err(msg) => {
+                errored += 1;
+                last_err = Some(msg);
+            }
+            _ => {}
+        }
+    }
+    app.tabs.active = original_active;
+
+    let status_kind = if errored > 0 { StatusKind::Error } else { StatusKind::Info };
+    let msg = match (written, errored) {
+        (0, 0) => "no dirty buffers".to_string(),
+        (n, 0) => format!("{n} files written"),
+        (0, e) => format!(
+            "{e} errored: {}",
+            last_err.unwrap_or_else(|| "unknown".into())
+        ),
+        (n, e) => format!(
+            "{n} files written, {e} errored: {}",
+            last_err.unwrap_or_else(|| "unknown".into())
+        ),
+    };
+    app.set_status(status_kind, msg);
 }
 
 // ───────────── tab picker (gb) ─────────────

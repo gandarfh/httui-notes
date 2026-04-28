@@ -519,6 +519,10 @@ pub enum Action {
     /// path as `:w`; in insert mode the cursor stays in insert
     /// (saves don't leave the typing flow).
     WriteFile,
+    /// `gW` chord — save every dirty tab in one shot. Vim's `:wa`
+    /// in chord form. Mnemonic: g + capital W = "go (write) all";
+    /// lowercase `gw` is taken by vim's "format text" motion.
+    WriteAll,
     /// `gN` chord — open the block-template picker. Lowercase `gn`
     /// is taken by vim's "find next match" motion, so the new-block
     /// chord uses capital N.
@@ -903,6 +907,13 @@ pub fn parse_normal(state: &mut VimState, key: KeyEvent) -> Action {
         if let KeyCode::Char('b') = code {
             state.take_count();
             return Action::OpenTabPicker;
+        }
+        // `gW` — write every dirty tab. Capital W to dodge vim's
+        // `gw` (format text) motion. Counts are meaningless for a
+        // multi-file save.
+        if let KeyCode::Char('W') = code {
+            state.take_count();
+            return Action::WriteAll;
         }
         // Drop the prefix and continue parsing.
     }
