@@ -32,3 +32,6 @@ sidecar/.*.bun-build
 sidecar/bun.lock
 sidecar/bun.lockb
 sidecar/node_modules/
+
+# Local-only dev notes / scratch docs (not committed)
+docs-llm/
