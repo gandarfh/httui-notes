@@ -40,6 +40,7 @@ const SECTIONS: &[Section] = &[
             Entry { chord: "i / a / I / A", label: "enter insert (cursor / after / line-start / line-end)" },
             Entry { chord: "v / V", label: "visual char / visual line" },
             Entry { chord: "gv", label: "reselect last visual region" },
+            Entry { chord: "zz / zt / zb", label: "scroll cursor to center / top / bottom" },
             Entry { chord: "Esc", label: "back to normal" },
             Entry { chord: ":", label: "ex command-line" },
             Entry { chord: "/  ?", label: "search forward / backward" },

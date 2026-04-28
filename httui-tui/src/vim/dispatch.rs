@@ -778,6 +778,7 @@ fn apply_action(app: &mut App, action: Action, recording: bool) {
         }
         Action::WriteAll => apply_write_all(app),
         Action::ReselectVisual => apply_reselect_visual(app),
+        Action::ScrollCursorTo(pos) => apply_scroll_cursor_to(app, pos),
         Action::OpenBlockTemplatePicker => {
             app.block_template_picker = Some(crate::app::BlockTemplatePickerState::new());
             app.vim.mode = Mode::BlockTemplatePicker;
@@ -2254,6 +2255,90 @@ fn apply_rerun_last_block(app: &mut App) {
     }
     app.refresh_viewport_for_cursor();
     crate::commands::db::apply_run_block(app);
+}
+
+// ───────────── scroll-positioning chords (zz / zt / zb) ─────────────
+
+/// Re-anchor the active pane's viewport so the cursor's row lands
+/// at `pos` within the visible window. Mirrors vim's `zz` / `zt` /
+/// `zb`. Reuses the `cursor_y` + `layout_document` plumbing from
+/// `App::refresh_viewport_for_cursor` (private there) by computing
+/// the target offset directly.
+fn apply_scroll_cursor_to(app: &mut App, pos: crate::vim::parser::ScrollPos) {
+    use crate::buffer::layout::layout_document;
+    use crate::vim::parser::ScrollPos;
+
+    let Some(pane) = app.active_pane_mut() else {
+        return;
+    };
+    let Some(doc) = pane.document.as_ref() else {
+        return;
+    };
+    // `width = 80` matches `App::refresh_viewport_for_cursor`'s
+    // sentinel — block-aware layout doesn't actually use width
+    // for vertical positioning.
+    let layouts = layout_document(doc, 80);
+    let cursor_y = compute_cursor_y(doc, &layouts);
+    let height = pane.viewport_height.max(1);
+    let new_top = match pos {
+        ScrollPos::Top => cursor_y,
+        ScrollPos::Center => cursor_y.saturating_sub(height / 2),
+        ScrollPos::Bottom => cursor_y.saturating_sub(height.saturating_sub(1)),
+    };
+    pane.viewport_top = new_top;
+}
+
+/// Local mirror of `app::cursor_y` (private there). Resolves the
+/// document-absolute Y row of the cursor by walking the segment
+/// layout. Block cursors land at the body row; result-row cursors
+/// land at the result table's offset.
+fn compute_cursor_y(
+    doc: &crate::buffer::Document,
+    layouts: &[crate::buffer::layout::SegmentLayout],
+) -> u16 {
+    use crate::buffer::block::raw_section_at;
+    use crate::buffer::block::RawSection;
+    match doc.cursor() {
+        Cursor::InProse { segment_idx, offset } => {
+            let layout = layouts
+                .iter()
+                .find(|l| l.segment_idx == segment_idx)
+                .copied();
+            let line_offset = match doc.segments().get(segment_idx) {
+                Some(Segment::Prose(rope)) => {
+                    rope.char_to_line(offset.min(rope.len_chars())) as u16
+                }
+                _ => 0,
+            };
+            layout.map(|l| l.y_start).unwrap_or(0).saturating_add(line_offset)
+        }
+        Cursor::InBlock { segment_idx, offset } => {
+            let Some(layout) = layouts.iter().find(|l| l.segment_idx == segment_idx) else {
+                return 0;
+            };
+            let raw = match doc.segments().get(segment_idx) {
+                Some(Segment::Block(b)) => &b.raw,
+                _ => return layout.y_start,
+            };
+            // y_start is the top border row; +2 lands on the fence
+            // header, +3 onward is body. Mirror `render_segment`'s
+            // mapping in `ui::mod`.
+            match raw_section_at(raw, offset) {
+                RawSection::Header => layout.y_start.saturating_add(2),
+                RawSection::Closer => layout.y_start.saturating_add(layout.height.saturating_sub(3)),
+                RawSection::Body { line, .. } => {
+                    layout.y_start.saturating_add(3).saturating_add(line as u16)
+                }
+            }
+        }
+        Cursor::InBlockResult { segment_idx, .. } => {
+            layouts
+                .iter()
+                .find(|l| l.segment_idx == segment_idx)
+                .map(|l| l.y_start)
+                .unwrap_or(0)
+        }
+    }
 }
 
 // ───────────── reselect visual (gv) ─────────────

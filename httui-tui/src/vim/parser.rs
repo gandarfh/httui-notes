@@ -528,6 +528,11 @@ pub enum Action {
     /// (not the moving end), so the user re-extends from the
     /// anchor with motions; the cursor lands on the anchor.
     ReselectVisual,
+    /// `zz` / `zt` / `zb` chords — re-anchor the viewport so the
+    /// cursor's line lands at the center / top / bottom of the
+    /// pane. Vim convention; useful after a long jump (`<n>G`,
+    /// search) when the cursor is in an awkward viewport position.
+    ScrollCursorTo(ScrollPos),
     /// `gN` chord — open the block-template picker. Lowercase `gn`
     /// is taken by vim's "find next match" motion, so the new-block
     /// chord uses capital N.
@@ -558,6 +563,16 @@ pub enum Action {
     /// so the typed fence promotes to a block.
     ConfirmBlockTemplatePicker,
     Noop,
+}
+
+/// Where `zz` / `zt` / `zb` should park the cursor's line within
+/// the pane's vertical viewport. Center is half the height; Top
+/// hugs the topmost row; Bottom hugs the bottom row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScrollPos {
+    Center,
+    Top,
+    Bottom,
 }
 
 /// Suffix command after the `Ctrl+W` window prefix.
@@ -689,6 +704,20 @@ pub fn parse_normal(state: &mut VimState, key: KeyEvent) -> Action {
         return Action::WriteFile;
     }
 
+    // Resolve a pending `z` chord (`zz`, `zt`, `zb`).
+    if state.pending_z {
+        state.pending_z = false;
+        if let KeyCode::Char(c) = code {
+            return match c {
+                'z' => Action::ScrollCursorTo(ScrollPos::Center),
+                't' => Action::ScrollCursorTo(ScrollPos::Top),
+                'b' => Action::ScrollCursorTo(ScrollPos::Bottom),
+                _ => Action::Noop,
+            };
+        }
+        return Action::Noop;
+    }
+
     // Resolve a pending `Ctrl+W` window-prefix — the next keystroke
     // becomes a [`WindowCmd`]. Anything we don't recognize cancels the
     // prefix silently.
@@ -792,6 +821,17 @@ pub fn parse_normal(state: &mut VimState, key: KeyEvent) -> Action {
             state.push_digit(d);
             return Action::Noop;
         }
+    }
+
+    // `z` (no modifier) starts the scroll-positioning chord.
+    // Counts before `z` aren't supported (vim's behavior here is
+    // niche — `<n>zz` sets scrolloff to N — out of scope V1).
+    if modifiers == KeyModifiers::NONE && matches!(code, KeyCode::Char('z'))
+        && state.pending_operator.is_none()
+        && !state.pending_g
+    {
+        state.pending_z = true;
+        return Action::Noop;
     }
 
     // Resolve `gg` (the second `g`).

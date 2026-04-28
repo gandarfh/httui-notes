@@ -66,6 +66,9 @@ pub struct VimState {
     /// `Ctrl+W` was just seen and we're waiting for the window-command
     /// suffix (`v`/`s`/`h`/`j`/`k`/`l`/`c`/`w`/`=` …).
     pub pending_window: bool,
+    /// `z` was just seen and we're waiting for the second key in a
+    /// `zz` / `zt` / `zb` chord (cursor placement in viewport).
+    pub pending_z: bool,
     /// Anchor cursor for [`Mode::Visual`] / [`Mode::VisualLine`] — the
     /// fixed end of the selection. The moving end is the document
     /// cursor itself. `None` outside visual modes.
@@ -111,6 +114,7 @@ impl VimState {
             quickopen: QuickOpen::default(),
             unnamed: Register::empty(),
             pending_window: false,
+            pending_z: false,
             visual_anchor: None,
             last_visual: None,
         }
@@ -223,6 +227,7 @@ impl VimState {
         self.pending_textobj_inner = None;
         self.pending_find_kind = None;
         self.pending_window = false;
+        self.pending_z = false;
         // `last_find` intentionally persists across resets — `;` and `,`
         // can repeat a find from any subsequent normal-mode state.
     }
