@@ -31,6 +31,11 @@ pub enum ExCmd {
     /// re-parses — works uniformly across prose and block bodies
     /// so renaming an alias used in `{{alias.x}}` refs Just Works.
     Substitute { pattern: String, replacement: String },
+    /// `:N` — bare-number form: jump to line N (1-indexed). Vim
+    /// convention; useful for navigating to a line cited in a
+    /// stack trace or compiler output. Reuses the `Motion::GotoLine`
+    /// machinery so the cursor lands the same way `<n>G` does.
+    GotoLine(usize),
 }
 
 /// Outcome of an ex command. `Ok(msg)` carries a status string for the
@@ -60,6 +65,16 @@ pub fn parse(buf: &str) -> Result<ExCmd, ParseError> {
     // its delimiter (`%s/…`), no whitespace separates them.
     if let Some(rest) = trimmed.strip_prefix("%s/") {
         return parse_substitute(rest);
+    }
+
+    // `:N` — bare positive integer is goto-line. Doesn't match the
+    // whitespace-split branch below because there's no head/tail
+    // boundary; check it before that path.
+    if let Ok(n) = trimmed.parse::<usize>() {
+        if n == 0 {
+            return Err(ParseError::Unknown("line numbers are 1-indexed".into()));
+        }
+        return Ok(ExCmd::GotoLine(n));
     }
 
     // Argument-bearing commands. Split on the first whitespace so the
@@ -192,6 +207,22 @@ pub fn execute(app: &mut App, cmd: ExCmd) -> ExResult {
             ExResult::Ok(String::new())
         }
         ExCmd::Substitute { pattern, replacement } => apply_substitute(app, pattern, replacement),
+        ExCmd::GotoLine(n) => {
+            // Reuse the motion engine so behavior matches `<n>G`
+            // exactly: viewport scrolls, cursor lands on the first
+            // non-blank of the target line, etc.
+            let viewport = app.viewport_height();
+            if let Some(doc) = app.document_mut() {
+                crate::vim::motions::apply(
+                    crate::vim::parser::Motion::GotoLine(n),
+                    doc,
+                    1,
+                    viewport,
+                );
+            }
+            app.refresh_viewport_for_cursor();
+            ExResult::Ok(String::new())
+        }
     }
 }
 
@@ -518,6 +549,24 @@ mod tests {
         match parse("%s/foo") {
             Err(ParseError::Unknown(msg)) => assert!(msg.contains("missing /replacement")),
             other => panic!("expected missing-replacement error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_bare_number_is_goto_line() {
+        assert_eq!(parse("42"), Ok(ExCmd::GotoLine(42)));
+        assert_eq!(parse("1"), Ok(ExCmd::GotoLine(1)));
+        // Whitespace tolerated.
+        assert_eq!(parse("  100  "), Ok(ExCmd::GotoLine(100)));
+    }
+
+    #[test]
+    fn parse_zero_line_errors() {
+        // Vim line numbers are 1-indexed; reject `:0` so the user
+        // doesn't get silent off-by-one behavior.
+        match parse("0") {
+            Err(ParseError::Unknown(msg)) => assert!(msg.contains("1-indexed")),
+            other => panic!("expected 1-indexed hint, got {other:?}"),
         }
     }
 }

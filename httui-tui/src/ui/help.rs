@@ -94,6 +94,7 @@ const SECTIONS: &[Section] = &[
             Entry { chord: "gW", label: "write all dirty tabs" },
             Entry { chord: ":e <path>", label: "open file" },
             Entry { chord: ":%s/foo/bar", label: "substitute (literal, doc-global)" },
+            Entry { chord: ":N", label: "go to line N (e.g., :42)" },
             Entry { chord: "u / Ctrl-R", label: "undo / redo" },
             Entry { chord: "Y (in detail modal)", label: "copy entire body to clipboard" },
         ],
