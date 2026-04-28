@@ -113,15 +113,27 @@ pub fn handle_http_block_result(
     outcome: Result<HttpResponse, String>,
 ) {
     app.running_query = None;
+
+    // Snapshot the bits we need for the history insert before we
+    // borrow `app` mutably below — the active file path, the block's
+    // alias, method, and URL. These are stable during this fn (the
+    // user can't move tabs while we hold the event in flight).
+    let file_path = active_file_path_string(app);
+    let (block_alias, method, url_canonical, request_size) =
+        match snapshot_block_meta(app, segment_idx) {
+            Some(meta) => meta,
+            None => (None, String::new(), String::new(), None),
+        };
+
     let Some(doc) = app.tabs.active_document_mut() else {
         return;
     };
     let Some(b) = doc.block_at_mut(segment_idx) else {
         return;
     };
-    match outcome {
+    match &outcome {
         Ok(response) => {
-            b.cached_result = Some(http_response_to_json(&response));
+            b.cached_result = Some(http_response_to_json(response));
             b.state = ExecutionState::Success;
             app.set_status(
                 StatusKind::Info,
@@ -134,9 +146,366 @@ pub fn handle_http_block_result(
         Err(msg) => {
             b.state = ExecutionState::Error(msg.clone());
             b.cached_result = None;
-            app.set_status(StatusKind::Error, msg);
+            app.set_status(StatusKind::Error, msg.clone());
         }
     }
+
+    // Persist a metadata-only history row when the block has both a
+    // file path on disk and an alias — without an alias the history
+    // table has no stable key to group runs under, so anonymous
+    // blocks intentionally have no history.
+    record_history_async(
+        app,
+        file_path,
+        block_alias,
+        method,
+        url_canonical,
+        request_size,
+        outcome,
+    );
+}
+
+/// Best-effort lookup of the active tab's document path, formatted
+/// as a relative-or-absolute string. Returns `None` for in-memory
+/// docs (no file backing) — those don't get history rows.
+fn active_file_path_string(app: &App) -> Option<String> {
+    let tab = app.tabs.tabs.get(app.tabs.active())?;
+    let path = tab.active_leaf().document_path.as_ref()?;
+    Some(path.to_string_lossy().to_string())
+}
+
+/// Pull `(alias, method, url+query, request_size)` out of the
+/// block at `segment_idx`. Returns `None` when there's no doc /
+/// no block / wrong type. URL is rebuilt from
+/// `url + ?key=value&...` so the canonical form stays stable
+/// regardless of whether the source used inline or
+/// continuation-line query syntax.
+///
+/// `request_size` is a coarse approximation of bytes sent on the
+/// wire: serialized request line + headers + body separator + body.
+/// Useful enough for spotting "huh, that was a 4MB POST" in the
+/// history modal; not a substitute for raw socket counters.
+fn snapshot_block_meta(
+    app: &App,
+    segment_idx: usize,
+) -> Option<(Option<String>, String, String, Option<i64>)> {
+    let doc = app.document()?;
+    let block = match doc.segments().get(segment_idx)? {
+        Segment::Block(b) => b,
+        _ => return None,
+    };
+    if !block.is_http() {
+        return None;
+    }
+    let alias = block.alias.clone();
+    let method = block
+        .params
+        .get("method")
+        .and_then(|v| v.as_str())
+        .unwrap_or("GET")
+        .to_string();
+    let url = block
+        .params
+        .get("url")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let mut canonical = url.clone();
+    if let Some(arr) = block.params.get("params").and_then(|v| v.as_array()) {
+        let parts: Vec<String> = arr
+            .iter()
+            .filter_map(|p| {
+                let k = p.get("key").and_then(|v| v.as_str()).filter(|s| !s.is_empty())?;
+                let v = p.get("value").and_then(|v| v.as_str()).unwrap_or("");
+                if v.is_empty() {
+                    Some(k.to_string())
+                } else {
+                    Some(format!("{k}={v}"))
+                }
+            })
+            .collect();
+        if !parts.is_empty() {
+            let sep = if canonical.contains('?') { '&' } else { '?' };
+            canonical.push(sep);
+            canonical.push_str(&parts.join("&"));
+        }
+    }
+
+    // Approximate request size: request line + per-header `K: V\r\n`
+    // + blank line + body. Mirrors what `to_http_file` emits, which
+    // is already a faithful HTTP-message representation. We don't
+    // resolve refs here — the snapshot runs before the executor
+    // resolves them — so the count is "what the user wrote", not
+    // "what reqwest sent". Close enough for the history modal.
+    let mut size = method.len() + 1 + canonical.len() + 2; // METHOD URL\r\n
+    if let Some(headers) = block.params.get("headers").and_then(|v| v.as_array()) {
+        for h in headers {
+            let k = h.get("key").and_then(|v| v.as_str()).unwrap_or("");
+            let v = h.get("value").and_then(|v| v.as_str()).unwrap_or("");
+            if k.is_empty() {
+                continue;
+            }
+            size += k.len() + 2 + v.len() + 2; // "K: V\r\n"
+        }
+    }
+    let body = block.params.get("body").and_then(|v| v.as_str()).unwrap_or("");
+    if !body.is_empty() {
+        size += 2; // blank line "\r\n"
+        size += body.len();
+    }
+
+    Some((alias, method, canonical, Some(size as i64)))
+}
+
+// ─── Direct cURL copy (Ctrl+Shift+C) ─────────────────────────────
+
+/// `<C-S-c>` on an HTTP block — resolve `{{refs}}` and copy a cURL
+/// command to the clipboard. Same flow as the gx export picker's
+/// HTTP path but without the picker — Story 24.7's "express" route.
+/// Surfaces failures (no HTTP block / empty URL / clipboard down /
+/// ref resolution failed) as status messages.
+pub fn copy_as_curl(app: &mut crate::app::App) {
+    let segment_idx = match app.document().map(|d| d.cursor()) {
+        Some(crate::buffer::Cursor::InBlock { segment_idx, .. })
+        | Some(crate::buffer::Cursor::InBlockResult { segment_idx, .. }) => segment_idx,
+        _ => {
+            app.set_status(
+                crate::app::StatusKind::Info,
+                "place the cursor on an HTTP block first",
+            );
+            return;
+        }
+    };
+    let block = match app
+        .document()
+        .and_then(|d| d.segments().get(segment_idx).cloned())
+    {
+        Some(Segment::Block(b)) => b,
+        _ => {
+            app.set_status(
+                crate::app::StatusKind::Info,
+                "no block at cursor",
+            );
+            return;
+        }
+    };
+    if !block.is_http() {
+        app.set_status(
+            crate::app::StatusKind::Info,
+            format!("`{}` blocks don't have a cURL form", block.block_type),
+        );
+        return;
+    }
+    let url_ok = block
+        .params
+        .get("url")
+        .and_then(|v| v.as_str())
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false);
+    if !url_ok {
+        app.set_status(
+            crate::app::StatusKind::Info,
+            "set a URL on the block before copying",
+        );
+        return;
+    }
+
+    // Resolve refs the same way the run path does. Failure stays
+    // soft — surface it via the status line, don't crash.
+    let env_vars = tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current()
+            .block_on(crate::commands::db::load_active_env_vars(
+                app.pool_manager.app_pool(),
+            ))
+    })
+    .unwrap_or_default();
+    let segments_snapshot: Vec<Segment> = app
+        .document()
+        .map(|d| d.segments().to_vec())
+        .unwrap_or_default();
+    let mut resolved = block.params.clone();
+    if let Err(msg) = resolve_in_http_params(
+        &mut resolved,
+        &segments_snapshot,
+        segment_idx,
+        &env_vars,
+    ) {
+        app.set_status(
+            crate::app::StatusKind::Error,
+            format!("ref resolution failed: {msg}"),
+        );
+        return;
+    }
+
+    let payload = httui_core::blocks::http_codegen::to_curl(&resolved);
+    match crate::clipboard::set_text(&payload) {
+        Ok(()) => {
+            app.set_status(
+                crate::app::StatusKind::Info,
+                format!("copied as cURL ({} bytes) to clipboard", payload.len()),
+            );
+        }
+        Err(e) => {
+            app.set_status(crate::app::StatusKind::Error, e);
+        }
+    }
+}
+
+// ─── History modal (gh chord) ────────────────────────────────────
+
+/// `gh` on an HTTP block — open the read-only history modal. Reads
+/// `httui-core::block_history::list_history(file, alias)` synchronously
+/// (the read is cheap; opening can briefly block). Validates:
+///   1. cursor sits on an HTTP block
+///   2. block has an alias (history rows are keyed by alias)
+///   3. active doc has a file path on disk
+///   4. there's at least one row to show
+/// Each failure surfaces a status hint instead of opening an empty
+/// modal — empty modals waste a keystroke.
+pub fn open_block_history(app: &mut crate::app::App) -> Result<(), String> {
+    let segment_idx = match app.document().map(|d| d.cursor()) {
+        Some(crate::buffer::Cursor::InBlock { segment_idx, .. })
+        | Some(crate::buffer::Cursor::InBlockResult { segment_idx, .. }) => segment_idx,
+        _ => return Err("place the cursor on a block first".into()),
+    };
+    let block = match app
+        .document()
+        .and_then(|d| d.segments().get(segment_idx).cloned())
+    {
+        Some(Segment::Block(b)) => b,
+        _ => return Err("place the cursor on a block first".into()),
+    };
+    if !block.is_http() && !block.is_db() {
+        return Err(format!(
+            "`{}` blocks don't record runs yet",
+            block.block_type
+        ));
+    }
+    let alias = match block.alias.as_deref().filter(|s| !s.is_empty()) {
+        Some(a) => a.to_string(),
+        None => return Err("anonymous block has no history (give it an `alias=`)".into()),
+    };
+    let file_path = active_file_path_string(app)
+        .ok_or_else(|| "save the file first — history is keyed by file path".to_string())?;
+
+    let pool = app.pool_manager.app_pool().clone();
+    let entries: Vec<httui_core::block_history::HistoryEntry> = tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current().block_on(async move {
+            httui_core::block_history::list_history(&pool, &file_path, &alias).await
+        })
+    })
+    .map_err(|e| format!("history read failed: {e}"))?;
+
+    if entries.is_empty() {
+        return Err("no history yet — run the block at least once".into());
+    }
+
+    // Title format differs by block type so users see context
+    // matching their mental model:
+    // - HTTP: `<METHOD> <alias>` (`GET myreq`)
+    // - DB:   `DB <alias>`       (`DB userlist`)
+    // The driver kind is already encoded in each row's `method`
+    // column so we don't repeat it in the title.
+    let title = if block.is_http() {
+        format!(
+            "{} {}",
+            block
+                .params
+                .get("method")
+                .and_then(|v| v.as_str())
+                .unwrap_or("GET"),
+            block.alias.as_deref().unwrap_or(""),
+        )
+    } else {
+        format!("DB {}", block.alias.as_deref().unwrap_or(""))
+    };
+
+    app.block_history = Some(crate::app::BlockHistoryState {
+        segment_idx,
+        title,
+        entries,
+        selected: 0,
+    });
+    app.vim.mode = crate::vim::mode::Mode::BlockHistory;
+    app.vim.reset_pending();
+    Ok(())
+}
+
+pub fn close_block_history(app: &mut crate::app::App) {
+    app.block_history = None;
+    app.vim.enter_normal();
+}
+
+pub fn move_block_history_cursor(app: &mut crate::app::App, delta: i32) {
+    let Some(state) = app.block_history.as_mut() else {
+        return;
+    };
+    if state.entries.is_empty() {
+        return;
+    }
+    let last = state.entries.len() as i64 - 1;
+    let next = (state.selected as i64).saturating_add(delta as i64).clamp(0, last);
+    state.selected = next as usize;
+}
+
+/// Spawn the SQLite insert in the background. We don't `await` here
+/// — handle_http_block_result is called from the (synchronous) main
+/// event loop and a SQLite write should never block the UI. Failures
+/// are logged via `tracing::warn` and don't surface as user-visible
+/// errors (history is best-effort by design).
+fn record_history_async(
+    app: &App,
+    file_path: Option<String>,
+    block_alias: Option<String>,
+    method: String,
+    url_canonical: String,
+    request_size: Option<i64>,
+    outcome: Result<HttpResponse, String>,
+) {
+    let (Some(file_path), Some(block_alias)) = (file_path, block_alias) else {
+        return; // in-memory doc or anonymous block — no history key.
+    };
+    // Clone the SqlitePool so the spawned task owns its handle —
+    // SqlitePool is `Arc`-backed, so this is cheap (single ref-count
+    // bump). Without the clone the pool would borrow from `&App` and
+    // can't escape the spawn.
+    let pool = app.pool_manager.app_pool().clone();
+    let entry = match outcome {
+        Ok(response) => httui_core::block_history::InsertEntry {
+            file_path,
+            block_alias,
+            method,
+            url_canonical,
+            status: Some(response.status_code as i64),
+            request_size,
+            response_size: Some(response.size_bytes as i64),
+            elapsed_ms: Some(response.elapsed_ms as i64),
+            outcome: "success".into(),
+        },
+        Err(msg) => httui_core::block_history::InsertEntry {
+            file_path,
+            block_alias,
+            method,
+            url_canonical,
+            status: None,
+            request_size,
+            response_size: None,
+            elapsed_ms: None,
+            // Differentiate cancel from real failures so the modal
+            // can dim the row (cancelled runs aren't bugs).
+            outcome: if msg.to_lowercase().contains("cancel") {
+                "cancelled"
+            } else {
+                "error"
+            }
+            .into(),
+        },
+    };
+    tokio::spawn(async move {
+        if let Err(e) = httui_core::block_history::insert_history_entry(&pool, entry).await {
+            tracing::warn!("block history insert failed: {e}");
+        }
+    });
 }
 
 /// Convert the executor's `HttpResponse` to the JSON shape the
@@ -182,7 +551,7 @@ fn http_response_to_json(r: &HttpResponse) -> serde_json::Value {
 /// resolved text value. Block refs come from `resolve_one_ref`
 /// (same source the SQL path uses); env vars resolve as plain
 /// strings.
-fn resolve_in_http_params(
+pub(crate) fn resolve_in_http_params(
     params: &mut serde_json::Value,
     segments: &[Segment],
     current_segment: usize,

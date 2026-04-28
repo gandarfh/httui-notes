@@ -53,6 +53,15 @@ pub const QUICK_OPEN: KeyChord =
 pub const TREE_TOGGLE: KeyChord =
     KeyChord::new(KeyModifiers::CONTROL, KeyCode::Char('e'));
 
+/// `Ctrl+F` — open the content-search modal (FTS5 over the vault's
+/// `.md` files). Vim binds `<C-f>` to "page down" but only via the
+/// `Motion` family — Notes uses `<C-d>` for half-page down which
+/// covers most needs, freeing `<C-f>` for "Find content". The
+/// modal is full-screen overlay; keys flow into the input until
+/// Esc/Ctrl-C closes.
+pub const CONTENT_SEARCH: KeyChord =
+    KeyChord::new(KeyModifiers::CONTROL, KeyCode::Char('f'));
+
 /// `Tab` — swap focus between the sidebar and the editor.
 /// `matches_focus_swap` accepts any modifier (terminals send
 /// `<S-Tab>` with SHIFT for the reverse direction); the constant
@@ -88,6 +97,14 @@ pub const OPEN_CONNECTION_PICKER: KeyChord =
 pub const EXPLAIN_BLOCK: KeyChord =
     KeyChord::new(KeyModifiers::CONTROL, KeyCode::Char('x'));
 
+// `Ctrl+Shift+C` — copy the focused HTTP block as a cURL command,
+// with `{{refs}}` resolved and clipboard write inline (no picker).
+// Not stored as a single `KeyChord` const because `KeyModifiers`'
+// `|` isn't const in the version we depend on; the `matches_*`
+// helper below recognises both the SHIFT-folded encoding (terminals
+// that send `CONTROL|SHIFT + 'C'`) and the bare `CONTROL + 'C'`
+// fallback. Spec'd by Story 24.7 as `Mod-Shift-c`.
+
 // `ga` (alias edit) lives in the `pending_g` chord branch in
 // `vim/parser.rs::parse_normal`, not as a standalone `KeyChord` —
 // using a g-prefix keeps the action discoverable next to `gd`
@@ -102,6 +119,10 @@ pub fn matches_quick_open(key: &KeyEvent) -> bool {
 
 pub fn matches_tree_toggle(key: &KeyEvent) -> bool {
     TREE_TOGGLE.matches(key)
+}
+
+pub fn matches_content_search(key: &KeyEvent) -> bool {
+    CONTENT_SEARCH.matches(key)
 }
 
 pub fn matches_focus_swap(key: &KeyEvent) -> bool {
@@ -124,4 +145,16 @@ pub fn matches_open_connection_picker(key: &KeyEvent) -> bool {
 
 pub fn matches_explain_block(key: &KeyEvent) -> bool {
     EXPLAIN_BLOCK.matches(key)
+}
+
+/// `Ctrl+Shift+C` matches both encodings terminals use for the
+/// chord: `CONTROL|SHIFT + 'C'` and the bare `CONTROL + 'C'`
+/// fallback some terminals send for shifted control chords.
+///
+/// We deliberately gate on the keycode being upper-case `C` — a
+/// plain `<C-c>` (lower-case) keeps its cancel semantics for
+/// in-flight queries (see `dispatch::dispatch` top-level Ctrl-C
+/// intercept).
+pub fn matches_copy_as_curl(key: &KeyEvent) -> bool {
+    key.modifiers.contains(KeyModifiers::CONTROL) && matches!(key.code, KeyCode::Char('C'))
 }

@@ -46,6 +46,14 @@ pub enum AppEvent {
         connection_id: String,
         result: Result<Vec<SchemaEntry>, String>,
     },
+    /// The async FTS5 index rebuild kicked off by `<C-f>` finished.
+    /// Main loop flips `App.content_search_index_built = true` and
+    /// runs the current query — the user may have typed during the
+    /// build, so we re-query against the freshly populated index.
+    /// Failure surfaces as a status error and clears the modal.
+    ContentSearchIndexBuilt {
+        result: Result<(), String>,
+    },
 }
 
 /// Why this DB result was produced — used by the main loop to pick
