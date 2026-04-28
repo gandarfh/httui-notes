@@ -107,6 +107,25 @@ pub fn render_status_bar(frame: &mut Frame, area: Rect, app: &App) {
         ],
         None => Vec::new(),
     };
+    // Focused-block connection chip — only emits when the cursor is
+    // parked on a DB block with a resolvable connection_id. Mirrors
+    // the env chip: cyan instead of magenta to keep the two visually
+    // distinct. We deliberately don't show "conn: <id>" for unresolved
+    // ids — the missing-connection error surfaces at run time, and a
+    // chip here would just add noise.
+    let conn_chip: Vec<Span<'static>> = match focused_block_conn_name(app) {
+        Some(name) => vec![
+            Span::raw(" "),
+            Span::styled(
+                format!(" conn: {name} "),
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::LightCyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ],
+        None => Vec::new(),
+    };
     let mut spans = vec![Span::styled(
         format!(" {} ", mode.label()),
         Style::default()
@@ -115,6 +134,7 @@ pub fn render_status_bar(frame: &mut Frame, area: Rect, app: &App) {
             .add_modifier(Modifier::BOLD),
     )];
     spans.extend(env_chip);
+    spans.extend(conn_chip);
     spans.push(Span::raw(format!(
         " {file}{dirty_marker} · {block_count} blocks · {cursor_label} · vault: {vault} · theme: {}",
         app.config.theme
@@ -128,6 +148,40 @@ fn count_blocks(doc: &Document) -> usize {
         .iter()
         .filter(|s| matches!(s, Segment::Block(_)))
         .count()
+}
+
+/// Resolve the human label of the connection used by the DB block
+/// the cursor is currently parked on. Returns `None` when:
+/// - there's no document open
+/// - the cursor isn't on a block (or the block isn't a DB block)
+/// - the block has no `connection` / `connection_id` param
+/// - the id doesn't resolve in the global `connection_names` map
+///   (deleted / stale / typo'd id — surfaces as a missing chip
+///   rather than `conn: <uuid>` so the user notices the breakage).
+fn focused_block_conn_name(app: &App) -> Option<String> {
+    let doc = app.document()?;
+    let segment_idx = match doc.cursor() {
+        Cursor::InBlock { segment_idx, .. }
+        | Cursor::InBlockResult { segment_idx, .. } => segment_idx,
+        _ => return None,
+    };
+    let block = match doc.segments().get(segment_idx)? {
+        Segment::Block(b) => b,
+        _ => return None,
+    };
+    if !block.is_db() {
+        return None;
+    }
+    // Match the lookup priority used by the dispatcher when picking
+    // a connection (see `apply_confirm_connection_picker`): newer
+    // blocks store `connection`; pre-redesign ones used
+    // `connection_id`. Either resolves through the same name map.
+    let id = block
+        .params
+        .get("connection")
+        .or_else(|| block.params.get("connection_id"))
+        .and_then(|v| v.as_str())?;
+    app.connection_names.get(id).cloned()
 }
 
 fn describe_cursor(doc: &Document) -> String {
