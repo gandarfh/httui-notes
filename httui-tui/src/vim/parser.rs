@@ -476,6 +476,22 @@ pub enum Action {
     ContentSearchCursorRight,
     ContentSearchCursorHome,
     ContentSearchCursorEnd,
+    /// `gE` chord from normal mode — open the environment picker
+    /// modal. Lists every row from the `environments` table; confirm
+    /// flips `is_active` via `set_active_environment` and refreshes
+    /// the status-bar chip. Mnemonic: capital E to avoid colliding
+    /// with `ge` (motion: backward word-end).
+    OpenEnvironmentPicker,
+    /// `Esc` / `Ctrl-C` inside the env picker — close without
+    /// switching the active env.
+    CloseEnvironmentPicker,
+    /// `j` / `k` / arrows / `Ctrl-n` / `Ctrl-p` inside the env
+    /// picker — move the selection by `i32` (clamps at the ends).
+    MoveEnvironmentPickerCursor(i32),
+    /// `Enter` inside the env picker — call `set_active_environment`
+    /// for the highlighted entry, refresh the cached display name,
+    /// and close the popup.
+    ConfirmEnvironmentPicker,
     Noop,
 }
 
@@ -778,6 +794,14 @@ pub fn parse_normal(state: &mut VimState, key: KeyEvent) -> Action {
         if let KeyCode::Char('h') = code {
             state.take_count();
             return Action::OpenBlockHistory;
+        }
+        // `gE` — open the environment picker (capital E to dodge
+        // `ge` motion). Lists every env from SQLite; Enter activates
+        // and refreshes the status-bar chip. Counts are meaningless
+        // for a global registry switch.
+        if let KeyCode::Char('E') = code {
+            state.take_count();
+            return Action::OpenEnvironmentPicker;
         }
         // Drop the prefix and continue parsing.
     }
@@ -1464,6 +1488,7 @@ fn is_blocked_in_modal(action: &Action) -> bool {
             | Action::OpenDbRowDetail
             | Action::ExplainBlock
             | Action::OpenConnectionPicker
+            | Action::OpenEnvironmentPicker
     )
 }
 
@@ -1528,6 +1553,31 @@ pub fn parse_connection_picker(key: KeyEvent) -> Action {
         (mods, KeyCode::Char('D')) if !mods.contains(KeyModifiers::CONTROL) => {
             Action::DeleteConnectionInPicker
         }
+        _ => Action::Noop,
+    }
+}
+
+/// Translate one key while the environment picker is open. Same
+/// vocab as `parse_connection_picker` minus `D` (no destructive
+/// op for envs in V1 — they're configuration, not data, and one
+/// missing env yields a clear "no active env" instead of a broken
+/// block). Anything else is a no-op so stray keys don't leak.
+pub fn parse_environment_picker(key: KeyEvent) -> Action {
+    let KeyEvent {
+        code, modifiers, ..
+    } = key;
+    match (modifiers, code) {
+        (_, KeyCode::Esc) => Action::CloseEnvironmentPicker,
+        (KeyModifiers::CONTROL, KeyCode::Char('c')) => Action::CloseEnvironmentPicker,
+        (_, KeyCode::Enter) => Action::ConfirmEnvironmentPicker,
+        (_, KeyCode::Down) | (KeyModifiers::NONE, KeyCode::Char('j')) => {
+            Action::MoveEnvironmentPickerCursor(1)
+        }
+        (_, KeyCode::Up) | (KeyModifiers::NONE, KeyCode::Char('k')) => {
+            Action::MoveEnvironmentPickerCursor(-1)
+        }
+        (KeyModifiers::CONTROL, KeyCode::Char('n')) => Action::MoveEnvironmentPickerCursor(1),
+        (KeyModifiers::CONTROL, KeyCode::Char('p')) => Action::MoveEnvironmentPickerCursor(-1),
         _ => Action::Noop,
     }
 }

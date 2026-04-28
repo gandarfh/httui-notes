@@ -72,6 +72,13 @@ pub enum Mode {
     /// query over `httui-core::search::search_index`. Up/Down (or
     /// Ctrl-n/p) navigate; Enter opens the picked file in a new tab.
     ContentSearch,
+    /// `gE` — open the environment picker. Lists all environments
+    /// from the SQLite registry; the active one is marked. j/k
+    /// (or Up/Down, Ctrl-n/p) navigate, Enter activates the picked
+    /// env (and refreshes the status-bar chip), Esc/Ctrl-C dismiss.
+    /// Renders as a small popup while `App.environment_picker` is
+    /// `Some`.
+    EnvironmentPicker,
 }
 
 impl Mode {
@@ -95,6 +102,7 @@ impl Mode {
             Mode::DbSettings => "SET",
             Mode::BlockHistory => "HIST",
             Mode::ContentSearch => "FIND",
+            Mode::EnvironmentPicker => "ENV",
         }
     }
 
@@ -116,6 +124,7 @@ impl Mode {
             Mode::DbSettings => Color::LightYellow,
             Mode::BlockHistory => Color::LightBlue,
             Mode::ContentSearch => Color::LightGreen,
+            Mode::EnvironmentPicker => Color::LightMagenta,
         }
     }
 

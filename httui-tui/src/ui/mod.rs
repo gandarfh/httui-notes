@@ -10,6 +10,7 @@ mod cursor;
 mod db_confirm_run;
 mod db_export_picker;
 mod db_settings_modal;
+mod environment_picker;
 mod fence_edit;
 pub mod db_row_detail;
 pub mod http_response_detail;
@@ -115,10 +116,12 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             | Mode::HttpResponseDetail
             | Mode::ConnectionPicker
             | Mode::ContentSearch
+            | Mode::EnvironmentPicker
     ) || app.db_row_detail.is_some()
         || app.http_response_detail.is_some()
         || app.connection_picker.is_some()
-        || app.content_search.is_some();
+        || app.content_search.is_some()
+        || app.environment_picker.is_some();
 
     // Snapshot the current result-panel tab so the render tree can
     // pass it down without re-borrowing `app` at every level.
@@ -309,6 +312,13 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     if let Some(state) = app.block_history.as_ref() {
         let anchor = compute_block_anchor(app, editor_area, state.segment_idx);
         block_history::render(frame, editor_area, state, anchor);
+    }
+
+    // Environment picker — opened by `gE`. Centered popup (no
+    // anchor: envs are global state), magenta border to match the
+    // status-bar chip.
+    if let Some(state) = app.environment_picker.as_ref() {
+        environment_picker::render(frame, editor_area, state);
     }
 }
 

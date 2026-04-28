@@ -15,9 +15,9 @@ use crate::pane::{FocusDir, SplitDir};
 use crate::vim::parser::{
     parse_block_history, parse_cmdline, parse_connection_picker, parse_content_search,
     parse_db_confirm_run, parse_db_export_picker, parse_db_row_detail, parse_db_settings_modal,
-    parse_fence_edit, parse_http_response_detail, parse_insert, parse_normal, parse_quickopen,
-    parse_search, parse_tree, parse_tree_prompt, parse_visual, Action, InsertPos, Motion,
-    Operator, PastePos, TextObject, WindowCmd,
+    parse_environment_picker, parse_fence_edit, parse_http_response_detail, parse_insert,
+    parse_normal, parse_quickopen, parse_search, parse_tree, parse_tree_prompt, parse_visual,
+    Action, InsertPos, Motion, Operator, PastePos, TextObject, WindowCmd,
 };
 use crate::vim::search;
 use crate::tree::{TreePrompt, TreePromptKind};
@@ -87,6 +87,7 @@ pub fn dispatch(app: &mut App, key: KeyEvent) {
         Mode::DbSettings => parse_db_settings_modal(key),
         Mode::BlockHistory => parse_block_history(key),
         Mode::ContentSearch => parse_content_search(key),
+        Mode::EnvironmentPicker => parse_environment_picker(key),
     };
 
     // Snapshot the pre-swap cursor so the post-action "reparse on
@@ -739,6 +740,16 @@ fn apply_action(app: &mut App, action: Action, recording: bool) {
                 s.query.move_end();
             }
         }
+        Action::OpenEnvironmentPicker => {
+            if let Err(msg) = open_environment_picker(app) {
+                app.set_status(StatusKind::Error, msg);
+            }
+        }
+        Action::CloseEnvironmentPicker => apply_close_environment_picker(app),
+        Action::MoveEnvironmentPickerCursor(delta) => {
+            apply_move_environment_picker_cursor(app, delta)
+        }
+        Action::ConfirmEnvironmentPicker => apply_confirm_environment_picker(app),
         Action::CompletionNext => apply_completion_next(app),
         Action::CompletionPrev => apply_completion_prev(app),
         Action::CompletionAccept => apply_completion_accept(app),
@@ -2070,6 +2081,97 @@ fn apply_delete_connection_in_picker(app: &mut App) {
             );
         }
     }
+}
+
+// ───────────── environment picker (gE) ─────────────
+
+/// `gE` — pull every row from the `environments` table, snapshot the
+/// active id (so the renderer can flag it), pre-select the active
+/// row, and flip mode. Errors bubble up as a status hint.
+fn open_environment_picker(app: &mut App) -> Result<(), String> {
+    let pool = app.pool_manager.app_pool().clone();
+    let (entries, active_id) = tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current().block_on(async {
+            let envs = httui_core::db::environments::list_environments(&pool)
+                .await
+                .map_err(|e| format!("env list failed: {e}"))?;
+            // `get_active_environment_id` returns `Option<String>`
+            // (no error path — it swallows DB failures and just
+            // reports "no active env"). That's fine here: the
+            // picker still opens, just without a pre-selected row.
+            let active = httui_core::db::environments::get_active_environment_id(&pool).await;
+            Ok::<_, String>((envs, active))
+        })
+    })?;
+    if entries.is_empty() {
+        return Err("no environments registered yet".into());
+    }
+    let entries: Vec<crate::app::EnvironmentEntry> = entries
+        .into_iter()
+        .map(|e| crate::app::EnvironmentEntry { id: e.id, name: e.name })
+        .collect();
+    // Pre-select the active env so Enter is a no-op confirm. Falls
+    // back to the first entry when nothing is active.
+    let selected = active_id
+        .as_deref()
+        .and_then(|id| entries.iter().position(|e| e.id == id))
+        .unwrap_or(0);
+
+    app.environment_picker = Some(crate::app::EnvironmentPickerState {
+        entries,
+        selected,
+        active_id,
+    });
+    app.vim.mode = Mode::EnvironmentPicker;
+    app.vim.reset_pending();
+    Ok(())
+}
+
+fn apply_close_environment_picker(app: &mut App) {
+    app.environment_picker = None;
+    app.vim.enter_normal();
+}
+
+fn apply_move_environment_picker_cursor(app: &mut App, delta: i32) {
+    let Some(state) = app.environment_picker.as_mut() else { return };
+    if state.entries.is_empty() {
+        return;
+    }
+    let last = state.entries.len() as i64 - 1;
+    let next = (state.selected as i64).saturating_add(delta as i64).clamp(0, last);
+    state.selected = next as usize;
+}
+
+/// `Enter` in the env picker — flip the active flag in SQLite, refresh
+/// the cached display name (so the status-bar chip updates), and
+/// dismiss. A no-op when the highlighted entry is already active.
+fn apply_confirm_environment_picker(app: &mut App) {
+    let Some(state) = app.environment_picker.take() else {
+        app.vim.enter_normal();
+        return;
+    };
+    app.vim.enter_normal();
+    let Some(picked) = state.entries.get(state.selected).cloned() else {
+        return;
+    };
+    if state.active_id.as_deref() == Some(picked.id.as_str()) {
+        // Already active — silent no-op rather than a redundant
+        // SQLite write. The display name is current.
+        return;
+    }
+    let pool = app.pool_manager.app_pool().clone();
+    let id = picked.id.clone();
+    let result = tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current().block_on(
+            httui_core::db::environments::set_active_environment(&pool, Some(&id)),
+        )
+    });
+    if let Err(e) = result {
+        app.set_status(StatusKind::Error, format!("set active env failed: {e}"));
+        return;
+    }
+    app.refresh_active_env_name();
+    app.set_status(StatusKind::Info, format!("env: {}", picked.name));
 }
 
 // ───────────── result-detail modals (DB row + HTTP response) ─────────────

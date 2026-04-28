@@ -161,6 +161,31 @@ pub struct ConnectionEntry {
     pub kind: String,
 }
 
+/// Open instance of the environment picker popup (`gE`). Lists every
+/// row from the `environments` table; `selected` indexes into
+/// `entries`. The active env is identified by `active_id` so the
+/// renderer can mark it. Confirm flips the active flag in SQLite,
+/// refreshes the cached `App.active_env_name`, and dismisses.
+pub struct EnvironmentPickerState {
+    pub entries: Vec<EnvironmentEntry>,
+    pub selected: usize,
+    /// Id of the currently-active env, if any. Snapshotted at
+    /// open-time so the renderer knows which row to flag without
+    /// hitting SQLite again. May be stale if the user activates a
+    /// different env, but the picker is dismissed on confirm.
+    pub active_id: Option<String>,
+}
+
+/// Lightweight snapshot of one environment row — only the id (to
+/// activate via `set_active_environment`) and the display name (for
+/// the list). Cloned out of `httui-core::db::environments` at
+/// open-time.
+#[derive(Debug, Clone)]
+pub struct EnvironmentEntry {
+    pub id: String,
+    pub name: String,
+}
+
 /// Open instance of the SQL completion popup. Anchored to the DB
 /// block at `segment_idx`; `(anchor_line, anchor_offset)` is where
 /// the prefix word starts inside the block body — Accept replaces
@@ -328,6 +353,13 @@ pub struct App {
     /// Mode flips to `Mode::ContentSearch`. The query buffer + last
     /// FTS5 results live here; each keystroke re-queries.
     pub content_search: Option<ContentSearchState>,
+    /// `Some` while the environment-picker modal is open (`gE`).
+    /// Mode flips to `Mode::EnvironmentPicker` so dispatch routes
+    /// navigation/confirm keys to the picker. Confirm calls
+    /// `set_active_environment` + `refresh_active_env_name` so the
+    /// status-bar chip updates in lockstep. Renders independently of
+    /// mode — any `Some` value paints the popup.
+    pub environment_picker: Option<EnvironmentPickerState>,
     /// `true` once the FTS5 search index has been (re)built this
     /// session. Set by `open_content_search` after the first lazy
     /// rebuild so subsequent opens skip the cost. Cleared by
@@ -740,6 +772,7 @@ impl App {
             content_search_index_built: false,
             db_result_tab: ResultPanelTab::default(),
             fence_edit: None,
+            environment_picker: None,
         };
         app.load_initial_document();
         app.refresh_active_env_name();
