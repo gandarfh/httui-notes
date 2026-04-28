@@ -70,6 +70,24 @@ pub struct VimState {
     /// fixed end of the selection. The moving end is the document
     /// cursor itself. `None` outside visual modes.
     pub visual_anchor: Option<Cursor>,
+    /// Anchor + linewise flag of the last visual selection that was
+    /// dismissed (Esc / operator completion / mode flip). Read by
+    /// the `gv` chord to restore visual mode at that anchor.
+    /// V1 only stores the anchor — the moving end isn't restored,
+    /// so `gv` re-enters visual with the cursor wherever it
+    /// currently is, and the user re-extends with motions. Good
+    /// enough for "I want to redo something on that selection",
+    /// short of full vim parity.
+    pub last_visual: Option<LastVisual>,
+}
+
+/// Snapshot recorded on every exit from `Mode::Visual` / `Mode::VisualLine`
+/// so the `gv` chord can put the user back in visual mode at the
+/// same anchor.
+#[derive(Debug, Clone, Copy)]
+pub struct LastVisual {
+    pub anchor: Cursor,
+    pub linewise: bool,
 }
 
 impl VimState {
@@ -94,21 +112,41 @@ impl VimState {
             unnamed: Register::empty(),
             pending_window: false,
             visual_anchor: None,
+            last_visual: None,
         }
     }
 
     pub fn enter_insert(&mut self) {
+        self.snapshot_visual_for_reselect();
         self.mode = Mode::Insert;
         self.reset_pending();
         self.visual_anchor = None;
     }
 
     pub fn enter_normal(&mut self) {
+        self.snapshot_visual_for_reselect();
         self.mode = Mode::Normal;
         self.reset_pending();
         self.cmdline.clear();
         self.search_buf.clear();
         self.visual_anchor = None;
+    }
+
+    /// Capture the current visual anchor + linewise flag into
+    /// `last_visual` if we're about to leave a visual mode. Called
+    /// from every mode-flip path so `gv` works regardless of which
+    /// chord caused the exit (Esc, operator completion, write-quit,
+    /// any other mode transition).
+    fn snapshot_visual_for_reselect(&mut self) {
+        if let (Some(anchor), true) = (
+            self.visual_anchor,
+            matches!(self.mode, Mode::Visual | Mode::VisualLine),
+        ) {
+            self.last_visual = Some(LastVisual {
+                anchor,
+                linewise: self.mode == Mode::VisualLine,
+            });
+        }
     }
 
     /// Enter charwise visual mode anchored at `at`.

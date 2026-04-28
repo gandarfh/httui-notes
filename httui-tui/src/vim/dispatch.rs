@@ -777,6 +777,7 @@ fn apply_action(app: &mut App, action: Action, recording: bool) {
             }
         }
         Action::WriteAll => apply_write_all(app),
+        Action::ReselectVisual => apply_reselect_visual(app),
         Action::OpenBlockTemplatePicker => {
             app.block_template_picker = Some(crate::app::BlockTemplatePickerState::new());
             app.vim.mode = Mode::BlockTemplatePicker;
@@ -2253,6 +2254,28 @@ fn apply_rerun_last_block(app: &mut App) {
     }
     app.refresh_viewport_for_cursor();
     crate::commands::db::apply_run_block(app);
+}
+
+// ───────────── reselect visual (gv) ─────────────
+
+/// `gv` — re-enter visual mode at the last-saved anchor. V1 lands
+/// the cursor on the anchor itself (rather than the previous moving
+/// end) so the selection collapses to a single position; the user
+/// then re-extends with motions. Silent decline when there's no
+/// saved selection (`last_visual` is `None`).
+fn apply_reselect_visual(app: &mut App) {
+    let Some(last) = app.vim.last_visual else {
+        return;
+    };
+    if let Some(doc) = app.document_mut() {
+        doc.set_cursor(last.anchor);
+    }
+    if last.linewise {
+        app.vim.enter_visual_line(last.anchor);
+    } else {
+        app.vim.enter_visual(last.anchor);
+    }
+    app.refresh_viewport_for_cursor();
 }
 
 // ───────────── write-all (gW) ─────────────

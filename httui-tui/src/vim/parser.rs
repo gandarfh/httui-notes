@@ -523,6 +523,11 @@ pub enum Action {
     /// in chord form. Mnemonic: g + capital W = "go (write) all";
     /// lowercase `gw` is taken by vim's "format text" motion.
     WriteAll,
+    /// `gv` chord — re-enter the last visual selection. Vim
+    /// convention. V1 only restores the anchor + linewise flag
+    /// (not the moving end), so the user re-extends from the
+    /// anchor with motions; the cursor lands on the anchor.
+    ReselectVisual,
     /// `gN` chord — open the block-template picker. Lowercase `gn`
     /// is taken by vim's "find next match" motion, so the new-block
     /// chord uses capital N.
@@ -914,6 +919,11 @@ pub fn parse_normal(state: &mut VimState, key: KeyEvent) -> Action {
         if let KeyCode::Char('W') = code {
             state.take_count();
             return Action::WriteAll;
+        }
+        // `gv` — reselect the last visual region. Vim convention.
+        if let KeyCode::Char('v') = code {
+            state.take_count();
+            return Action::ReselectVisual;
         }
         // Drop the prefix and continue parsing.
     }
