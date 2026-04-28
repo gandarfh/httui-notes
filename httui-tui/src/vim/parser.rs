@@ -333,6 +333,11 @@ pub enum Action {
     /// stays untouched). Output replaces the result tab like a
     /// normal run. Mnemonic: "X" = E**X**plain.
     ExplainBlock,
+    /// `<C-S-c>` on an HTTP block — resolve `{{refs}}` and copy a
+    /// cURL command to the clipboard, no picker. Spec'd by Story
+    /// 24.7 as the express version of the export menu — the menu
+    /// itself sits behind `gx` and lets the user pick the format.
+    CopyAsCurl,
     /// `gd` on a block — cycle the display mode (Input → Split →
     /// Output → Input). Persists via `display=` in the fence so the
     /// next save carries the choice. Mnemonic: "go display".
@@ -364,6 +369,14 @@ pub enum Action {
     /// `Enter` inside the picker — apply the selected connection
     /// to the anchored block and close the popup.
     ConfirmConnectionPicker,
+    /// `D` (capital) inside the connection picker — delete the
+    /// highlighted connection. The picker stays open with the list
+    /// reloaded; if the deleted connection was the block's current
+    /// `connection=`, the block keeps its stale id (block re-runs
+    /// will surface the missing-connection error). No confirm step
+    /// for V1: connection rows are configuration, not data — easy
+    /// to recreate via desktop.
+    DeleteConnectionInPicker,
     /// `Ctrl+n` / `Down` while the SQL completion popup is open —
     /// move the highlight one item forward (wraps).
     CompletionNext,
@@ -383,6 +396,86 @@ pub enum Action {
     /// `n`/`Esc`/`Ctrl+C` while the confirm modal is up — close
     /// the modal without running.
     CancelDbRun,
+    /// `gx` chord on a DB block — open the export-format picker
+    /// popup. Mnemonic: `g`-prefixed "go" family extended with
+    /// `gx` = goto eXport. Dispatch validates the cursor on a
+    /// db-* block with at least one select row before opening; on
+    /// a non-DB / empty-result position it surfaces a status hint.
+    OpenDbExportPicker,
+    /// `Esc` / `Ctrl-C` inside the export picker — close without
+    /// copying anything to the clipboard.
+    CloseDbExportPicker,
+    /// `j` / `Down` / `k` / `Up` (and `Ctrl-n` / `Ctrl-p`) inside
+    /// the export picker — move the highlight by `i32` (positive
+    /// = next, negative = prev). Wraps via the dispatch handler.
+    MoveDbExportPickerCursor(i32),
+    /// `Enter` inside the export picker — serialize the result with
+    /// the highlighted format and copy to the clipboard. Closes the
+    /// popup on success; on failure (no clipboard) keeps the popup
+    /// open and shows the error in the status line.
+    ConfirmDbExportPicker,
+    /// `gs` chord on a DB block — open the settings modal (limit +
+    /// timeout). Memory `project_tui_block_settings_modal.md`: a
+    /// single modal with multiple inputs, NOT chord-per-field. Tab
+    /// cycles the focused input; Enter saves all; Esc cancels.
+    OpenDbSettingsModal,
+    /// `<Esc>` / `<C-c>` inside the settings modal — close without
+    /// writing back to the block.
+    CloseDbSettingsModal,
+    /// `<CR>` inside the settings modal — validate inputs (numeric
+    /// or empty) and commit to `block.params`. Empty inputs clear
+    /// the corresponding field on the block.
+    ConfirmDbSettingsModal,
+    /// `Tab` / `Down` — focus next field; `Shift-Tab` / `Up` —
+    /// focus previous. Wraps both directions.
+    DbSettingsFocusNext,
+    DbSettingsFocusPrev,
+    /// One typeable char into the focused input. Mirrors
+    /// `FenceEditChar` but routed by the modal's focused-field
+    /// resolver.
+    DbSettingsChar(char),
+    DbSettingsBackspace,
+    DbSettingsDelete,
+    DbSettingsCursorLeft,
+    DbSettingsCursorRight,
+    DbSettingsCursorHome,
+    DbSettingsCursorEnd,
+    /// `gh` chord on an HTTP block — open the read-only history
+    /// modal. Lists the most-recent N rows from `block_run_history`
+    /// for the current `(file_path, alias)`. Dispatch validates the
+    /// cursor + alias before opening; non-HTTP / anonymous blocks
+    /// surface a status hint.
+    OpenBlockHistory,
+    /// `Esc` / `Ctrl-C` inside the history modal — close.
+    CloseBlockHistory,
+    /// `j` / `k` / arrows / `Ctrl-n` / `Ctrl-p` inside the history
+    /// modal — move highlight by `i32` (positive = next, negative
+    /// = prev). Clamps at the ends (no wrap — clamp matches the
+    /// connection picker's feel for one-list popups).
+    MoveBlockHistoryCursor(i32),
+    /// `<C-f>` from normal mode — open the content-search modal.
+    /// Lazy-rebuilds the FTS5 index on first open this session
+    /// (sync — briefly freezes the UI on big vaults; async is V2).
+    OpenContentSearch,
+    /// `Esc` / `Ctrl-C` while the modal is up — close without
+    /// opening anything.
+    CloseContentSearch,
+    /// `<CR>` while the modal is up — open the highlighted result
+    /// in a new tab. Closes the modal on success.
+    ConfirmContentSearch,
+    /// `j` / `k` / arrows / `Ctrl-n` / `Ctrl-p` — move the
+    /// highlight by `i32` (positive = next, negative = prev).
+    /// Clamps at the ends (no wrap).
+    MoveContentSearchCursor(i32),
+    /// One typeable char into the query field. Each insert
+    /// triggers a re-query.
+    ContentSearchChar(char),
+    ContentSearchBackspace,
+    ContentSearchDelete,
+    ContentSearchCursorLeft,
+    ContentSearchCursorRight,
+    ContentSearchCursorHome,
+    ContentSearchCursorEnd,
     Noop,
 }
 
@@ -661,6 +754,31 @@ pub fn parse_normal(state: &mut VimState, key: KeyEvent) -> Action {
             state.take_count();
             return Action::OpenFenceEditAlias;
         }
+        // `gx` — open the export-format picker over the focused DB
+        // block. `x` for "eXport" sidesteps `e` (word-end motion)
+        // and `y` (yank chord prefix). Counts dropped same as
+        // siblings. Dispatch validates cursor + result before opening.
+        if let KeyCode::Char('x') = code {
+            state.take_count();
+            return Action::OpenDbExportPicker;
+        }
+        // `gs` — open the block settings modal (limit + timeout in a
+        // single popup). Memory `project_tui_block_settings_modal.md`
+        // pinned the UX: one modal with Tab-navigation, NOT chords
+        // per field. Counts dropped, dispatch validates DB-only.
+        if let KeyCode::Char('s') = code {
+            state.take_count();
+            return Action::OpenDbSettingsModal;
+        }
+        // `gh` — open the run-history modal for the focused HTTP
+        // block. Read-only listing of `block_run_history` rows for
+        // `(file_path, alias)`. Dispatch validates HTTP-only +
+        // aliased; anonymous blocks have no history (no key to
+        // group runs under).
+        if let KeyCode::Char('h') = code {
+            state.take_count();
+            return Action::OpenBlockHistory;
+        }
         // Drop the prefix and continue parsing.
     }
 
@@ -802,6 +920,12 @@ pub fn parse_normal(state: &mut VimState, key: KeyEvent) -> Action {
     }
     if kb::matches_explain_block(&key) {
         return Action::ExplainBlock;
+    }
+    if kb::matches_copy_as_curl(&key) {
+        return Action::CopyAsCurl;
+    }
+    if kb::matches_content_search(&key) {
+        return Action::OpenContentSearch;
     }
 
     match (modifiers, code) {
@@ -1397,6 +1521,138 @@ pub fn parse_connection_picker(key: KeyEvent) -> Action {
         }
         (KeyModifiers::CONTROL, KeyCode::Char('n')) => Action::MoveConnectionPickerCursor(1),
         (KeyModifiers::CONTROL, KeyCode::Char('p')) => Action::MoveConnectionPickerCursor(-1),
+        // `D` (capital) deletes the highlighted connection. Lowercase
+        // `d` would conflict with vim's `dd` linewise-delete reflex
+        // and require pending state; capital is a single-press chord
+        // and matches the picker's mode (no surrounding text edit).
+        (mods, KeyCode::Char('D')) if !mods.contains(KeyModifiers::CONTROL) => {
+            Action::DeleteConnectionInPicker
+        }
+        _ => Action::Noop,
+    }
+}
+
+/// Translate one key while the export-format picker is open. Same
+/// vocab as `parse_connection_picker` — vertical-only navigation
+/// (`j`/`k`/arrows), `Enter` to copy, `Esc`/`Ctrl-C` to dismiss.
+/// Anything else is a no-op so a stray keystroke can't leak through
+/// to the editor underneath.
+pub fn parse_db_export_picker(key: KeyEvent) -> Action {
+    let KeyEvent {
+        code, modifiers, ..
+    } = key;
+    match (modifiers, code) {
+        (_, KeyCode::Esc) => Action::CloseDbExportPicker,
+        (KeyModifiers::CONTROL, KeyCode::Char('c')) => Action::CloseDbExportPicker,
+        (_, KeyCode::Enter) => Action::ConfirmDbExportPicker,
+        (_, KeyCode::Down) | (KeyModifiers::NONE, KeyCode::Char('j')) => {
+            Action::MoveDbExportPickerCursor(1)
+        }
+        (_, KeyCode::Up) | (KeyModifiers::NONE, KeyCode::Char('k')) => {
+            Action::MoveDbExportPickerCursor(-1)
+        }
+        (KeyModifiers::CONTROL, KeyCode::Char('n')) => Action::MoveDbExportPickerCursor(1),
+        (KeyModifiers::CONTROL, KeyCode::Char('p')) => Action::MoveDbExportPickerCursor(-1),
+        _ => Action::Noop,
+    }
+}
+
+/// Translate one key while the DB block settings modal is open.
+/// Mirrors `parse_fence_edit` but adds Tab/BackTab/Up/Down for
+/// switching the focused field, and routes typing into whichever
+/// LineEdit currently has focus. Same Esc/Enter contract as the
+/// other modals.
+pub fn parse_db_settings_modal(key: KeyEvent) -> Action {
+    let KeyEvent {
+        code, modifiers, ..
+    } = key;
+    match (modifiers, code) {
+        (_, KeyCode::Esc) => Action::CloseDbSettingsModal,
+        (KeyModifiers::CONTROL, KeyCode::Char('c')) => Action::CloseDbSettingsModal,
+        (_, KeyCode::Enter) => Action::ConfirmDbSettingsModal,
+        // Tab / Down — focus next field. BackTab (Shift-Tab) /
+        // Up — focus prev. We accept the arrow keys too because
+        // the form has only two stacked inputs and j/k aren't
+        // available (the LineEdit treats them as character input).
+        (_, KeyCode::Tab) => Action::DbSettingsFocusNext,
+        (_, KeyCode::Down) => Action::DbSettingsFocusNext,
+        (_, KeyCode::BackTab) => Action::DbSettingsFocusPrev,
+        (_, KeyCode::Up) => Action::DbSettingsFocusPrev,
+        // LineEdit ops on the focused input.
+        (_, KeyCode::Backspace) => Action::DbSettingsBackspace,
+        (_, KeyCode::Delete) => Action::DbSettingsDelete,
+        (_, KeyCode::Left) => Action::DbSettingsCursorLeft,
+        (_, KeyCode::Right) => Action::DbSettingsCursorRight,
+        (_, KeyCode::Home) => Action::DbSettingsCursorHome,
+        (_, KeyCode::End) => Action::DbSettingsCursorEnd,
+        // Plain printable char (no CONTROL) → insert into focused
+        // input. We allow SHIFT for capitals; CONTROL is rejected
+        // so terminal emulators that send `<C-x>` style chords
+        // don't accidentally land in the buffer.
+        (mods, KeyCode::Char(c)) if !mods.contains(KeyModifiers::CONTROL) => {
+            Action::DbSettingsChar(c)
+        }
+        _ => Action::Noop,
+    }
+}
+
+/// Translate one key while the content-search modal is open.
+/// Hybrid of `parse_quickopen` (typing into a LineEdit) and the
+/// list-picker pattern (j/k/arrows + Ctrl-n/p navigate selection).
+/// `Up`/`Down` and `Ctrl-n`/`Ctrl-p` MOVE the highlight; plain
+/// `j`/`k` go INTO the buffer (otherwise typing `j` after a `j`
+/// motion would skip a character). Esc/Ctrl-C close.
+pub fn parse_content_search(key: KeyEvent) -> Action {
+    use crossterm::event::KeyCode::*;
+    let KeyEvent {
+        code, modifiers, ..
+    } = key;
+    match (modifiers, code) {
+        (_, Esc) => Action::CloseContentSearch,
+        (KeyModifiers::CONTROL, Char('c')) => Action::CloseContentSearch,
+        (_, Enter) => Action::ConfirmContentSearch,
+        // Selection navigation — arrows + Ctrl-n/p only. j/k go
+        // into the buffer like quick-open.
+        (_, Up) => Action::MoveContentSearchCursor(-1),
+        (_, Down) => Action::MoveContentSearchCursor(1),
+        (KeyModifiers::CONTROL, Char('n')) => Action::MoveContentSearchCursor(1),
+        (KeyModifiers::CONTROL, Char('p')) => Action::MoveContentSearchCursor(-1),
+        // LineEdit ops on the query buffer.
+        (_, Backspace) => Action::ContentSearchBackspace,
+        (_, Delete) => Action::ContentSearchDelete,
+        (_, Left) => Action::ContentSearchCursorLeft,
+        (_, Right) => Action::ContentSearchCursorRight,
+        (_, Home) => Action::ContentSearchCursorHome,
+        (_, End) => Action::ContentSearchCursorEnd,
+        // Plain printable char (no CONTROL) → into the buffer.
+        // Ctrl-shifted chars stay rejected so terminal-emulator
+        // chord sequences don't accidentally land in typing.
+        (mods, Char(c)) if !mods.contains(KeyModifiers::CONTROL) => {
+            Action::ContentSearchChar(c)
+        }
+        _ => Action::Noop,
+    }
+}
+
+/// Translate one key while the block-history modal is open. Same
+/// vocab as `parse_connection_picker` — vertical-only navigation
+/// and Esc/Ctrl-C to dismiss. There's no Enter/confirm: the modal
+/// is a read-only viewer (V1). Anything else is a no-op.
+pub fn parse_block_history(key: KeyEvent) -> Action {
+    let KeyEvent {
+        code, modifiers, ..
+    } = key;
+    match (modifiers, code) {
+        (_, KeyCode::Esc) => Action::CloseBlockHistory,
+        (KeyModifiers::CONTROL, KeyCode::Char('c')) => Action::CloseBlockHistory,
+        (_, KeyCode::Down) | (KeyModifiers::NONE, KeyCode::Char('j')) => {
+            Action::MoveBlockHistoryCursor(1)
+        }
+        (_, KeyCode::Up) | (KeyModifiers::NONE, KeyCode::Char('k')) => {
+            Action::MoveBlockHistoryCursor(-1)
+        }
+        (KeyModifiers::CONTROL, KeyCode::Char('n')) => Action::MoveBlockHistoryCursor(1),
+        (KeyModifiers::CONTROL, KeyCode::Char('p')) => Action::MoveBlockHistoryCursor(-1),
         _ => Action::Noop,
     }
 }
@@ -1937,6 +2193,356 @@ mod tests {
         assert_eq!(
             parse_normal(&mut s, key(KeyCode::Char('a'))),
             Action::OpenFenceEditAlias
+        );
+    }
+
+    #[test]
+    fn connection_picker_capital_d_deletes() {
+        // Capital `D` triggers DeleteConnectionInPicker; lowercase
+        // `d` would conflict with vim's `dd` reflex (not bound here
+        // but easy to fat-finger) and is left as a no-op so the
+        // user has to type the explicit capital.
+        use crossterm::event::{KeyEvent, KeyModifiers};
+        let mk = |mods, code| KeyEvent::new(code, mods);
+        assert_eq!(
+            parse_connection_picker(mk(KeyModifiers::SHIFT, KeyCode::Char('D'))),
+            Action::DeleteConnectionInPicker,
+        );
+        assert_eq!(
+            parse_connection_picker(mk(KeyModifiers::NONE, KeyCode::Char('D'))),
+            Action::DeleteConnectionInPicker,
+        );
+        // Lowercase `d` MUST be a no-op — no accidental delete.
+        assert_eq!(
+            parse_connection_picker(mk(KeyModifiers::NONE, KeyCode::Char('d'))),
+            Action::Noop,
+        );
+        // Ctrl-D would compose with HalfPageDown semantics elsewhere
+        // — picker shouldn't surface delete on it.
+        assert_eq!(
+            parse_connection_picker(mk(KeyModifiers::CONTROL, KeyCode::Char('D'))),
+            Action::Noop,
+        );
+    }
+
+    #[test]
+    fn ctrl_f_opens_content_search() {
+        // <C-f> — global Find content. Bound on the normal-mode
+        // shortcut layer (not via g-prefix) because it competes
+        // with Quick-Open's <C-p> as a top-level finder.
+        use crossterm::event::{KeyEvent, KeyModifiers};
+        let mut s = VimState::new();
+        let key = KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL);
+        assert_eq!(parse_normal(&mut s, key), Action::OpenContentSearch);
+    }
+
+    #[test]
+    fn content_search_routes_navigation_and_typing() {
+        use crossterm::event::{KeyEvent, KeyModifiers};
+        let mk = |mods, code| KeyEvent::new(code, mods);
+        // Selection nav: arrows + Ctrl-n/p only.
+        assert_eq!(
+            parse_content_search(mk(KeyModifiers::NONE, KeyCode::Down)),
+            Action::MoveContentSearchCursor(1),
+        );
+        assert_eq!(
+            parse_content_search(mk(KeyModifiers::NONE, KeyCode::Up)),
+            Action::MoveContentSearchCursor(-1),
+        );
+        assert_eq!(
+            parse_content_search(mk(KeyModifiers::CONTROL, KeyCode::Char('n'))),
+            Action::MoveContentSearchCursor(1),
+        );
+        // j/k go INTO the buffer (FTS5 query can carry literal j/k).
+        assert_eq!(
+            parse_content_search(mk(KeyModifiers::NONE, KeyCode::Char('j'))),
+            Action::ContentSearchChar('j'),
+        );
+        assert_eq!(
+            parse_content_search(mk(KeyModifiers::NONE, KeyCode::Char('k'))),
+            Action::ContentSearchChar('k'),
+        );
+        // Esc/Ctrl-C close; Enter confirms.
+        assert_eq!(
+            parse_content_search(mk(KeyModifiers::NONE, KeyCode::Esc)),
+            Action::CloseContentSearch,
+        );
+        assert_eq!(
+            parse_content_search(mk(KeyModifiers::CONTROL, KeyCode::Char('c'))),
+            Action::CloseContentSearch,
+        );
+        assert_eq!(
+            parse_content_search(mk(KeyModifiers::NONE, KeyCode::Enter)),
+            Action::ConfirmContentSearch,
+        );
+        // LineEdit ops.
+        assert_eq!(
+            parse_content_search(mk(KeyModifiers::NONE, KeyCode::Backspace)),
+            Action::ContentSearchBackspace,
+        );
+        assert_eq!(
+            parse_content_search(mk(KeyModifiers::NONE, KeyCode::Left)),
+            Action::ContentSearchCursorLeft,
+        );
+        assert_eq!(
+            parse_content_search(mk(KeyModifiers::NONE, KeyCode::Right)),
+            Action::ContentSearchCursorRight,
+        );
+        assert_eq!(
+            parse_content_search(mk(KeyModifiers::NONE, KeyCode::Home)),
+            Action::ContentSearchCursorHome,
+        );
+        assert_eq!(
+            parse_content_search(mk(KeyModifiers::NONE, KeyCode::End)),
+            Action::ContentSearchCursorEnd,
+        );
+    }
+
+    #[test]
+    fn ctrl_shift_c_copies_as_curl() {
+        // <C-S-c> express path — bypasses the gx picker. Both the
+        // SHIFT-folded encoding (CTRL+SHIFT+'C') and the bare
+        // CTRL+'C' fallback some terminals send map to CopyAsCurl.
+        // A plain CTRL+'c' (lowercase) is NOT this chord — that
+        // stays as the cancel intercept at dispatch top-level.
+        use crossterm::event::{KeyEvent, KeyModifiers};
+        let mut s = VimState::new();
+        let shift_folded = KeyEvent::new(
+            KeyCode::Char('C'),
+            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+        );
+        assert_eq!(parse_normal(&mut s, shift_folded), Action::CopyAsCurl);
+
+        let mut s = VimState::new();
+        let bare_upper = KeyEvent::new(KeyCode::Char('C'), KeyModifiers::CONTROL);
+        assert_eq!(parse_normal(&mut s, bare_upper), Action::CopyAsCurl);
+
+        // Plain <C-c> (lowercase) is reserved for cancel semantics
+        // at the dispatch level — must NOT route to CopyAsCurl.
+        let mut s = VimState::new();
+        let cancel = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
+        assert_ne!(parse_normal(&mut s, cancel), Action::CopyAsCurl);
+    }
+
+    #[test]
+    fn gh_opens_block_history() {
+        // `gh` chord — sibling of gd/ga/gx/gs. Read-only modal that
+        // lists the focused HTTP block's recent runs. Validation
+        // (HTTP-only + aliased + has-rows) is in the dispatch
+        // handler, not the parser.
+        let mut s = VimState::new();
+        assert_eq!(
+            parse_normal(&mut s, key(KeyCode::Char('g'))),
+            Action::Noop
+        );
+        assert_eq!(
+            parse_normal(&mut s, key(KeyCode::Char('h'))),
+            Action::OpenBlockHistory
+        );
+    }
+
+    #[test]
+    fn block_history_navigation_keys() {
+        use crossterm::event::{KeyEvent, KeyModifiers};
+        let mk = |mods, code| KeyEvent::new(code, mods);
+
+        // j/k + arrows + Ctrl-n/p navigate.
+        assert_eq!(
+            parse_block_history(mk(KeyModifiers::NONE, KeyCode::Char('j'))),
+            Action::MoveBlockHistoryCursor(1),
+        );
+        assert_eq!(
+            parse_block_history(mk(KeyModifiers::NONE, KeyCode::Char('k'))),
+            Action::MoveBlockHistoryCursor(-1),
+        );
+        assert_eq!(
+            parse_block_history(mk(KeyModifiers::CONTROL, KeyCode::Char('n'))),
+            Action::MoveBlockHistoryCursor(1),
+        );
+        assert_eq!(
+            parse_block_history(mk(KeyModifiers::CONTROL, KeyCode::Char('p'))),
+            Action::MoveBlockHistoryCursor(-1),
+        );
+        // Esc / Ctrl-C close.
+        assert_eq!(
+            parse_block_history(mk(KeyModifiers::NONE, KeyCode::Esc)),
+            Action::CloseBlockHistory,
+        );
+        assert_eq!(
+            parse_block_history(mk(KeyModifiers::CONTROL, KeyCode::Char('c'))),
+            Action::CloseBlockHistory,
+        );
+        // Enter is NOT bound — V1 modal is view-only. Anything
+        // unbound is a no-op so a stray keystroke can't leak
+        // through to the editor underneath.
+        assert_eq!(
+            parse_block_history(mk(KeyModifiers::NONE, KeyCode::Enter)),
+            Action::Noop,
+        );
+        assert_eq!(
+            parse_block_history(mk(KeyModifiers::NONE, KeyCode::Char('x'))),
+            Action::Noop,
+        );
+    }
+
+    #[test]
+    fn gx_opens_export_picker() {
+        // `gx` chord — sibling of `gd` (display) and `ga` (alias).
+        // Sidesteps `<C-x>` (already bound to ExplainBlock) and `y`
+        // (yank chord prefix). Same `pending_g` plumbing.
+        let mut s = VimState::new();
+        assert_eq!(
+            parse_normal(&mut s, key(KeyCode::Char('g'))),
+            Action::Noop
+        );
+        assert_eq!(
+            parse_normal(&mut s, key(KeyCode::Char('x'))),
+            Action::OpenDbExportPicker
+        );
+    }
+
+    #[test]
+    fn gs_opens_settings_modal() {
+        // `gs` chord — sibling of gd/ga/gx. Stays in the g-prefix
+        // family per the chord-constraints memory; one chord opens
+        // a multi-input modal instead of one chord per field.
+        let mut s = VimState::new();
+        assert_eq!(
+            parse_normal(&mut s, key(KeyCode::Char('g'))),
+            Action::Noop
+        );
+        assert_eq!(
+            parse_normal(&mut s, key(KeyCode::Char('s'))),
+            Action::OpenDbSettingsModal
+        );
+    }
+
+    #[test]
+    fn settings_modal_routes_navigation_and_typing() {
+        use crossterm::event::{KeyEvent, KeyModifiers};
+        let mk = |mods, code| KeyEvent::new(code, mods);
+
+        // Tab/BackTab + arrows cycle focused field.
+        assert_eq!(
+            parse_db_settings_modal(mk(KeyModifiers::NONE, KeyCode::Tab)),
+            Action::DbSettingsFocusNext,
+        );
+        assert_eq!(
+            parse_db_settings_modal(mk(KeyModifiers::NONE, KeyCode::BackTab)),
+            Action::DbSettingsFocusPrev,
+        );
+        assert_eq!(
+            parse_db_settings_modal(mk(KeyModifiers::NONE, KeyCode::Down)),
+            Action::DbSettingsFocusNext,
+        );
+        assert_eq!(
+            parse_db_settings_modal(mk(KeyModifiers::NONE, KeyCode::Up)),
+            Action::DbSettingsFocusPrev,
+        );
+        // Enter saves; Esc / Ctrl-C cancel.
+        assert_eq!(
+            parse_db_settings_modal(mk(KeyModifiers::NONE, KeyCode::Enter)),
+            Action::ConfirmDbSettingsModal,
+        );
+        assert_eq!(
+            parse_db_settings_modal(mk(KeyModifiers::NONE, KeyCode::Esc)),
+            Action::CloseDbSettingsModal,
+        );
+        assert_eq!(
+            parse_db_settings_modal(mk(KeyModifiers::CONTROL, KeyCode::Char('c'))),
+            Action::CloseDbSettingsModal,
+        );
+        // Plain digit goes into the focused buffer.
+        assert_eq!(
+            parse_db_settings_modal(mk(KeyModifiers::NONE, KeyCode::Char('5'))),
+            Action::DbSettingsChar('5'),
+        );
+        assert_eq!(
+            parse_db_settings_modal(mk(KeyModifiers::SHIFT, KeyCode::Char('A'))),
+            Action::DbSettingsChar('A'),
+        );
+        // Control + char rejected — terminal-emulator chord like
+        // <C-x> shouldn't accidentally land in the input buffer.
+        assert_eq!(
+            parse_db_settings_modal(mk(KeyModifiers::CONTROL, KeyCode::Char('x'))),
+            Action::Noop,
+        );
+        // LineEdit ops route through dedicated actions.
+        assert_eq!(
+            parse_db_settings_modal(mk(KeyModifiers::NONE, KeyCode::Backspace)),
+            Action::DbSettingsBackspace,
+        );
+        assert_eq!(
+            parse_db_settings_modal(mk(KeyModifiers::NONE, KeyCode::Delete)),
+            Action::DbSettingsDelete,
+        );
+        assert_eq!(
+            parse_db_settings_modal(mk(KeyModifiers::NONE, KeyCode::Left)),
+            Action::DbSettingsCursorLeft,
+        );
+        assert_eq!(
+            parse_db_settings_modal(mk(KeyModifiers::NONE, KeyCode::Right)),
+            Action::DbSettingsCursorRight,
+        );
+        assert_eq!(
+            parse_db_settings_modal(mk(KeyModifiers::NONE, KeyCode::Home)),
+            Action::DbSettingsCursorHome,
+        );
+        assert_eq!(
+            parse_db_settings_modal(mk(KeyModifiers::NONE, KeyCode::End)),
+            Action::DbSettingsCursorEnd,
+        );
+    }
+
+    #[test]
+    fn export_picker_navigation_keys() {
+        // Vertical-only: j/k, arrows, Ctrl-n/p all move; Enter
+        // confirms; Esc/Ctrl-C close. Anything else is a no-op so
+        // a stray motion can't leak through to the editor.
+        use crossterm::event::{KeyEvent, KeyModifiers};
+        let mk = |mods, code| KeyEvent::new(code, mods);
+
+        assert_eq!(
+            parse_db_export_picker(mk(KeyModifiers::NONE, KeyCode::Char('j'))),
+            Action::MoveDbExportPickerCursor(1),
+        );
+        assert_eq!(
+            parse_db_export_picker(mk(KeyModifiers::NONE, KeyCode::Char('k'))),
+            Action::MoveDbExportPickerCursor(-1),
+        );
+        assert_eq!(
+            parse_db_export_picker(mk(KeyModifiers::NONE, KeyCode::Down)),
+            Action::MoveDbExportPickerCursor(1),
+        );
+        assert_eq!(
+            parse_db_export_picker(mk(KeyModifiers::NONE, KeyCode::Up)),
+            Action::MoveDbExportPickerCursor(-1),
+        );
+        assert_eq!(
+            parse_db_export_picker(mk(KeyModifiers::CONTROL, KeyCode::Char('n'))),
+            Action::MoveDbExportPickerCursor(1),
+        );
+        assert_eq!(
+            parse_db_export_picker(mk(KeyModifiers::CONTROL, KeyCode::Char('p'))),
+            Action::MoveDbExportPickerCursor(-1),
+        );
+        assert_eq!(
+            parse_db_export_picker(mk(KeyModifiers::NONE, KeyCode::Enter)),
+            Action::ConfirmDbExportPicker,
+        );
+        assert_eq!(
+            parse_db_export_picker(mk(KeyModifiers::NONE, KeyCode::Esc)),
+            Action::CloseDbExportPicker,
+        );
+        assert_eq!(
+            parse_db_export_picker(mk(KeyModifiers::CONTROL, KeyCode::Char('c'))),
+            Action::CloseDbExportPicker,
+        );
+        // A motion key (e.g. `h`) is a no-op — must not leak into
+        // the editor while the picker is up.
+        assert_eq!(
+            parse_db_export_picker(mk(KeyModifiers::NONE, KeyCode::Char('h'))),
+            Action::Noop,
         );
     }
 

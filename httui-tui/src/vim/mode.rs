@@ -47,11 +47,31 @@ pub enum Mode {
     /// (UPDATE/DELETE without WHERE). `y` runs anyway, `n`/Esc/
     /// Ctrl-C cancels. State lives on `App.db_confirm_run`.
     DbConfirmRun,
+    /// `gx` on a DB block with select rows opens the export-format
+    /// picker. Up/Down (or `j`/`k`) navigate, Enter copies the
+    /// serialized result to the clipboard, Esc/Ctrl-C dismisses.
+    /// Renders as a small popup (same chrome as ConnectionPicker)
+    /// while `App.db_export_picker` is `Some`.
+    DbExportPicker,
     /// Inline fence-edit prompt for one of the block's metadata
     /// fields (alias / limit / timeout). State lives on
     /// `App.fence_edit`; the prompt renders in the status bar like
     /// `TreePrompt` so the editor under it stays visible.
     FenceEdit,
+    /// `gs` on a DB block — open the settings modal with multiple
+    /// fields (limit + timeout). Tab cycles fields, Enter saves all,
+    /// Esc cancels. State lives on `App.db_settings`. Picked over
+    /// chord-per-field (`gl`/`gw`) per the
+    /// `project_tui_block_settings_modal.md` user-memory.
+    DbSettings,
+    /// `gh` on an HTTP block — open the run-history modal. Read-only
+    /// view of the last N rows from `block_run_history` for the
+    /// current `(file_path, alias)`. j/k navigate, Esc closes.
+    BlockHistory,
+    /// `<C-f>` — open the content-search modal. Per-keystroke FTS5
+    /// query over `httui-core::search::search_index`. Up/Down (or
+    /// Ctrl-n/p) navigate; Enter opens the picked file in a new tab.
+    ContentSearch,
 }
 
 impl Mode {
@@ -70,7 +90,11 @@ impl Mode {
             Mode::HttpResponseDetail => "RESP",
             Mode::ConnectionPicker => "CONN",
             Mode::DbConfirmRun => "RUN?",
+            Mode::DbExportPicker => "EXPORT",
             Mode::FenceEdit => "EDIT",
+            Mode::DbSettings => "SET",
+            Mode::BlockHistory => "HIST",
+            Mode::ContentSearch => "FIND",
         }
     }
 
@@ -87,7 +111,11 @@ impl Mode {
             Mode::HttpResponseDetail => Color::LightBlue,
             Mode::ConnectionPicker => Color::LightBlue,
             Mode::DbConfirmRun => Color::LightRed,
+            Mode::DbExportPicker => Color::LightBlue,
             Mode::FenceEdit => Color::LightYellow,
+            Mode::DbSettings => Color::LightYellow,
+            Mode::BlockHistory => Color::LightBlue,
+            Mode::ContentSearch => Color::LightGreen,
         }
     }
 
