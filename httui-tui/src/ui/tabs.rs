@@ -17,11 +17,13 @@ use crate::app::TabBar;
 
 pub fn render(frame: &mut Frame, area: Rect, tabs: &TabBar) {
     let titles: Vec<Line<'static>> = tabs
-        .focused_paths()
+        .tabs
         .iter()
         .enumerate()
-        .map(|(i, path)| {
-            let name = path
+        .map(|(i, tab)| {
+            let leaf = tab.active_leaf();
+            let name = leaf
+                .document_path
                 .as_ref()
                 .map(|p| {
                     p.file_name()
@@ -29,7 +31,13 @@ pub fn render(frame: &mut Frame, area: Rect, tabs: &TabBar) {
                         .unwrap_or_else(|| p.display().to_string())
                 })
                 .unwrap_or_else(|| "(no name)".into());
-            Line::from(format!(" {} {} ", i + 1, name))
+            // Trailing `*` when the focused doc has unsaved edits —
+            // mirrors the `tab_picker` markers and the dirty marker
+            // already painted in the status bar's file segment, so
+            // the user has consistent dirty signaling everywhere.
+            let dirty = leaf.document.as_ref().is_some_and(|d| d.is_dirty());
+            let dirty_marker = if dirty { "*" } else { "" };
+            Line::from(format!(" {} {}{} ", i + 1, name, dirty_marker))
         })
         .collect();
 

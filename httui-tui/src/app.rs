@@ -65,6 +65,7 @@ impl TabBar {
 
     /// Path shown by each tab's focused leaf, in display order. Used to
     /// render tab titles and to detect whether a path is already open.
+    #[allow(dead_code)] // exposed for tooling / future API
     pub fn focused_paths(&self) -> Vec<Option<PathBuf>> {
         self.tabs
             .iter()
