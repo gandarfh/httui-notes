@@ -764,6 +764,7 @@ fn apply_action(app: &mut App, action: Action, recording: bool) {
         }
         Action::JumpNextBlock => apply_jump_block(app, JumpDir::Next),
         Action::JumpPrevBlock => apply_jump_block(app, JumpDir::Prev),
+        Action::RerunLastBlock => apply_rerun_last_block(app),
         Action::OpenBlockTemplatePicker => {
             app.block_template_picker = Some(crate::app::BlockTemplatePickerState::new());
             app.vim.mode = Mode::BlockTemplatePicker;
@@ -2161,6 +2162,78 @@ fn apply_jump_block(app: &mut App, dir: JumpDir) {
         });
     }
     app.refresh_viewport_for_cursor();
+}
+
+// ───────────── rerun last block (gr) ─────────────
+
+/// `gr` — re-execute the block recorded in `App.last_run_anchor`,
+/// without requiring the cursor to be on it. Resolution rules:
+///
+/// 1. If `last_run_anchor` is `None` → status hint "no block has
+///    been run yet this session".
+/// 2. If the active document's path doesn't match the anchor's
+///    file → status hint "last run was in <path>" so the user
+///    knows where to switch.
+/// 3. Look up the target block by alias (preferred — survives
+///    edits above the block) and fall back to `segment_idx`. If
+///    neither resolves to a block, status hint "anchor lost".
+/// 4. Park the cursor on the resolved segment (offset 0) and
+///    delegate to `apply_run_block`. The dispatch chain there
+///    handles HTTP vs DB, schedules the async task, and updates
+///    `last_run_anchor` again with the freshly-resolved index.
+fn apply_rerun_last_block(app: &mut App) {
+    let Some(anchor) = app.last_run_anchor.clone() else {
+        app.set_status(StatusKind::Info, "no block has been run yet");
+        return;
+    };
+    let Some(active_path) = app
+        .active_pane()
+        .and_then(|p| p.document_path.clone())
+    else {
+        app.set_status(StatusKind::Info, "no document open");
+        return;
+    };
+    if active_path != anchor.file_path {
+        app.set_status(
+            StatusKind::Info,
+            format!("last run was in {}", anchor.file_path.display()),
+        );
+        return;
+    }
+    let target_idx = {
+        let Some(doc) = app.document() else { return };
+        // Alias-first lookup so edits that shifted segment_idx don't
+        // fire the wrong block.
+        let by_alias = anchor.alias.as_deref().and_then(|a| {
+            doc.segments().iter().enumerate().find_map(|(i, s)| match s {
+                Segment::Block(b) if b.alias.as_deref() == Some(a) => Some(i),
+                _ => None,
+            })
+        });
+        by_alias.or_else(|| {
+            // Fall back to the recorded index, but only if it still
+            // points at a block — otherwise the anchor is stale.
+            match doc.segments().get(anchor.segment_idx) {
+                Some(Segment::Block(_)) => Some(anchor.segment_idx),
+                _ => None,
+            }
+        })
+    };
+    let Some(idx) = target_idx else {
+        app.set_status(
+            StatusKind::Info,
+            "previous block no longer exists in this file",
+        );
+        return;
+    };
+    if let Some(doc) = app.document_mut() {
+        doc.set_cursor(Cursor::InBlock {
+            segment_idx: idx,
+            offset: 0,
+        });
+    }
+    app.refresh_viewport_for_cursor();
+    crate::commands::db::apply_run_block(app);
 }
 
 // ───────────── block-template picker (gN) ─────────────

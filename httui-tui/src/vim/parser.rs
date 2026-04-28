@@ -507,6 +507,11 @@ pub enum Action {
     /// `g[` chord — jump to the previous executable block. Same
     /// no-wrap rule as `g]`.
     JumpPrevBlock,
+    /// `gr` chord — rerun the last block that was dispatched in
+    /// this session. The cursor doesn't have to be on the block;
+    /// we look it up by alias (preferred) or `segment_idx` against
+    /// `App.last_run_anchor`. Mnemonic: g + r = "go rerun".
+    RerunLastBlock,
     /// `gN` chord — open the block-template picker. Lowercase `gn`
     /// is taken by vim's "find next match" motion, so the new-block
     /// chord uses capital N.
@@ -856,6 +861,13 @@ pub fn parse_normal(state: &mut VimState, key: KeyEvent) -> Action {
         if let KeyCode::Char('N') = code {
             state.take_count();
             return Action::OpenBlockTemplatePicker;
+        }
+        // `gr` — rerun the last block dispatched this session.
+        // Vim's bare `gr` (replace-with-virtual-edit) isn't wired
+        // here, so the chord is free for our use.
+        if let KeyCode::Char('r') = code {
+            state.take_count();
+            return Action::RerunLastBlock;
         }
         // Drop the prefix and continue parsing.
     }

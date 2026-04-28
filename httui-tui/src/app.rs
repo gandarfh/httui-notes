@@ -161,6 +161,18 @@ pub struct ConnectionEntry {
     pub kind: String,
 }
 
+/// Coordinates of the last block the user kicked a run on. Records
+/// both the file path *and* the segment index so `gr` (rerun) can
+/// gracefully decline when the user has switched to a different
+/// document. Alias is preferred over segment index for resilience —
+/// edits above the block shift the index but not the alias.
+#[derive(Debug, Clone)]
+pub struct LastRunAnchor {
+    pub file_path: PathBuf,
+    pub segment_idx: usize,
+    pub alias: Option<String>,
+}
+
 /// One row in the block-template picker. Static / hand-curated —
 /// the desktop's slash-command list (`src/lib/codemirror/cm-slash-commands.ts`)
 /// has the canonical set; we ship a trimmed V1 with the three most
@@ -445,6 +457,14 @@ pub struct App {
     /// static `&'static [BlockTemplate]` so the state only carries
     /// the selection cursor.
     pub block_template_picker: Option<BlockTemplatePickerState>,
+    /// Coordinates of the most-recently run block, used by the
+    /// `gr` chord to rerun without navigating back to the source.
+    /// Recorded by `apply_run_block` (and the HTTP equivalent) at
+    /// the moment the run is dispatched, so cancelled / failed runs
+    /// still set the anchor — `gr` is "rerun whatever I just tried".
+    /// `None` until the user has run at least one block this
+    /// session.
+    pub last_run_anchor: Option<LastRunAnchor>,
 }
 
 /// State for the inline fence-edit prompt. `kind` carries the field
@@ -846,6 +866,7 @@ impl App {
             file_watcher: None,
             help_visible: false,
             block_template_picker: None,
+            last_run_anchor: None,
         };
         app.load_initial_document();
         app.refresh_active_env_name();
@@ -924,6 +945,33 @@ impl App {
     #[allow(dead_code)] // wired up by the upcoming connection picker.
     pub fn refresh_connection_names(&mut self) {
         self.connection_names = load_connection_names(self.pool_manager.app_pool());
+    }
+
+    /// Record a `last_run_anchor` pointing at the block at
+    /// `segment_idx` in the active document. Called by the DB and
+    /// HTTP run-spawn paths right after they set `running_query`,
+    /// so a subsequent `gr` can rerun the same block without the
+    /// cursor being on it. Silent no-op when the active pane has no
+    /// path or the segment isn't a block.
+    pub fn record_run_anchor(&mut self, segment_idx: usize) {
+        let Some(file_path) = self
+            .active_pane()
+            .and_then(|p| p.document_path.clone())
+        else {
+            return;
+        };
+        let alias = self
+            .document()
+            .and_then(|d| d.segments().get(segment_idx))
+            .and_then(|s| match s {
+                Segment::Block(b) => b.alias.clone(),
+                _ => None,
+            });
+        self.last_run_anchor = Some(LastRunAnchor {
+            file_path,
+            segment_idx,
+            alias,
+        });
     }
 
     /// Re-sync the filesystem watcher to follow the current active

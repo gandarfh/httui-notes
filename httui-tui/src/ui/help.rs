@@ -63,6 +63,7 @@ const SECTIONS: &[Section] = &[
             Entry { chord: "Enter", label: "run block / open result detail (on result row)" },
             Entry { chord: "Ctrl-C", label: "cancel running query" },
             Entry { chord: "Ctrl-X", label: "EXPLAIN current DB block" },
+            Entry { chord: "gr", label: "rerun last block (cursor anywhere)" },
             Entry { chord: "g] / g[", label: "jump to next / previous block" },
             Entry { chord: "ga", label: "edit block alias" },
             Entry { chord: "gd", label: "cycle display mode (input / split / output)" },

@@ -105,6 +105,7 @@ pub fn apply_run_http_block(app: &mut App, segment_idx: usize) {
         kind: RunningKind::Run,
         cache_key: None,
     });
+    app.record_run_anchor(segment_idx);
 }
 
 pub fn handle_http_block_result(

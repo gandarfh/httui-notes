@@ -1234,6 +1234,13 @@ fn spawn_db_query(
         kind,
         cache_key,
     });
+    // Anchor for `gr` (rerun). Only Run / Explain set this — LoadMore
+    // is a transparent pagination follow-up, not a fresh user dispatch,
+    // so we'd otherwise pin the anchor to a load-more idx that's a
+    // no-op on rerun.
+    if !matches!(kind, crate::app::RunningKind::LoadMore) {
+        app.record_run_anchor(segment_idx);
+    }
 }
 
 /// Fold the outcome of a backgrounded DB query (kicked off by
