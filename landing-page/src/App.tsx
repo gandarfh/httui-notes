@@ -1,24 +1,124 @@
-import { useState } from "react";
-import { Box, Flex, Text, HStack, Link, SimpleGrid, Badge } from "@chakra-ui/react";
-import { LuDownload, LuMenu, LuX, LuStar, LuTerminal, LuLock, LuZap, LuGitBranch } from "react-icons/lu";
-import { MockHttpBlock } from "./mocks/HttpBlock";
-import { MockDbBlock } from "./mocks/DbBlock";
-import { MockE2eBlock } from "./mocks/E2eBlock";
-import { MockReferenceBlock } from "./mocks/ReferenceBlock";
-import { MockChatPanel } from "./mocks/ChatPanel";
-import { AppChrome } from "./mocks/AppChrome";
-import { ScrollReveal } from "./mocks/ScrollReveal";
+import { Box, Flex, HStack, SimpleGrid, Text, VStack } from "@chakra-ui/react";
+import { LuArrowRight, LuPlay } from "react-icons/lu";
+import { useColorMode } from "@/components/ui/color-mode";
+import { useGithubStats } from "./hooks/useGithubStats";
+import {
+  BlocksPreview,
+  GitDiffPreview,
+  SchemaPreview,
+  WindowChrome,
+  WorkbenchPreview,
+} from "./marketing/previews";
 
-// ─── Shared primitives ──────────────────────────────────
-function Eyebrow({ children, color = "brand.300" }: { children: React.ReactNode; color?: string }) {
+// ─────────────────────────────────────────────────────────
+// Logo — the httui "h." mark. Theme-aware (light/dark) and
+// supports two variants:
+//   - full: wordmark + glyph (used in the navbar)
+//   - logo: glyph only (used in the footer)
+// ─────────────────────────────────────────────────────────
+function Logo({
+  variant = "logo",
+  size = 22,
+}: {
+  variant?: "logo" | "full";
+  size?: number;
+}) {
+  const { colorMode } = useColorMode();
+  const theme = colorMode === "dark" ? "dark" : "light";
+
+  if (variant === "full") {
+    // Full asset is 66×19 — keep aspect by setting only height.
+    return (
+      <img
+        src={`/httui-${theme}-full.png`}
+        height={size}
+        alt="httui"
+        style={{ display: "block", height: `${size}px`, width: "auto" }}
+      />
+    );
+  }
+
+  // Glyph only — light variant ships as SVG, dark as PNG
+  const src =
+    theme === "light" ? "/httui-light-logo.svg" : "/httui-dark-logo.png";
+  return (
+    <img
+      src={src}
+      width={size}
+      height={size}
+      alt="httui"
+      style={{ display: "block" }}
+    />
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// Pill — small reusable pill button (cosmetic, not a link).
+// Variants:
+//   solid   — accent-filled CTA
+//   ink     — high-contrast dark-on-light / light-on-dark
+//   ghost   — bordered transparent
+// ─────────────────────────────────────────────────────────
+type PillProps = {
+  children: React.ReactNode;
+  variant?: "solid" | "ghost" | "ink";
+  size?: "sm" | "md";
+  href?: string;
+};
+function Pill({ children, variant = "solid", size = "md", href }: PillProps) {
+  const padX = size === "sm" ? 3.5 : 4.5;
+  const padY = size === "sm" ? 1.5 : 2.5;
+  const fontSize = size === "sm" ? "xs" : "sm";
+
+  const styleMap = {
+    solid: { bg: "accent", color: "accent.fg", borderColor: "transparent" },
+    ink: { bg: "fg", color: "bg", borderColor: "transparent" },
+    ghost: {
+      bg: "color-mix(in oklch, var(--chakra-colors-bg) 60%, transparent)",
+      color: "fg",
+      borderColor: "color-mix(in oklch, var(--chakra-colors-border) 60%, transparent)",
+    },
+  } as const;
+  const style = styleMap[variant];
+
+  return (
+    <HStack
+      as={href ? "a" : "span"}
+      {...(href ? { href, target: "_blank", rel: "noreferrer" } : {})}
+      display="inline-flex"
+      gap={1.5}
+      px={padX}
+      py={padY}
+      rounded="full"
+      fontSize={fontSize}
+      fontWeight="600"
+      whiteSpace="nowrap"
+      border="1px solid"
+      cursor="pointer"
+      backdropFilter={variant === "ghost" ? "blur(10px)" : undefined}
+      bg={style.bg}
+      color={style.color}
+      borderColor={style.borderColor}
+      transition="filter .12s ease, transform .12s ease"
+      _hover={{ filter: "brightness(1.05)" }}
+    >
+      {children}
+    </HStack>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// Eyebrow — uppercase mono kicker above section titles
+// ─────────────────────────────────────────────────────────
+function Eyebrow({ children, color = "accent" }: { children: React.ReactNode; color?: string }) {
   return (
     <Text
       as="span"
       fontFamily="mono"
-      fontSize="xs"
-      fontWeight="600"
+      fontSize="11px"
+      fontWeight="700"
       color={color}
-      letterSpacing="0.08em"
+      letterSpacing="wider"
       textTransform="uppercase"
     >
       {children}
@@ -26,666 +126,673 @@ function Eyebrow({ children, color = "brand.300" }: { children: React.ReactNode;
   );
 }
 
-function SectionHeading({
-  eyebrow,
-  title,
-  description,
-  align = "left",
-  maxW = "640px",
-}: {
-  eyebrow?: string;
-  title: React.ReactNode;
-  description?: React.ReactNode;
-  align?: "left" | "center";
-  maxW?: string;
-}) {
-  return (
-    <Flex direction="column" gap={3} align={align === "center" ? "center" : "flex-start"} textAlign={align} mx={align === "center" ? "auto" : undefined} maxW={maxW}>
-      {eyebrow && <Eyebrow>{eyebrow}</Eyebrow>}
-      <Text as="h2" fontFamily="heading" fontSize={{ base: "2xl", md: "4xl" }} fontWeight="900" color="fg" letterSpacing="-0.03em" lineHeight="1.1">
-        {title}
-      </Text>
-      {description && (
-        <Text fontSize={{ base: "sm", md: "md" }} color="fg.muted" lineHeight="1.7" maxW="560px">
-          {description}
-        </Text>
-      )}
-    </Flex>
-  );
-}
-
-// ─── Nav ────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────
+// Nav — sticky top bar with backdrop blur + repo star count.
+// Lives inside the Hero so the photo bleeds behind it.
+// ─────────────────────────────────────────────────────────
 function Nav() {
-  const [mobileOpen, setMobileOpen] = useState(false);
-
+  const stats = useGithubStats();
   return (
-    <Box position="fixed" top={0} left={0} right={0} zIndex={100} bg="bg/80" backdropFilter="blur(12px)" borderBottom="1px solid" borderColor="border">
-      <Flex align="center" justify="space-between" maxW="1200px" mx="auto" px={6} h="56px">
-        <HStack gap={2}>
-          <Text fontFamily="heading" fontWeight="900" fontSize="xl" color="fg" letterSpacing="-0.02em">httui</Text>
-          <Badge size="xs" variant="subtle" colorPalette="gray" fontFamily="mono" fontSize="2xs" fontWeight="500">v0.1</Badge>
-        </HStack>
-
-        {/* Desktop nav */}
-        <HStack gap={6} display={{ base: "none", md: "flex" }}>
-          <Link href="#features" fontSize="sm" color="fg.muted" _hover={{ color: "brand.300", textDecoration: "none" }}>Features</Link>
-          <Link href="#ai" fontSize="sm" color="fg.muted" _hover={{ color: "brand.300", textDecoration: "none" }}>AI</Link>
-          <Link href="#local" fontSize="sm" color="fg.muted" _hover={{ color: "brand.300", textDecoration: "none" }}>Local-first</Link>
-          <Link href="https://github.com/gandarfh/httui-notes" target="_blank" rel="noopener" fontSize="sm" color="fg.muted" _hover={{ color: "brand.300", textDecoration: "none" }}>GitHub</Link>
-          <Link href="https://github.com/gandarfh/httui-notes/releases" target="_blank" rel="noopener" px={4} py={1.5} rounded="md" bg="brand.400" color="brand.950" fontSize="sm" fontWeight="600" _hover={{ bg: "brand.500", textDecoration: "none" }}>
-            Download
-          </Link>
-        </HStack>
-
-        {/* Mobile toggle */}
-        <Box as="button" display={{ base: "block", md: "none" }} cursor="pointer" color="fg.muted" p={1} bg="transparent" border="none" aria-label={mobileOpen ? "Close menu" : "Open menu"} onClick={() => setMobileOpen(!mobileOpen)}>
-          {mobileOpen ? <LuX size={20} /> : <LuMenu size={20} />}
-        </Box>
-      </Flex>
-
-      {/* Mobile menu */}
-      {mobileOpen && (
-        <Flex direction="column" gap={4} px={6} pb={5} display={{ base: "flex", md: "none" }} bg="bg" borderBottom="1px solid" borderColor="border">
-          <Link href="#features" fontSize="sm" color="fg.muted" onClick={() => setMobileOpen(false)}>Features</Link>
-          <Link href="#ai" fontSize="sm" color="fg.muted" onClick={() => setMobileOpen(false)}>AI</Link>
-          <Link href="#local" fontSize="sm" color="fg.muted" onClick={() => setMobileOpen(false)}>Local-first</Link>
-          <Link href="https://github.com/gandarfh/httui-notes" target="_blank" rel="noopener" fontSize="sm" color="fg.muted">GitHub</Link>
-          <Link href="https://github.com/gandarfh/httui-notes/releases" target="_blank" rel="noopener" display="inline-flex" alignItems="center" justifyContent="center" gap={2} px={4} py={2} rounded="md" bg="brand.400" color="brand.950" fontSize="sm" fontWeight="600">
-            <LuDownload size={14} /> Download
-          </Link>
-        </Flex>
-      )}
-    </Box>
-  );
-}
-
-// ─── Hero ───────────────────────────────────────────────
-function Hero() {
-  return (
-    <Box pt={{ base: "120px", md: "140px" }} pb={{ base: 12, md: 20 }} px={6} position="relative" overflow="hidden">
-      {/* ambient background glow */}
-      <Box
-        position="absolute"
-        top="-200px"
-        left="50%"
-        transform="translateX(-50%)"
-        w="800px"
-        h="600px"
-        bg="radial-gradient(ellipse at center, rgba(236, 154, 56, 0.08), transparent 70%)"
-        pointerEvents="none"
-        aria-hidden
-      />
-
-      <Flex direction="column" align="center" maxW="1200px" mx="auto" gap={{ base: 10, md: 14 }} position="relative">
-        <Flex direction="column" align="center" textAlign="center" maxW="720px" gap={5}>
-          <ScrollReveal distance={12} duration={0.5}>
-            <HStack
-              gap={2}
-              px={3}
-              py={1.5}
-              rounded="full"
-              border="1px solid"
-              borderColor="border"
-              bg="bg.subtle"
-              fontSize="xs"
-              color="fg.muted"
-            >
-              <Box w={1.5} h={1.5} rounded="full" bg="green.400" boxShadow="0 0 8px currentColor" />
-              <Text fontFamily="mono" fontSize="xs">Now in public beta · open source</Text>
-            </HStack>
-          </ScrollReveal>
-
-          <ScrollReveal distance={16} duration={0.6} delay={80}>
-            <Text as="h1" fontFamily="heading" fontSize={{ base: "5xl", md: "7xl" }} fontWeight="900" color="fg" lineHeight="1" letterSpacing="-0.045em">
-              Your API docs,
-              <br />
-              <Text as="span" css={{ background: "linear-gradient(to right, var(--chakra-colors-brand-300), var(--chakra-colors-brand-500))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-                alive.
-              </Text>
-            </Text>
-          </ScrollReveal>
-
-          <ScrollReveal distance={16} duration={0.6} delay={160}>
-            <Text fontSize={{ base: "md", md: "lg" }} color="fg.muted" maxW="560px" lineHeight="1.6">
-              A markdown editor with a runtime inside.
-              Write the doc, hit run, ship the proof.
-            </Text>
-          </ScrollReveal>
-
-          <ScrollReveal distance={12} duration={0.5} delay={240}>
-            <Flex direction="column" align="center" gap={3}>
-              <Flex gap={3} wrap="wrap" justify="center">
-                <Link href="https://github.com/gandarfh/httui-notes/releases" target="_blank" rel="noopener" display="flex" alignItems="center" gap={2} px={6} py={3} rounded="md" bg="brand.400" color="brand.950" fontWeight="700" fontSize="sm" _hover={{ bg: "brand.500", textDecoration: "none", transform: "translateY(-1px)" }} transition="all 0.15s" boxShadow="0 4px 20px rgba(236, 154, 56, 0.25)">
-                  <LuDownload size={16} /> Download for macOS
-                </Link>
-                <Link href="https://github.com/gandarfh/httui-notes" target="_blank" rel="noopener" display="flex" alignItems="center" gap={2} px={6} py={3} rounded="md" border="1px solid" borderColor="border" color="fg" fontWeight="600" fontSize="sm" _hover={{ borderColor: "fg.muted", textDecoration: "none", bg: "bg.subtle" }} transition="all 0.15s">
-                  <LuStar size={14} /> Star on GitHub
-                </Link>
-              </Flex>
-              <HStack gap={4} fontSize="xs" color="fg.muted" fontFamily="mono">
-                <Text>macOS</Text>
-                <Box w="2px" h="2px" rounded="full" bg="fg.muted" opacity={0.4} />
-                <Text>Linux</Text>
-                <Box w="2px" h="2px" rounded="full" bg="fg.muted" opacity={0.4} />
-                <Text>~15MB binary</Text>
-              </HStack>
-            </Flex>
-          </ScrollReveal>
-        </Flex>
-
-        {/* Hero — full app chrome with HTTP block */}
-        <Box w="100%">
-          <ScrollReveal distance={40} duration={0.8} delay={320}>
-            <Box maxW="1100px" mx="auto" overflowX="auto">
-              <AppChrome>
-                <Text fontFamily="heading" fontSize="xl" fontWeight="800" color="fg" mb={1}>User API</Text>
-                <Text fontSize="sm" color="fg.muted" mb={4}>Create and retrieve users from the REST API.</Text>
-                <MockHttpBlock
-                  alias="create-user"
-                  method="POST"
-                  url="{{base_url}}/api/users"
-                  activeTab="Body"
-                  defaultMode="split"
-                  body={`{
-  "name": "Alice Johnson",
-  "email": "alice@example.com",
-  "role": "admin"
-}`}
-                  response={{
-                    status: 201,
-                    statusText: "Created",
-                    elapsed: "142ms",
-                    size: "128 B",
-                    body: `{
-  "id": 42,
-  "name": "Alice Johnson",
-  "email": "alice@example.com",
-  "role": "admin",
-  "created_at": "2026-04-19T10:30:00Z"
-}`,
-                  }}
-                />
-              </AppChrome>
-            </Box>
-          </ScrollReveal>
-        </Box>
-      </Flex>
-    </Box>
-  );
-}
-
-// ─── Problem / Solution band ────────────────────────────
-function ProblemBand() {
-  const rows = [
-    { before: "Document APIs in Notion", after: "Docs that execute" },
-    { before: "Test requests in Postman", after: "Requests next to the docs" },
-    { before: "Query the DB in DBeaver", after: "SQL in the same file" },
-    { before: "Chain calls in a shell script", after: "Blocks reference blocks" },
-  ];
-
-  return (
-    <Box py={{ base: 16, md: 24 }} px={6} bg="bg.subtle" borderTop="1px solid" borderBottom="1px solid" borderColor="border">
-      <Box maxW="1000px" mx="auto">
-        <ScrollReveal distance={16}>
-          <SectionHeading
-            eyebrow="// the problem"
-            title={<>Four apps. Four tabs. One workflow that <Text as="span" color="brand.300">doesn't fit</Text>.</>}
-            description="You write docs in one tool, fire requests in another, query the DB in a third, and keep environment variables somewhere in a YAML you edit by hand. httui is what you get when all four collapse into a single markdown file."
-            maxW="780px"
-          />
-        </ScrollReveal>
-
-        <ScrollReveal distance={16} delay={120}>
-          <Box
-            mt={12}
-            border="1px solid"
-            borderColor="border"
-            rounded="lg"
-            overflow="hidden"
-            bg="bg"
+    <Box
+      position="sticky"
+      top={0}
+      zIndex={50}
+      bg="bg"
+      borderBottom="1px solid"
+      borderColor="border.subtle"
+    >
+      <Flex
+        align="center"
+        maxW="1280px"
+        mx="auto"
+        width="100%"
+        px={{ base: 5, md: 8 }}
+        py={3}
+        fontSize="sm"
+      >
+      <Logo variant="full" size={22} />
+      <HStack flex="1" justify="center" gap={1} display={{ base: "none", md: "flex" }}>
+        {["Product", "Docs", "GitHub", "Changelog"].map((l) => (
+          <Text
+            key={l}
+            px={3}
+            py={1.5}
+            fontSize="13px"
+            fontWeight="500"
+            color="fg.muted"
+            rounded="md"
+            cursor="pointer"
+            _hover={{ color: "fg" }}
           >
-            <Flex
-              px={5}
-              py={3}
-              borderBottom="1px solid"
-              borderColor="border"
-              bg="bg.subtle"
-              fontSize="xs"
-              fontFamily="mono"
-              color="fg.muted"
-              justify="space-between"
-            >
-              <Text>Before</Text>
-              <Text color="brand.300">With httui</Text>
-            </Flex>
-            {rows.map((row, i) => (
-              <Flex
-                key={i}
-                px={5}
-                py={4}
-                borderBottom={i < rows.length - 1 ? "1px solid" : "none"}
-                borderColor="border"
-                justify="space-between"
-                align="center"
-                gap={4}
-                _hover={{ bg: "bg.subtle" }}
-                transition="background 0.15s"
-              >
-                <Text fontSize="sm" color="fg.muted" textDecoration="line-through" textDecorationColor="fg.muted" opacity={0.7}>{row.before}</Text>
-                <Text fontFamily="mono" fontSize="xs" color="fg.muted">→</Text>
-                <Text fontSize="sm" color="fg" fontWeight="500" textAlign="right">{row.after}</Text>
-              </Flex>
-            ))}
-          </Box>
-        </ScrollReveal>
-      </Box>
+            {l}
+          </Text>
+        ))}
+      </HStack>
+      <HStack gap={3}>
+        <HStack
+          gap={1}
+          fontSize="12px"
+          fontWeight="500"
+          color="fg.muted"
+          display={{ base: "none", md: "flex" }}
+        >
+          <Text as="span">★</Text>
+          <Text>{stats.stars}</Text>
+        </HStack>
+        <Pill variant="ink" size="sm" href={stats.repoUrl}>
+          View on GitHub <LuArrowRight size={11} />
+        </Pill>
+      </HStack>
+      </Flex>
     </Box>
   );
 }
 
-// ─── Features: group A (2-up grid) ──────────────────────
-function FeaturesGrid() {
+// ─────────────────────────────────────────────────────────
+// Hero — Fuji photograph background + serif headline +
+// scaled product preview window. The wash is a vertical
+// gradient using the page bg token, so it works in both
+// themes without separate art.
+// ─────────────────────────────────────────────────────────
+function Hero() {
+  const stats = useGithubStats();
   return (
-    <Box pt={{ base: 16, md: 24 }} pb={8} px={6} id="features">
-      <Box maxW="1100px" mx="auto">
-        <ScrollReveal distance={16}>
-          <SectionHeading
-            eyebrow="// execute anything"
-            title="The block is the unit of work."
-            description="Every runnable thing in httui is a block: an HTTP call, a SQL query, an E2E flow. Blocks live inline in your markdown, cache their results, and reference each other."
-          />
-        </ScrollReveal>
-
-        <SimpleGrid columns={{ base: 1, lg: 2 }} gap={{ base: 8, lg: 10 }} mt={12}>
-          {/* HTTP */}
-          <ScrollReveal distance={20} delay={60}>
-            <Flex direction="column" gap={4} h="full">
-              <HStack gap={3}>
-                <Box px={2} py={1} rounded="sm" bg="brand.400" color="brand.950" fontFamily="mono" fontSize="2xs" fontWeight="700">HTTP</Box>
-                <Text fontFamily="heading" fontSize="lg" fontWeight="800" color="fg">Fire requests inline</Text>
-              </HStack>
-              <Text fontSize="sm" color="fg.muted" lineHeight="1.6">
-                GET through OPTIONS. Environment variables, headers, body editor. Results cached by content hash — rerun only what changed.
-              </Text>
-              <Box>
-                <MockHttpBlock
-                  alias="list-users"
-                  method="GET"
-                  url="{{base_url}}/api/users?role=admin"
-                  activeTab="Headers"
-                  headers={[{ key: "Authorization", value: "Bearer {{auth_token}}" }, { key: "Content-Type", value: "application/json" }]}
-                  response={{
-                    status: 200,
-                    statusText: "OK",
-                    elapsed: "89ms",
-                    size: "2.4 KB",
-                    body: `[\n  { "id": 1, "name": "Alice", "role": "admin" },\n  { "id": 2, "name": "Bob",   "role": "admin" }\n]`,
-                  }}
-                />
-              </Box>
-            </Flex>
-          </ScrollReveal>
-
-          {/* DB */}
-          <ScrollReveal distance={20} delay={140}>
-            <Flex direction="column" gap={4} h="full">
-              <HStack gap={3}>
-                <Box px={2} py={1} rounded="sm" bg="blue.400" color="blue.950" fontFamily="mono" fontSize="2xs" fontWeight="700">DB</Box>
-                <Text fontFamily="heading" fontSize="lg" fontWeight="800" color="fg">Query the database</Text>
-              </HStack>
-              <Text fontSize="sm" color="fg.muted" lineHeight="1.6">
-                Postgres, MySQL, SQLite. Schema-aware autocomplete. Credentials in the OS keychain — never in a dotfile.
-              </Text>
-              <Box >
-                <MockDbBlock
-                  alias="recent-orders"
-                  connection="Local PostgreSQL"
-                  query={`SELECT u.name, u.email,\n       COUNT(o.id) as orders,\n       SUM(o.total) as revenue\nFROM users u\nJOIN orders o ON u.id = o.user_id\nGROUP BY u.id\nORDER BY revenue DESC\nLIMIT 5;`}
-                  columns={[{ name: "name", type: "varchar" }, { name: "email", type: "varchar" }, { name: "orders", type: "int8" }, { name: "revenue", type: "numeric" }]}
-                  rows={[
-                    { name: "Alice Johnson", email: "alice@example.com", orders: 28, revenue: "$4,320.00" },
-                    { name: "Bob Smith", email: "bob@example.com", orders: 15, revenue: "$2,180.50" },
-                    { name: "Carol White", email: "carol@example.com", orders: 12, revenue: "$1,890.00" },
-                  ]}
-                  totalRows={3}
-                />
-              </Box>
-            </Flex>
-          </ScrollReveal>
-        </SimpleGrid>
-      </Box>
-    </Box>
-  );
-}
-
-// ─── E2E + References (stacked, emphasis) ───────────────
-function FlagshipFeatures() {
-  return (
-    <Box pt={{ base: 16, md: 20 }} pb={{ base: 16, md: 24 }} px={6}>
-      <Box maxW="1000px" mx="auto">
-
-        {/* E2E */}
-        <Flex direction={{ base: "column", md: "row" }} gap={{ base: 6, md: 12 }} justify="center" align="flex-start" mb={{ base: 16, md: 24 }}>
-          <ScrollReveal distance={16}>
-            <Flex direction="column" gap={3} maxW={{ md: "340px" }} flexShrink={0}>
-              <Eyebrow>// end-to-end</Eyebrow>
-              <Text as="h3" fontFamily="heading" fontSize={{ base: "2xl", md: "3xl" }} fontWeight="900" color="fg" letterSpacing="-0.03em" lineHeight="1.1">
-                A test suite<br />in a code fence.
-              </Text>
-              <Text fontSize="sm" color="fg.muted" lineHeight="1.7">
-                Chain HTTP calls, extract variables between steps, assert status and JSON shape. When it breaks, you see which step and why — without leaving the doc.
-              </Text>
-            </Flex>
-          </ScrollReveal>
-
-          <ScrollReveal distance={24} delay={120}>
-            <Box flex={1} w="full" minW={0}>
-              <MockE2eBlock
-                alias="auth-flow"
-                baseUrl="{{base_url}}"
-                steps={[
-                  { name: "Login", method: "POST", url: "/api/auth/login"  },
-                  { name: "Get Profile", method: "GET", url: "/api/users/me" },
-                  { name: "Update Profile", method: "PUT", url: "/api/users/me" },
-                ]}
-                results={[
-                  { name: "Login", method: "POST", url: "/api/auth/login", passed: true, elapsed_ms: 89, status_code: 200, errors: [], extractions: { token: "eyJhbGciOi..." }, response_body: { token: "eyJhbGciOi...", expires_in: 3600 } },
-                  { name: "Get Profile", method: "GET", url: "/api/users/me", passed: true, elapsed_ms: 34, status_code: 200, errors: [], extractions: {}, response_body: { id: 1, name: "Alice Johnson" } },
-                  { name: "Update Profile", method: "PUT", url: "/api/users/me", passed: true, elapsed_ms: 52, status_code: 200, errors: [], extractions: {}, response_body: { id: 1, name: "Alice Johnson", updated_at: "2026-04-19T10:31:00Z" } },
-                ]}
-              />
-            </Box>
-          </ScrollReveal>
-        </Flex>
-
-        {/* Block references — killer feature, wider */}
-        <Box
-          position="relative"
-          rounded="xl"
+    <Box as="section" position="relative" bg="bg">
+      <Nav />
+      {/* Hero content — clean paper bg, no photo. The Fuji painting only
+          appears as scenery around the workbench preview below. */}
+      <Flex
+        direction="column"
+        align="center"
+        textAlign="center"
+        maxW="1080px"
+        mx="auto"
+        px={{ base: 5, md: 14 }}
+        pt={{ base: 8, md: 16 }}
+        pb={{ base: 8, md: 12 }}
+      >
+        <HStack
+          gap={1.5}
+          px={3}
+          py={1}
+          rounded="full"
+          fontSize="11px"
+          bg="color-mix(in oklch, var(--chakra-colors-bg) 80%, transparent)"
           border="1px solid"
-          borderColor="border"
-          bg="linear-gradient(180deg, bg.subtle 0%, bg 100%)"
-          p={{ base: 6, md: 10 }}
+          borderColor="border.subtle"
+          color="fg.muted"
+          mb={{ base: 5, md: 7 }}
+          backdropFilter="blur(8px)"
+          whiteSpace="nowrap"
+          maxW="100%"
           overflow="hidden"
         >
-          {/* Corner accent */}
-          <Box position="absolute" top={-1} right={-1} px={3} py={1} bg="brand.400" color="brand.950" fontFamily="mono" fontSize="2xs" fontWeight="700" roundedBottomLeft="md">
-            THE KILLER FEATURE
-          </Box>
+          <Box w="6px" h="6px" rounded="full" bg="ok" flexShrink={0} />
+          <Text display={{ base: "none", sm: "inline" }}>v0.8 · open beta —</Text>
+          <Text display={{ base: "inline", sm: "none" }}>v0.8 —</Text>
+          <Text fontFamily="mono" color="fg.muted">
+            20k blocks last week
+          </Text>
+        </HStack>
 
-          <Flex direction={{ base: "column", md: "row" }} gap={{ base: 6, md: 12 }} align="flex-start" justify="space-between" mt={{ base: 4, md: 0 }}>
-            <ScrollReveal distance={16}>
-              <Flex direction="column" gap={3} maxW={{ md: "320px" }} flexShrink={0}>
-                <Eyebrow color="brand.400">// composition</Eyebrow>
-                <Text as="h3" fontFamily="heading" fontSize={{ base: "2xl", md: "3xl" }} fontWeight="900" color="fg" letterSpacing="-0.03em" lineHeight="1.1">
-                  Blocks reference<br />blocks.
-                </Text>
-                <Text fontSize="sm" color="fg.muted" lineHeight="1.7">
-                  Create a user with HTTP. Verify it with SQL using <Text as="code" fontFamily="mono" fontSize="xs" px={1.5} py={0.5} rounded="sm" bg="bg.subtle" border="1px solid" borderColor="border">{`{{create-user.response.id}}`}</Text>. Dependencies execute in the right order, automatically.
-                </Text>
-                <Flex direction="column" gap={2} mt={2}>
-                  <HStack gap={2}><Box w={1} h={1} rounded="full" bg="brand.300" /><Text fontSize="xs" color="fg.muted">DAG by construction — no cycles</Text></HStack>
-                  <HStack gap={2}><Box w={1} h={1} rounded="full" bg="brand.300" /><Text fontSize="xs" color="fg.muted">SQL refs become bind params — never interpolated</Text></HStack>
-                  <HStack gap={2}><Box w={1} h={1} rounded="full" bg="brand.300" /><Text fontSize="xs" color="fg.muted">Cached results, hash-invalidated</Text></HStack>
-                </Flex>
-              </Flex>
-            </ScrollReveal>
+        <Text
+          as="h1"
+          fontFamily="heading"
+          fontWeight="600"
+          fontSize={{ base: "34px", sm: "40px", md: "64px", lg: "88px", xl: "96px" }}
+          lineHeight={{ base: "1.06", lg: "1.02" }}
+          letterSpacing="tighter"
+          color="fg"
+          textWrap="balance"
+          textShadow="0 1px 2px color-mix(in oklch, var(--chakra-colors-bg) 50%, transparent)"
+        >
+          Debug your APIs and databases in a{" "}
+          <Text as="em" fontStyle="italic">
+            single markdown file.
+          </Text>
+        </Text>
 
-            <ScrollReveal  distance={24} delay={120}>
-              <Box flex={1}  w="full" minW={0}>
-                <MockReferenceBlock
-                  httpAlias="create-user"
-                  httpMethod="POST"
-                  httpUrl="/api/users"
-                  httpResponse={`{ "id": 42, "name": "Alice Johnson" }`}
-                  dbAlias="verify-user"
-                  dbConnection="Local PostgreSQL"
-                  dbQuery={"SELECT * FROM users\nWHERE id = {{create-user.response.id}}"}
-                  referenceHighlight="{{create-user.response.id}}"
-                  dbColumns={[{ name: "id" }, { name: "name" }, { name: "email" }]}
-                  dbRows={[{ id: 42, name: "Alice Johnson", email: "alice@example.com" }]}
-                />
-              </Box>
-            </ScrollReveal>
-          </Flex>
-        </Box>
-      </Box>
+        <Text
+          mt={{ base: 5, md: 7 }}
+          maxW="620px"
+          fontFamily="heading"
+          fontSize={{ base: "15px", md: "18px" }}
+          lineHeight="1.55"
+          color="fg"
+        >
+          httui is a markdown editor with executable blocks — HTTP, SQL, Mongo,
+          WebSocket, gRPC. Each runbook is documentation and a troubleshooting
+          tool, versioned in git, shareable with your team.
+        </Text>
+
+        <HStack gap={3} mt={{ base: 7, md: 9 }} mb={{ base: 10, md: 14 }} flexWrap="wrap" justify="center">
+          <Pill variant="solid" href={stats.repoUrl}>
+            Get started <LuArrowRight size={11} />
+          </Pill>
+          <Pill variant="ghost">
+            <LuPlay size={10} /> Watch 90s demo
+          </Pill>
+        </HStack>
+      </Flex>
+
     </Box>
   );
 }
 
-// ─── AI Section ─────────────────────────────────────────
-function AISection() {
+// ─────────────────────────────────────────────────────────
+// HeroPreview — full-fidelity Workbench shown immediately
+// after the hero. Negative margin-top makes it "emerge"
+// from the photo above (the bottom blur of the Hero softens
+// the seam). Scaled at 0.811 so the full 1480×940 workbench
+// fits inside a 1200×762 frame.
+// ─────────────────────────────────────────────────────────
+function HeroPreview() {
+  // Workbench is built at 1480×940 (designed for desktop). Even at scale 0.5
+  // it overflows mobile/tablet viewports and looks cramped. We only render it
+  // at lg+; mobile users see the per-feature previews below the hero instead.
   return (
-    <Box py={{ base: 16, md: 24 }} px={6} id="ai" bg="bg.subtle" borderTop="1px solid" borderBottom="1px solid" borderColor="border">
-      <Box maxW="1100px" mx="auto">
-        <Flex direction={{ base: "column", md: "row" }} gap={{ base: 10, md: 16 }} justify="space-between" align={{ base: "stretch", md: "center" }}>
-          {/* Left — text */}
-          <ScrollReveal distance={20} duration={0.5}>
-            <Flex direction="column" flex={1} gap={5} maxW="460px">
-              <Eyebrow>// ai assistant</Eyebrow>
-              <Text as="h3" fontFamily="heading" fontSize={{ base: "2xl", md: "4xl" }} fontWeight="900" color="fg" letterSpacing="-0.03em" lineHeight="1.05">
-                Claude edits<br />your docs.<br /><Text as="span" color="fg.muted">You approve the diff.</Text>
-              </Text>
-              <Text fontSize="sm" color="fg.muted" lineHeight="1.7">
-                An agent with MCP tools that read, search, and modify notes — but every write stops at a permission prompt. Nothing touches disk without your explicit OK.
-              </Text>
-
-              <Flex direction="column" gap={3} mt={2}>
-                <HStack gap={3} align="flex-start">
-                  <Box mt={1} color="brand.300"><LuLock size={14} /></Box>
-                  <Box>
-                    <Text fontSize="sm" fontWeight="600" color="fg">Permission broker</Text>
-                    <Text fontSize="xs" color="fg.muted" lineHeight="1.5">Once, session, or always. Bash is always gated.</Text>
-                  </Box>
-                </HStack>
-                <HStack gap={3} align="flex-start">
-                  <Box mt={1} color="brand.300"><LuGitBranch size={14} /></Box>
-                  <Box>
-                    <Text fontSize="sm" fontWeight="600" color="fg">Side-by-side diff</Text>
-                    <Text fontSize="xs" color="fg.muted" lineHeight="1.5">Executable blocks render inside the diff. Allow or deny per change.</Text>
-                  </Box>
-                </HStack>
-                <HStack gap={3} align="flex-start">
-                  <Box mt={1} color="brand.300"><LuZap size={14} /></Box>
-                  <Box>
-                    <Text fontSize="sm" fontWeight="600" color="fg">MCP tools built in</Text>
-                    <Text fontSize="xs" color="fg.muted" lineHeight="1.5">14 native tools: list, read, write notes, search, run queries.</Text>
-                  </Box>
-                </HStack>
-              </Flex>
-            </Flex>
-          </ScrollReveal>
-
-          {/* Right — chat panel */}
-          <ScrollReveal delay={150} distance={28} duration={0.6}>
-            <Box flex={1} maxW={{ base: "100%", md: "440px" }}>
-              <MockChatPanel
-                messages={[
-                  {
-                    id: 1, session_id: 1, role: "user", turn_index: 0, tokens_in: null, tokens_out: null, is_partial: false, created_at: Math.floor(Date.now() / 1000),
-                    content_json: JSON.stringify([{ type: "text", text: "Add auth headers to all HTTP blocks in this document using the {{auth_token}} variable" }]),
-                    tool_calls: [],
-                  },
-                  {
-                    id: 2, session_id: 1, role: "assistant", turn_index: 1, tokens_in: 320, tokens_out: 574, is_partial: false, created_at: Math.floor(Date.now() / 1000),
-                    content_json: JSON.stringify([{ type: "text", text: "Found 4 HTTP blocks: `create-user`, `list-users`, `get-user`, and `delete-user`.\n\nAdded `Authorization: Bearer {{auth_token}}` to all 4. The token will resolve from your active environment." }]),
-                    tool_calls: [
-                      { id: 1, tool_use_id: "t1", tool_name: "mcp__httui_notes__read_note", input_json: JSON.stringify({ path: "user-api.md" }), result_json: "content...", is_error: false, created_at: Math.floor(Date.now() / 1000) },
-                      { id: 2, tool_use_id: "t2", tool_name: "mcp__httui_notes__list_notes", input_json: "{}", result_json: "notes...", is_error: false, created_at: Math.floor(Date.now() / 1000) },
-                      { id: 3, tool_use_id: "t3", tool_name: "mcp__httui_notes__read_note", input_json: JSON.stringify({ path: "user-api.md" }), result_json: "content...", is_error: false, created_at: Math.floor(Date.now() / 1000) },
-                      { id: 4, tool_use_id: "t4", tool_name: "mcp__httui_notes__update_note", input_json: JSON.stringify({ path: "user-api.md", content: "updated" }), result_json: "ok", is_error: false, created_at: Math.floor(Date.now() / 1000) },
-                    ],
-                  },
-                ]}
-                permission={{ file: "user-api.md", added: 16, removed: 0 }}
-              />
-            </Box>
-          </ScrollReveal>
-        </Flex>
+    <Box
+      display={{ base: "none", lg: "block" }}
+      position="relative"
+      pt="30px"
+      pb="100px"
+      overflow="hidden"
+    >
+      {/* Painting bg — Fuji watercolor as scenic stage around the dashboard.
+          Edges fade to page bg so the painting feels like a vignette. */}
+      <Box position="absolute" inset={0} zIndex={0} overflow="hidden">
+        <img
+          src="/hero-1920.jpg"
+          srcSet="/hero-768.jpg 768w, /hero-1920.jpg 1920w"
+          sizes="100vw"
+          alt=""
+          loading="eager"
+          decoding="async"
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            objectPosition: "center 60%",
+            display: "block",
+            filter: "saturate(0.7) brightness(1.02)",
+          }}
+        />
       </Box>
-    </Box>
-  );
-}
-
-// ─── Local-first / philosophy ──────────────────────────
-function LocalFirst() {
-  const pillars = [
-    {
-      icon: <LuTerminal size={16} />,
-      title: "Plain .md files",
-      body: "Everything serializes to standard markdown. Executable blocks live in fenced code blocks. Read it in vim, diff it in git, open it in Obsidian.",
-    },
-    {
-      icon: <LuLock size={16} />,
-      title: "Secrets stay put",
-      body: "Passwords and secret env vars live in your OS keychain. The SQLite cache only holds a sentinel. Parameterized SQL — zero string interpolation.",
-    },
-    {
-      icon: <LuZap size={16} />,
-      title: "Tauri, not Electron",
-      body: "~15MB binary. Native performance. Rust backend, React frontend, shared channel for streaming. No bundled Chromium, no runtime slog.",
-    },
-  ];
-
-  return (
-    <Box py={{ base: 16, md: 24 }} px={6} id="local">
-      <Box maxW="1100px" mx="auto">
-        <ScrollReveal distance={16}>
-          <SectionHeading
-            eyebrow="// local first"
-            title={<>No cloud. No account. <Text as="span" color="fg.muted">No lock-in.</Text></>}
-            description="httui runs entirely on your machine. Your notes are files. Your credentials are in the keychain. Your data is yours — there's no sync service we could take down."
-            align="center"
-            maxW="640px"
-          />
-        </ScrollReveal>
-
-        <SimpleGrid columns={{ base: 1, md: 3 }} gap={5} mt={14}>
-          {pillars.map((p, i) => (
-            <ScrollReveal key={p.title} distance={16} delay={i * 80}>
-              <Box
-                h="full"
-                p={6}
-                rounded="lg"
-                border="1px solid"
-                borderColor="border"
-                bg="bg.subtle"
-                _hover={{ borderColor: "brand.300", bg: "bg.subtle" }}
-                transition="border-color 0.2s"
-              >
-                <Flex align="center" justify="center" w={8} h={8} rounded="md" bg="brand.400/15" color="brand.300" mb={4}>
-                  {p.icon}
-                </Flex>
-                <Text fontFamily="heading" fontSize="md" fontWeight="800" color="fg" mb={2}>{p.title}</Text>
-                <Text fontSize="sm" color="fg.muted" lineHeight="1.7">{p.body}</Text>
-              </Box>
-            </ScrollReveal>
-          ))}
-        </SimpleGrid>
-
-        {/* stack line */}
-        <ScrollReveal distance={12} delay={300}>
-          <Flex justify="center" mt={12}>
-            <HStack gap={4} fontSize="xs" fontFamily="mono" color="fg.muted" wrap="wrap" justify="center" rowGap={2}>
-              <Text>Tauri v2</Text>
-              <Box w="2px" h="2px" rounded="full" bg="fg.muted" opacity={0.4} />
-              <Text>Rust</Text>
-              <Box w="2px" h="2px" rounded="full" bg="fg.muted" opacity={0.4} />
-              <Text>React</Text>
-              <Box w="2px" h="2px" rounded="full" bg="fg.muted" opacity={0.4} />
-              <Text>TipTap</Text>
-              <Box w="2px" h="2px" rounded="full" bg="fg.muted" opacity={0.4} />
-              <Text>CodeMirror</Text>
-              <Box w="2px" h="2px" rounded="full" bg="fg.muted" opacity={0.4} />
-              <Text>SQLite + FTS5</Text>
-              <Box w="2px" h="2px" rounded="full" bg="fg.muted" opacity={0.4} />
-              <Text color="brand.300">MIT</Text>
-            </HStack>
-          </Flex>
-        </ScrollReveal>
-      </Box>
-    </Box>
-  );
-}
-
-// ─── CTA ────────────────────────────────────────────────
-function CTA() {
-  return (
-    <Box py={{ base: 20, md: 28 }} px={6} position="relative" overflow="hidden" borderTop="1px solid" borderColor="border">
+      {/* Vignette: fade top/bottom to page bg so the painting is just
+          ambient scenery, never a hard band. */}
       <Box
         position="absolute"
-        bottom="-200px"
-        left="50%"
-        transform="translateX(-50%)"
-        w="800px"
-        h="500px"
-        bg="radial-gradient(ellipse at center, rgba(236, 154, 56, 0.1), transparent 70%)"
+        inset={0}
+        zIndex={1}
         pointerEvents="none"
-        aria-hidden
+        style={{
+          background: `linear-gradient(
+            180deg,
+            var(--chakra-colors-bg) 0%,
+            color-mix(in oklch, var(--chakra-colors-bg) 60%, transparent) 6%,
+            transparent 18%,
+            transparent 75%,
+            color-mix(in oklch, var(--chakra-colors-bg) 70%, transparent) 90%,
+            var(--chakra-colors-bg) 100%
+          )`,
+        }}
       />
-      <Box maxW="640px" mx="auto" textAlign="center" position="relative">
-        <ScrollReveal distance={16}>
-          <Eyebrow>// get started</Eyebrow>
-        </ScrollReveal>
-        <ScrollReveal distance={16} delay={80}>
-          <Text as="h2" fontFamily="heading" fontSize={{ base: "3xl", md: "5xl" }} fontWeight="900" color="fg" letterSpacing="-0.035em" lineHeight="1.05" mt={3} mb={4}>
-            Stop switching tabs.
-          </Text>
-        </ScrollReveal>
-        <ScrollReveal distance={16} delay={160}>
-          <Text fontSize={{ base: "sm", md: "md" }} color="fg.muted" mb={8} lineHeight="1.7" maxW="480px" mx="auto">
-            Download it, point at a folder of markdown, type <Text as="code" fontFamily="mono" fontSize="sm" px={1.5} py={0.5} rounded="sm" bg="bg.subtle" border="1px solid" borderColor="border">/http</Text>. That's the onboarding.
-          </Text>
-        </ScrollReveal>
-        <ScrollReveal distance={12} delay={240}>
-          <Flex gap={3} wrap="wrap" justify="center">
-            <Link href="https://github.com/gandarfh/httui-notes/releases" target="_blank" rel="noopener" display="inline-flex" alignItems="center" gap={2} px={7} py={3.5} rounded="md" bg="brand.400" color="brand.950" fontWeight="700" fontSize="sm" _hover={{ bg: "brand.500", textDecoration: "none", transform: "translateY(-1px)" }} transition="all 0.15s" boxShadow="0 4px 24px rgba(236, 154, 56, 0.3)">
-              <LuDownload size={16} /> Download httui
-            </Link>
-            <Link href="https://github.com/gandarfh/httui-notes" target="_blank" rel="noopener" display="inline-flex" alignItems="center" gap={2} px={7} py={3.5} rounded="md" border="1px solid" borderColor="border" color="fg" fontWeight="600" fontSize="sm" _hover={{ borderColor: "fg.muted", textDecoration: "none", bg: "bg.subtle" }} transition="all 0.15s">
-              Read the source
-            </Link>
-          </Flex>
-          <Text fontSize="xs" color="fg.muted" mt={4} fontFamily="mono">macOS · Linux · MIT licensed</Text>
-        </ScrollReveal>
-      </Box>
-    </Box>
-  );
-}
-
-// ─── Footer ─────────────────────────────────────────────
-function Footer() {
-  return (
-    <Box borderTop="1px solid" borderColor="border" py={8} px={6}>
-      <Flex maxW="1200px" mx="auto" justify="space-between" align="center" direction={{ base: "column", md: "row" }} gap={4}>
-        <HStack gap={3}>
-          <Text fontFamily="heading" fontWeight="900" fontSize="sm" color="fg" letterSpacing="-0.02em">httui</Text>
-          <Text fontSize="xs" color="fg.muted">&copy; 2026</Text>
-        </HStack>
-        <HStack gap={4} fontSize="xs" wrap="wrap" justify="center">
-          <Link href="https://github.com/gandarfh/httui-notes" target="_blank" rel="noopener" color="fg.muted" _hover={{ color: "brand.300", textDecoration: "none" }} display="inline-flex" alignItems="center" gap={1}><LuStar size={12} /> Star on GitHub</Link>
-          <Link href="https://github.com/gandarfh/httui-notes/releases" target="_blank" rel="noopener" color="fg.muted" _hover={{ color: "brand.300", textDecoration: "none" }}>Releases</Link>
-          <Link href="https://github.com/gandarfh/httui-notes/blob/main/docs/ARCHITECTURE.md" target="_blank" rel="noopener" color="fg.muted" _hover={{ color: "brand.300", textDecoration: "none" }}>Docs</Link>
-          <Link href="https://github.com/gandarfh/httui-notes/blob/main/LICENSE" target="_blank" rel="noopener" color="fg.muted" _hover={{ color: "brand.300", textDecoration: "none" }}>MIT License</Link>
-        </HStack>
+      {/* Dashboard preview centered, sitting in the painting */}
+      <Flex justify="center" position="relative" zIndex={2}>
+        <Box
+          w="1200px"
+          maxW="1200px"
+          rounded="xl"
+          overflow="hidden"
+          bg="bg.surface"
+          border="1px solid"
+          borderColor="border"
+          shadow="photo"
+        >
+          <WindowChrome title="rollout-v2.3.md — httui" />
+          <Box position="relative" h="762px" overflow="hidden">
+            <Box
+              position="absolute"
+              top={0}
+              left={0}
+              w="1480px"
+              h="940px"
+              transformOrigin="top left"
+              transform="scale(0.811)"
+            >
+              <WorkbenchPreview />
+            </Box>
+          </Box>
+        </Box>
       </Flex>
     </Box>
   );
 }
 
-// ─── App ────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────
+// OssStrip — 4-up grid of live OSS stats from GitHub
+// (stars, contributors, license, latest release)
+// ─────────────────────────────────────────────────────────
+function OssStrip() {
+  const stats = useGithubStats();
+  const cells = [
+    { v: stats.stars, k: "GitHub stars", sub: stats.repoUrl.replace(/^https?:\/\//, "") },
+    { v: stats.contributors, k: "contributors", sub: "growing in the open" },
+    { v: stats.license, k: "license", sub: "no strings attached" },
+    { v: stats.version, k: "latest release", sub: stats.versionDate || "release pending" },
+  ];
+  return (
+    <Box as="section" px={{ base: 6, md: 14 }} pt={24} pb={16} bg="bg">
+      <VStack gap={2.5} mb={9}>
+        <Eyebrow color="fg.subtle">Open source · MIT license</Eyebrow>
+        <Text
+          fontFamily="heading"
+          fontSize={{ base: "lg", md: "xl" }}
+          fontStyle="italic"
+          color="fg.muted"
+          maxW="620px"
+          textAlign="center"
+        >
+          Built in the open. Hack on it, fork it, send a PR.
+        </Text>
+      </VStack>
+      <Box maxW="980px" mx="auto" border="1px solid" borderColor="border" rounded="lg" bg="bg.surface" overflow="hidden">
+        <SimpleGrid columns={{ base: 2, md: 4 }} gap={0}>
+          {cells.map((s, i) => (
+            <Box
+              key={i}
+              px={5}
+              py={6}
+              textAlign="center"
+              borderRight={{ base: i % 2 === 0 ? "1px solid" : "none", md: i < 3 ? "1px solid" : "none" }}
+              borderBottom={{ base: i < 2 ? "1px solid" : "none", md: "none" }}
+              borderColor="border"
+            >
+              <Text fontFamily="heading" fontSize="48px" fontWeight="600" letterSpacing="tight" color="fg" lineHeight="1">
+                {s.v}
+              </Text>
+              <Text mt={2} fontSize="xs" color="fg.muted" fontWeight="500">
+                {s.k}
+              </Text>
+              <Text mt={0.5} fontSize="11px" color="fg.subtle" fontFamily="mono" truncate>
+                {s.sub}
+              </Text>
+            </Box>
+          ))}
+        </SimpleGrid>
+      </Box>
+    </Box>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// FeatureRow — alternating two-column section. Reverses
+// direction on every other call for a zigzag rhythm.
+// ─────────────────────────────────────────────────────────
+type FeatureRowProps = {
+  kicker: string;
+  title: React.ReactNode;
+  body: React.ReactNode;
+  points: React.ReactNode[];
+  preview: React.ReactNode;
+  reverse?: boolean;
+};
+function FeatureRow({ kicker, title, body, points, preview, reverse }: FeatureRowProps) {
+  return (
+    <Box
+      as="section"
+      maxW="1640px"
+      mx="auto"
+      px={{ base: 6, md: 16 }}
+      py={{ base: 14, md: 20 }}
+      display="grid"
+      gridTemplateColumns={{ base: "1fr", lg: "1fr 1.15fr" }}
+      gap={{ base: 10, lg: 16 }}
+      alignItems="center"
+      direction={{ base: "ltr", lg: reverse ? "rtl" : "ltr" }}
+      overflowX="hidden"
+    >
+      <Box style={{ direction: "ltr" }}>
+        <Eyebrow>{kicker}</Eyebrow>
+        <Text
+          mt={3}
+          as="h2"
+          fontFamily="heading"
+          fontWeight="600"
+          fontSize={{ base: "32px", md: "44px" }}
+          lineHeight="1.1"
+          letterSpacing="tight"
+          color="fg"
+        >
+          {title}
+        </Text>
+        <Text mt={4} fontSize="md" lineHeight="1.6" color="fg.muted" maxW="460px">
+          {body}
+        </Text>
+        <VStack as="ul" align="stretch" mt={5} gap={2.5} listStyleType="none">
+          {points.map((p, i) => (
+            <HStack as="li" key={i} gap={2.5} fontSize="sm" color="fg.muted" lineHeight="1.5" align="flex-start">
+              <Text color="accent" fontWeight="700" flexShrink={0}>
+                —
+              </Text>
+              <Text as="span">{p}</Text>
+            </HStack>
+          ))}
+        </VStack>
+      </Box>
+      <Box
+        style={{ direction: "ltr" }}
+        minW="0"
+        overflowX="auto"
+        css={{
+          // Hide scrollbar visually on mobile but keep horizontal panning
+          scrollbarWidth: "none",
+          "&::-webkit-scrollbar": { display: "none" },
+        }}
+      >
+        {preview}
+      </Box>
+    </Box>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// InstallSection — single primary terminal block + 4
+// alt-installs. OSS-style minimal.
+// ─────────────────────────────────────────────────────────
+function InstallSection() {
+  const distros = [
+    { label: "Homebrew", code: "brew install httui", icon: "" },
+    { label: "apt / dnf", code: "apt install httui", icon: "" },
+    { label: "winget", code: "winget install httui", icon: "▣" },
+    { label: "From source", code: "go install httui/cmd/httui", icon: "{ }" },
+  ];
+  return (
+    <Box
+      as="section"
+      id="install"
+      px={{ base: 6, md: 20 }}
+      py={{ base: 16, md: 24 }}
+      bg="bg.surface"
+      borderTop="1px solid"
+      borderBottom="1px solid"
+      borderColor="border"
+    >
+      <VStack gap={3.5} mb={10} textAlign="center">
+        <Eyebrow>Install</Eyebrow>
+        <Text
+          as="h2"
+          fontFamily="heading"
+          fontWeight="600"
+          fontSize={{ base: "36px", md: "52px" }}
+          lineHeight="1.1"
+          letterSpacing="tight"
+          color="fg"
+        >
+          Free forever.{" "}
+          <Text as="em" color="accent" fontStyle="italic">
+            Yours
+          </Text>{" "}
+          to fork.
+        </Text>
+        <Text fontFamily="heading" fontSize="17px" color="fg.muted" maxW="580px">
+          One terminal command. No signup, no card, no telemetry.
+        </Text>
+      </VStack>
+
+      {/* Primary install — single dark terminal block */}
+      <Box
+        maxW="760px"
+        mx="auto"
+        mb={7}
+        rounded="xl"
+        overflow="hidden"
+        border="1px solid"
+        borderColor="stone.500"
+        bg="stone.900"
+        color="paper.100"
+        fontFamily="mono"
+        shadow="photo"
+      >
+        <HStack px={3.5} py={2.5} gap={2} borderBottom="1px solid" borderColor="stone.500">
+          <Box w="10px" h="10px" rounded="full" bg="#ed6a5e" />
+          <Box w="10px" h="10px" rounded="full" bg="#f4be4f" />
+          <Box w="10px" h="10px" rounded="full" bg="#62c554" />
+          <Text flex="1" textAlign="center" fontSize="11px" color="stone.200">
+            ~/projects · zsh
+          </Text>
+          <Text fontSize="10px" color="moss.300" px={2} py={0.5} border="1px solid" borderColor="moss.700" rounded="sm" fontWeight="600">
+            COPY
+          </Text>
+        </HStack>
+        <Box px={5} py={5} fontSize="14px" lineHeight="1.8">
+          <Text>
+            <Text as="span" color="moss.300">$</Text> curl -fsSL httui.sh/install | sh
+          </Text>
+          <Text color="stone.200" fontSize="13px">
+            ✓ httui 0.8.2 installed in ~/.httui/bin
+          </Text>
+          <Text color="stone.200" fontSize="13px">
+            ✓ shell: zsh detected, alias 'httui' added
+          </Text>
+          <Text>
+            <Text as="span" color="moss.300">$</Text> httui new my-runbook.md
+          </Text>
+        </Box>
+      </Box>
+
+      {/* Alt installs */}
+      <SimpleGrid maxW="920px" mx="auto" columns={{ base: 2, md: 4 }} gap={2.5}>
+        {distros.map((p) => (
+          <Box key={p.label} p={3.5} bg="bg" border="1px solid" borderColor="border" rounded="md">
+            <HStack gap={2} mb={1.5} fontSize="11px" color="fg.subtle">
+              <Text fontFamily="mono">{p.icon}</Text>
+              <Text fontWeight="600" color="fg.muted">
+                {p.label}
+              </Text>
+            </HStack>
+            <Text fontFamily="mono" fontSize="11.5px" color="fg" truncate>
+              {p.code}
+            </Text>
+          </Box>
+        ))}
+      </SimpleGrid>
+
+      <Text textAlign="center" mt={7} fontSize="xs" color="fg.muted" maxW="700px" mx="auto" lineHeight="1.7">
+        Prefer a GUI? Builds for{" "}
+        <Text as="span" fontFamily="mono" color="fg.muted">macOS</Text> ·{" "}
+        <Text as="span" fontFamily="mono" color="fg.muted">Linux</Text> ·{" "}
+        <Text as="span" fontFamily="mono" color="fg.muted">Windows</Text> on the{" "}
+        <Text as="span" color="accent.emphasized" fontWeight="600">GitHub releases</Text>.
+        VS Code extension and a Docker self-hosted build are also available.
+      </Text>
+    </Box>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// CtaSection
+// ─────────────────────────────────────────────────────────
+function CtaSection() {
+  const stats = useGithubStats();
+  return (
+    <Box
+      as="section"
+      px={{ base: 6, md: 20 }}
+      py={{ base: 20, md: 28 }}
+      textAlign="center"
+      bgGradient="linear(to-b, var(--chakra-colors-bg) 0%, var(--chakra-colors-bg-surface) 100%)"
+      borderTop="1px solid"
+      borderColor="border"
+    >
+      <Text
+        as="h2"
+        fontFamily="heading"
+        fontWeight="600"
+        fontSize={{ base: "40px", md: "64px" }}
+        lineHeight="1.05"
+        letterSpacing="tight"
+        color="fg"
+        maxW="920px"
+        mx="auto"
+        textWrap="balance"
+      >
+        Stop debugging in{" "}
+        <Text as="em" fontStyle="italic" color="fg.muted">
+          five tabs.
+        </Text>
+        <br />
+        Start writing{" "}
+        <Text as="em" color="accent" fontStyle="italic">
+          runbooks
+        </Text>{" "}
+        instead.
+      </Text>
+      <Text mt={5} fontFamily="heading" fontSize="17px" color="fg.muted" maxW="540px" mx="auto">
+        Open source, MIT licensed.{" "}
+        <Text as="span" fontFamily="mono" bg="bg.elevated" px={1.5} py={0.5} rounded="sm" fontSize="13px">
+          brew install httui
+        </Text>{" "}
+        and it's yours.
+      </Text>
+      <HStack gap={3} justify="center" mt={9}>
+        <Pill variant="solid" href={stats.repoUrl}>
+          Get started
+        </Pill>
+        <Pill variant="ghost">Read the docs</Pill>
+      </HStack>
+    </Box>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// Footer
+// ─────────────────────────────────────────────────────────
+function Footer() {
+  const cols: { h: string; l: string[] }[] = [
+    { h: "Product", l: ["Workbench", "TUI", "VS Code", "Web app", "Self-host"] },
+    { h: "Resources", l: ["Docs", "Examples", "Changelog", "Status"] },
+    { h: "Community", l: ["GitHub", "Discord", "Contributing", "Code of Conduct"] },
+    { h: "Legal", l: ["MIT License", "Privacy", "Security"] },
+  ];
+  return (
+    <Box as="footer" px={{ base: 6, md: 20 }} pt={14} pb={9} bg="bg.surface" borderTop="1px solid" borderColor="border" fontSize="xs" color="fg.muted">
+      <SimpleGrid columns={{ base: 2, md: 5 }} gap={10} maxW="1280px" mx="auto">
+        <Box gridColumn={{ base: "span 2", md: "span 1" }}>
+          <Logo variant="logo" size={28} />
+          <Text mt={3} fontSize="13px" lineHeight="1.55" maxW="280px">
+            The markdown editor for debugging APIs and databases. Open source · MIT · v0.8.2.
+          </Text>
+          <Text mt={4} fontSize="11px" fontFamily="mono" color="fg.subtle">
+            SHA-256 · a3f2…7c81
+          </Text>
+        </Box>
+        {cols.map((col) => (
+          <Box key={col.h}>
+            <Text fontSize="11px" fontWeight="700" letterSpacing="wide" color="fg" mb={3}>
+              {col.h}
+            </Text>
+            <VStack align="stretch" gap={1.5} fontSize="13px" color="fg.muted">
+              {col.l.map((x) => (
+                <Text key={x} cursor="pointer" _hover={{ color: "fg" }}>
+                  {x}
+                </Text>
+              ))}
+            </VStack>
+          </Box>
+        ))}
+      </SimpleGrid>
+      <Flex
+        mt={10}
+        pt={4.5}
+        borderTop="1px solid"
+        borderColor="border"
+        justify="space-between"
+        maxW="1280px"
+        mx="auto"
+        direction={{ base: "column", md: "row" }}
+        gap={2}
+      >
+        <Text>© 2026 httui contributors</Text>
+        <Text>Made with markdown.</Text>
+      </Flex>
+    </Box>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// App — page composition
+// ─────────────────────────────────────────────────────────
 export default function App() {
   return (
-    <Box minH="100vh" bg="bg" color="fg">
-      <Nav />
+    <Box bg="bg" color="fg" fontFamily="body">
       <Hero />
-      <ProblemBand />
-      <FeaturesGrid />
-      <FlagshipFeatures />
-      <AISection />
-      <LocalFirst />
-      <CTA />
+      <HeroPreview />
+      <OssStrip />
+
+      <FeatureRow
+        kicker="One file · many blocks"
+        title="Markdown that runs."
+        body="Each block is executable: HTTP, SQL, Mongo, gRPC, WebSocket, shell. Captures from one block become variables for the next, chaining the entire flow inside a single .md."
+        points={[
+          <>
+            <Text as="b" color="fg">Chained captures</Text> — extract{" "}
+            <Text as="code" fontFamily="mono" px={1} bg="bg.elevated" rounded="sm">$.id</Text>{" "}
+            from a response and reuse it as{" "}
+            <Text as="code" fontFamily="mono" px={1} bg="bg.elevated" rounded="sm">{"{{order_id}}"}</Text>{" "}
+            later.
+          </>,
+          <>
+            <Text as="b" color="fg">Inline assertions</Text> —{" "}
+            <Text as="code" fontFamily="mono" px={1} bg="bg.elevated" rounded="sm">expect: time {"<"} 500ms</Text>{" "}
+            fails the runbook on regression.
+          </>,
+          <>
+            <Text as="b" color="fg">Variables &amp; secrets</Text> referenced by key. The value never touches git.
+          </>,
+        ]}
+        preview={<BlocksPreview />}
+      />
+
+      <FeatureRow
+        reverse
+        kicker="Database-native"
+        title="Schema explorer next to the editor."
+        body="Connect PostgreSQL, MySQL, Mongo, BigQuery. Browse tables with foreign keys, indexes, row counts. EXPLAIN ANALYZE in tree form shows where your query spends time."
+        points={[
+          <>
+            <Text as="b" color="fg">Multi-database</Text> in a single runbook — query Postgres, then the warehouse, without switching windows.
+          </>,
+          <>
+            <Text as="b" color="fg">Read-only environments</Text> — staging in one click, prod with double-confirm and a red badge.
+          </>,
+          <>
+            <Text as="b" color="fg">Plan visualizer</Text> highlights costly seq scans and unused indexes.
+          </>,
+        ]}
+        preview={<SchemaPreview />}
+      />
+
+      <FeatureRow
+        kicker="Git-native · diffable"
+        title="Versioned. Reviewable. Sharable."
+        body="Runbooks are .md files in your repo. Pull request review like any other code. Diff between runs shows what changed in the response across executions."
+        points={[
+          <>
+            <Text as="b" color="fg">PR review</Text> for runbooks on GitHub or GitLab.
+          </>,
+          <>
+            <Text as="b" color="fg">Diff between runs</Text> — compare today's execution with yesterday's in two clicks.
+          </>,
+          <>
+            <Text as="b" color="fg">Share links</Text> with expiry and password — hand a runbook to support without granting repo access.
+          </>,
+        ]}
+        preview={<GitDiffPreview />}
+      />
+
+      <InstallSection />
+      <CtaSection />
       <Footer />
     </Box>
   );
