@@ -1255,6 +1255,18 @@ pub fn handle_db_block_result(
         .running_query
         .take()
         .and_then(|q| q.cache_key);
+
+    // Snapshot history-relevant metadata once, before we descend into
+    // the per-kind match. Block fields (alias, query, connection)
+    // don't change between Ok/Err and we need them in both branches
+    // to record an entry. Only `DbBlockResultKind::Run` actually
+    // emits a row — load-more / explain are not user "runs".
+    let history_meta = if matches!(kind, crate::event::DbBlockResultKind::Run) {
+        snapshot_db_history_meta(app, segment_idx)
+    } else {
+        None
+    };
+
     use crate::event::DbBlockResultKind;
     use httui_core::executor::db::types::DbResult;
     match kind {
@@ -1294,6 +1306,28 @@ pub fn handle_db_block_result(
                         );
                     }
                 }
+                // Record run history (metadata only — never the
+                // result rows). Outcome distinguishes a SELECT/
+                // mutation success from a per-statement error.
+                if let Some(meta) = history_meta.as_ref() {
+                    let elapsed = response.stats.elapsed_ms;
+                    let (status, response_size) =
+                        derive_db_history_stats(&response);
+                    let outcome_str = if first_was_error {
+                        "error"
+                    } else {
+                        "success"
+                    };
+                    record_db_history_async(
+                        app.pool_manager.app_pool().clone(),
+                        meta.clone(),
+                        Some(elapsed as i64),
+                        status,
+                        response_size,
+                        outcome_str,
+                    );
+                }
+
                 if first_was_error {
                     app.set_status(StatusKind::Error, summary);
                 } else {
@@ -1306,6 +1340,21 @@ pub fn handle_db_block_result(
                         b.state = ExecutionState::Error(msg.clone());
                         b.cached_result = None;
                     }
+                }
+                if let Some(meta) = history_meta.as_ref() {
+                    let outcome_str = if msg.to_lowercase().contains("cancel") {
+                        "cancelled"
+                    } else {
+                        "error"
+                    };
+                    record_db_history_async(
+                        app.pool_manager.app_pool().clone(),
+                        meta.clone(),
+                        None,
+                        None,
+                        None,
+                        outcome_str,
+                    );
                 }
                 app.set_status(StatusKind::Error, msg);
             }
@@ -1551,6 +1600,570 @@ pub(crate) fn load_more_db_block(app: &mut App, segment_idx: usize) -> Result<()
         None,
     );
     Ok(())
+}
+
+// ─── Export picker (Story 05.3) ────────────────────────────────────
+
+/// `gx` on a DB or HTTP block — open the export-format picker.
+/// Block-type aware:
+///   - DB: validates `cached_result.results[0]` is a SELECT with ≥1
+///     row, picker shows CSV/JSON/Markdown/INSERT.
+///   - HTTP: any HTTP block (no result needed — code-gen exports
+///     the *request*), picker shows cURL/Fetch/Python/HTTPie/.http.
+///
+/// Failures surface as `Err(_)` with a status hint; success flips
+/// the mode and stashes [`DbExportPickerState`] on `app`. Cursor is
+/// allowed to move while the picker is open — confirm re-resolves
+/// the block via the saved `segment_idx`.
+pub fn open_export_picker(app: &mut App) -> Result<(), String> {
+    let segment_idx = match app.document().map(|d| d.cursor()) {
+        Some(Cursor::InBlock { segment_idx, .. })
+        | Some(Cursor::InBlockResult { segment_idx, .. }) => segment_idx,
+        _ => return Err("place the cursor on a block first".into()),
+    };
+
+    let block = match app.document().and_then(|d| d.segments().get(segment_idx).cloned()) {
+        Some(Segment::Block(b)) => b,
+        _ => return Err("place the cursor on a block first".into()),
+    };
+
+    let formats: &'static [crate::app::BlockExportFormat] = if block.is_db() {
+        // DB: needs a SELECT result with rows — code-gen wouldn't
+        // make sense for an empty / mutation result.
+        let cache = block
+            .cached_result
+            .as_ref()
+            .ok_or_else(|| "run the block before exporting its result".to_string())?;
+        let first = cache
+            .get("results")
+            .and_then(|v| v.as_array())
+            .and_then(|a| a.first())
+            .ok_or_else(|| "no result to export — run the block first".to_string())?;
+        let kind = first.get("kind").and_then(|v| v.as_str()).unwrap_or("");
+        if kind != "select" {
+            return Err(format!(
+                "{kind} results have no tabular form — export is for SELECT only"
+            ));
+        }
+        let row_count = first
+            .get("rows")
+            .and_then(|v| v.as_array())
+            .map(|a| a.len())
+            .unwrap_or(0);
+        if row_count == 0 {
+            return Err("result has no rows to export".into());
+        }
+        crate::app::BlockExportFormat::DB_FORMATS
+    } else if block.is_http() {
+        // HTTP: code-gen exports the *request* (method+url+headers+
+        // body), so we only need a non-empty URL. Run state isn't
+        // required.
+        let url_ok = block
+            .params
+            .get("url")
+            .and_then(|v| v.as_str())
+            .map(|s| !s.trim().is_empty())
+            .unwrap_or(false);
+        if !url_ok {
+            return Err("set a URL on the block before exporting".into());
+        }
+        crate::app::BlockExportFormat::HTTP_FORMATS
+    } else {
+        return Err(format!(
+            "`{}` blocks don't support export yet",
+            block.block_type
+        ));
+    };
+
+    app.db_export_picker = Some(crate::app::DbExportPickerState::new(segment_idx, formats));
+    app.vim.mode = crate::vim::mode::Mode::DbExportPicker;
+    app.vim.reset_pending();
+    Ok(())
+}
+
+pub fn close_export_picker(app: &mut App) {
+    app.db_export_picker = None;
+    app.vim.enter_normal();
+}
+
+pub fn move_export_picker_cursor(app: &mut App, delta: i32) {
+    let Some(state) = app.db_export_picker.as_mut() else {
+        return;
+    };
+    let n = state.formats.len() as i64;
+    if n == 0 {
+        return;
+    }
+    // Wrap so j/k cycle the list — feels right for a 4-5-item list
+    // where the user is likely to overshoot.
+    let next = ((state.selected as i64) + delta as i64).rem_euclid(n);
+    state.selected = next as usize;
+}
+
+/// `Enter` in the picker — dispatch to the right serializer based
+/// on the block type and copy the output to the clipboard. The
+/// popup closes either way; clipboard failure shows in the status
+/// line so the user notices it didn't paste.
+pub fn confirm_export_picker(app: &mut App) {
+    let Some(state) = app.db_export_picker.take() else {
+        app.vim.enter_normal();
+        return;
+    };
+    app.vim.enter_normal();
+
+    let format = match state.formats.get(state.selected).copied() {
+        Some(f) => f,
+        None => return,
+    };
+
+    let block = match app
+        .document()
+        .and_then(|d| d.segments().get(state.segment_idx).cloned())
+    {
+        Some(Segment::Block(b)) => b,
+        _ => {
+            app.set_status(StatusKind::Error, "block disappeared from the document");
+            return;
+        }
+    };
+
+    let payload_with_summary = match format {
+        // ─── DB formats ───
+        crate::app::BlockExportFormat::Csv
+        | crate::app::BlockExportFormat::Json
+        | crate::app::BlockExportFormat::Markdown
+        | crate::app::BlockExportFormat::Insert => {
+            let cache = match block.cached_result.as_ref() {
+                Some(v) => v,
+                None => {
+                    app.set_status(StatusKind::Info, "block has no cached result");
+                    return;
+                }
+            };
+            let first = match cache
+                .get("results")
+                .and_then(|v| v.as_array())
+                .and_then(|a| a.first())
+            {
+                Some(v) => v,
+                None => {
+                    app.set_status(StatusKind::Info, "result is empty");
+                    return;
+                }
+            };
+            let columns: Vec<httui_core::db::connections::ColumnInfo> = first
+                .get("columns")
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .unwrap_or_default();
+            let rows: Vec<serde_json::Value> = first
+                .get("rows")
+                .and_then(|v| v.as_array().cloned())
+                .unwrap_or_default();
+            if !httui_core::blocks::db_export::has_exportable_rows(&columns, &rows) {
+                app.set_status(StatusKind::Info, "no rows to export");
+                return;
+            }
+            let payload = match format {
+                crate::app::BlockExportFormat::Csv => {
+                    httui_core::blocks::db_export::to_csv(&columns, &rows)
+                }
+                crate::app::BlockExportFormat::Json => {
+                    httui_core::blocks::db_export::to_json(&rows)
+                }
+                crate::app::BlockExportFormat::Markdown => {
+                    httui_core::blocks::db_export::to_markdown(&columns, &rows)
+                }
+                crate::app::BlockExportFormat::Insert => {
+                    let sql = block
+                        .params
+                        .get("query")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    let table =
+                        httui_core::blocks::db_export::infer_table_name(sql).unwrap_or_default();
+                    httui_core::blocks::db_export::to_inserts(&columns, &rows, &table)
+                }
+                _ => unreachable!("filtered by outer match"),
+            };
+            let summary = format!(
+                "copied {} ({} rows, {} bytes) to clipboard",
+                format.label(),
+                rows.len(),
+                payload.len()
+            );
+            (payload, summary)
+        }
+
+        // ─── HTTP formats ───
+        crate::app::BlockExportFormat::Curl
+        | crate::app::BlockExportFormat::Fetch
+        | crate::app::BlockExportFormat::Python
+        | crate::app::BlockExportFormat::HTTPie
+        | crate::app::BlockExportFormat::HttpFile => {
+            // Resolve `{{refs}}` (env vars + block deps) BEFORE
+            // serializing — the user expects a snippet they can
+            // paste as-is. Carrying placeholders into the output
+            // means the cURL command fails when run.
+            let env_vars = tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current()
+                    .block_on(load_active_env_vars(app.pool_manager.app_pool()))
+            })
+            .unwrap_or_default();
+            let segments_snapshot: Vec<Segment> = app
+                .document()
+                .map(|d| d.segments().to_vec())
+                .unwrap_or_default();
+            let mut resolved = block.params.clone();
+            if let Err(msg) = crate::commands::http::resolve_in_http_params(
+                &mut resolved,
+                &segments_snapshot,
+                state.segment_idx,
+                &env_vars,
+            ) {
+                app.set_status(
+                    StatusKind::Error,
+                    format!("ref resolution failed: {msg}"),
+                );
+                return;
+            }
+            let payload = match format {
+                crate::app::BlockExportFormat::Curl => {
+                    httui_core::blocks::http_codegen::to_curl(&resolved)
+                }
+                crate::app::BlockExportFormat::Fetch => {
+                    httui_core::blocks::http_codegen::to_fetch(&resolved)
+                }
+                crate::app::BlockExportFormat::Python => {
+                    httui_core::blocks::http_codegen::to_python(&resolved)
+                }
+                crate::app::BlockExportFormat::HTTPie => {
+                    httui_core::blocks::http_codegen::to_httpie(&resolved)
+                }
+                crate::app::BlockExportFormat::HttpFile => {
+                    httui_core::blocks::http_codegen::to_http_file(&resolved)
+                }
+                _ => unreachable!("filtered by outer match"),
+            };
+            let summary = format!(
+                "copied {} ({} bytes) to clipboard",
+                format.label(),
+                payload.len()
+            );
+            (payload, summary)
+        }
+    };
+
+    let (payload, summary) = payload_with_summary;
+    match crate::clipboard::set_text(&payload) {
+        Ok(()) => {
+            app.set_status(StatusKind::Info, summary);
+        }
+        Err(e) => {
+            app.set_status(StatusKind::Error, e);
+        }
+    }
+}
+
+// ─── DB block run history ────────────────────────────────────────
+
+/// Snapshot of the bits we need to write a `block_run_history` row
+/// for a DB block run. Captured up-front (before the result handler
+/// mutates state) so the Ok and Err arms can share a single insert
+/// path without re-walking the segment list.
+#[derive(Clone)]
+pub struct DbHistoryMeta {
+    pub file_path: String,
+    pub block_alias: String,
+    /// Stored in the `method` column as `db:<driver>` (e.g.
+    /// `db:postgres`). Mirrors how the HTTP path uses `method` as
+    /// the request "kind" — same column, different namespace.
+    pub method: String,
+    /// SQL preview (~200 chars, single-line). Goes in the
+    /// `url_canonical` column whose semantic role is "what was
+    /// run" — for HTTP that's URL+query; for DB it's the SQL.
+    pub url_canonical: String,
+    pub request_size: i64,
+}
+
+pub fn snapshot_db_history_meta(app: &App, segment_idx: usize) -> Option<DbHistoryMeta> {
+    let tab = app.tabs.tabs.get(app.tabs.active())?;
+    let file_path = tab.active_leaf().document_path.as_ref()?;
+    let file_path = file_path.to_string_lossy().to_string();
+    let doc = app.document()?;
+    let block = match doc.segments().get(segment_idx)? {
+        Segment::Block(b) => b,
+        _ => return None,
+    };
+    if !block.is_db() {
+        return None;
+    }
+    let alias = block.alias.as_deref().filter(|s| !s.is_empty())?.to_string();
+    // `block_type` is `db-postgres`, `db-mysql`, `db-sqlite`. Strip
+    // the `db-` prefix for the namespaced method label so the
+    // history modal shows a clean `postgres` / `mysql` / `sqlite`
+    // chip instead of repeating `db-` everywhere.
+    let driver = block
+        .block_type
+        .strip_prefix("db-")
+        .unwrap_or(&block.block_type);
+    let method = format!("db:{driver}");
+
+    let query = block
+        .params
+        .get("query")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let url_canonical = preview_sql(&query);
+    let request_size = query.len() as i64;
+    Some(DbHistoryMeta {
+        file_path,
+        block_alias: alias,
+        method,
+        url_canonical,
+        request_size,
+    })
+}
+
+/// Collapse newlines to spaces and trim to ~200 chars so the
+/// history modal's row stays readable. Suffix `…` when truncated.
+fn preview_sql(sql: &str) -> String {
+    const MAX: usize = 200;
+    let collapsed = sql
+        .replace(['\r', '\n', '\t'], " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    if collapsed.chars().count() > MAX {
+        let truncated: String = collapsed.chars().take(MAX).collect();
+        format!("{truncated}…")
+    } else {
+        collapsed
+    }
+}
+
+/// Derive the `(status, response_size)` columns from a successful
+/// DB response. Status borrows the column for "result kind size":
+/// `rows.len()` for a SELECT, `rows_affected` for a mutation,
+/// `None` for an error result. Response size is the serialized
+/// JSON length — coarse but useful for spotting regressions.
+pub fn derive_db_history_stats(
+    response: &httui_core::executor::db::types::DbResponse,
+) -> (Option<i64>, Option<i64>) {
+    use httui_core::executor::db::types::DbResult;
+    let status = match response.results.first() {
+        Some(DbResult::Select { rows, .. }) => Some(rows.len() as i64),
+        Some(DbResult::Mutation { rows_affected }) => Some(*rows_affected as i64),
+        _ => None,
+    };
+    let response_size = serde_json::to_string(response)
+        .ok()
+        .map(|s| s.len() as i64);
+    (status, response_size)
+}
+
+/// Spawn the SQLite insert in the background (mirrors the HTTP
+/// path). Failures land in the tracing log — history is best-
+/// effort and never blocks the user.
+pub fn record_db_history_async(
+    pool: sqlx::SqlitePool,
+    meta: DbHistoryMeta,
+    elapsed_ms: Option<i64>,
+    status: Option<i64>,
+    response_size: Option<i64>,
+    outcome: &'static str,
+) {
+    let entry = httui_core::block_history::InsertEntry {
+        file_path: meta.file_path,
+        block_alias: meta.block_alias,
+        method: meta.method,
+        url_canonical: meta.url_canonical,
+        status,
+        request_size: Some(meta.request_size),
+        response_size,
+        elapsed_ms,
+        outcome: outcome.to_string(),
+    };
+    tokio::spawn(async move {
+        if let Err(e) = httui_core::block_history::insert_history_entry(&pool, entry).await {
+            tracing::warn!("db block history insert failed: {e}");
+        }
+    });
+}
+
+// ─── Settings modal (Story 11 slice 2/3) ────────────────────────────
+
+/// `gs` on a DB or HTTP block — open the settings modal prefilled
+/// with the current values. Block-type aware:
+///   - DB: limit + timeout fields, focus starts on Limit
+///   - HTTP: timeout only (no row-cap concept), focus on Timeout
+///
+/// Tab cycles fields (no-op on single-field HTTP modal), Enter saves
+/// all, Esc cancels. Non-DB / non-HTTP blocks surface a status hint
+/// and bail.
+pub fn open_db_settings_modal(app: &mut App) -> Result<(), String> {
+    let segment_idx = match app.document().map(|d| d.cursor()) {
+        Some(Cursor::InBlock { segment_idx, .. })
+        | Some(Cursor::InBlockResult { segment_idx, .. }) => segment_idx,
+        _ => return Err("place the cursor on a block first".into()),
+    };
+    let block = match app.document().and_then(|d| d.segments().get(segment_idx).cloned()) {
+        Some(crate::buffer::Segment::Block(b)) => b,
+        _ => return Err("place the cursor on a block first".into()),
+    };
+    if !block.is_db() && !block.is_http() {
+        return Err(format!(
+            "`{}` blocks have no settings yet",
+            block.block_type
+        ));
+    }
+
+    // Build the field list per block type. Order pinned here —
+    // Tab/BackTab cycle in this order; users build muscle memory.
+    // Future fields slot in by adding a new entry here, no other
+    // code change. All values are stringified u64 (positive
+    // integer) — empty input means "clear the field".
+    let mut fields: Vec<crate::app::SettingsField> = Vec::new();
+    if block.is_db() {
+        let limit_str = block
+            .params
+            .get("limit")
+            .and_then(|v| v.as_u64())
+            .map(|n| n.to_string())
+            .unwrap_or_default();
+        fields.push(crate::app::SettingsField {
+            label: "Limit (rows, blank = no cap)",
+            key: "limit",
+            input: crate::vim::lineedit::LineEdit::from_str(limit_str),
+        });
+    }
+    let timeout_str = block
+        .params
+        .get("timeout_ms")
+        .and_then(|v| v.as_u64())
+        .map(|n| n.to_string())
+        .unwrap_or_default();
+    fields.push(crate::app::SettingsField {
+        label: "Timeout (ms, blank = default)",
+        key: "timeout_ms",
+        input: crate::vim::lineedit::LineEdit::from_str(timeout_str),
+    });
+
+    app.db_settings = Some(crate::app::DbSettingsState {
+        segment_idx,
+        fields,
+        focus: 0,
+    });
+    app.vim.mode = crate::vim::mode::Mode::DbSettings;
+    app.vim.reset_pending();
+    Ok(())
+}
+
+pub fn close_db_settings_modal(app: &mut App) {
+    app.db_settings = None;
+    app.vim.enter_normal();
+}
+
+pub fn db_settings_focus_step(app: &mut App, delta: i32) {
+    let Some(state) = app.db_settings.as_mut() else {
+        return;
+    };
+    if delta >= 0 {
+        state.focus_next();
+    } else {
+        state.focus_prev();
+    }
+}
+
+/// `<CR>` in the modal — validate every field's input and write
+/// back to `block.params`. Empty input clears the matching key;
+/// non-numeric / out-of-range input keeps the modal open and
+/// surfaces a per-field status error so the user can fix without
+/// losing the other inputs. The fields are walked in vector order
+/// — Tab order — and validation short-circuits on the first
+/// failure (label included in the error so the user knows which
+/// field needs attention).
+pub fn confirm_db_settings_modal(app: &mut App) {
+    let Some(state) = app.db_settings.as_ref() else {
+        app.vim.enter_normal();
+        return;
+    };
+    let segment_idx = state.segment_idx;
+
+    // Validate every field. Each field is `(key, parsed_value)` —
+    // the writeback step inserts when `Some`, removes when `None`.
+    let mut writes: Vec<(&'static str, Option<u64>)> = Vec::with_capacity(state.fields.len());
+    for field in &state.fields {
+        let raw = field.input.as_str().trim().to_string();
+        match parse_optional_u64(&raw) {
+            Ok(v) => writes.push((field.key, v)),
+            Err(e) => {
+                // Use the field label (already user-friendly) as the
+                // prefix so errors are unambiguous in multi-field
+                // modals.
+                let label_short = field
+                    .label
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or(field.key)
+                    .to_lowercase();
+                app.set_status(StatusKind::Error, format!("{label_short}: {e}"));
+                return;
+            }
+        }
+    }
+
+    // All inputs validated — close the modal and persist.
+    app.db_settings = None;
+    app.vim.enter_normal();
+
+    if let Some(doc) = app.tabs.active_document_mut() {
+        doc.snapshot();
+        if let Some(block) = doc.block_at_mut(segment_idx) {
+            if let Some(obj) = block.params.as_object_mut() {
+                for (key, value) in &writes {
+                    match value {
+                        Some(n) => {
+                            obj.insert(
+                                (*key).to_string(),
+                                serde_json::Value::Number((*n).into()),
+                            );
+                        }
+                        None => {
+                            obj.remove(*key);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Status summary — one chunk per field, comma-joined.
+    let chunks: Vec<String> = writes
+        .iter()
+        .map(|(key, value)| match value {
+            Some(n) => format!("{key} {n}"),
+            None => format!("{key} cleared"),
+        })
+        .collect();
+    let summary = if chunks.is_empty() {
+        "settings unchanged".to_string()
+    } else {
+        format!("settings saved · {}", chunks.join(" · "))
+    };
+    app.set_status(StatusKind::Info, summary);
+}
+
+/// Parse a possibly-empty trimmed string as a `u64`. Empty input
+/// returns `Ok(None)` so the caller can clear the field; non-empty
+/// must be a valid `u64` (no negatives, no decimals).
+fn parse_optional_u64(s: &str) -> Result<Option<u64>, String> {
+    if s.is_empty() {
+        return Ok(None);
+    }
+    s.parse::<u64>()
+        .map(Some)
+        .map_err(|_| format!("`{s}` is not a non-negative integer"))
 }
 
 #[cfg(test)]
@@ -2355,5 +2968,109 @@ mod tests {
         let doc = make_doc(md);
         let blocks = block_indices(&doc);
         assert!(validate_alias_unique(&doc, blocks[0], "existing").is_ok());
+    }
+
+    // ───── Settings modal validation ─────
+
+    #[test]
+    fn parse_optional_u64_empty_returns_none() {
+        // Empty input means "clear the field" — confirm path
+        // removes the JSON key when this returns Ok(None).
+        assert_eq!(parse_optional_u64(""), Ok(None));
+    }
+
+    #[test]
+    fn parse_optional_u64_accepts_zero_and_large() {
+        assert_eq!(parse_optional_u64("0"), Ok(Some(0)));
+        assert_eq!(parse_optional_u64("500"), Ok(Some(500)));
+        assert_eq!(parse_optional_u64("4294967296"), Ok(Some(4_294_967_296)));
+    }
+
+    #[test]
+    fn parse_optional_u64_rejects_non_numeric() {
+        assert!(parse_optional_u64("abc").is_err());
+        assert!(parse_optional_u64("12.5").is_err());
+        assert!(parse_optional_u64("-1").is_err());
+        assert!(parse_optional_u64("3 4").is_err());
+    }
+
+    #[test]
+    fn db_settings_focus_cycle_db() {
+        use crate::app::{DbSettingsState, SettingsField};
+        use crate::vim::lineedit::LineEdit;
+        // DB modal has both limit + timeout; Tab cycles between them.
+        let mut s = DbSettingsState {
+            segment_idx: 0,
+            fields: vec![
+                SettingsField {
+                    label: "Limit",
+                    key: "limit",
+                    input: LineEdit::new(),
+                },
+                SettingsField {
+                    label: "Timeout",
+                    key: "timeout_ms",
+                    input: LineEdit::new(),
+                },
+            ],
+            focus: 0,
+        };
+        s.focus_next();
+        assert_eq!(s.focus, 1);
+        s.focus_next();
+        assert_eq!(s.focus, 0); // wraps
+        s.focus_prev();
+        assert_eq!(s.focus, 1); // wraps backwards
+    }
+
+    #[test]
+    fn preview_sql_collapses_whitespace_and_truncates() {
+        // Multi-line SQL with tabs/CRs gets folded to single-space
+        // for the history modal's one-line cell. No trailing space.
+        let sql = "SELECT *\n  FROM users\nWHERE id = 1";
+        assert_eq!(preview_sql(sql), "SELECT * FROM users WHERE id = 1");
+    }
+
+    #[test]
+    fn preview_sql_truncates_with_ellipsis() {
+        // Strings longer than the 200-char cap get truncated and
+        // suffixed with `…` so the user knows there's more.
+        let long_sql = "SELECT ".to_string()
+            + &"col_name, ".repeat(40)
+            + "FROM huge_table";
+        let preview = preview_sql(&long_sql);
+        assert!(preview.chars().count() <= 201, "got len {}", preview.chars().count());
+        assert!(preview.ends_with('…'));
+    }
+
+    #[test]
+    fn preview_sql_short_unchanged() {
+        // Short SQL passes through verbatim (modulo whitespace
+        // collapse) so the common case isn't decorated.
+        let sql = "SELECT 1";
+        let preview = preview_sql(sql);
+        assert_eq!(preview, "SELECT 1");
+        assert!(!preview.ends_with('…'));
+    }
+
+    #[test]
+    fn db_settings_focus_cycle_http_is_noop() {
+        use crate::app::{DbSettingsState, SettingsField};
+        use crate::vim::lineedit::LineEdit;
+        // HTTP modal has only timeout — Tab is a no-op (focus
+        // stays at index 0 regardless of direction).
+        let mut s = DbSettingsState {
+            segment_idx: 0,
+            fields: vec![SettingsField {
+                label: "Timeout",
+                key: "timeout_ms",
+                input: LineEdit::new(),
+            }],
+            focus: 0,
+        };
+        s.focus_next();
+        assert_eq!(s.focus, 0);
+        s.focus_prev();
+        assert_eq!(s.focus, 0);
     }
 }
