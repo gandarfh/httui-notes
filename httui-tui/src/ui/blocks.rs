@@ -216,7 +216,17 @@ fn render_db_header_bar(
     };
 
     let used: u16 = left.iter().map(|s| s.content.chars().count() as u16).sum();
-    let hint = "r run  ·  gh history  ·  gs settings ";
+    // Block-type aware chip line. Wired chords per type:
+    // - DB:   r run · gh history · gx export · gs settings
+    // - HTTP: r run · gh history · gx export · gs settings
+    // - other: placeholder (chords not wired yet)
+    let hint = if b.is_db() {
+        "r run  ·  gh history  ·  gx export  ·  gs settings "
+    } else if b.is_http() {
+        "r run  ·  gh history  ·  gx export  ·  gs settings "
+    } else {
+        "r run  ·  gh history  ·  gs settings "
+    };
     let hint_len = hint.chars().count() as u16;
     let space_for_hint = area.width.saturating_sub(used);
     if space_for_hint >= hint_len {

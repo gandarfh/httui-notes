@@ -188,6 +188,30 @@ fn write_document(app: &mut App) -> Result<String, String> {
     doc.mark_clean();
     let bytes = body.len();
     let lines = body.lines().count();
+
+    // Keep the FTS5 search index fresh — only after the user has
+    // opened the search modal at least once (otherwise we'd be
+    // writing rows the user never queries). When `<C-f>` first
+    // opens, `rebuild_search_index` does a full sweep that picks
+    // up any saves we skipped in this branch. `.md` only — other
+    // file types aren't indexed.
+    if app.content_search_index_built && file_str.ends_with(".md") {
+        let pool = app.pool_manager.app_pool().clone();
+        let path_for_index = file_str.clone();
+        let body_for_index = body.clone();
+        tokio::spawn(async move {
+            if let Err(e) = httui_core::search::update_search_entry(
+                &pool,
+                &path_for_index,
+                &body_for_index,
+            )
+            .await
+            {
+                tracing::warn!("search index update failed: {e}");
+            }
+        });
+    }
+
     let name = file
         .file_name()
         .map(|s| s.to_string_lossy().into_owned())

@@ -1,11 +1,15 @@
 //! Editor render pipeline: layout → clip to viewport → dispatch
 //! per-segment renderer → cursor → status bar.
 
+mod block_history;
 mod blocks;
 mod completion_popup;
 mod connection_picker;
+mod content_search;
 mod cursor;
 mod db_confirm_run;
+mod db_export_picker;
+mod db_settings_modal;
 mod fence_edit;
 pub mod db_row_detail;
 pub mod http_response_detail;
@@ -110,9 +114,11 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             | Mode::DbRowDetail
             | Mode::HttpResponseDetail
             | Mode::ConnectionPicker
+            | Mode::ContentSearch
     ) || app.db_row_detail.is_some()
         || app.http_response_detail.is_some()
-        || app.connection_picker.is_some();
+        || app.connection_picker.is_some()
+        || app.content_search.is_some();
 
     // Snapshot the current result-panel tab so the render tree can
     // pass it down without re-borrowing `app` at every level.
@@ -190,6 +196,12 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         Mode::QuickOpen => {
             let (cx, cy) = quickopen::render(frame, editor_area, &app.vim.quickopen);
             frame.set_cursor_position((cx, cy));
+        }
+        Mode::ContentSearch => {
+            if let Some(state) = app.content_search.as_ref() {
+                let (cx, cy) = content_search::render(frame, editor_area, state);
+                frame.set_cursor_position((cx, cy));
+            }
         }
         Mode::TreePrompt => {
             if let Some(prompt) = app.tree.prompt.as_ref() {
@@ -273,6 +285,30 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     // simultaneously shouldn't happen in practice).
     if let Some(state) = app.db_confirm_run.as_ref() {
         db_confirm_run::render(frame, editor_area, state);
+    }
+
+    // Export-format picker — opened by `gx` over a DB block with
+    // rows. Same chrome as the connection picker; anchored above
+    // the block when there's headroom.
+    if let Some(state) = app.db_export_picker.as_ref() {
+        let anchor = compute_block_anchor(app, editor_area, state.segment_idx);
+        db_export_picker::render(frame, editor_area, state, anchor);
+    }
+
+    // Settings modal — opened by `gs` over a DB block. Two-input
+    // form (limit + timeout) with Tab focus cycle. Anchored above
+    // the block; falls back below or centered when no headroom.
+    if let Some(state) = app.db_settings.as_ref() {
+        let anchor = compute_block_anchor(app, editor_area, state.segment_idx);
+        db_settings_modal::render(frame, editor_area, state, anchor);
+    }
+
+    // Block history modal — opened by `gh` over an HTTP block.
+    // Read-only listing of the last N runs; same chrome as the
+    // connection picker but wider (the timestamp column needs room).
+    if let Some(state) = app.block_history.as_ref() {
+        let anchor = compute_block_anchor(app, editor_area, state.segment_idx);
+        block_history::render(frame, editor_area, state, anchor);
     }
 }
 

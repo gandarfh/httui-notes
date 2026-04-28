@@ -13,7 +13,8 @@ use crate::vim::operator;
 use crate::commands::db::{load_active_env_vars, resolve_connection_id_sync};
 use crate::pane::{FocusDir, SplitDir};
 use crate::vim::parser::{
-    parse_cmdline, parse_connection_picker, parse_db_confirm_run, parse_db_row_detail,
+    parse_block_history, parse_cmdline, parse_connection_picker, parse_content_search,
+    parse_db_confirm_run, parse_db_export_picker, parse_db_row_detail, parse_db_settings_modal,
     parse_fence_edit, parse_http_response_detail, parse_insert, parse_normal, parse_quickopen,
     parse_search, parse_tree, parse_tree_prompt, parse_visual, Action, InsertPos, Motion,
     Operator, PastePos, TextObject, WindowCmd,
@@ -81,7 +82,11 @@ pub fn dispatch(app: &mut App, key: KeyEvent) {
         Mode::HttpResponseDetail => parse_http_response_detail(&mut app.vim, key),
         Mode::ConnectionPicker => parse_connection_picker(key),
         Mode::DbConfirmRun => parse_db_confirm_run(key),
+        Mode::DbExportPicker => parse_db_export_picker(key),
         Mode::FenceEdit => parse_fence_edit(key),
+        Mode::DbSettings => parse_db_settings_modal(key),
+        Mode::BlockHistory => parse_block_history(key),
+        Mode::ContentSearch => parse_content_search(key),
     };
 
     // Snapshot the pre-swap cursor so the post-action "reparse on
@@ -630,12 +635,110 @@ fn apply_action(app: &mut App, action: Action, recording: bool) {
             }
         }
         Action::ExplainBlock => crate::commands::db::run_explain(app),
+        Action::CopyAsCurl => crate::commands::http::copy_as_curl(app),
         Action::CycleDisplayMode => crate::commands::db::cycle_display_mode(app),
         Action::CloseConnectionPicker => apply_close_connection_picker(app),
         Action::MoveConnectionPickerCursor(delta) => {
             apply_move_connection_picker_cursor(app, delta)
         }
         Action::ConfirmConnectionPicker => apply_confirm_connection_picker(app),
+        Action::DeleteConnectionInPicker => apply_delete_connection_in_picker(app),
+        Action::OpenDbExportPicker => {
+            if let Err(msg) = crate::commands::db::open_export_picker(app) {
+                app.set_status(StatusKind::Error, msg);
+            }
+        }
+        Action::CloseDbExportPicker => crate::commands::db::close_export_picker(app),
+        Action::MoveDbExportPickerCursor(delta) => {
+            crate::commands::db::move_export_picker_cursor(app, delta)
+        }
+        Action::ConfirmDbExportPicker => crate::commands::db::confirm_export_picker(app),
+        Action::OpenDbSettingsModal => {
+            if let Err(msg) = crate::commands::db::open_db_settings_modal(app) {
+                app.set_status(StatusKind::Error, msg);
+            }
+        }
+        Action::CloseDbSettingsModal => crate::commands::db::close_db_settings_modal(app),
+        Action::ConfirmDbSettingsModal => crate::commands::db::confirm_db_settings_modal(app),
+        Action::DbSettingsFocusNext => crate::commands::db::db_settings_focus_step(app, 1),
+        Action::DbSettingsFocusPrev => crate::commands::db::db_settings_focus_step(app, -1),
+        Action::DbSettingsChar(c) => {
+            if let Some(s) = app.db_settings.as_mut() {
+                s.focused_input_mut().insert_char(c);
+            }
+        }
+        Action::DbSettingsBackspace => {
+            if let Some(s) = app.db_settings.as_mut() {
+                s.focused_input_mut().delete_before();
+            }
+        }
+        Action::DbSettingsDelete => {
+            if let Some(s) = app.db_settings.as_mut() {
+                s.focused_input_mut().delete_after();
+            }
+        }
+        Action::DbSettingsCursorLeft => {
+            if let Some(s) = app.db_settings.as_mut() {
+                s.focused_input_mut().move_left();
+            }
+        }
+        Action::DbSettingsCursorRight => {
+            if let Some(s) = app.db_settings.as_mut() {
+                s.focused_input_mut().move_right();
+            }
+        }
+        Action::DbSettingsCursorHome => {
+            if let Some(s) = app.db_settings.as_mut() {
+                s.focused_input_mut().move_home();
+            }
+        }
+        Action::DbSettingsCursorEnd => {
+            if let Some(s) = app.db_settings.as_mut() {
+                s.focused_input_mut().move_end();
+            }
+        }
+        Action::OpenBlockHistory => {
+            if let Err(msg) = crate::commands::http::open_block_history(app) {
+                app.set_status(StatusKind::Error, msg);
+            }
+        }
+        Action::CloseBlockHistory => crate::commands::http::close_block_history(app),
+        Action::MoveBlockHistoryCursor(delta) => {
+            crate::commands::http::move_block_history_cursor(app, delta)
+        }
+        Action::OpenContentSearch => {
+            if let Err(msg) = crate::commands::search::open_content_search(app) {
+                app.set_status(StatusKind::Error, msg);
+            }
+        }
+        Action::CloseContentSearch => crate::commands::search::close_content_search(app),
+        Action::ConfirmContentSearch => crate::commands::search::confirm_content_search(app),
+        Action::MoveContentSearchCursor(delta) => {
+            crate::commands::search::move_content_search_cursor(app, delta)
+        }
+        Action::ContentSearchChar(c) => crate::commands::search::content_search_char(app, c),
+        Action::ContentSearchBackspace => crate::commands::search::content_search_backspace(app),
+        Action::ContentSearchDelete => crate::commands::search::content_search_delete(app),
+        Action::ContentSearchCursorLeft => {
+            if let Some(s) = app.content_search.as_mut() {
+                s.query.move_left();
+            }
+        }
+        Action::ContentSearchCursorRight => {
+            if let Some(s) = app.content_search.as_mut() {
+                s.query.move_right();
+            }
+        }
+        Action::ContentSearchCursorHome => {
+            if let Some(s) = app.content_search.as_mut() {
+                s.query.move_home();
+            }
+        }
+        Action::ContentSearchCursorEnd => {
+            if let Some(s) = app.content_search.as_mut() {
+                s.query.move_end();
+            }
+        }
         Action::CompletionNext => apply_completion_next(app),
         Action::CompletionPrev => apply_completion_prev(app),
         Action::CompletionAccept => apply_completion_accept(app),
@@ -1896,6 +1999,77 @@ fn apply_confirm_connection_picker(app: &mut App) {
         StatusKind::Info,
         format!("connection set to {picked_name}"),
     );
+}
+
+/// `D` in the connection picker — drop the highlighted connection
+/// from the registry. The picker stays open with the list reloaded;
+/// blocks that referenced the deleted id will surface a missing-
+/// connection error on next run, which is the right level of
+/// visibility (silent breakage would be worse).
+fn apply_delete_connection_in_picker(app: &mut App) {
+    let Some(state) = app.connection_picker.as_ref() else {
+        return;
+    };
+    let Some(picked) = state.connections.get(state.selected).cloned() else {
+        return;
+    };
+    let pool_mgr = app.pool_manager.clone();
+    let id = picked.id.clone();
+    let name = picked.name.clone();
+    let result = tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current().block_on(
+            httui_core::db::connections::delete_connection(pool_mgr.app_pool(), &id),
+        )
+    });
+    if let Err(e) = result {
+        app.set_status(
+            StatusKind::Error,
+            format!("delete connection failed: {e}"),
+        );
+        return;
+    }
+
+    // Reload the list so the picker reflects the deletion. If we
+    // emptied the list, close the picker — there's nothing left to
+    // pick.
+    let raw = tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current()
+            .block_on(httui_core::db::connections::list_connections(pool_mgr.app_pool()))
+    });
+    match raw {
+        Ok(list) => {
+            let entries: Vec<crate::app::ConnectionEntry> = list
+                .into_iter()
+                .map(|c| crate::app::ConnectionEntry {
+                    id: c.id,
+                    name: c.name,
+                    kind: c.driver,
+                })
+                .collect();
+            if entries.is_empty() {
+                apply_close_connection_picker(app);
+                app.set_status(
+                    StatusKind::Info,
+                    format!("deleted \"{name}\" — no connections left"),
+                );
+                return;
+            }
+            if let Some(state) = app.connection_picker.as_mut() {
+                state.selected = state.selected.min(entries.len().saturating_sub(1));
+                state.connections = entries;
+            }
+            // Refresh the global name lookup so block headers stop
+            // showing the deleted connection's label.
+            app.refresh_connection_names();
+            app.set_status(StatusKind::Info, format!("deleted \"{name}\""));
+        }
+        Err(e) => {
+            app.set_status(
+                StatusKind::Error,
+                format!("connection list reload failed: {e}"),
+            );
+        }
+    }
 }
 
 // ───────────── result-detail modals (DB row + HTTP response) ─────────────

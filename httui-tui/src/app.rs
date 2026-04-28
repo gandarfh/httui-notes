@@ -304,6 +304,30 @@ pub struct App {
     /// query (UPDATE/DELETE without WHERE); the user answers `y`
     /// to run anyway or `n`/Esc/Ctrl-C to cancel.
     pub db_confirm_run: Option<DbConfirmRunState>,
+    /// `Some` while the export-format picker is open. Mode flips to
+    /// `Mode::DbExportPicker` so dispatch routes navigation/confirm
+    /// keys to the picker. The popup renders independently of mode —
+    /// any `Some` value paints it. See `commands::db::open_export_picker`.
+    pub db_export_picker: Option<DbExportPickerState>,
+    /// `Some` while the block-settings modal is open (`gs` chord).
+    /// Mode flips to `Mode::DbSettings` so dispatch routes typing
+    /// into the focused LineEdit. Renders independently of mode —
+    /// any `Some` value paints it.
+    pub db_settings: Option<DbSettingsState>,
+    /// `Some` while the block-history modal is open (`gh` chord on
+    /// an HTTP block). Mode flips to `Mode::BlockHistory`. The list
+    /// is read once at open-time — re-running the underlying block
+    /// while the modal is up doesn't refresh it.
+    pub block_history: Option<BlockHistoryState>,
+    /// `Some` while the content-search modal is open (`<C-f>`).
+    /// Mode flips to `Mode::ContentSearch`. The query buffer + last
+    /// FTS5 results live here; each keystroke re-queries.
+    pub content_search: Option<ContentSearchState>,
+    /// `true` once the FTS5 search index has been (re)built this
+    /// session. Set by `open_content_search` after the first lazy
+    /// rebuild so subsequent opens skip the cost. Cleared by
+    /// `:reindex` (when that lands) or a vault switch.
+    pub content_search_index_built: bool,
     /// Selected tab in the DB result panel. Single global state —
     /// every block's result section uses the same selection. Cycled
     /// via `gt` / `gT` while the cursor is on a result row.
@@ -351,6 +375,237 @@ impl FenceEditKind {
 pub struct DbConfirmRunState {
     pub segment_idx: usize,
     pub reason: String,
+}
+
+/// Open instance of the DB export-format picker. Anchored to the DB
+/// block at `segment_idx` (the cursor was on it when `gx` opened the
+/// picker); `formats` is a fixed 4-element list (CSV/JSON/Markdown/
+/// INSERT); `selected` indexes into it. Confirm copies the serialized
+/// result to the clipboard via `httui-core::blocks::db_export`.
+///
+/// Snapshotting the columns/rows at open time would be wasteful — the
+/// dispatch handler reads them straight from the document's
+/// `cached_result` so we don't carry a copy around. The cursor IS
+/// allowed to move while the picker is up; we re-resolve through
+/// `segment_idx` at confirm-time, same contract as `FenceEditState`.
+pub struct DbExportPickerState {
+    pub segment_idx: usize,
+    pub selected: usize,
+    /// Which format list to render — DB or HTTP. Snapshotted at
+    /// open-time so the picker survives unrelated edits to the doc
+    /// while it's up.
+    pub formats: &'static [BlockExportFormat],
+}
+
+impl DbExportPickerState {
+    pub fn new(segment_idx: usize, formats: &'static [BlockExportFormat]) -> Self {
+        Self {
+            segment_idx,
+            selected: 0,
+            formats,
+        }
+    }
+}
+
+/// Wire format for the export menu. Block-type aware: DB blocks
+/// export tabular results (CSV/JSON/Markdown/INSERT) while HTTP
+/// blocks export the request as code in another runtime
+/// (cURL/Fetch/Python/HTTPie/.http). The picker shows whichever set
+/// matches the focused block; all formats per type are 4-5 entries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlockExportFormat {
+    // DB
+    Csv,
+    Json,
+    Markdown,
+    Insert,
+    // HTTP
+    Curl,
+    Fetch,
+    Python,
+    HTTPie,
+    HttpFile,
+}
+
+impl BlockExportFormat {
+    /// Format list for DB blocks — tabular result serializers.
+    pub const DB_FORMATS: &'static [BlockExportFormat] = &[
+        BlockExportFormat::Csv,
+        BlockExportFormat::Json,
+        BlockExportFormat::Markdown,
+        BlockExportFormat::Insert,
+    ];
+
+    /// Format list for HTTP blocks — request → code generators.
+    pub const HTTP_FORMATS: &'static [BlockExportFormat] = &[
+        BlockExportFormat::Curl,
+        BlockExportFormat::Fetch,
+        BlockExportFormat::Python,
+        BlockExportFormat::HTTPie,
+        BlockExportFormat::HttpFile,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            BlockExportFormat::Csv => "CSV",
+            BlockExportFormat::Json => "JSON",
+            BlockExportFormat::Markdown => "Markdown table",
+            BlockExportFormat::Insert => "INSERT statements",
+            BlockExportFormat::Curl => "cURL",
+            BlockExportFormat::Fetch => "JavaScript (fetch)",
+            BlockExportFormat::Python => "Python (requests)",
+            BlockExportFormat::HTTPie => "HTTPie",
+            BlockExportFormat::HttpFile => ".http file",
+        }
+    }
+}
+
+/// Backward-compat alias — older callers still reference the
+/// DB-specific enum name. The TUI uses the block-aware variant
+/// throughout, but external uses (sub-Crate exports etc.) stay
+/// addressable. Remove once no usages remain.
+#[allow(dead_code)]
+pub type DbExportFormat = BlockExportFormat;
+
+/// Open instance of the content-search modal. `<C-f>` opens it
+/// over the active vault; the modal runs a synchronous FTS5 query
+/// per keystroke against `httui-core::search::search_content`.
+///
+/// V1 caveats:
+///  - Index is rebuilt synchronously on first open in a session
+///    (briefly freezes the UI for large vaults). Async rebuild +
+///    incremental updates are V2.
+///  - Search is also synchronous (sub-millisecond on small vaults
+///    via FTS5). If `search_content` ever gets expensive, debounce
+///    on a tokio task with cancellation.
+pub struct ContentSearchState {
+    pub query: crate::vim::lineedit::LineEdit,
+    pub results: Vec<httui_core::search::ContentSearchResult>,
+    pub selected: usize,
+    /// `true` while the async FTS5 rebuild kicked off by the open
+    /// is still running. Used by the renderer to show an
+    /// "indexing…" banner instead of the empty-state hint, and by
+    /// the dispatch path to skip per-keystroke queries (which
+    /// would race against the half-built index).
+    pub building: bool,
+}
+
+impl ContentSearchState {
+    pub fn new() -> Self {
+        Self {
+            query: crate::vim::lineedit::LineEdit::new(),
+            results: Vec::new(),
+            selected: 0,
+            building: false,
+        }
+    }
+
+    pub fn select_next(&mut self) {
+        if !self.results.is_empty() {
+            self.selected = (self.selected + 1).min(self.results.len() - 1);
+        }
+    }
+
+    pub fn select_prev(&mut self) {
+        if self.selected > 0 {
+            self.selected -= 1;
+        }
+    }
+
+    /// Selected result, if any. Used by Confirm to open the file.
+    pub fn chosen(&self) -> Option<&httui_core::search::ContentSearchResult> {
+        self.results.get(self.selected)
+    }
+}
+
+/// Open instance of the block run-history modal. `gh` opens it on
+/// an HTTP block; the modal lists the most-recent N runs read from
+/// `httui-core::block_history` (V1: HTTP only — DB history will reuse
+/// the same modal once the executor records it). Pure read-only — the
+/// only interactions are j/k navigation and Esc/Ctrl-C to close.
+pub struct BlockHistoryState {
+    pub segment_idx: usize,
+    /// Header info shown in the modal title — `<METHOD> <alias>`.
+    /// Snapshotted at open-time so the title doesn't shimmer if the
+    /// user edits the block while the modal is up.
+    pub title: String,
+    pub entries: Vec<httui_core::block_history::HistoryEntry>,
+    pub selected: usize,
+}
+
+/// Open instance of the DB block settings modal. `gs` opens it; the
+/// modal carries one [`crate::vim::lineedit::LineEdit`] per editable
+/// field (limit, timeout_ms) prefilled from the block's params, plus
+/// a focus enum that Tab/BackTab cycle through. Confirm validates +
+/// writes back to `block.params`; cancel discards the buffers.
+///
+/// Modal vs chord-per-field: this is a deliberate UX call recorded in
+/// the user-memory `project_tui_block_settings_modal.md` — limit and
+/// timeout are rare enough that they don't deserve top-level chords;
+/// a single `gs` opens a compact form. Adding new fields means
+/// extending [`DbSettingsFocus`] + this struct, not a new chord.
+/// One editable field in the block-settings modal. Fields are
+/// data-driven — the modal renders the `label` row, the input row
+/// below, and dispatches typing into `input`. Confirm walks the
+/// vec, parses each `input` per `kind`, and writes the result back
+/// into `block.params[key]` (or removes the key when blank).
+///
+/// V1 only carries one kind (positive integer); a select / boolean
+/// kind would slot in as a new enum variant the same way.
+pub struct SettingsField {
+    pub label: &'static str,
+    /// JSON key in `block.params` — what the confirm path writes
+    /// (or removes when the input is empty after trimming).
+    pub key: &'static str,
+    pub input: crate::vim::lineedit::LineEdit,
+}
+
+/// Multi-input settings modal state. Generic across block types —
+/// `open_db_settings_modal` populates the fields vector based on
+/// what the focused block supports (DB: limit + timeout; HTTP:
+/// timeout only). Tab/BackTab cycle `focus`, Enter validates +
+/// commits all fields, Esc cancels.
+///
+/// Pinned by user-memory `project_tui_block_settings_modal.md` —
+/// settings live behind one chord (`gs`), one popup, multiple
+/// inputs; never chord-per-field.
+pub struct DbSettingsState {
+    pub segment_idx: usize,
+    pub fields: Vec<SettingsField>,
+    /// Index into `fields`. Always within `0..fields.len()` while
+    /// the modal is open; clamped by [`focus_next`]/[`focus_prev`].
+    pub focus: usize,
+}
+
+impl DbSettingsState {
+    /// Borrow the LineEdit for the focused field. Used by char /
+    /// backspace / cursor-move actions to route into the right
+    /// buffer without growing the action count. Falls back to the
+    /// first field when `focus` is somehow out of range (defensive
+    /// — open path always seeds a valid index).
+    pub fn focused_input_mut(&mut self) -> &mut crate::vim::lineedit::LineEdit {
+        let idx = self.focus.min(self.fields.len().saturating_sub(1));
+        &mut self.fields[idx].input
+    }
+
+    /// Cycle focus to the next field, wrapping at the end. No-op
+    /// when there's a single field (the only HTTP case today).
+    pub fn focus_next(&mut self) {
+        let n = self.fields.len();
+        if n <= 1 {
+            return;
+        }
+        self.focus = (self.focus + 1) % n;
+    }
+
+    /// Cycle focus to the previous field, wrapping at the start.
+    pub fn focus_prev(&mut self) {
+        let n = self.fields.len();
+        if n <= 1 {
+            return;
+        }
+        self.focus = (self.focus + n - 1) % n;
+    }
 }
 
 /// Selected tab in the DB result panel. Single global state — every
@@ -472,6 +727,11 @@ impl App {
             schema_cache: crate::schema::SchemaCache::new(),
             completion_popup: None,
             db_confirm_run: None,
+            db_export_picker: None,
+            db_settings: None,
+            block_history: None,
+            content_search: None,
+            content_search_index_built: false,
             db_result_tab: ResultPanelTab::default(),
             fence_edit: None,
         };
@@ -851,6 +1111,36 @@ impl App {
                 }
             });
         }
+
+        // Move the search-index row to the new path. Cheapest
+        // correct thing: drop the old key + reinsert the file's
+        // current content under the new key. We re-read from disk
+        // (the move just happened) so the indexed body matches the
+        // file even if the user renamed without saving first. Best-
+        // effort — index can always be rebuilt via the next `<C-f>`
+        // open in the worst case.
+        if self.content_search_index_built
+            && src_rel.extension().and_then(|s| s.to_str()) == Some("md")
+        {
+            let pool = self.pool_manager.app_pool().clone();
+            let src_key = src_rel.to_string_lossy().to_string();
+            let dst_key = dst.to_string_lossy().to_string();
+            let dst_abs_for_read = dst_abs.clone();
+            tokio::spawn(async move {
+                if let Err(e) =
+                    httui_core::search::remove_search_entry(&pool, &src_key).await
+                {
+                    tracing::warn!("search index rename (drop old) failed: {e}");
+                }
+                let body = std::fs::read_to_string(&dst_abs_for_read).unwrap_or_default();
+                if let Err(e) =
+                    httui_core::search::update_search_entry(&pool, &dst_key, &body).await
+                {
+                    tracing::warn!("search index rename (insert new) failed: {e}");
+                }
+            });
+        }
+
         let name = file_name(&dst);
         Ok(format!("renamed to \"{name}\""))
     }
@@ -881,7 +1171,8 @@ impl App {
         let abs = vault.join(&target_rel);
         let metadata = std::fs::metadata(&abs)
             .map_err(|e| format!("delete failed: {e}"))?;
-        if metadata.is_dir() {
+        let was_dir = metadata.is_dir();
+        if was_dir {
             std::fs::remove_dir_all(&abs).map_err(|e| format!("delete failed: {e}"))?;
         } else {
             std::fs::remove_file(&abs).map_err(|e| format!("delete failed: {e}"))?;
@@ -896,6 +1187,36 @@ impl App {
                 }
             });
         }
+
+        // Drop search-index rows pointing at the deleted file (or any
+        // file under the deleted directory). Without this, `<C-f>`
+        // would surface a result that opens to a missing file. Only
+        // runs after the index has been built — pre-build the rows
+        // don't exist anyway.
+        if self.content_search_index_built {
+            let pool = self.pool_manager.app_pool().clone();
+            let target_str = target_rel.to_string_lossy().to_string();
+            tokio::spawn(async move {
+                if was_dir {
+                    let prefix = format!("{}/%", target_str.trim_end_matches('/'));
+                    if let Err(e) = sqlx::query(
+                        "DELETE FROM search_index WHERE file_path = ? OR file_path LIKE ?",
+                    )
+                    .bind(&target_str)
+                    .bind(&prefix)
+                    .execute(&pool)
+                    .await
+                    {
+                        tracing::warn!("search index purge (dir) failed: {e}");
+                    }
+                } else if let Err(e) =
+                    httui_core::search::remove_search_entry(&pool, &target_str).await
+                {
+                    tracing::warn!("search index purge (file) failed: {e}");
+                }
+            });
+        }
+
         Ok(format!("deleted \"{}\"", file_name(&target_rel)))
     }
 }
@@ -1011,6 +1332,9 @@ async fn main_loop(
                 result,
             }) => {
                 app.on_schema_loaded(connection_id, result);
+            }
+            Some(AppEvent::ContentSearchIndexBuilt { result }) => {
+                crate::commands::search::handle_index_built(app, result);
             }
             Some(AppEvent::Quit) | None => app.should_quit = true,
         }

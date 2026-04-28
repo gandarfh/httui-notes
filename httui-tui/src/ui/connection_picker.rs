@@ -101,7 +101,9 @@ pub fn render(
         Span::styled(" navigate   ", chip_label),
         Span::styled(" Enter ", chip_key),
         Span::styled(" pick   ", chip_label),
-        Span::styled(" Ctrl-C ", chip_key),
+        Span::styled(" D ", chip_key),
+        Span::styled(" delete   ", chip_label),
+        Span::styled(" Esc ", chip_key),
         Span::styled(" close ", chip_label),
     ]);
     frame.render_widget(Paragraph::new(footer).style(bg_style), footer_area);
