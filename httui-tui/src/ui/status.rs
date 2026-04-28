@@ -69,7 +69,7 @@ pub fn render_status_bar(frame: &mut Frame, area: Rect, app: &App) {
         return;
     }
 
-    let vault = app.vault_path.to_string_lossy().into_owned();
+    let vault = compact_vault_path(&app.vault_path);
     let dirty_marker = if app.document().is_some_and(|d| d.is_dirty()) {
         " ·●"
     } else {
@@ -163,6 +163,36 @@ pub fn render_status_bar(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(Paragraph::new(line), area);
 }
 
+/// Render a compact form of the vault path for the status bar.
+/// Two-step compaction:
+///
+/// 1. Replace a `$HOME` prefix with `~` so a vault under the user's
+///    home directory loses 30+ characters.
+/// 2. If the result is still longer than 40 chars, truncate to the
+///    last two path components prefixed with `…/` so `…/projects/notes`.
+///
+/// Both rules are pure-string — they don't probe the filesystem, so
+/// they're safe to call every render.
+fn compact_vault_path(path: &std::path::Path) -> String {
+    let raw = path.to_string_lossy().into_owned();
+    let with_home = match std::env::var("HOME") {
+        Ok(home) if !home.is_empty() && raw.starts_with(&home) => {
+            format!("~{}", &raw[home.len()..])
+        }
+        _ => raw,
+    };
+    if with_home.chars().count() <= 40 {
+        return with_home;
+    }
+    // Walk from the end, taking the last two non-empty segments.
+    let segments: Vec<&str> = with_home.split('/').filter(|s| !s.is_empty()).collect();
+    if segments.len() < 2 {
+        return with_home;
+    }
+    let tail = segments[segments.len() - 2..].join("/");
+    format!("…/{tail}")
+}
+
 /// Build the running-indicator chip label, or `None` when no
 /// query / HTTP request is in flight. Format: `▶ DB · 2.3s` or
 /// `▶ HTTP · 1.1s`. Block-type comes from the source block at
@@ -183,6 +213,38 @@ fn running_chip_label(app: &App) -> Option<String> {
         })
         .unwrap_or("running");
     Some(format!("▶ {kind} · {elapsed:.1}s"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::compact_vault_path;
+    use std::path::PathBuf;
+
+    #[test]
+    fn short_paths_stay_intact() {
+        assert_eq!(
+            compact_vault_path(&PathBuf::from("/notes")),
+            "/notes"
+        );
+    }
+
+    #[test]
+    fn long_paths_collapse_to_tail() {
+        // Pure-string path: > 40 chars and no HOME prefix → tail
+        // truncation should kick in.
+        let p = PathBuf::from("/very/deeply/nested/repository/projects/work/notes");
+        let out = compact_vault_path(&p);
+        assert_eq!(out, "…/work/notes");
+    }
+
+    #[test]
+    fn tail_truncation_handles_double_slashes() {
+        // Empty segments from `//` are filtered out by the walker.
+        let p = PathBuf::from("/a/b//c/d/e/f/g/h/i/j/k/l/m/n/o/p/q/r/s/t/u/v/w/x/y/z");
+        let out = compact_vault_path(&p);
+        // Tail picks the two last non-empty segments.
+        assert_eq!(out, "…/y/z");
+    }
 }
 
 fn count_blocks(doc: &Document) -> usize {
