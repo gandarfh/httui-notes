@@ -91,19 +91,35 @@ pub fn render_status_bar(frame: &mut Frame, area: Rect, app: &App) {
         .unwrap_or_else(|| "—".into());
 
     let mode = app.vim.mode;
-    let line = Line::from(vec![
-        Span::styled(
-            format!(" {} ", mode.label()),
-            Style::default()
-                .fg(Color::Black)
-                .bg(mode.bg())
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::raw(format!(
-            " {file}{dirty_marker} · {block_count} blocks · {cursor_label} · vault: {vault} · theme: {}",
-            app.config.theme
-        )),
-    ]);
+    // Active environment chip — only emits when an env is set as
+    // active; otherwise we skip the section entirely so the status
+    // bar stays compact for vaults that don't use envs.
+    let env_chip: Vec<Span<'static>> = match app.active_env_name.as_deref() {
+        Some(name) => vec![
+            Span::raw(" "),
+            Span::styled(
+                format!(" env: {name} "),
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::LightMagenta)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ],
+        None => Vec::new(),
+    };
+    let mut spans = vec![Span::styled(
+        format!(" {} ", mode.label()),
+        Style::default()
+            .fg(Color::Black)
+            .bg(mode.bg())
+            .add_modifier(Modifier::BOLD),
+    )];
+    spans.extend(env_chip);
+    spans.push(Span::raw(format!(
+        " {file}{dirty_marker} · {block_count} blocks · {cursor_label} · vault: {vault} · theme: {}",
+        app.config.theme
+    )));
+    let line = Line::from(spans);
     frame.render_widget(Paragraph::new(line), area);
 }
 

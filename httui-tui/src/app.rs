@@ -319,6 +319,11 @@ pub struct App {
     /// is read once at open-time — re-running the underlying block
     /// while the modal is up doesn't refresh it.
     pub block_history: Option<BlockHistoryState>,
+    /// Name of the currently-active environment, if any. Cached on
+    /// startup (and after a future env switch) so the status bar can
+    /// render the chip without an async hop on every redraw. `None`
+    /// when no environment is set as active.
+    pub active_env_name: Option<String>,
     /// `Some` while the content-search modal is open (`<C-f>`).
     /// Mode flips to `Mode::ContentSearch`. The query buffer + last
     /// FTS5 results live here; each keystroke re-queries.
@@ -730,12 +735,14 @@ impl App {
             db_export_picker: None,
             db_settings: None,
             block_history: None,
+            active_env_name: None,
             content_search: None,
             content_search_index_built: false,
             db_result_tab: ResultPanelTab::default(),
             fence_edit: None,
         };
         app.load_initial_document();
+        app.refresh_active_env_name();
         app
     }
 
@@ -811,6 +818,25 @@ impl App {
     #[allow(dead_code)] // wired up by the upcoming connection picker.
     pub fn refresh_connection_names(&mut self) {
         self.connection_names = load_connection_names(self.pool_manager.app_pool());
+    }
+
+    /// Re-resolve the active environment's display name from the
+    /// SQLite registry and stash it on `active_env_name`. Cheap to
+    /// call (single async query under `block_in_place`) — invoke
+    /// after a hypothetical env-switch so the status bar chip
+    /// updates without a TUI restart. Today no UI mutates the
+    /// active env, so this only runs at startup.
+    pub fn refresh_active_env_name(&mut self) {
+        let pool = self.pool_manager.app_pool().clone();
+        self.active_env_name = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async move {
+                let id = httui_core::db::environments::get_active_environment_id(&pool).await?;
+                let envs = httui_core::db::environments::list_environments(&pool)
+                    .await
+                    .ok()?;
+                envs.into_iter().find(|e| e.id == id).map(|e| e.name)
+            })
+        });
     }
 
     /// Set the transient footer message. Cleared on next key dispatch.
