@@ -205,7 +205,7 @@ fn render_db_header_bar(
     let pad: String = " ".repeat(area.width as usize);
     frame.render_widget(Paragraph::new(Line::from(Span::styled(pad, bg))), area);
 
-    let left = if b.is_http() {
+    let mut left = if b.is_http() {
         http_header_left_spans(b, bg)
     } else if b.is_db() {
         db_header_left_spans(b, names, bg)
@@ -214,6 +214,18 @@ fn render_db_header_bar(
     } else {
         generic_header_left_spans(b, "BLK", Color::DarkGray, bg)
     };
+    // Prepend a state dot so the user can see at a glance whether
+    // the block is idle / cached / running / errored. Inserted at
+    // index 1 so it follows the leading single-space pad — the
+    // existing `*_header_left_spans` paths all start with that pad.
+    let dot = state_dot(&b.state, bg);
+    if left.len() >= 2 {
+        left.insert(1, dot);
+        left.insert(2, Span::styled(" ", bg));
+    } else {
+        left.insert(0, dot);
+        left.insert(1, Span::styled(" ", bg));
+    }
 
     let used: u16 = left.iter().map(|s| s.content.chars().count() as u16).sum();
     // Block-type aware chip line. Wired chords per type:
@@ -238,6 +250,27 @@ fn render_db_header_bar(
     } else {
         frame.render_widget(Paragraph::new(Line::from(left)), area);
     }
+}
+
+/// Colored `●` glyph reflecting the block's last-known execution
+/// state. Painted on every block's chrome header so the user can
+/// see the run status at a glance — particularly useful after
+/// scrolling away from the block or running multiple in sequence.
+///
+/// State-to-color mapping is borrowed from the desktop's
+/// `ExecutableBlockShell` badge: Idle gray, Cached cyan, Running
+/// yellow, Success green, Error red. The dot is one cell wide so
+/// header chrome budgeting elsewhere doesn't have to grow.
+fn state_dot(state: &crate::buffer::block::ExecutionState, bg: Style) -> Span<'static> {
+    use crate::buffer::block::ExecutionState as ES;
+    let color = match state {
+        ES::Idle => Color::DarkGray,
+        ES::Cached => Color::LightCyan,
+        ES::Running => Color::LightYellow,
+        ES::Success => Color::LightGreen,
+        ES::Error(_) => Color::LightRed,
+    };
+    Span::styled("●", bg.fg(color).add_modifier(Modifier::BOLD))
 }
 
 fn db_header_left_spans(
