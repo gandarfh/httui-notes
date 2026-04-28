@@ -15,9 +15,9 @@ use crate::pane::{FocusDir, SplitDir};
 use crate::vim::parser::{
     parse_block_history, parse_cmdline, parse_connection_picker, parse_content_search,
     parse_db_confirm_run, parse_db_export_picker, parse_db_row_detail, parse_db_settings_modal,
-    parse_environment_picker, parse_fence_edit, parse_http_response_detail, parse_insert,
-    parse_normal, parse_quickopen, parse_search, parse_tree, parse_tree_prompt, parse_visual,
-    Action, InsertPos, Motion, Operator, PastePos, TextObject, WindowCmd,
+    parse_environment_picker, parse_fence_edit, parse_help, parse_http_response_detail,
+    parse_insert, parse_normal, parse_quickopen, parse_search, parse_tree, parse_tree_prompt,
+    parse_visual, Action, InsertPos, Motion, Operator, PastePos, TextObject, WindowCmd,
 };
 use crate::vim::search;
 use crate::tree::{TreePrompt, TreePromptKind};
@@ -88,6 +88,7 @@ pub fn dispatch(app: &mut App, key: KeyEvent) {
         Mode::BlockHistory => parse_block_history(key),
         Mode::ContentSearch => parse_content_search(key),
         Mode::EnvironmentPicker => parse_environment_picker(key),
+        Mode::Help => parse_help(key),
     };
 
     // Snapshot the pre-swap cursor so the post-action "reparse on
@@ -750,6 +751,15 @@ fn apply_action(app: &mut App, action: Action, recording: bool) {
             apply_move_environment_picker_cursor(app, delta)
         }
         Action::ConfirmEnvironmentPicker => apply_confirm_environment_picker(app),
+        Action::OpenHelp => {
+            app.help_visible = true;
+            app.vim.mode = Mode::Help;
+            app.vim.reset_pending();
+        }
+        Action::CloseHelp => {
+            app.help_visible = false;
+            app.vim.enter_normal();
+        }
         Action::CompletionNext => apply_completion_next(app),
         Action::CompletionPrev => apply_completion_prev(app),
         Action::CompletionAccept => apply_completion_accept(app),

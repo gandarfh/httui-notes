@@ -79,6 +79,13 @@ pub enum Mode {
     /// Renders as a small popup while `App.environment_picker` is
     /// `Some`.
     EnvironmentPicker,
+    /// `g?` — open the keymap help modal. Read-only listing of the
+    /// chord vocabulary grouped by section (motions, blocks, modals,
+    /// files). Esc/q/Ctrl-C close. Picked over `?` (taken by
+    /// search-backwards) and `<F1>` (some terminals don't deliver
+    /// it cleanly) — `g?` matches the `g`-prefix family used by the
+    /// rest of the modal openers.
+    Help,
 }
 
 impl Mode {
@@ -103,6 +110,7 @@ impl Mode {
             Mode::BlockHistory => "HIST",
             Mode::ContentSearch => "FIND",
             Mode::EnvironmentPicker => "ENV",
+            Mode::Help => "HELP",
         }
     }
 
@@ -125,6 +133,7 @@ impl Mode {
             Mode::BlockHistory => Color::LightBlue,
             Mode::ContentSearch => Color::LightGreen,
             Mode::EnvironmentPicker => Color::LightMagenta,
+            Mode::Help => Color::LightCyan,
         }
     }
 

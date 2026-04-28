@@ -12,6 +12,7 @@ mod db_export_picker;
 mod db_settings_modal;
 mod environment_picker;
 mod fence_edit;
+mod help;
 pub mod db_row_detail;
 pub mod http_response_detail;
 mod prose;
@@ -117,11 +118,13 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             | Mode::ConnectionPicker
             | Mode::ContentSearch
             | Mode::EnvironmentPicker
+            | Mode::Help
     ) || app.db_row_detail.is_some()
         || app.http_response_detail.is_some()
         || app.connection_picker.is_some()
         || app.content_search.is_some()
-        || app.environment_picker.is_some();
+        || app.environment_picker.is_some()
+        || app.help_visible;
 
     // Snapshot the current result-panel tab so the render tree can
     // pass it down without re-borrowing `app` at every level.
@@ -319,6 +322,13 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     // status-bar chip.
     if let Some(state) = app.environment_picker.as_ref() {
         environment_picker::render(frame, editor_area, state);
+    }
+
+    // Help modal — opened by `g?`. Stateless overlay listing the
+    // chord vocabulary grouped by section. Painted last so it
+    // floats above any other modal that might still be on screen.
+    if app.help_visible {
+        help::render(frame, editor_area);
     }
 }
 

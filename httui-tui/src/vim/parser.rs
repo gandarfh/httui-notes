@@ -492,6 +492,12 @@ pub enum Action {
     /// for the highlighted entry, refresh the cached display name,
     /// and close the popup.
     ConfirmEnvironmentPicker,
+    /// `g?` chord from normal mode — open the keymap help modal.
+    /// Read-only listing of the chord vocabulary grouped by section.
+    /// Mnemonic: `g`-prefix family + `?` = "help".
+    OpenHelp,
+    /// `Esc` / `q` / `Ctrl-C` inside the help modal — close.
+    CloseHelp,
     Noop,
 }
 
@@ -802,6 +808,13 @@ pub fn parse_normal(state: &mut VimState, key: KeyEvent) -> Action {
         if let KeyCode::Char('E') = code {
             state.take_count();
             return Action::OpenEnvironmentPicker;
+        }
+        // `g?` — open the keymap help modal. Bare `?` is taken by
+        // search-backwards, so the help lookup lives behind the
+        // `g` prefix family.
+        if let KeyCode::Char('?') = code {
+            state.take_count();
+            return Action::OpenHelp;
         }
         // Drop the prefix and continue parsing.
     }
@@ -1489,6 +1502,7 @@ fn is_blocked_in_modal(action: &Action) -> bool {
             | Action::ExplainBlock
             | Action::OpenConnectionPicker
             | Action::OpenEnvironmentPicker
+            | Action::OpenHelp
     )
 }
 
@@ -1553,6 +1567,21 @@ pub fn parse_connection_picker(key: KeyEvent) -> Action {
         (mods, KeyCode::Char('D')) if !mods.contains(KeyModifiers::CONTROL) => {
             Action::DeleteConnectionInPicker
         }
+        _ => Action::Noop,
+    }
+}
+
+/// Translate one key while the help modal is open. Read-only
+/// modal — only Esc/q/Ctrl-C close it. Anything else is a no-op so
+/// stray motions don't leak through to the editor below.
+pub fn parse_help(key: KeyEvent) -> Action {
+    let KeyEvent {
+        code, modifiers, ..
+    } = key;
+    match (modifiers, code) {
+        (_, KeyCode::Esc) => Action::CloseHelp,
+        (KeyModifiers::CONTROL, KeyCode::Char('c')) => Action::CloseHelp,
+        (m, KeyCode::Char('q')) if !m.contains(KeyModifiers::CONTROL) => Action::CloseHelp,
         _ => Action::Noop,
     }
 }

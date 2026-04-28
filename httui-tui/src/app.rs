@@ -381,6 +381,12 @@ pub struct App {
     /// whenever the active document changes (load, tab switch,
     /// `:e <path>`).
     pub file_watcher: Option<crate::fs_watch::FileWatcher>,
+    /// `true` while the keymap help modal is open (`g?`). Mode flips
+    /// to `Mode::Help` so dispatch routes Esc/q to the closer. The
+    /// modal is read-only and stateless — no scroll, no selection —
+    /// so a flag is enough; a future iteration with a search field
+    /// would graduate this to a struct.
+    pub help_visible: bool,
 }
 
 /// State for the inline fence-edit prompt. `kind` carries the field
@@ -780,6 +786,7 @@ impl App {
             fence_edit: None,
             environment_picker: None,
             file_watcher: None,
+            help_visible: false,
         };
         app.load_initial_document();
         app.refresh_active_env_name();
