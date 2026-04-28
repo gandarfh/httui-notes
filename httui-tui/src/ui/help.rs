@@ -90,6 +90,7 @@ const SECTIONS: &[Section] = &[
             Entry { chord: "g?", label: "this help modal" },
             Entry { chord: "gN", label: "insert new block from template" },
             Entry { chord: ":w / :wq / :q / :q!", label: "write / write-quit / quit / force-quit" },
+            Entry { chord: "Ctrl-S", label: "save (works in normal + insert)" },
             Entry { chord: ":e <path>", label: "open file" },
             Entry { chord: ":%s/foo/bar", label: "substitute (literal, doc-global)" },
             Entry { chord: "u / Ctrl-R", label: "undo / redo" },

@@ -766,6 +766,16 @@ fn apply_action(app: &mut App, action: Action, recording: bool) {
         Action::JumpNextBlock => apply_jump_block(app, JumpDir::Next),
         Action::JumpPrevBlock => apply_jump_block(app, JumpDir::Prev),
         Action::RerunLastBlock => apply_rerun_last_block(app),
+        Action::WriteFile => {
+            // `<C-s>` — same code path as `:w`, status reporting and
+            // all. Routed through `ex::execute` (rather than the
+            // string-based `ex::run`) to skip a redundant parse.
+            match ex::execute(app, ex::ExCmd::Write) {
+                ex::ExResult::Ok(msg) => app.set_status(StatusKind::Info, msg),
+                ex::ExResult::Err(msg) => app.set_status(StatusKind::Error, msg),
+                _ => {}
+            }
+        }
         Action::OpenBlockTemplatePicker => {
             app.block_template_picker = Some(crate::app::BlockTemplatePickerState::new());
             app.vim.mode = Mode::BlockTemplatePicker;

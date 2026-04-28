@@ -512,6 +512,13 @@ pub enum Action {
     /// we look it up by alias (preferred) or `segment_idx` against
     /// `App.last_run_anchor`. Mnemonic: g + r = "go rerun".
     RerunLastBlock,
+    /// `Ctrl-S` from normal or insert mode — save the active
+    /// document. Bound deliberately as the universal save shortcut
+    /// (VSCode / JetBrains / Sublime convention) so users coming
+    /// from non-vim editors don't have to memorize `:w`. Same code
+    /// path as `:w`; in insert mode the cursor stays in insert
+    /// (saves don't leave the typing flow).
+    WriteFile,
     /// `gN` chord — open the block-template picker. Lowercase `gn`
     /// is taken by vim's "find next match" motion, so the new-block
     /// chord uses capital N.
@@ -663,6 +670,14 @@ pub fn parse_normal(state: &mut VimState, key: KeyEvent) -> Action {
     if code == KeyCode::Esc {
         state.reset_pending();
         return Action::Noop;
+    }
+
+    // `<C-s>` — universal save (VSCode / JetBrains / Sublime
+    // convention). Bound here in normal mode so it works without
+    // having to type `:w<CR>`.
+    if modifiers == KeyModifiers::CONTROL && matches!(code, KeyCode::Char('s')) {
+        state.reset_pending();
+        return Action::WriteFile;
     }
 
     // Resolve a pending `Ctrl+W` window-prefix — the next keystroke
@@ -1890,6 +1905,10 @@ pub fn parse_insert(key: KeyEvent) -> Action {
     match (modifiers, code) {
         (_, KeyCode::Esc) => Action::ExitInsert,
         (KeyModifiers::CONTROL, KeyCode::Char('c')) => Action::ExitInsert,
+        // `<C-s>` saves without leaving insert — typing flow stays
+        // intact, the file just hits disk. Mirrors the normal-mode
+        // bind in `parse_normal`.
+        (KeyModifiers::CONTROL, KeyCode::Char('s')) => Action::WriteFile,
         (_, KeyCode::Enter) => Action::InsertNewline,
         (_, KeyCode::Backspace) => Action::DeleteBackward,
         (_, KeyCode::Delete) => Action::DeleteForward,
