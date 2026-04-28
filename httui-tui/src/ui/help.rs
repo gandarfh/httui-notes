@@ -63,6 +63,7 @@ const SECTIONS: &[Section] = &[
             Entry { chord: "Enter", label: "run block / open result detail (on result row)" },
             Entry { chord: "Ctrl-C", label: "cancel running query" },
             Entry { chord: "Ctrl-X", label: "EXPLAIN current DB block" },
+            Entry { chord: "g] / g[", label: "jump to next / previous block" },
             Entry { chord: "ga", label: "edit block alias" },
             Entry { chord: "gd", label: "cycle display mode (input / split / output)" },
             Entry { chord: "gc", label: "open connection picker (DB blocks)" },
@@ -70,6 +71,7 @@ const SECTIONS: &[Section] = &[
             Entry { chord: "gx", label: "open export picker (DB result / HTTP request)" },
             Entry { chord: "gh", label: "open block run-history (HTTP blocks)" },
             Entry { chord: "Ctrl-Shift-C", label: "copy HTTP block as cURL" },
+            Entry { chord: "dd / yy (on block)", label: "cut / yank entire block" },
         ],
     },
     Section {

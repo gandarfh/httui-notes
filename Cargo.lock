@@ -2287,6 +2287,7 @@ dependencies = [
  "directories",
  "futures",
  "httui-core",
+ "notify",
  "ratatui",
  "ropey",
  "serde",

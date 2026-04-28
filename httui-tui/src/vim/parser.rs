@@ -498,6 +498,15 @@ pub enum Action {
     OpenHelp,
     /// `Esc` / `q` / `Ctrl-C` inside the help modal — close.
     CloseHelp,
+    /// `g]` chord — jump to the next executable block in document
+    /// order. No-op when the cursor is already past the last block
+    /// (no wrap, matching vim's `]m` / `]]` motion conventions).
+    /// Lands the cursor on the first body offset of the target
+    /// block so the user can immediately edit / run it.
+    JumpNextBlock,
+    /// `g[` chord — jump to the previous executable block. Same
+    /// no-wrap rule as `g]`.
+    JumpPrevBlock,
     Noop,
 }
 
@@ -815,6 +824,17 @@ pub fn parse_normal(state: &mut VimState, key: KeyEvent) -> Action {
         if let KeyCode::Char('?') = code {
             state.take_count();
             return Action::OpenHelp;
+        }
+        // `g]` / `g[` — jump to next / previous block in document
+        // order. Mnemonic: bracket = "structure boundary". Counts
+        // are dropped (single-step navigation per press).
+        if let KeyCode::Char(']') = code {
+            state.take_count();
+            return Action::JumpNextBlock;
+        }
+        if let KeyCode::Char('[') = code {
+            state.take_count();
+            return Action::JumpPrevBlock;
         }
         // Drop the prefix and continue parsing.
     }

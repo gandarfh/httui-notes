@@ -760,6 +760,8 @@ fn apply_action(app: &mut App, action: Action, recording: bool) {
             app.help_visible = false;
             app.vim.enter_normal();
         }
+        Action::JumpNextBlock => apply_jump_block(app, JumpDir::Next),
+        Action::JumpPrevBlock => apply_jump_block(app, JumpDir::Prev),
         Action::CompletionNext => apply_completion_next(app),
         Action::CompletionPrev => apply_completion_prev(app),
         Action::CompletionAccept => apply_completion_accept(app),
@@ -2093,6 +2095,59 @@ fn apply_delete_connection_in_picker(app: &mut App) {
     }
 }
 
+// ───────────── block-jump motions (g] / g[) ─────────────
+
+#[derive(Debug, Clone, Copy)]
+enum JumpDir {
+    Next,
+    Prev,
+}
+
+/// Move the cursor to the first body offset of the next or previous
+/// block segment relative to the current position. No-wrap: when
+/// the cursor is already past the last block (or before the first),
+/// the call is a silent no-op — matches vim's `]m` / `[m` feel.
+///
+/// "Current position" resolves through the cursor's segment_idx.
+/// Sitting *inside* a block, `g]` jumps to the next block, not the
+/// current one; `g[` jumps to the previous one. Sitting in prose,
+/// the same rule applies relative to the surrounding segment index.
+fn apply_jump_block(app: &mut App, dir: JumpDir) {
+    let Some(doc) = app.document() else { return };
+    let cur_idx = match doc.cursor() {
+        Cursor::InProse { segment_idx, .. }
+        | Cursor::InBlock { segment_idx, .. }
+        | Cursor::InBlockResult { segment_idx, .. } => segment_idx,
+    };
+    let target_idx = match dir {
+        JumpDir::Next => doc
+            .segments()
+            .iter()
+            .enumerate()
+            .skip(cur_idx + 1)
+            .find_map(|(i, s)| matches!(s, Segment::Block(_)).then_some(i)),
+        JumpDir::Prev => doc
+            .segments()
+            .iter()
+            .enumerate()
+            .take(cur_idx)
+            .rev()
+            .find_map(|(i, s)| matches!(s, Segment::Block(_)).then_some(i)),
+    };
+    let Some(target) = target_idx else { return };
+    if let Some(doc) = app.document_mut() {
+        // Park the cursor on offset 0 of the block's raw rope. The
+        // first character of the fence header lives there, so the
+        // user lands on the block "from above" (predictable spot
+        // they can scroll down or directly type into).
+        doc.set_cursor(Cursor::InBlock {
+            segment_idx: target,
+            offset: 0,
+        });
+    }
+    app.refresh_viewport_for_cursor();
+}
+
 // ───────────── environment picker (gE) ─────────────
 
 /// `gE` — pull every row from the `environments` table, snapshot the
@@ -2906,5 +2961,75 @@ mod tests {
         assert!(title.contains("201"));
         assert!(title.contains("1.5 kB"));
         assert!(title.contains("login"));
+    }
+
+    /// Build a Document with prose / block / prose / block / prose
+    /// to exercise `apply_jump_block` against the segment iterator.
+    fn doc_with_two_blocks() -> crate::buffer::Document {
+        let md = "intro\n\n```http alias=a\nGET https://a.test\n```\n\nmid\n\n```http alias=b\nGET https://b.test\n```\n\nend\n";
+        crate::buffer::Document::from_markdown(md).unwrap()
+    }
+
+    fn block_indices(doc: &crate::buffer::Document) -> Vec<usize> {
+        doc.segments()
+            .iter()
+            .enumerate()
+            .filter_map(|(i, s)| matches!(s, Segment::Block(_)).then_some(i))
+            .collect()
+    }
+
+    /// Stand-alone reimplementation of the navigator inside
+    /// `apply_jump_block` — same predicate (skip current, no wrap),
+    /// no `App` plumbing. Lets the test cover the search rule
+    /// without spinning up a full `App`.
+    fn next_block(doc: &crate::buffer::Document, cur: usize) -> Option<usize> {
+        doc.segments()
+            .iter()
+            .enumerate()
+            .skip(cur + 1)
+            .find_map(|(i, s)| matches!(s, Segment::Block(_)).then_some(i))
+    }
+
+    fn prev_block(doc: &crate::buffer::Document, cur: usize) -> Option<usize> {
+        doc.segments()
+            .iter()
+            .enumerate()
+            .take(cur)
+            .rev()
+            .find_map(|(i, s)| matches!(s, Segment::Block(_)).then_some(i))
+    }
+
+    #[test]
+    fn jump_next_block_walks_forward_no_wrap() {
+        let doc = doc_with_two_blocks();
+        let blocks = block_indices(&doc);
+        assert_eq!(blocks.len(), 2);
+        // From the first prose segment (idx 0) → first block.
+        assert_eq!(next_block(&doc, 0), Some(blocks[0]));
+        // From the first block → second block.
+        assert_eq!(next_block(&doc, blocks[0]), Some(blocks[1]));
+        // From the second block → no more (no wrap).
+        assert_eq!(next_block(&doc, blocks[1]), None);
+    }
+
+    #[test]
+    fn jump_prev_block_walks_backward_no_wrap() {
+        let doc = doc_with_two_blocks();
+        let blocks = block_indices(&doc);
+        // From the second block → first block.
+        assert_eq!(prev_block(&doc, blocks[1]), Some(blocks[0]));
+        // From the first block → no earlier block.
+        assert_eq!(prev_block(&doc, blocks[0]), None);
+        // From the last prose segment → previous block.
+        let last = doc.segments().len() - 1;
+        assert_eq!(prev_block(&doc, last), Some(blocks[1]));
+    }
+
+    #[test]
+    fn jump_block_no_blocks_yields_none() {
+        let md = "just prose\n\nno blocks at all\n";
+        let doc = crate::buffer::Document::from_markdown(md).unwrap();
+        assert_eq!(next_block(&doc, 0), None);
+        assert_eq!(prev_block(&doc, 0), None);
     }
 }
