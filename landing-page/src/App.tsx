@@ -1,5 +1,6 @@
 import { Box, Flex, HStack, SimpleGrid, Text, VStack } from "@chakra-ui/react";
 import { LuArrowRight, LuPlay } from "react-icons/lu";
+import { useColorMode } from "@/components/ui/color-mode";
 import { useGithubStats } from "./hooks/useGithubStats";
 import {
   BlocksPreview,
@@ -8,6 +9,48 @@ import {
   WindowChrome,
   WorkbenchPreview,
 } from "./marketing/previews";
+
+// ─────────────────────────────────────────────────────────
+// Logo — the httui "h." mark. Theme-aware (light/dark) and
+// supports two variants:
+//   - full: wordmark + glyph (used in the navbar)
+//   - logo: glyph only (used in the footer)
+// ─────────────────────────────────────────────────────────
+function Logo({
+  variant = "logo",
+  size = 22,
+}: {
+  variant?: "logo" | "full";
+  size?: number;
+}) {
+  const { colorMode } = useColorMode();
+  const theme = colorMode === "dark" ? "dark" : "light";
+
+  if (variant === "full") {
+    // Full asset is 66×19 — keep aspect by setting only height.
+    return (
+      <img
+        src={`/httui-${theme}-full.png`}
+        height={size}
+        alt="httui"
+        style={{ display: "block", height: `${size}px`, width: "auto" }}
+      />
+    );
+  }
+
+  // Glyph only — light variant ships as SVG, dark as PNG
+  const src =
+    theme === "light" ? "/httui-light-logo.svg" : "/httui-dark-logo.png";
+  return (
+    <img
+      src={src}
+      width={size}
+      height={size}
+      alt="httui"
+      style={{ display: "block" }}
+    />
+  );
+}
 
 // ─────────────────────────────────────────────────────────
 // Pill — small reusable pill button (cosmetic, not a link).
@@ -30,7 +73,11 @@ function Pill({ children, variant = "solid", size = "md", href }: PillProps) {
   const styleMap = {
     solid: { bg: "accent", color: "accent.fg", borderColor: "transparent" },
     ink: { bg: "fg", color: "bg", borderColor: "transparent" },
-    ghost: { bg: "transparent", color: "fg", borderColor: "border" },
+    ghost: {
+      bg: "color-mix(in oklch, var(--chakra-colors-bg) 60%, transparent)",
+      color: "fg",
+      borderColor: "color-mix(in oklch, var(--chakra-colors-border) 60%, transparent)",
+    },
   } as const;
   const style = styleMap[variant];
 
@@ -48,6 +95,7 @@ function Pill({ children, variant = "solid", size = "md", href }: PillProps) {
       whiteSpace="nowrap"
       border="1px solid"
       cursor="pointer"
+      backdropFilter={variant === "ghost" ? "blur(10px)" : undefined}
       bg={style.bg}
       color={style.color}
       borderColor={style.borderColor}
@@ -85,42 +133,58 @@ function Eyebrow({ children, color = "accent" }: { children: React.ReactNode; co
 function Nav() {
   const stats = useGithubStats();
   return (
-    <Flex
+    <Box
       position="sticky"
       top={0}
       zIndex={50}
-      align="center"
-      px={{ base: 6, md: 14 }}
-      py={3}
-      fontSize="sm"
-      style={{
-        background: `linear-gradient(180deg,
-          color-mix(in oklch, var(--chakra-colors-bg) 22%, transparent) 0%,
-          color-mix(in oklch, var(--chakra-colors-bg) 8%, transparent) 80%,
-          transparent 100%
-        )`,
-      }}
+      bg="bg"
+      borderBottom="1px solid"
+      borderColor="border.subtle"
     >
-      <HStack gap={2} fontFamily="heading" fontSize="22px" fontWeight="700" color="fg">
-        <Box w="22px" h="22px" rounded="sm" bg="accent" />
-        <Text>httui</Text>
-      </HStack>
-      <HStack flex="1" justify="center" gap={0} display={{ base: "none", md: "flex" }}>
+      <Flex
+        align="center"
+        maxW="1280px"
+        mx="auto"
+        width="100%"
+        px={{ base: 5, md: 8 }}
+        py={3}
+        fontSize="sm"
+      >
+      <Logo variant="full" size={22} />
+      <HStack flex="1" justify="center" gap={1} display={{ base: "none", md: "flex" }}>
         {["Product", "Docs", "GitHub", "Changelog"].map((l) => (
-          <Text key={l} px={3.5} py={1.5} color="fg.muted" cursor="pointer" _hover={{ color: "fg" }}>
+          <Text
+            key={l}
+            px={3}
+            py={1.5}
+            fontSize="13px"
+            fontWeight="500"
+            color="fg.muted"
+            rounded="md"
+            cursor="pointer"
+            _hover={{ color: "fg" }}
+          >
             {l}
           </Text>
         ))}
       </HStack>
-      <HStack gap={3.5}>
-        <Text fontSize="sm" color="fg.muted" display={{ base: "none", md: "block" }}>
-          ★ {stats.stars}
-        </Text>
+      <HStack gap={3}>
+        <HStack
+          gap={1}
+          fontSize="12px"
+          fontWeight="500"
+          color="fg.muted"
+          display={{ base: "none", md: "flex" }}
+        >
+          <Text as="span">★</Text>
+          <Text>{stats.stars}</Text>
+        </HStack>
         <Pill variant="ink" size="sm" href={stats.repoUrl}>
           View on GitHub <LuArrowRight size={11} />
         </Pill>
       </HStack>
-    </Flex>
+      </Flex>
+    </Box>
   );
 }
 
@@ -133,66 +197,19 @@ function Nav() {
 function Hero() {
   const stats = useGithubStats();
   return (
-    <Box as="section" position="relative" h={{ base: "auto", lg: "960px" }} overflow="hidden">
+    <Box as="section" position="relative" bg="bg">
       <Nav />
-      {/* Hero background — 21:9 (2.33) cinematic source, single img with cover.
-          Aspect almost matches the hero, so cropping is minimal. */}
-      <Box
-        position="absolute"
-        inset={0}
-        zIndex={0}
-        overflow="hidden"
-        _dark={{ filter: "brightness(0.55) saturate(0.85)" }}
-      >
-        <img
-          src="/hero-1920.jpg"
-          srcSet="/hero-768.jpg 768w, /hero-1920.jpg 1920w"
-          sizes="100vw"
-          alt=""
-          loading="eager"
-          decoding="async"
-          fetchPriority="high"
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            objectPosition: "center",
-            display: "block",
-          }}
-        />
-      </Box>
-      {/* Paper wash — bottom fade-out only. Photo dissolves into page bg
-          well before the section edge, so the seam is invisible. */}
-      <Box
-        position="absolute"
-        inset={0}
-        zIndex={1}
-        pointerEvents="none"
-        style={{
-          background: `linear-gradient(
-            180deg,
-            transparent 0%,
-            transparent 50%,
-            color-mix(in oklch, var(--chakra-colors-bg) 20%, transparent) 65%,
-            color-mix(in oklch, var(--chakra-colors-bg) 60%, transparent) 78%,
-            color-mix(in oklch, var(--chakra-colors-bg) 92%, transparent) 88%,
-            var(--chakra-colors-bg) 92%,
-            var(--chakra-colors-bg) 100%
-          )`,
-        }}
-      />
-
-      {/* Hero content */}
+      {/* Hero content — clean paper bg, no photo. The Fuji painting only
+          appears as scenery around the workbench preview below. */}
       <Flex
-        position="relative"
-        zIndex={2}
         direction="column"
         align="center"
         textAlign="center"
         maxW="1080px"
         mx="auto"
-        px={{ base: 6, md: 14 }}
-        pt={{ base: 16, md: 24 }}
+        px={{ base: 5, md: 14 }}
+        pt={{ base: 8, md: 16 }}
+        pb={{ base: 8, md: 12 }}
       >
         <HStack
           gap={1.5}
@@ -204,13 +221,17 @@ function Hero() {
           border="1px solid"
           borderColor="border.subtle"
           color="fg.muted"
-          mb={7}
+          mb={{ base: 5, md: 7 }}
           backdropFilter="blur(8px)"
+          whiteSpace="nowrap"
+          maxW="100%"
+          overflow="hidden"
         >
-          <Box w="6px" h="6px" rounded="full" bg="ok" />
-          <Text>v0.8 · open beta —</Text>
-          <Text fontFamily="mono" color="accent.emphasized">
-            20k blocks executed last week
+          <Box w="6px" h="6px" rounded="full" bg="ok" flexShrink={0} />
+          <Text display={{ base: "none", sm: "inline" }}>v0.8 · open beta —</Text>
+          <Text display={{ base: "inline", sm: "none" }}>v0.8 —</Text>
+          <Text fontFamily="mono" color="fg.muted">
+            20k blocks last week
           </Text>
         </HStack>
 
@@ -218,42 +239,33 @@ function Hero() {
           as="h1"
           fontFamily="heading"
           fontWeight="600"
-          fontSize={{ base: "44px", md: "64px", lg: "86px" }}
-          lineHeight="1.02"
+          fontSize={{ base: "34px", sm: "40px", md: "64px", lg: "88px", xl: "96px" }}
+          lineHeight={{ base: "1.06", lg: "1.02" }}
           letterSpacing="tighter"
           color="fg"
           textWrap="balance"
           textShadow="0 1px 2px color-mix(in oklch, var(--chakra-colors-bg) 50%, transparent)"
         >
-          Debug your APIs{" "}
-          <Text as="em" color="accent" fontStyle="italic">
-            and
-          </Text>{" "}
-          databases
-          <br />
-          in a{" "}
+          Debug your APIs and databases in a{" "}
           <Text as="em" fontStyle="italic">
             single markdown file.
           </Text>
         </Text>
 
         <Text
-          mt={7}
+          mt={{ base: 5, md: 7 }}
           maxW="620px"
           fontFamily="heading"
-          fontSize={{ base: "16px", md: "18px" }}
+          fontSize={{ base: "15px", md: "18px" }}
           lineHeight="1.55"
           color="fg"
         >
           httui is a markdown editor with executable blocks — HTTP, SQL, Mongo,
-          WebSocket, gRPC. Each runbook is documentation{" "}
-          <Text as="em" fontStyle="italic">
-            and
-          </Text>{" "}
-          a troubleshooting tool, versioned in git, shareable with your team.
+          WebSocket, gRPC. Each runbook is documentation and a troubleshooting
+          tool, versioned in git, shareable with your team.
         </Text>
 
-        <HStack gap={3} mt={9} mb={14}>
+        <HStack gap={3} mt={{ base: 7, md: 9 }} mb={{ base: 10, md: 14 }} flexWrap="wrap" justify="center">
           <Pill variant="solid" href={stats.repoUrl}>
             Get started <LuArrowRight size={11} />
           </Pill>
@@ -275,45 +287,85 @@ function Hero() {
 // fits inside a 1200×762 frame.
 // ─────────────────────────────────────────────────────────
 function HeroPreview() {
+  // Workbench is built at 1480×940 (designed for desktop). Even at scale 0.5
+  // it overflows mobile/tablet viewports and looks cramped. We only render it
+  // at lg+; mobile users see the per-feature previews below the hero instead.
   return (
-    <Flex
-      justify="center"
-      px={{ base: 4, md: 6 }}
-      mt={{ base: 0, lg: "-140px" }}
-      mb={{ base: 0, lg: "80px" }}
+    <Box
+      display={{ base: "none", lg: "block" }}
       position="relative"
-      zIndex={3}
+      pt="30px"
+      pb="100px"
+      overflow="hidden"
     >
+      {/* Painting bg — Fuji watercolor as scenic stage around the dashboard.
+          Edges fade to page bg so the painting feels like a vignette. */}
+      <Box position="absolute" inset={0} zIndex={0} overflow="hidden">
+        <img
+          src="/hero-1920.jpg"
+          srcSet="/hero-768.jpg 768w, /hero-1920.jpg 1920w"
+          sizes="100vw"
+          alt=""
+          loading="eager"
+          decoding="async"
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            objectPosition: "center 60%",
+            display: "block",
+            filter: "saturate(0.7) brightness(1.02)",
+          }}
+        />
+      </Box>
+      {/* Vignette: fade top/bottom to page bg so the painting is just
+          ambient scenery, never a hard band. */}
       <Box
-        w={{ base: "100%", lg: "1200px" }}
-        maxW="1200px"
-        rounded="xl"
-        overflow="hidden"
-        bg="bg.surface"
-        border="1px solid"
-        borderColor="border"
-        shadow="photo"
-      >
-        <WindowChrome title="rollout-v2.3.md — httui" />
+        position="absolute"
+        inset={0}
+        zIndex={1}
+        pointerEvents="none"
+        style={{
+          background: `linear-gradient(
+            180deg,
+            var(--chakra-colors-bg) 0%,
+            color-mix(in oklch, var(--chakra-colors-bg) 60%, transparent) 6%,
+            transparent 18%,
+            transparent 75%,
+            color-mix(in oklch, var(--chakra-colors-bg) 70%, transparent) 90%,
+            var(--chakra-colors-bg) 100%
+          )`,
+        }}
+      />
+      {/* Dashboard preview centered, sitting in the painting */}
+      <Flex justify="center" position="relative" zIndex={2}>
         <Box
-          position="relative"
-          h={{ base: "470px", md: "610px", lg: "762px" }}
+          w="1200px"
+          maxW="1200px"
+          rounded="xl"
           overflow="hidden"
+          bg="bg.surface"
+          border="1px solid"
+          borderColor="border"
+          shadow="photo"
         >
-          <Box
-            position="absolute"
-            top={0}
-            left={0}
-            w="1480px"
-            h="940px"
-            transformOrigin="top left"
-            transform={{ base: "scale(0.5)", md: "scale(0.65)", lg: "scale(0.811)" }}
-          >
-            <WorkbenchPreview />
+          <WindowChrome title="rollout-v2.3.md — httui" />
+          <Box position="relative" h="762px" overflow="hidden">
+            <Box
+              position="absolute"
+              top={0}
+              left={0}
+              w="1480px"
+              h="940px"
+              transformOrigin="top left"
+              transform="scale(0.811)"
+            >
+              <WorkbenchPreview />
+            </Box>
           </Box>
         </Box>
-      </Box>
-    </Flex>
+      </Flex>
+    </Box>
   );
 }
 
@@ -356,7 +408,7 @@ function OssStrip() {
               borderBottom={{ base: i < 2 ? "1px solid" : "none", md: "none" }}
               borderColor="border"
             >
-              <Text fontFamily="heading" fontSize="36px" fontWeight="600" letterSpacing="tight" color="fg" lineHeight="1">
+              <Text fontFamily="heading" fontSize="48px" fontWeight="600" letterSpacing="tight" color="fg" lineHeight="1">
                 {s.v}
               </Text>
               <Text mt={2} fontSize="xs" color="fg.muted" fontWeight="500">
@@ -389,13 +441,16 @@ function FeatureRow({ kicker, title, body, points, preview, reverse }: FeatureRo
   return (
     <Box
       as="section"
-      px={{ base: 6, md: 20 }}
+      maxW="1640px"
+      mx="auto"
+      px={{ base: 6, md: 16 }}
       py={{ base: 14, md: 20 }}
       display="grid"
       gridTemplateColumns={{ base: "1fr", lg: "1fr 1.15fr" }}
       gap={{ base: 10, lg: 16 }}
       alignItems="center"
       direction={{ base: "ltr", lg: reverse ? "rtl" : "ltr" }}
+      overflowX="hidden"
     >
       <Box style={{ direction: "ltr" }}>
         <Eyebrow>{kicker}</Eyebrow>
@@ -425,7 +480,18 @@ function FeatureRow({ kicker, title, body, points, preview, reverse }: FeatureRo
           ))}
         </VStack>
       </Box>
-      <Box style={{ direction: "ltr" }}>{preview}</Box>
+      <Box
+        style={{ direction: "ltr" }}
+        minW="0"
+        overflowX="auto"
+        css={{
+          // Hide scrollbar visually on mobile but keep horizontal panning
+          scrollbarWidth: "none",
+          "&::-webkit-scrollbar": { display: "none" },
+        }}
+      >
+        {preview}
+      </Box>
     </Box>
   );
 }
@@ -613,10 +679,7 @@ function Footer() {
     <Box as="footer" px={{ base: 6, md: 20 }} pt={14} pb={9} bg="bg.surface" borderTop="1px solid" borderColor="border" fontSize="xs" color="fg.muted">
       <SimpleGrid columns={{ base: 2, md: 5 }} gap={10} maxW="1280px" mx="auto">
         <Box gridColumn={{ base: "span 2", md: "span 1" }}>
-          <HStack gap={2} fontFamily="heading" fontSize="22px" fontWeight="700" color="fg">
-            <Box w="22px" h="22px" rounded="sm" bg="accent" />
-            <Text>httui</Text>
-          </HStack>
+          <Logo variant="logo" size={28} />
           <Text mt={3} fontSize="13px" lineHeight="1.55" maxW="280px">
             The markdown editor for debugging APIs and databases. Open source · MIT · v0.8.2.
           </Text>

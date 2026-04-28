@@ -1166,7 +1166,7 @@ type TreeNode = {
 
 export function SchemaPreview() {
   const tree: TreeNode[] = [
-    { n: "▾ public", indent: 0, bold: true },
+    { n: "▾ public", indent: 0, bold: true, count: "4 tables" },
     { n: "▸ payments", indent: 1, count: "84.2k" },
     { n: "▾ payments_route", indent: 1, count: "4.3k", active: true },
     { n: "id  uuid", indent: 2, key: true },
@@ -1176,7 +1176,7 @@ export function SchemaPreview() {
     { n: "created_at  timestamptz", indent: 2 },
     { n: "▸ payment_provider", indent: 1, count: "12" },
     { n: "▸ tenants", indent: 1, count: "284" },
-    { n: "▾ analytics", indent: 0, bold: true },
+    { n: "▾ analytics", indent: 0, bold: true, count: "1 table" },
     { n: "▸ events", indent: 1, count: "12.4M" },
   ];
   const rows = [
@@ -1194,6 +1194,7 @@ export function SchemaPreview() {
       fontFamily="mono"
       fontSize="xs"
       shadow="card"
+      minW="640px"
     >
       <Box display="grid" gridTemplateColumns="200px 1fr" h="380px">
         {/* Schema tree */}
@@ -1287,8 +1288,8 @@ export function SchemaPreview() {
 // GitDiffPreview — feature 3: git-native diff
 // ─────────────────────────────────────────────────────────
 export function GitDiffPreview() {
-  const lines: Array<[string, string, "ctx" | "del" | "add"]> = [
-    ["@@", " ## 3. Verify latency", "ctx"],
+  const lines: Array<[string, string, "ctx" | "del" | "add" | "hunk"]> = [
+    ["@@", "-42,7 +42,11 @@  ## 3. Verify latency", "hunk"],
     [" ", "", "ctx"],
     ["-", "```http GET {{api}}/v2/health", "del"],
     ["-", "expect: status === 200", "del"],
@@ -1305,14 +1306,17 @@ export function GitDiffPreview() {
     ["+", "capture: payment_id = $.id", "add"],
     ["+", "```", "add"],
   ];
-  const colorFor = (k: "ctx" | "del" | "add") =>
-    k === "add" ? "ok" : k === "del" ? "err" : "fg.subtle";
-  const bgFor = (k: "ctx" | "del" | "add") =>
+  type Kind = "ctx" | "del" | "add" | "hunk";
+  const colorFor = (k: Kind) =>
+    k === "add" ? "ok" : k === "del" ? "err" : k === "hunk" ? "info" : "fg.subtle";
+  const bgFor = (k: Kind) =>
     k === "add"
       ? "color-mix(in oklch, var(--chakra-colors-ok) 14%, transparent)"
       : k === "del"
         ? "color-mix(in oklch, var(--chakra-colors-err) 14%, transparent)"
-        : "transparent";
+        : k === "hunk"
+          ? "color-mix(in oklch, var(--chakra-colors-info) 10%, transparent)"
+          : "transparent";
   return (
     <Box
       bg="bg.surface"
@@ -1345,11 +1349,17 @@ export function GitDiffPreview() {
       <Box fontFamily="mono" fontSize="11px" lineHeight="1.7">
         {lines.map(([sign, line, kind], i) => (
           <Box key={i} display="grid" gridTemplateColumns="20px 1fr" gap={2}>
-            <Text color={colorFor(kind)} textAlign="center" fontWeight="700">
+            <Text
+              color={colorFor(kind)}
+              textAlign="center"
+              fontWeight="700"
+              bg={kind === "hunk" ? bgFor(kind) : "transparent"}
+            >
               {sign}
             </Text>
             <Text
-              color={kind === "add" ? "fg" : kind === "del" ? "fg.muted" : "fg.muted"}
+              color={kind === "add" ? "fg" : kind === "hunk" ? "info" : "fg.muted"}
+              fontStyle={kind === "hunk" ? "italic" : "normal"}
               bg={bgFor(kind)}
               px={1}
               textDecoration={kind === "del" ? "line-through" : "none"}
