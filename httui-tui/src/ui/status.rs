@@ -91,6 +91,25 @@ pub fn render_status_bar(frame: &mut Frame, area: Rect, app: &App) {
         .unwrap_or_else(|| "—".into());
 
     let mode = app.vim.mode;
+    // Running indicator — emits while a DB/HTTP execution is in
+    // flight. Painted right after the mode chip so the user has
+    // visible feedback even after navigating away from the source
+    // block (Ctrl-W h, gt, etc.). Green to suggest "alive"; the
+    // elapsed counter ticks once per Tick (250 ms) which is fine
+    // for human "is something happening" feedback.
+    let running_chip: Vec<Span<'static>> = match running_chip_label(app) {
+        Some(label) => vec![
+            Span::raw(" "),
+            Span::styled(
+                format!(" {label} "),
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::LightGreen)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ],
+        None => Vec::new(),
+    };
     // Active environment chip — only emits when an env is set as
     // active; otherwise we skip the section entirely so the status
     // bar stays compact for vaults that don't use envs.
@@ -133,6 +152,7 @@ pub fn render_status_bar(frame: &mut Frame, area: Rect, app: &App) {
             .bg(mode.bg())
             .add_modifier(Modifier::BOLD),
     )];
+    spans.extend(running_chip);
     spans.extend(env_chip);
     spans.extend(conn_chip);
     spans.push(Span::raw(format!(
@@ -141,6 +161,28 @@ pub fn render_status_bar(frame: &mut Frame, area: Rect, app: &App) {
     )));
     let line = Line::from(spans);
     frame.render_widget(Paragraph::new(line), area);
+}
+
+/// Build the running-indicator chip label, or `None` when no
+/// query / HTTP request is in flight. Format: `▶ DB · 2.3s` or
+/// `▶ HTTP · 1.1s`. Block-type comes from the source block at
+/// `RunningQuery.segment_idx`; if the document has shifted under
+/// the in-flight task and the segment isn't a block anymore, we
+/// fall back to a generic `▶ running · Xs` so the user still sees
+/// "something is happening".
+fn running_chip_label(app: &App) -> Option<String> {
+    let rq = app.running_query.as_ref()?;
+    let elapsed = rq.started_at.elapsed().as_secs_f32();
+    let kind = app
+        .document()
+        .and_then(|d| d.segments().get(rq.segment_idx))
+        .and_then(|s| match s {
+            Segment::Block(b) if b.is_http() => Some("HTTP"),
+            Segment::Block(b) if b.is_db() => Some("DB"),
+            _ => None,
+        })
+        .unwrap_or("running");
+    Some(format!("▶ {kind} · {elapsed:.1}s"))
 }
 
 fn count_blocks(doc: &Document) -> usize {
