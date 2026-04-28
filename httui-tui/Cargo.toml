@@ -31,6 +31,7 @@ tree-sitter = "0.23"
 tree-sitter-sequel = "0.3"
 arboard = "3"
 chrono = "0.4"
+notify = "8"
 
 [dev-dependencies]
 tempfile = "3"

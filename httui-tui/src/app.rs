@@ -375,6 +375,12 @@ pub struct App {
     /// status bar like `TreePrompt` so the editor underneath stays
     /// visible. See `commands::db::open_fence_edit_*`.
     pub fence_edit: Option<FenceEditState>,
+    /// Filesystem watcher for the active document. `None` until
+    /// `wire_event_sender` runs (unit-test paths skip the watcher
+    /// since there's no main loop to receive its events). Updated
+    /// whenever the active document changes (load, tab switch,
+    /// `:e <path>`).
+    pub file_watcher: Option<crate::fs_watch::FileWatcher>,
 }
 
 /// State for the inline fence-edit prompt. `kind` carries the field
@@ -773,6 +779,7 @@ impl App {
             db_result_tab: ResultPanelTab::default(),
             fence_edit: None,
             environment_picker: None,
+            file_watcher: None,
         };
         app.load_initial_document();
         app.refresh_active_env_name();
@@ -851,6 +858,33 @@ impl App {
     #[allow(dead_code)] // wired up by the upcoming connection picker.
     pub fn refresh_connection_names(&mut self) {
         self.connection_names = load_connection_names(self.pool_manager.app_pool());
+    }
+
+    /// Re-sync the filesystem watcher to follow the current active
+    /// document. Cheap to call repeatedly — `FileWatcher::watch`
+    /// no-ops when the path matches the one already watched. Driven
+    /// from the main loop after every key event so a tab switch /
+    /// `:e` / file tree pick always takes effect, without having to
+    /// instrument every call site.
+    pub fn sync_file_watcher(&mut self) {
+        // Resolve the absolute path first so we don't hold a borrow
+        // on `self` while `file_watcher` (also on `self`) tries to
+        // mutate.
+        let absolute = self
+            .active_pane()
+            .and_then(|p| p.document_path.as_ref())
+            .map(|rel| self.vault_path.join(rel));
+        let Some(watcher) = self.file_watcher.as_mut() else {
+            return;
+        };
+        match absolute {
+            Some(path) => {
+                if let Err(e) = watcher.watch(&path) {
+                    tracing::warn!("file watcher reattach failed: {e}");
+                }
+            }
+            None => watcher.unwatch(),
+        }
     }
 
     /// Re-resolve the active environment's display name from the
@@ -1344,7 +1378,13 @@ pub async fn run(
     // Spawned async tasks (currently the DB executor in
     // `vim::dispatch`) push their results back through this sender;
     // the main loop folds them into the app via `AppEvent` matches.
-    app.event_sender = Some(events.sender());
+    let sender = events.sender();
+    app.event_sender = Some(sender.clone());
+    // Wire the filesystem watcher now that the event sender exists.
+    // `sync_file_watcher` reads the active pane's path and starts
+    // watching — covers the initial document loaded by `App::new`.
+    app.file_watcher = Some(crate::fs_watch::FileWatcher::new(sender));
+    app.sync_file_watcher();
 
     let result = main_loop(&mut terminal, &mut app, &mut events).await;
 
@@ -1365,7 +1405,15 @@ async fn main_loop(
             .map_err(|e| crate::error::TuiError::Terminal(format!("draw: {e}")))?;
 
         match events.next().await {
-            Some(AppEvent::Key(k)) => handle_key(app, k),
+            Some(AppEvent::Key(k)) => {
+                handle_key(app, k);
+                // Any keystroke that opened/closed a tab, ran `:e`,
+                // or picked a file from quickopen / tree changes the
+                // active document. Re-target the watcher in lockstep
+                // so external edits to the new file get reloaded
+                // and stale watches on closed files stop firing.
+                app.sync_file_watcher();
+            }
             Some(AppEvent::Resize(_, _)) => {}
             Some(AppEvent::Tick) => {}
             Some(AppEvent::DbBlockResult {
@@ -1395,6 +1443,9 @@ async fn main_loop(
             Some(AppEvent::ContentSearchIndexBuilt { result }) => {
                 crate::commands::search::handle_index_built(app, result);
             }
+            Some(AppEvent::FileChangedExternally { path }) => {
+                handle_file_changed_externally(app, path);
+            }
             Some(AppEvent::Quit) | None => app.should_quit = true,
         }
     }
@@ -1404,6 +1455,85 @@ async fn main_loop(
 
 fn handle_key(app: &mut App, key: KeyEvent) {
     vim::dispatch(app, key);
+}
+
+/// Fold a `FileChangedExternally` event into the active pane.
+/// Three outcomes:
+///
+/// 1. Disk content equals the buffer's serialized markdown — drop
+///    silently. The watcher fires for our own writes too, and we
+///    can't tell those apart at the OS level. Comparing content is
+///    cheap and unambiguous.
+/// 2. Disk differs and the buffer is clean — replace the document
+///    in place. Cursor is reset to doc start (preserving the
+///    previous cursor across an unrelated rewrite is brittle —
+///    rewrites can shorten/restructure the doc).
+/// 3. Disk differs and the buffer is dirty — leave the buffer
+///    alone, surface a status warning. The user keeps their work;
+///    a future iteration could open a conflict-resolution UI.
+///
+/// The event's `path` is checked against the active pane's path;
+/// stale events (user switched tabs after the write) are dropped
+/// rather than reloading the wrong file.
+fn handle_file_changed_externally(app: &mut App, path: std::path::PathBuf) {
+    let Some(pane) = app.active_pane() else {
+        return;
+    };
+    let Some(rel) = pane.document_path.clone() else {
+        return;
+    };
+    let absolute = app.vault_path.join(&rel);
+    if absolute != path {
+        // Stale event for a previously-watched file; ignore.
+        return;
+    }
+    let disk = match httui_core::fs::read_note(
+        &app.vault_path.to_string_lossy(),
+        &rel.to_string_lossy(),
+    ) {
+        Ok(s) => s,
+        Err(_) => {
+            // Read failed (file deleted, permission flip). Don't
+            // surface a status hint here — `notify` events fire on
+            // the unlink that precedes a rename too, so noise is
+            // expected.
+            return;
+        }
+    };
+    let buffer = match pane.document.as_ref() {
+        Some(d) => d.to_markdown(),
+        None => return,
+    };
+    if disk == buffer {
+        return;
+    }
+    let dirty = pane.document.as_ref().is_some_and(|d| d.is_dirty());
+    if dirty {
+        app.set_status(
+            crate::app::StatusKind::Error,
+            "file changed on disk; buffer has unsaved edits — use `:e!` to discard and reload",
+        );
+        return;
+    }
+    // Clean buffer + disk diff → reload silently.
+    let new_doc = match Document::from_markdown(&disk) {
+        Ok(d) => d,
+        Err(e) => {
+            app.set_status(
+                crate::app::StatusKind::Error,
+                format!("reload failed: {e}"),
+            );
+            return;
+        }
+    };
+    if let Some(pane) = app.active_pane_mut() {
+        pane.document = Some(new_doc);
+        pane.viewport_top = 0;
+    }
+    app.set_status(
+        crate::app::StatusKind::Info,
+        format!("reloaded {} from disk", rel.display()),
+    );
 }
 
 /// Y row of the cursor in document-absolute coordinates.

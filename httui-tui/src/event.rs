@@ -3,6 +3,7 @@ use futures::StreamExt;
 use httui_core::db::schema_cache::SchemaEntry;
 use httui_core::executor::db::types::DbResponse;
 use httui_core::executor::http::types::HttpResponse;
+use std::path::PathBuf;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -53,6 +54,15 @@ pub enum AppEvent {
     /// Failure surfaces as a status error and clears the modal.
     ContentSearchIndexBuilt {
         result: Result<(), String>,
+    },
+    /// The filesystem watcher saw a modify/create event on the
+    /// active document's path. The main loop compares disk content
+    /// to the buffer; if equal, the event was our own write and we
+    /// silently drop it. If different + clean, the buffer is
+    /// reloaded silently. If different + dirty, a status warning
+    /// surfaces (the user has unsaved changes that would be lost).
+    FileChangedExternally {
+        path: PathBuf,
     },
 }
 
