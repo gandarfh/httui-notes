@@ -9,9 +9,9 @@ Referência: [`docs/tui-design.md`](../tui-design.md) §7.1, §8.
 
 ---
 
-## Story 01: Layout raiz e composição de panes
+## Story 01: Layout raiz e composição de panes ✅ done
 
-Estrutura de containers: sidebar, tab bar, editor area, status bar.
+Estrutura de containers: sidebar, tab bar, editor area, status bar. Shippado: layout 2-níveis em `ui/mod.rs` (sidebar + main horizontal; tabs + editor + status vertical), `<C-e>` toggle sidebar (`Mode::Tree`), `<C-w>>`/`<C-w><` resize, render correto em viewports variados via ratatui auto-resize.
 
 ### Tasks
 
@@ -23,9 +23,9 @@ Estrutura de containers: sidebar, tab bar, editor area, status bar.
 - [ ] Resize via drag (mouse opcional) ou `<C-w>>` / `<C-w><`
 - [ ] Testes: layout correto em viewports de 80x24, 120x40, 200x60
 
-## Story 02: File tree
+## Story 02: File tree ✅ done
 
-Árvore do vault com navegação e CRUD via teclado.
+Árvore do vault com navegação e CRUD via teclado. Shippado: `Mode::Tree` + `Mode::TreePrompt`, `tree.rs` com refresh do `list_workspace`, j/k/h/l/o/Enter/gg/G motions, CRUD inline (a/r/d com prompts no status bar), foco swap via `Tab`. Atualização ao vivo via `notify` watcher ainda V2.
 
 ### Tasks
 
@@ -44,9 +44,9 @@ Estrutura de containers: sidebar, tab bar, editor area, status bar.
 - [ ] Foco na file tree via `<C-w>h` (como split esquerdo)
 - [ ] Testes: CRUD produz efeito esperado, tree atualiza em tempo real
 
-## Story 03: Sistema de tabs
+## Story 03: Sistema de tabs ✅ done
 
-Múltiplos documentos abertos simultaneamente, cada um com seu cursor/estado.
+Múltiplos documentos abertos simultaneamente. Shippado: `TabBar` em `app.rs` (`tabs: Vec<TabState>`, `active`), `gt`/`gT` cycle, `:tabnew`/`open_in_new_tab`, `:tabclose`/`close_tab` com dirty check + `!` override. Persistência via `restore_session` ainda V2 (a sessão atual já é persistida em SQLite).
 
 ### Tasks
 
@@ -63,9 +63,9 @@ Múltiplos documentos abertos simultaneamente, cada um com seu cursor/estado.
 - [ ] Overflow: se tabs > largura, cicla via setas no lado direito
 - [ ] Testes: abertura, fechamento, persistência, cursor preservado ao trocar
 
-## Story 04: Split panes
+## Story 04: Split panes ✅ done
 
-Editor dividido horizontal/vertical com panes independentes.
+Editor dividido horizontal/vertical. Shippado: `PaneNode { Leaf, Split }` em `pane.rs`, full `<C-w>` family (s/v/h/j/k/l/c/o/=/>/<), border destacada no pane focado, render recursivo via ratatui Layout. Mover pane (`<C-w>HJKL`) e maximize (`<C-w>_/|`) ainda V2.
 
 ### Tasks
 
@@ -84,9 +84,9 @@ Editor dividido horizontal/vertical com panes independentes.
 - [ ] Render recursivo: walk da árvore, aloca áreas via `ratatui::Layout`
 - [ ] Testes: split/merge produzem árvore correta, navegação não quebra
 
-## Story 05: Quick open (`<C-p>`)
+## Story 05: Quick open (`<C-p>`) ✅ done
 
-Busca fuzzy por nome de arquivo com preview.
+Busca fuzzy por nome de arquivo. Shippado: `Mode::QuickOpen`, `QuickOpen` state com `LineEdit` + fuzzy_score (subsequence + adjacency + start-of-segment bonuses), modal centralizado via `ui/quickopen.rs`, Up/Down/Ctrl-n/p navegação, Enter abre em nova tab. Preview pane do arquivo selecionado e MRU history ainda V2.
 
 ### Tasks
 
@@ -102,25 +102,41 @@ Busca fuzzy por nome de arquivo com preview.
 - [ ] Preview do arquivo selecionado no lado direito do modal (10 linhas do topo)
 - [ ] Testes: fuzzy scoring correto, keyboard navigation funciona
 
-## Story 06: FTS search (`<leader>fg`)
+## Story 06: FTS search (`<C-f>`) ✅ V1 done (2026-04-27)
 
 Busca full-text no conteúdo do vault com snippet preview.
 
-### Tasks
+### Entregue na TUI
 
-- [ ] Overlay similar ao quick open, mas busca conteúdo (usa `search_content` do core com FTS5)
-- [ ] Resultado: `{ path, line, snippet com highlight, score }`
-- [ ] Input com debounce (200ms) pra não overwhelm FTS
-- [ ] Regex opcional com `\v` prefix (smart-default)
-- [ ] Filtros via prefixos: `ext:md` (filetype), `path:docs/` (path contains)
-- [ ] `<CR>` abre arquivo no match + move cursor pra linha
-- [ ] `<Tab>` adiciona ao quickfix list (opcional MVP)
-- [ ] Preview: 3 linhas de contexto antes/depois do match com highlight
-- [ ] Testes: encontra matches, preview correto, filtros funcionam
+- [x] **Modal overlay** — full-screen 90×70 centered (`ui/content_search.rs`), título `Find content · N matches`, prompt `?` (vs `>` do quick-open) pra diferenciação visual
+- [x] **Chord `<C-f>`** — bound em `vim/keybindings.rs::CONTENT_SEARCH`, sobrepõe vim's `<C-f>` page-down (já temos `<C-d>` half-page, então OK). Não usa leader (TUI não tem leader infra)
+- [x] **Backend reuse** — `httui-core::search::search_content` (FTS5, snippet com `<mark>` tags, ORDER BY rank LIMIT 50). Lib já existe + testada
+- [x] **Lazy index rebuild** — `App.content_search_index_built: bool`. First open this session faz `rebuild_search_index` sync via `tokio::block_in_place` (V1 trade-off: brief freeze on big vaults)
+- [x] **Per-keystroke search** — `commands/search.rs::requery` chama `search_content` sync após cada char/backspace/delete. Empty query mostra hint placeholder; query malformada (FTS5 syntax error mid-typing) limpa results sem barulho
+- [x] **Snippet rendering** — parser leve em `ui/content_search::highlight_snippet` traduz `<mark>…</mark>` pra spans coloridos (bg LightGreen na região marcada, fg DarkGray no resto). Folds CR/LF pra space pra cada result ficar em uma linha
+- [x] **Result row** — duas linhas por entry: file path em LightCyan, snippet indented em DarkGray. ListItem multi-line (Ratatui suporta nativo)
+- [x] **Navegação** — Up/Down + Ctrl-n/Ctrl-p movem highlight; **j/k vão pro buffer** (FTS5 query pode conter j/k literais)
+- [x] **`<CR>` abre arquivo** — chama `app.open_in_new_tab(path)`, falha (file moved/deleted desde index) surface como status error
+- [x] **Tests:** 5 novos (3 do `highlight_snippet` em UI module + 2 do parser routing)
 
-## Story 07: Status bar
+### Polish entregue (mesmo dia)
 
-Linha de status com modo, env, conexão, cursor, hints.
+- [x] **Update-on-save** — hook em `vim/ex.rs::write_document`. Após `write_note` succeed, spawn-and-forget `update_search_entry(pool, file_path, body)`. Gate em `content_search_index_built` pra não escrever rows que o user nunca vai consultar. Apenas `.md`.
+- [x] **Update-on-delete** — hook em `app.rs::delete_path`. Após `remove_file/remove_dir_all`, spawn-and-forget purge: file → `remove_search_entry`; dir → `DELETE WHERE file_path = ? OR file_path LIKE 'dir/%'` direto via sqlx.
+- [x] **Update-on-rename** — hook em `app.rs::rename_path`. Após `fs::rename`, drop a row antiga + re-insert sob o novo path com o body atual lido do disco.
+- [x] **Async rebuild com banner "indexing…"** — `open_content_search` agora spawn-task em vez de `tokio::block_in_place`. Modal abre imediatamente com `state.building = true` e banner amarelo "indexing vault…". Per-keystroke `requery` é no-op enquanto building (querying um índice meio-construído mostraria resultados parciais). `AppEvent::ContentSearchIndexBuilt` flippa o flag, dispara um requery final contra o índice fresh, e — em failure — fecha o modal + status error.
+
+### Não cobre (V2)
+
+- [ ] Watcher integration (`notify` crate) pra detectar mudanças externas (edição via outro editor enquanto TUI está aberto)
+- [ ] Move cursor pra linha do match (FTS5 schema atual não armazena offsets, precisa ampliar)
+- [ ] Filtros via prefixos (`ext:md`, `path:docs/`)
+- [ ] Quickfix list (`<Tab>` adiciona match à lista)
+- [ ] 3-line context preview no result panel
+
+## Story 07: Status bar ✅ done (parcial)
+
+Linha de status com modo, env, conexão, cursor, hints. Shippado: `ui/status.rs` com layout 3-zone (modo + ctx esquerda, posição centro, hints/messages direita), modo com bg color por kind (Normal cyan, Insert yellow, Visual red, Find green, etc.), minibuffer pra `:` e `/` (CommandLine/Search), TreePrompt inline, indicador dirty (`·●`). Pendente V2: env ativa + conexão default no chrome do status bar, encoding/file type, `:messages` log de notifications.
 
 ### Tasks
 

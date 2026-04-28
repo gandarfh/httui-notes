@@ -202,11 +202,11 @@ Referência: [`docs/http-block-redesign.md`](../http-block-redesign.md) — spec
 
 **Invariante:** result panel paridade Postman exceto cookies persistentes (V2) e HTML preview (V2). History persistido com privacy-by-default.
 
-## Story 24.7 — Send-as code generation
+## Story 24.7 — Send-as code generation ✅ done (TUI clipboard, 2026-04-27)
 
 > Etapa 7. Feature set V1 completo. (Tests inline foram descartados — use o E2E block para assertions.)
 
-### Tasks
+### Tasks (desktop)
 
 - [ ] Send-as menu (⤓ na toolbar):
   - [ ] Copy as cURL (refs resolvidas, escape de quotes, URL-encode de query)
@@ -218,6 +218,19 @@ Referência: [`docs/http-block-redesign.md`](../http-block-redesign.md) — spec
 - [ ] Refs `{{...}}` resolvidas via `resolveAllReferences` antes do output — snippet gerado tem valores finais, não placeholders
 - [ ] Testes vitest: cURL/fetch/Python/HTTPie output válido (round-trip de parsing), refs resolvidas, encoding correto (JSON quotes, URL `+`)
 - [ ] Testes RTL: menu abre/fecha, shortcut dispara direto, `.http` save chama Tauri dialog
+
+### Entregue na TUI (2026-04-27)
+
+- [x] **Lib pura `httui-core::blocks::http_codegen`** — port de `src/lib/blocks/http-codegen.ts`. 5 funções: `to_curl`, `to_fetch`, `to_python`, `to_httpie`, `to_http_file`. URL-encoding via `percent-encoding` crate; shell-quote single-quote `'…'\''…'`; JS/Python escape `\\`/`'`/`\n`. Body só pra POST/PUT/PATCH/DELETE (mirror JS). Empty keys dropped (mirror parser).
+- [x] **Picker `gx` block-type aware** — `BlockExportFormat` enum com `DB_FORMATS` (CSV/JSON/Markdown/INSERT) e `HTTP_FORMATS` (cURL/Fetch/Python/HTTPie/.http). `DbExportPickerState.formats: &'static [...]` snapshotted no open. Open validation: HTTP precisa de URL não vazia (não precisa de result), DB precisa de SELECT result com ≥1 row.
+- [x] **Confirm dispatch** — `confirm_export_picker` faz match por format e roteia pra `db_export::*` ou `http_codegen::*`. Status summary distinto pra DB (`X rows`) vs HTTP (só bytes).
+- [x] **Header chip line** atualizada: HTTP blocks mostram `r run · gh history · gx export`; DB mantém `gx export · gs settings`.
+- [x] **Tests:** 11 unit tests no `httui-core::blocks::http_codegen` (cURL multi-line+escape, fetch headers/body, Python skip empty blocks, HTTPie `==`/`:` syntax, .http file format, percent-encoding, empty-key drop).
+
+**Pendente na TUI (V2 / pequeno):**
+- [x] **`<C-S-c>` direct shortcut** — implementado 2026-04-27. `kb::matches_copy_as_curl` aceita `CTRL+SHIFT+'C'` e bare `CTRL+'C'` (terminals diferentes encodam diferente); plain `<C-c>` lower-case continua como cancel intercept no top do dispatch. Resolve refs antes do output, mesma flow do gx picker.
+- [x] **Resolver `{{refs}}` antes do output** — implementado 2026-04-27. `confirm_export_picker` HTTP path e `copy_as_curl` ambos chamam `resolve_in_http_params` antes de `to_*`. Snippets gerados ficam aplicáveis (cURL/Fetch que rodam direto sem placeholders).
+- [ ] Save-as-file destino (ambos DB e HTTP — depende de path-prompt UX)
 
 **Invariante:** feature set V1 do spec completo.
 

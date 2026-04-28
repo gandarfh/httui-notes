@@ -445,16 +445,22 @@ Após Story 04.2 (multi-statement), result panel precisa abas. Espelha desktop:
 
 ---
 
-### Story 05.3 — Export menu (CSV/MD/INSERT além de JSON) 🚧 P2
+### Story 05.3 — Export menu (CSV/MD/INSERT além de JSON) ✅ done (clipboard, block-type aware)
 
 Hoje só `Y` no modal copia row como JSON. Desktop oferece 4 formatos via menu.
 
-**Tasks:**
-- [ ] Ex command `:export <format>` ou keybinding `<leader>y` abre picker
-- [ ] Formatos: CSV (RFC 4180), JSON (array), Markdown (GFM table), INSERT (per-row INSERT inferring table name)
-- [ ] Destinos: clipboard (default) ou `:export <format> <path>` salva file
-- [ ] Reuso da lógica de `httui-core` se já existe (desktop usa `src/lib/blocks/db-export.ts` — pode ter equivalent Rust); senão portar
-- [ ] Testes: cada formato gera output esperado pra dataset fixture
+**Entregue:**
+- [x] **Keybind `gx`** abre o picker (g-prefix family — sidesteps `<C-x>`/`y` collisions per `feedback_tui_chord_constraints.md`); ex command rejeitado pela memory `feedback_tui_keymaps_over_ex.md`
+- [x] Formatos: CSV (RFC 4180 quoting), JSON (array pretty-printed), Markdown (GFM table com escape de `|`/`\`/CRLF), INSERT (per-row, com `infer_table_name` lendo `FROM`)
+- [x] Destino: clipboard via `arboard::set_text` (mensagem de status com `<format>·<rows> rows·<bytes> bytes`); save-to-file deferido pra V2 (precisa path picker)
+- [x] **Lógica portada para `httui-core::blocks::db_export`** — `to_csv` / `to_json` / `to_markdown` / `to_inserts` / `infer_table_name` / `has_exportable_rows`. Reusable do desktop (que ainda usa `src/lib/blocks/db-export.ts` mas pode migrar)
+- [x] Testes: 24 unit tests no core (CSV escapes, NULL handling, JSON pretty-print, MD pipe-escape, INSERT quoting, table-name inference com line/block comments, word boundaries) + 2 testes de parser TUI (`gx_opens_export_picker`, `export_picker_navigation_keys`)
+- [x] Picker UI dedicado (`ui/db_export_picker.rs`) com chrome idêntico ao `connection_picker` — anchored above the focused block, wraps com j/k
+- [x] Validation gates antes de abrir: cursor on db-* block, cached SELECT result, ≥1 row — erros surfaced no status bar
+- [x] Header chip line atualizada: DB blocks mostram `r run  ·  gx export  ·  gs settings` (HTTP/E2E mantém o original)
+
+**Não cobre (V2):**
+- Save-to-file destination (precisa LineEdit prompt para path)
 
 ---
 
@@ -495,7 +501,7 @@ Commit `5fe1a40`. Cycle: Input → Split → Output → Input.
 
 ---
 
-### Story 11 — Edição inline do fence info string (DB) ✅ parcial
+### Story 11 — Edição inline do fence info string (DB) ✅ done
 
 Editar metadados do bloco DB sem sair (alias, connection, limit, timeout, display_mode).
 
@@ -508,13 +514,13 @@ Editar metadados do bloco DB sem sair (alias, connection, limit, timeout, displa
   - Originalmente shippado como `<C-a>` mas rebinded pra `ga` (conflict com tmux prefix)
 - [x] `<C-d>` edita display mode (input/output/split) — Story 08 (`gd`)
 - [x] Connection edit — já existe via `<C-l>` picker (Story 04)
-
-**Deferido — vira modal único futuro:**
-- [ ] limit (numérico)
-- [ ] timeout (numérico, ms)
-- ⏸ Não shippar como `gl` / `gw` chord-por-campo. Usuário pediu (2026-04-26) modal único com vários inputs (Tab navigation entre campos, `<CR>` salva tudo, `<Esc>` cancela). Provavelmente `gs` "go settings" abre o modal. Reativar quando o restante da paridade DB-V1 estiver fechada.
-
-**Depende de:** Story 04.5 (timeout token) — quando o modal vier.
+- [x] **Slice 2/3 — Settings modal** (`gs`): popup único com 2 inputs (limit + timeout) — implementação per `project_tui_block_settings_modal.md` user-memory ("um modal, não chord-por-campo")
+  - Novo `Mode::DbSettings` + `App.db_settings: Option<DbSettingsState>` (carrega 2 `LineEdit`s + `DbSettingsFocus` enum)
+  - Parser `parse_db_settings_modal`: Tab/BackTab/Up/Down ciclam o foco; Enter salva ambos; Esc/Ctrl-C cancela; chars typeable vão para o input focado; backspace/delete/arrows operam no foco
+  - UI module dedicado `ui/db_settings_modal.rs` — anchored above the block, label dim quando não focado, sigil amarelo no caret do input ativo
+  - Validação numérica em `parse_optional_u64`: empty = clear field, `u64` válido = set, qualquer outra coisa = status error (modal permanece aberto)
+  - Confirm path: `doc.snapshot()` antes de mutar (undo recupera), insere/remove `params.limit` e `params.timeout_ms` consoante validação, status summary com valores aplicados
+  - Tests: parser routing (Tab/Enter/Esc/digit/backspace/Ctrl-x rejeitado), `parse_optional_u64` (zero/large/empty/non-numeric/decimal/negative), `DbSettingsFocus::next/prev` cycle
 
 ---
 
