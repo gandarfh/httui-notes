@@ -161,6 +161,59 @@ pub struct ConnectionEntry {
     pub kind: String,
 }
 
+/// One row in the block-template picker. Static / hand-curated —
+/// the desktop's slash-command list (`src/lib/codemirror/cm-slash-commands.ts`)
+/// has the canonical set; we ship a trimmed V1 with the three most
+/// common templates. `text` is the fence to splice into the prose
+/// segment; `Document::reparse_prose_at` then promotes it to a
+/// `Segment::Block` so the user sees the rendered block immediately.
+#[derive(Debug, Clone, Copy)]
+pub struct BlockTemplate {
+    pub label: &'static str,
+    pub text: &'static str,
+}
+
+impl BlockTemplate {
+    /// V1 template set. Order is "expected frequency" — HTTP GET
+    /// first, then HTTP POST (with JSON body skeleton), then a
+    /// SQLite query starter. Postgres / MySQL templates can land
+    /// later; users with those drivers usually copy from an
+    /// existing block anyway.
+    pub const ALL: &'static [BlockTemplate] = &[
+        BlockTemplate {
+            label: "HTTP GET",
+            text: "```http alias=req1\nGET https://example.com\n```\n",
+        },
+        BlockTemplate {
+            label: "HTTP POST (JSON)",
+            text: "```http alias=req1\nPOST https://example.com\nContent-Type: application/json\n\n{}\n```\n",
+        },
+        BlockTemplate {
+            label: "SQLite Query",
+            text: "```db-sqlite alias=db1\nSELECT 1;\n```\n",
+        },
+    ];
+}
+
+/// Open instance of the block-template picker (`gN`). The picker
+/// lives over the editor, centered (no anchor — the templates aren't
+/// tied to a source block). `selected` indexes into `BlockTemplate::ALL`.
+pub struct BlockTemplatePickerState {
+    pub selected: usize,
+}
+
+impl BlockTemplatePickerState {
+    pub fn new() -> Self {
+        Self { selected: 0 }
+    }
+}
+
+impl Default for BlockTemplatePickerState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Open instance of the environment picker popup (`gE`). Lists every
 /// row from the `environments` table; `selected` indexes into
 /// `entries`. The active env is identified by `active_id` so the
@@ -387,6 +440,11 @@ pub struct App {
     /// so a flag is enough; a future iteration with a search field
     /// would graduate this to a struct.
     pub help_visible: bool,
+    /// `Some` while the block-template picker is open (`gN`). Mode
+    /// flips to `Mode::BlockTemplatePicker`. The template list is a
+    /// static `&'static [BlockTemplate]` so the state only carries
+    /// the selection cursor.
+    pub block_template_picker: Option<BlockTemplatePickerState>,
 }
 
 /// State for the inline fence-edit prompt. `kind` carries the field
@@ -787,6 +845,7 @@ impl App {
             environment_picker: None,
             file_watcher: None,
             help_visible: false,
+            block_template_picker: None,
         };
         app.load_initial_document();
         app.refresh_active_env_name();

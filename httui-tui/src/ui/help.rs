@@ -86,6 +86,7 @@ const SECTIONS: &[Section] = &[
         title: "Help & misc",
         entries: &[
             Entry { chord: "g?", label: "this help modal" },
+            Entry { chord: "gN", label: "insert new block from template" },
             Entry { chord: ":w / :wq / :q / :q!", label: "write / write-quit / quit / force-quit" },
             Entry { chord: ":e <path>", label: "open file" },
             Entry { chord: "u / Ctrl-R", label: "undo / redo" },

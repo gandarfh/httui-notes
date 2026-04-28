@@ -86,6 +86,14 @@ pub enum Mode {
     /// it cleanly) — `g?` matches the `g`-prefix family used by the
     /// rest of the modal openers.
     Help,
+    /// `gN` — open the block-template picker. Lists a small fixed
+    /// set of executable-block templates (HTTP GET / POST / SQLite
+    /// Query); Enter inserts the picked template at the cursor's
+    /// line and re-parses the surrounding prose so the fence
+    /// promotes to a `Segment::Block`. Mnemonic: `g` + capital N
+    /// for "go new (block)" — lowercase `gn` is taken by vim's
+    /// "find next match" motion.
+    BlockTemplatePicker,
 }
 
 impl Mode {
@@ -111,6 +119,7 @@ impl Mode {
             Mode::ContentSearch => "FIND",
             Mode::EnvironmentPicker => "ENV",
             Mode::Help => "HELP",
+            Mode::BlockTemplatePicker => "NEW",
         }
     }
 
@@ -134,6 +143,7 @@ impl Mode {
             Mode::ContentSearch => Color::LightGreen,
             Mode::EnvironmentPicker => Color::LightMagenta,
             Mode::Help => Color::LightCyan,
+            Mode::BlockTemplatePicker => Color::LightGreen,
         }
     }
 

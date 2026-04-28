@@ -13,11 +13,12 @@ use crate::vim::operator;
 use crate::commands::db::{load_active_env_vars, resolve_connection_id_sync};
 use crate::pane::{FocusDir, SplitDir};
 use crate::vim::parser::{
-    parse_block_history, parse_cmdline, parse_connection_picker, parse_content_search,
-    parse_db_confirm_run, parse_db_export_picker, parse_db_row_detail, parse_db_settings_modal,
-    parse_environment_picker, parse_fence_edit, parse_help, parse_http_response_detail,
-    parse_insert, parse_normal, parse_quickopen, parse_search, parse_tree, parse_tree_prompt,
-    parse_visual, Action, InsertPos, Motion, Operator, PastePos, TextObject, WindowCmd,
+    parse_block_history, parse_block_template_picker, parse_cmdline, parse_connection_picker,
+    parse_content_search, parse_db_confirm_run, parse_db_export_picker, parse_db_row_detail,
+    parse_db_settings_modal, parse_environment_picker, parse_fence_edit, parse_help,
+    parse_http_response_detail, parse_insert, parse_normal, parse_quickopen, parse_search,
+    parse_tree, parse_tree_prompt, parse_visual, Action, InsertPos, Motion, Operator, PastePos,
+    TextObject, WindowCmd,
 };
 use crate::vim::search;
 use crate::tree::{TreePrompt, TreePromptKind};
@@ -89,6 +90,7 @@ pub fn dispatch(app: &mut App, key: KeyEvent) {
         Mode::ContentSearch => parse_content_search(key),
         Mode::EnvironmentPicker => parse_environment_picker(key),
         Mode::Help => parse_help(key),
+        Mode::BlockTemplatePicker => parse_block_template_picker(key),
     };
 
     // Snapshot the pre-swap cursor so the post-action "reparse on
@@ -762,6 +764,19 @@ fn apply_action(app: &mut App, action: Action, recording: bool) {
         }
         Action::JumpNextBlock => apply_jump_block(app, JumpDir::Next),
         Action::JumpPrevBlock => apply_jump_block(app, JumpDir::Prev),
+        Action::OpenBlockTemplatePicker => {
+            app.block_template_picker = Some(crate::app::BlockTemplatePickerState::new());
+            app.vim.mode = Mode::BlockTemplatePicker;
+            app.vim.reset_pending();
+        }
+        Action::CloseBlockTemplatePicker => {
+            app.block_template_picker = None;
+            app.vim.enter_normal();
+        }
+        Action::MoveBlockTemplatePickerCursor(delta) => {
+            apply_move_block_template_picker_cursor(app, delta)
+        }
+        Action::ConfirmBlockTemplatePicker => apply_confirm_block_template_picker(app),
         Action::CompletionNext => apply_completion_next(app),
         Action::CompletionPrev => apply_completion_prev(app),
         Action::CompletionAccept => apply_completion_accept(app),
@@ -2146,6 +2161,123 @@ fn apply_jump_block(app: &mut App, dir: JumpDir) {
         });
     }
     app.refresh_viewport_for_cursor();
+}
+
+// ───────────── block-template picker (gN) ─────────────
+
+fn apply_move_block_template_picker_cursor(app: &mut App, delta: i32) {
+    let Some(state) = app.block_template_picker.as_mut() else { return };
+    let len = crate::app::BlockTemplate::ALL.len();
+    if len == 0 {
+        return;
+    }
+    let last = len as i64 - 1;
+    let next = (state.selected as i64).saturating_add(delta as i64).clamp(0, last);
+    state.selected = next as usize;
+}
+
+/// `Enter` in the block-template picker — splice the picked
+/// template's text into the active document at the cursor's
+/// segment + line and re-parse so the typed fence promotes to a
+/// `Segment::Block`. Three placement rules:
+///
+/// 1. Cursor in prose → insert at the start of the line *after*
+///    the cursor's line (so we don't break a half-typed sentence
+///    by injecting a fence mid-line).
+/// 2. Cursor in a block → status error "exit block first" (the
+///    template fence would corrupt the host block's `raw` rope).
+/// 3. Cursor in a block result → same as (2).
+///
+/// Snapshot is taken before the splice so undo restores both the
+/// inserted text and any cursor jump that follows. Cursor lands on
+/// the freshly-promoted block's first body offset so the user can
+/// immediately edit the URL / SQL.
+fn apply_confirm_block_template_picker(app: &mut App) {
+    let Some(state) = app.block_template_picker.take() else {
+        app.vim.enter_normal();
+        return;
+    };
+    app.vim.enter_normal();
+    let Some(tpl) = crate::app::BlockTemplate::ALL.get(state.selected).copied() else {
+        return;
+    };
+    let cursor = match app.document().map(|d| d.cursor()) {
+        Some(c) => c,
+        None => return,
+    };
+    let (segment_idx, line_offset_for_insert) = match cursor {
+        Cursor::InProse { segment_idx, offset } => {
+            // Compute the char offset at the start of the line *after*
+            // the cursor's line so the splice goes onto a fresh line.
+            let Some(doc) = app.document() else { return };
+            let rope = match doc.segments().get(segment_idx) {
+                Some(Segment::Prose(r)) => r,
+                _ => return,
+            };
+            let total = rope.len_chars();
+            let off = offset.min(total);
+            let line = rope.char_to_line(off);
+            // `line_to_char(line + 1)` is the start of the next line;
+            // when the cursor is on the last line this hits `total`,
+            // which is also "end of doc" — the splice appends.
+            let next_line_start = if line + 1 < rope.len_lines() {
+                rope.line_to_char(line + 1)
+            } else {
+                total
+            };
+            (segment_idx, next_line_start)
+        }
+        Cursor::InBlock { .. } | Cursor::InBlockResult { .. } => {
+            app.set_status(
+                StatusKind::Info,
+                "exit block (Esc) before inserting a new block template",
+            );
+            return;
+        }
+    };
+
+    if let Some(doc) = app.document_mut() {
+        doc.snapshot();
+        // Templates already include a trailing newline; if the cursor
+        // is on a non-empty last line we prepend a `\n` so the fence
+        // doesn't graft onto existing prose. `insert_text_in_segment`
+        // is a raw rope insert — `reparse_prose_at` does the magic.
+        let needs_leading_newline = {
+            let rope = match doc.segments().get(segment_idx) {
+                Some(Segment::Prose(r)) => r,
+                _ => return,
+            };
+            line_offset_for_insert == rope.len_chars()
+                && rope.len_chars() > 0
+                && rope.char(rope.len_chars() - 1) != '\n'
+        };
+        let to_insert: String = if needs_leading_newline {
+            format!("\n{}", tpl.text)
+        } else {
+            tpl.text.to_string()
+        };
+        doc.insert_text_in_segment(segment_idx, line_offset_for_insert, &to_insert);
+        // Promote the typed fence into a `Segment::Block`. After this
+        // call the prose segment may have been split (or replaced),
+        // and a new block segment exists in its slot.
+        doc.reparse_prose_at(segment_idx);
+        // Park the cursor at the start of the first new block, if
+        // any — search forward from the original splice point.
+        if let Some((new_idx, _)) = doc
+            .segments()
+            .iter()
+            .enumerate()
+            .skip(segment_idx)
+            .find(|(_, s)| matches!(s, Segment::Block(_)))
+        {
+            doc.set_cursor(Cursor::InBlock {
+                segment_idx: new_idx,
+                offset: 0,
+            });
+        }
+    }
+    app.refresh_viewport_for_cursor();
+    app.set_status(StatusKind::Info, format!("inserted {}", tpl.label));
 }
 
 // ───────────── environment picker (gE) ─────────────

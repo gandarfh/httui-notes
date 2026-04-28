@@ -507,6 +507,21 @@ pub enum Action {
     /// `g[` chord — jump to the previous executable block. Same
     /// no-wrap rule as `g]`.
     JumpPrevBlock,
+    /// `gN` chord — open the block-template picker. Lowercase `gn`
+    /// is taken by vim's "find next match" motion, so the new-block
+    /// chord uses capital N.
+    OpenBlockTemplatePicker,
+    /// `Esc` / `Ctrl-C` inside the template picker — close without
+    /// inserting anything.
+    CloseBlockTemplatePicker,
+    /// `j` / `Down` / `k` / `Up` (and `Ctrl-n` / `Ctrl-p`) inside
+    /// the template picker — move the highlight by `i32` (positive
+    /// = next, negative = prev). Clamps at the ends.
+    MoveBlockTemplatePickerCursor(i32),
+    /// `Enter` inside the template picker — splice the selected
+    /// template's text into the prose segment at cursor and re-parse
+    /// so the typed fence promotes to a block.
+    ConfirmBlockTemplatePicker,
     Noop,
 }
 
@@ -835,6 +850,12 @@ pub fn parse_normal(state: &mut VimState, key: KeyEvent) -> Action {
         if let KeyCode::Char('[') = code {
             state.take_count();
             return Action::JumpPrevBlock;
+        }
+        // `gN` — open the block-template picker. Capital N to dodge
+        // vim's `gn` (find next match) motion.
+        if let KeyCode::Char('N') = code {
+            state.take_count();
+            return Action::OpenBlockTemplatePicker;
         }
         // Drop the prefix and continue parsing.
     }
@@ -1523,6 +1544,7 @@ fn is_blocked_in_modal(action: &Action) -> bool {
             | Action::OpenConnectionPicker
             | Action::OpenEnvironmentPicker
             | Action::OpenHelp
+            | Action::OpenBlockTemplatePicker
     )
 }
 
@@ -1586,6 +1608,34 @@ pub fn parse_connection_picker(key: KeyEvent) -> Action {
         // and matches the picker's mode (no surrounding text edit).
         (mods, KeyCode::Char('D')) if !mods.contains(KeyModifiers::CONTROL) => {
             Action::DeleteConnectionInPicker
+        }
+        _ => Action::Noop,
+    }
+}
+
+/// Translate one key while the block-template picker is open.
+/// Same vocab as `parse_environment_picker`: vertical-only
+/// navigation and Enter/Esc. No `D` (templates aren't deletable —
+/// they're a static const).
+pub fn parse_block_template_picker(key: KeyEvent) -> Action {
+    let KeyEvent {
+        code, modifiers, ..
+    } = key;
+    match (modifiers, code) {
+        (_, KeyCode::Esc) => Action::CloseBlockTemplatePicker,
+        (KeyModifiers::CONTROL, KeyCode::Char('c')) => Action::CloseBlockTemplatePicker,
+        (_, KeyCode::Enter) => Action::ConfirmBlockTemplatePicker,
+        (_, KeyCode::Down) | (KeyModifiers::NONE, KeyCode::Char('j')) => {
+            Action::MoveBlockTemplatePickerCursor(1)
+        }
+        (_, KeyCode::Up) | (KeyModifiers::NONE, KeyCode::Char('k')) => {
+            Action::MoveBlockTemplatePickerCursor(-1)
+        }
+        (KeyModifiers::CONTROL, KeyCode::Char('n')) => {
+            Action::MoveBlockTemplatePickerCursor(1)
+        }
+        (KeyModifiers::CONTROL, KeyCode::Char('p')) => {
+            Action::MoveBlockTemplatePickerCursor(-1)
         }
         _ => Action::Noop,
     }

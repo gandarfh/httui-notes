@@ -2,6 +2,7 @@
 //! per-segment renderer → cursor → status bar.
 
 mod block_history;
+mod block_template_picker;
 mod blocks;
 mod completion_popup;
 mod connection_picker;
@@ -119,12 +120,14 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             | Mode::ContentSearch
             | Mode::EnvironmentPicker
             | Mode::Help
+            | Mode::BlockTemplatePicker
     ) || app.db_row_detail.is_some()
         || app.http_response_detail.is_some()
         || app.connection_picker.is_some()
         || app.content_search.is_some()
         || app.environment_picker.is_some()
-        || app.help_visible;
+        || app.help_visible
+        || app.block_template_picker.is_some();
 
     // Snapshot the current result-panel tab so the render tree can
     // pass it down without re-borrowing `app` at every level.
@@ -329,6 +332,13 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     // floats above any other modal that might still be on screen.
     if app.help_visible {
         help::render(frame, editor_area);
+    }
+
+    // Block-template picker — opened by `gN`. Centered popup with
+    // a fixed list of fence templates; confirm splices the picked
+    // template into the prose at the cursor and re-parses.
+    if let Some(state) = app.block_template_picker.as_ref() {
+        block_template_picker::render(frame, editor_area, state);
     }
 }
 
