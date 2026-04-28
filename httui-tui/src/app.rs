@@ -161,6 +161,26 @@ pub struct ConnectionEntry {
     pub kind: String,
 }
 
+/// Open instance of the tab picker (`gb`). Lists every tab in the
+/// `TabBar` by its focused-leaf path. Cloned at open-time so the
+/// picker doesn't hold a borrow on `TabBar` while it's up; the user
+/// can keep typing if a future iteration adds search.
+pub struct TabPickerState {
+    pub entries: Vec<TabPickerEntry>,
+    pub selected: usize,
+}
+
+/// One row in the tab picker. `idx` is the back-pointer into
+/// `TabBar.tabs` (the picker passes it to `set_active` on confirm).
+/// `label` is the path or `(no file)`; `dirty` mirrors the document's
+/// dirty flag so the renderer can paint a `*` marker.
+#[derive(Debug, Clone)]
+pub struct TabPickerEntry {
+    pub idx: usize,
+    pub label: String,
+    pub dirty: bool,
+}
+
 /// Coordinates of the last block the user kicked a run on. Records
 /// both the file path *and* the segment index so `gr` (rerun) can
 /// gracefully decline when the user has switched to a different
@@ -457,6 +477,11 @@ pub struct App {
     /// static `&'static [BlockTemplate]` so the state only carries
     /// the selection cursor.
     pub block_template_picker: Option<BlockTemplatePickerState>,
+    /// `Some` while the tab picker is open (`gb`). Mode flips to
+    /// `Mode::TabPicker`. Snapshot of every tab's focused-leaf path
+    /// + dirty flag is computed at open-time so the picker survives
+    /// unrelated edits while it's up.
+    pub tab_picker: Option<TabPickerState>,
     /// Coordinates of the most-recently run block, used by the
     /// `gr` chord to rerun without navigating back to the source.
     /// Recorded by `apply_run_block` (and the HTTP equivalent) at
@@ -867,6 +892,7 @@ impl App {
             help_visible: false,
             block_template_picker: None,
             last_run_anchor: None,
+            tab_picker: None,
         };
         app.load_initial_document();
         app.refresh_active_env_name();

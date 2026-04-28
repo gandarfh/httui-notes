@@ -14,6 +14,7 @@ mod db_settings_modal;
 mod environment_picker;
 mod fence_edit;
 mod help;
+mod tab_picker;
 pub mod db_row_detail;
 pub mod http_response_detail;
 mod prose;
@@ -121,13 +122,15 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             | Mode::EnvironmentPicker
             | Mode::Help
             | Mode::BlockTemplatePicker
+            | Mode::TabPicker
     ) || app.db_row_detail.is_some()
         || app.http_response_detail.is_some()
         || app.connection_picker.is_some()
         || app.content_search.is_some()
         || app.environment_picker.is_some()
         || app.help_visible
-        || app.block_template_picker.is_some();
+        || app.block_template_picker.is_some()
+        || app.tab_picker.is_some();
 
     // Snapshot the current result-panel tab so the render tree can
     // pass it down without re-borrowing `app` at every level.
@@ -339,6 +342,14 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     // template into the prose at the cursor and re-parses.
     if let Some(state) = app.block_template_picker.as_ref() {
         block_template_picker::render(frame, editor_area, state);
+    }
+
+    // Tab picker — opened by `gb`. Lists every open tab by its
+    // focused-leaf path; current tab marked with `●`, dirty tabs
+    // get a trailing `*`. Painted last so it floats above any
+    // other modal (none of the others share the gb chord).
+    if let Some(state) = app.tab_picker.as_ref() {
+        tab_picker::render(frame, editor_area, state, app.tabs.active);
     }
 }
 

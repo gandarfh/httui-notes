@@ -17,8 +17,8 @@ use crate::vim::parser::{
     parse_content_search, parse_db_confirm_run, parse_db_export_picker, parse_db_row_detail,
     parse_db_settings_modal, parse_environment_picker, parse_fence_edit, parse_help,
     parse_http_response_detail, parse_insert, parse_normal, parse_quickopen, parse_search,
-    parse_tree, parse_tree_prompt, parse_visual, Action, InsertPos, Motion, Operator, PastePos,
-    TextObject, WindowCmd,
+    parse_tab_picker, parse_tree, parse_tree_prompt, parse_visual, Action, InsertPos, Motion,
+    Operator, PastePos, TextObject, WindowCmd,
 };
 use crate::vim::search;
 use crate::tree::{TreePrompt, TreePromptKind};
@@ -91,6 +91,7 @@ pub fn dispatch(app: &mut App, key: KeyEvent) {
         Mode::EnvironmentPicker => parse_environment_picker(key),
         Mode::Help => parse_help(key),
         Mode::BlockTemplatePicker => parse_block_template_picker(key),
+        Mode::TabPicker => parse_tab_picker(key),
     };
 
     // Snapshot the pre-swap cursor so the post-action "reparse on
@@ -778,6 +779,13 @@ fn apply_action(app: &mut App, action: Action, recording: bool) {
             apply_move_block_template_picker_cursor(app, delta)
         }
         Action::ConfirmBlockTemplatePicker => apply_confirm_block_template_picker(app),
+        Action::OpenTabPicker => apply_open_tab_picker(app),
+        Action::CloseTabPicker => {
+            app.tab_picker = None;
+            app.vim.enter_normal();
+        }
+        Action::MoveTabPickerCursor(delta) => apply_move_tab_picker_cursor(app, delta),
+        Action::ConfirmTabPicker => apply_confirm_tab_picker(app),
         Action::CompletionNext => apply_completion_next(app),
         Action::CompletionPrev => apply_completion_prev(app),
         Action::CompletionAccept => apply_completion_accept(app),
@@ -2234,6 +2242,69 @@ fn apply_rerun_last_block(app: &mut App) {
     }
     app.refresh_viewport_for_cursor();
     crate::commands::db::apply_run_block(app);
+}
+
+// ───────────── tab picker (gb) ─────────────
+
+/// `gb` — snapshot every tab's focused-leaf path + dirty flag and
+/// open the picker. Pre-selects the currently-active tab so Enter
+/// is a no-op confirm. Silent decline when there's only one tab
+/// (the picker would just display that single row, no real choice).
+fn apply_open_tab_picker(app: &mut App) {
+    if app.tabs.len() <= 1 {
+        app.set_status(StatusKind::Info, "only one tab open");
+        return;
+    }
+    let active = app.tabs.active;
+    let entries: Vec<crate::app::TabPickerEntry> = app
+        .tabs
+        .tabs
+        .iter()
+        .enumerate()
+        .map(|(idx, tab)| {
+            let leaf = tab.active_leaf();
+            let label = leaf
+                .document_path
+                .as_ref()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "(no file)".into());
+            let dirty = leaf.document.as_ref().is_some_and(|d| d.is_dirty());
+            crate::app::TabPickerEntry { idx, label, dirty }
+        })
+        .collect();
+    app.tab_picker = Some(crate::app::TabPickerState {
+        entries,
+        selected: active,
+    });
+    app.vim.mode = Mode::TabPicker;
+    app.vim.reset_pending();
+}
+
+fn apply_move_tab_picker_cursor(app: &mut App, delta: i32) {
+    let Some(state) = app.tab_picker.as_mut() else { return };
+    if state.entries.is_empty() {
+        return;
+    }
+    let last = state.entries.len() as i64 - 1;
+    let next = (state.selected as i64).saturating_add(delta as i64).clamp(0, last);
+    state.selected = next as usize;
+}
+
+/// `Enter` in the tab picker — flip `tabs.active` to the picked
+/// index and dismiss. The `sync_file_watcher` call after every
+/// keystroke (in the main loop) catches the new file in lockstep.
+fn apply_confirm_tab_picker(app: &mut App) {
+    let Some(state) = app.tab_picker.take() else {
+        app.vim.enter_normal();
+        return;
+    };
+    app.vim.enter_normal();
+    let Some(picked) = state.entries.get(state.selected) else {
+        return;
+    };
+    if picked.idx < app.tabs.tabs.len() {
+        app.tabs.active = picked.idx;
+    }
 }
 
 // ───────────── block-template picker (gN) ─────────────

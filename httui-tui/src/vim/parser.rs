@@ -516,6 +516,20 @@ pub enum Action {
     /// is taken by vim's "find next match" motion, so the new-block
     /// chord uses capital N.
     OpenBlockTemplatePicker,
+    /// `gb` chord — open the tab picker. Lists every open tab by
+    /// its focused-leaf path; Enter switches the active tab to the
+    /// picked index. Mnemonic: g + b = "go (to) buffer".
+    OpenTabPicker,
+    /// `Esc` / `Ctrl-C` inside the tab picker — close without
+    /// switching tabs.
+    CloseTabPicker,
+    /// `j` / `Down` / `k` / `Up` (and `Ctrl-n` / `Ctrl-p`) inside
+    /// the tab picker — move the highlight by `i32` (clamps at the
+    /// ends).
+    MoveTabPickerCursor(i32),
+    /// `Enter` inside the tab picker — switch `tabs.active` to the
+    /// highlighted index and dismiss.
+    ConfirmTabPicker,
     /// `Esc` / `Ctrl-C` inside the template picker — close without
     /// inserting anything.
     CloseBlockTemplatePicker,
@@ -868,6 +882,12 @@ pub fn parse_normal(state: &mut VimState, key: KeyEvent) -> Action {
         if let KeyCode::Char('r') = code {
             state.take_count();
             return Action::RerunLastBlock;
+        }
+        // `gb` — open the tab picker. `b` for "buffer" (vim
+        // terminology — files in vim are buffers). Counts dropped.
+        if let KeyCode::Char('b') = code {
+            state.take_count();
+            return Action::OpenTabPicker;
         }
         // Drop the prefix and continue parsing.
     }
@@ -1557,6 +1577,7 @@ fn is_blocked_in_modal(action: &Action) -> bool {
             | Action::OpenEnvironmentPicker
             | Action::OpenHelp
             | Action::OpenBlockTemplatePicker
+            | Action::OpenTabPicker
     )
 }
 
@@ -1621,6 +1642,28 @@ pub fn parse_connection_picker(key: KeyEvent) -> Action {
         (mods, KeyCode::Char('D')) if !mods.contains(KeyModifiers::CONTROL) => {
             Action::DeleteConnectionInPicker
         }
+        _ => Action::Noop,
+    }
+}
+
+/// Translate one key while the tab picker is open. Same vocab as
+/// the env / template pickers: vertical navigation, Enter, Esc.
+pub fn parse_tab_picker(key: KeyEvent) -> Action {
+    let KeyEvent {
+        code, modifiers, ..
+    } = key;
+    match (modifiers, code) {
+        (_, KeyCode::Esc) => Action::CloseTabPicker,
+        (KeyModifiers::CONTROL, KeyCode::Char('c')) => Action::CloseTabPicker,
+        (_, KeyCode::Enter) => Action::ConfirmTabPicker,
+        (_, KeyCode::Down) | (KeyModifiers::NONE, KeyCode::Char('j')) => {
+            Action::MoveTabPickerCursor(1)
+        }
+        (_, KeyCode::Up) | (KeyModifiers::NONE, KeyCode::Char('k')) => {
+            Action::MoveTabPickerCursor(-1)
+        }
+        (KeyModifiers::CONTROL, KeyCode::Char('n')) => Action::MoveTabPickerCursor(1),
+        (KeyModifiers::CONTROL, KeyCode::Char('p')) => Action::MoveTabPickerCursor(-1),
         _ => Action::Noop,
     }
 }

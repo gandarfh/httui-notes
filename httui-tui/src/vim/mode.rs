@@ -94,6 +94,12 @@ pub enum Mode {
     /// for "go new (block)" — lowercase `gn` is taken by vim's
     /// "find next match" motion.
     BlockTemplatePicker,
+    /// `gb` — open the tab picker. Centered popup listing every
+    /// open tab by its focused-leaf path; j/k or arrows navigate;
+    /// Enter switches `tabs.active` to the picked index. Mnemonic:
+    /// `g` + b for "go (to) buffer" — vim's bare `gb` isn't bound,
+    /// so the chord is free.
+    TabPicker,
 }
 
 impl Mode {
@@ -120,6 +126,7 @@ impl Mode {
             Mode::EnvironmentPicker => "ENV",
             Mode::Help => "HELP",
             Mode::BlockTemplatePicker => "NEW",
+            Mode::TabPicker => "TABS",
         }
     }
 
@@ -144,6 +151,7 @@ impl Mode {
             Mode::EnvironmentPicker => Color::LightMagenta,
             Mode::Help => Color::LightCyan,
             Mode::BlockTemplatePicker => Color::LightGreen,
+            Mode::TabPicker => Color::LightBlue,
         }
     }
 

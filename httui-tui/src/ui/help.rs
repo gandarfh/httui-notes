@@ -52,6 +52,7 @@ const SECTIONS: &[Section] = &[
             Entry { chord: "Ctrl-F", label: "content search (FTS5)" },
             Entry { chord: "gt / gT", label: "next / prev tab" },
             Entry { chord: "<n>gt", label: "go to tab n" },
+            Entry { chord: "gb", label: "tab picker (centered)" },
             Entry { chord: "Ctrl-W v / s", label: "split vertical / horizontal" },
             Entry { chord: "Ctrl-W h/j/k/l", label: "focus pane left/down/up/right" },
             Entry { chord: "Ctrl-W c", label: "close focused pane" },
