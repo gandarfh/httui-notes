@@ -378,6 +378,14 @@ impl Document {
         self.dirty = false;
     }
 
+    /// Force the dirty flag to `true`. Used by edits that swap the
+    /// document wholesale (e.g. `:%s/foo/bar/g` re-parses the
+    /// markdown and replaces the doc) — those don't go through the
+    /// per-keystroke `insert_*` paths that normally set the flag.
+    pub fn mark_dirty(&mut self) {
+        self.dirty = true;
+    }
+
     /// Insert one character at the cursor position. Routes to either
     /// the prose rope (for `Cursor::InProse`) or the block's `raw`
     /// rope (for `Cursor::InBlock`).

@@ -22,6 +22,15 @@ pub enum ExCmd {
     Edit { path: String, force: bool },
     /// `:noh` / `:nohlsearch` — clear the active search highlight.
     NoHighlight,
+    /// `:%s/pattern/replacement[/]` — global, literal substitution
+    /// across the entire document. V1 is intentionally narrow:
+    /// no regex, no per-line scope (`:s/...`), no flags. Trailing
+    /// `/` (or `/g`) is accepted but treated as a no-op since the
+    /// scope is always document-global. The substitution serializes
+    /// the doc to markdown, replaces the literal substring, and
+    /// re-parses — works uniformly across prose and block bodies
+    /// so renaming an alias used in `{{alias.x}}` refs Just Works.
+    Substitute { pattern: String, replacement: String },
 }
 
 /// Outcome of an ex command. `Ok(msg)` carries a status string for the
@@ -44,6 +53,13 @@ pub fn parse(buf: &str) -> Result<ExCmd, ParseError> {
     let trimmed = buf.trim();
     if trimmed.is_empty() {
         return Err(ParseError::Empty);
+    }
+
+    // `:%s/pattern/replacement[/flags]` — handled before the
+    // whitespace-split branch because the command lives glued to
+    // its delimiter (`%s/…`), no whitespace separates them.
+    if let Some(rest) = trimmed.strip_prefix("%s/") {
+        return parse_substitute(rest);
     }
 
     // Argument-bearing commands. Split on the first whitespace so the
@@ -87,6 +103,69 @@ pub enum ParseError {
     MissingArg(String),
 }
 
+/// Parse the body of `:%s/<rest>` (the `%s/` prefix has been
+/// stripped). Splits on the next two unescaped `/` to extract
+/// pattern and replacement; an optional trailing flag segment is
+/// accepted but ignored (V1 always operates document-globally).
+///
+/// Errors land as `ParseError::Unknown` with a hint embedded in
+/// the message — they show up in the status footer the same way
+/// any other parse error does.
+fn parse_substitute(body: &str) -> Result<ExCmd, ParseError> {
+    // Find the first `/` not preceded by an escape backslash.
+    let mid = next_unescaped_slash(body, 0)
+        .ok_or_else(|| ParseError::Unknown("substitute: missing /replacement".into()))?;
+    let pattern_part = &body[..mid];
+    let after_mid = &body[mid + 1..];
+    // The third `/` is optional — `:%s/foo/bar` and `:%s/foo/bar/`
+    // are both legal. When present, anything after it is a flag tail
+    // (V1 ignores; the command is always doc-global already).
+    let end = next_unescaped_slash(after_mid, 0).unwrap_or(after_mid.len());
+    let replacement_part = &after_mid[..end];
+
+    if pattern_part.is_empty() {
+        return Err(ParseError::Unknown(
+            "substitute: empty pattern".into(),
+        ));
+    }
+    Ok(ExCmd::Substitute {
+        pattern: unescape_slashes(pattern_part),
+        replacement: unescape_slashes(replacement_part),
+    })
+}
+
+/// Find the next `/` byte in `s` starting at `from`, ignoring any
+/// `\/` escape pair. Returns the byte index of the matching slash
+/// or `None` when no unescaped slash exists.
+fn next_unescaped_slash(s: &str, from: usize) -> Option<usize> {
+    let bytes = s.as_bytes();
+    let mut i = from;
+    while i < bytes.len() {
+        if bytes[i] == b'/' {
+            // Walk back through any preceding backslashes to count
+            // them — odd count → escape, even → literal.
+            let mut backslashes = 0usize;
+            let mut j = i;
+            while j > 0 && bytes[j - 1] == b'\\' {
+                backslashes += 1;
+                j -= 1;
+            }
+            if backslashes.is_multiple_of(2) {
+                return Some(i);
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Replace `\/` with `/` in a delimiter-stripped pattern or
+/// replacement segment. Keeps the V1 semantics simple: only `/`
+/// is escapable (no `\\` collapse, no regex meta-chars).
+fn unescape_slashes(s: &str) -> String {
+    s.replace("\\/", "/")
+}
+
 /// Run the parsed [`ExCmd`] against `app`. Mutates `app.should_quit`
 /// when appropriate. Returns a status message to display.
 pub fn execute(app: &mut App, cmd: ExCmd) -> ExResult {
@@ -112,6 +191,43 @@ pub fn execute(app: &mut App, cmd: ExCmd) -> ExResult {
             app.vim.search_highlight = false;
             ExResult::Ok(String::new())
         }
+        ExCmd::Substitute { pattern, replacement } => apply_substitute(app, pattern, replacement),
+    }
+}
+
+/// Execute `:%s/pattern/replacement`. Strategy: serialize the doc
+/// to markdown, run a literal `replace`, count occurrences, build a
+/// fresh `Document::from_markdown`. The cursor lands on doc-start
+/// post-substitution — keeping it stable across a wholesale
+/// re-parse would mean tracking positions through arbitrary edits,
+/// which is out of scope for V1 (the user typed the chord, they
+/// know they're moving).
+fn apply_substitute(app: &mut App, pattern: String, replacement: String) -> ExResult {
+    if pattern.is_empty() {
+        return ExResult::Err("substitute: empty pattern".into());
+    }
+    let Some(doc) = app.tabs.active_document_mut() else {
+        return ExResult::Err("no buffer".into());
+    };
+    let before = doc.to_markdown();
+    let count = before.matches(&pattern).count();
+    if count == 0 {
+        return ExResult::Ok(format!("pattern not found: {pattern}"));
+    }
+    let after = before.replace(&pattern, &replacement);
+    // `Document::from_markdown` re-parses block fences, so renaming
+    // an alias used in `{{alias.x}}` refs is reflected by the
+    // dependency-resolution layer on the next run.
+    match crate::buffer::Document::from_markdown(&after) {
+        Ok(new_doc) => {
+            *doc = new_doc;
+            // Mark dirty explicitly — `from_markdown` builds a clean
+            // doc, but the in-memory state now diverges from disk
+            // until the user `:w`s.
+            doc.mark_dirty();
+            ExResult::Ok(format!("{count} substitutions"))
+        }
+        Err(e) => ExResult::Err(format!("substitute reparse failed: {e}")),
     }
 }
 
@@ -343,5 +459,65 @@ mod tests {
         // of truth.
         assert!(matches!(parse("tabnew foo.md"), Err(ParseError::Unknown(_))));
         assert!(matches!(parse("tabclose"), Err(ParseError::Unknown(_))));
+    }
+
+    #[test]
+    fn parse_substitute_basic_form() {
+        assert_eq!(
+            parse("%s/foo/bar"),
+            Ok(ExCmd::Substitute {
+                pattern: "foo".into(),
+                replacement: "bar".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn parse_substitute_trailing_slash_and_flags_ignored() {
+        // `:%s/foo/bar/` and `:%s/foo/bar/g` both legal; flag tail
+        // ignored since V1 is always doc-global.
+        assert_eq!(
+            parse("%s/foo/bar/"),
+            Ok(ExCmd::Substitute {
+                pattern: "foo".into(),
+                replacement: "bar".into(),
+            })
+        );
+        assert_eq!(
+            parse("%s/foo/bar/g"),
+            Ok(ExCmd::Substitute {
+                pattern: "foo".into(),
+                replacement: "bar".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn parse_substitute_unescapes_slash_in_pattern_and_replacement() {
+        // `\/` in either segment becomes a literal `/`, so users can
+        // rename `path/old` → `path/new`.
+        assert_eq!(
+            parse("%s/path\\/old/path\\/new"),
+            Ok(ExCmd::Substitute {
+                pattern: "path/old".into(),
+                replacement: "path/new".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn parse_substitute_empty_pattern_errors() {
+        match parse("%s//bar") {
+            Err(ParseError::Unknown(msg)) => assert!(msg.contains("empty pattern")),
+            other => panic!("expected empty-pattern error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_substitute_missing_replacement_segment_errors() {
+        match parse("%s/foo") {
+            Err(ParseError::Unknown(msg)) => assert!(msg.contains("missing /replacement")),
+            other => panic!("expected missing-replacement error, got {other:?}"),
+        }
     }
 }
