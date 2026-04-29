@@ -95,7 +95,7 @@ FAILED=0
 OVERSIZED_FILES=()
 
 for f in "${CHANGED_FILES[@]}"; do
-    if head -n 1 "$f" 2>/dev/null | grep -q "size:exclude file"; then
+    if head -n 10 "$f" 2>/dev/null | grep -q "size:exclude file"; then
         printf "%-70s  %-7s  %-7s\n" "$f" "—" "EXCLUDED"
         continue
     fi

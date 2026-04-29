@@ -193,7 +193,9 @@ is_structural_only() {
 FAILED=0
 for f in "${CHANGED_FILES[@]}"; do
     # Escape hatch
-    if head -n 1 "$f" 2>/dev/null | grep -q "coverage:exclude file"; then
+    # Look in the first 10 lines so consumers can stack opt-outs
+    # (e.g. size:exclude on line 1 + coverage:exclude on line 5).
+    if head -n 10 "$f" 2>/dev/null | grep -q "coverage:exclude file"; then
         printf "%-70s  %-9s  %-7s\n" "$f" "—" "EXCLUDED"
         continue
     fi
