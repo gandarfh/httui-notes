@@ -481,6 +481,14 @@ export const editorTheme = EditorView.theme(
       paddingLeft: "32px",
       fontFamily: "var(--chakra-fonts-serif)",
     },
+    // H1 typography per canvas spec (epic 40 / story 04):
+    // 2.25rem weight 600. H2 keeps the line-default size — it inherits
+    // weight 600 from `tags.heading` in MarkdownEditor's highlight style.
+    ".cm-numbered-heading[data-heading-level=\"1\"]": {
+      fontSize: "2.25rem",
+      fontWeight: 600,
+      lineHeight: 1.05,
+    },
     ".cm-numbered-heading::before": {
       content: "attr(data-heading-number)",
       position: "absolute",

@@ -8,9 +8,10 @@
 // as code, not document outline.
 //
 // The decoration is a `Decoration.line` that adds a
-// `cm-numbered-heading` class plus `data-heading-number` attribute
-// — actual styling (accent circle + serif font) lives in the
-// editor theme so this module stays presentation-free.
+// `cm-numbered-heading` class plus `data-heading-number` and
+// `data-heading-level` (1 or 2) attributes — actual styling (accent
+// circle, serif font, H1 size) lives in the editor theme so this
+// module stays presentation-free.
 
 import { RangeSetBuilder, StateField, type Extension } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView } from "@codemirror/view";
@@ -58,15 +59,20 @@ export function buildHeadingDecorations(doc: {
 
     if (inFence) continue;
 
-    if (!HEADING_RE.test(text)) continue;
+    const headingMatch = HEADING_RE.exec(text);
+    if (!headingMatch) continue;
 
     counter += 1;
+    const level = headingMatch[1].length; // 1 for `#`, 2 for `##`
     builder.add(
       line.from,
       line.from,
       Decoration.line({
         class: "cm-numbered-heading",
-        attributes: { "data-heading-number": String(counter) },
+        attributes: {
+          "data-heading-number": String(counter),
+          "data-heading-level": String(level),
+        },
       }),
     );
   }

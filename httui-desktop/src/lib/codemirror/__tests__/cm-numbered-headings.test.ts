@@ -16,6 +16,15 @@ function numbers(decorations: ReturnType<typeof buildHeadingDecorations>) {
   return out;
 }
 
+function levels(decorations: ReturnType<typeof buildHeadingDecorations>) {
+  const out: number[] = [];
+  decorations.decorations.between(0, Number.MAX_SAFE_INTEGER, (_f, _t, dec) => {
+    const level = dec.spec?.attributes?.["data-heading-level"];
+    if (level) out.push(Number(level));
+  });
+  return out;
+}
+
 describe("buildHeadingDecorations", () => {
   it("numbers a flat list of h1+h2 sequentially", () => {
     const doc = asLines("# A\n\n## B\n\n# C\n");
@@ -74,5 +83,13 @@ describe("buildHeadingDecorations", () => {
     const doc = asLines("# A\n```\n~~~\n# inside\n~~~\n```\n# B\n");
     const result = buildHeadingDecorations(doc);
     expect(result.count).toBe(2);
+  });
+
+  it("emits data-heading-level matching the marker length", () => {
+    // `#` → level 1, `##` → level 2. Level powers the H1-only
+    // typography rule in editor-theme.
+    const doc = asLines("# H1\n## H2\n# H1 again\n## H2 again\n");
+    const result = buildHeadingDecorations(doc);
+    expect(levels(result)).toEqual([1, 2, 1, 2]);
   });
 });
