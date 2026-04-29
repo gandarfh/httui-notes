@@ -1,3 +1,13 @@
+// size:exclude file — Tauri command orchestrator. Listed in
+// tech-debt.md "Storage" section under main.rs (1013 L baseline);
+// scheduled for split in Epic 17 / 20a sweep. Until then incremental
+// epics that need to register a command pay 5-15 lines and don't
+// trigger refactor.
+// coverage:exclude file — Tauri command shells + setup wiring with
+// no extractable logic. The substantive code is in `httui-core` and
+// the per-domain modules (`chat/`, `executions.rs`,
+// `vault_config_commands.rs`), each tested independently.
+//
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 

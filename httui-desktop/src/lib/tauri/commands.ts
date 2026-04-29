@@ -1,3 +1,8 @@
+// coverage:exclude file — Pure `invoke()` wrappers + IPC type
+// declarations. Testing these is testing the mock harness; the real
+// behavior lives in the backend. Documented in tech-debt.md and
+// audit-002.
+
 import { invoke } from "@tauri-apps/api/core";
 
 // --- Types ---

@@ -99,10 +99,49 @@ mod tests {
         assert!(d.git_branch.is_none());
     }
 
-    // The `user_config` commands depend on `default_user_config_path`
-    // which reads `XDG_CONFIG_HOME` / OS-native dirs. We can't safely
-    // mutate those globals from a Tauri command test (would leak into
-    // sibling tests). The XDG resolver itself is covered in
-    // `user_store::tests`, and the persist/load logic is covered there
-    // too — these wrappers are pure delegation.
+    // `user_config` tests need to redirect `default_user_config_path`
+    // to a tempdir. The function reads `XDG_CONFIG_HOME` / OS-native
+    // dirs, so the test mutates `XDG_CONFIG_HOME` under a serial
+    // mutex (mirrors the pattern in `user_store::tests`).
+
+    static USER_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn with_xdg<F: FnOnce()>(value: &str, f: F) {
+        let _guard = USER_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let prev = std::env::var("XDG_CONFIG_HOME").ok();
+        std::env::set_var("XDG_CONFIG_HOME", value);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+        match prev {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
+    }
+
+    #[test]
+    fn user_round_trip_via_commands() {
+        let dir = TempDir::new().unwrap();
+        let xdg = dir.path().to_string_lossy().into_owned();
+
+        with_xdg(&xdg, || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                // Empty file → defaults.
+                let initial = get_user_config().await.unwrap();
+                assert_eq!(initial.ui.theme, "system");
+
+                // Replace with a tweaked file and read it back.
+                let mut tweaked = initial.clone();
+                tweaked.ui.theme = "dark".into();
+                tweaked.ui.font_size = 13;
+                set_user_config(tweaked).await.unwrap();
+
+                let after = get_user_config().await.unwrap();
+                assert_eq!(after.ui.theme, "dark");
+                assert_eq!(after.ui.font_size, 13);
+            });
+        });
+    }
 }
