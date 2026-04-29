@@ -1,3 +1,11 @@
+// coverage:exclude file — Tauri command shells with no testable
+// logic without spinning up the Tauri runtime. Substantive code is
+// in `crate::fs::*` (covered there). Same shape as
+// `commands/connections.rs` and `commands/environments.rs`
+// (audit-016). Justified in `audit-018-files-commands-coverage-exclude.md`.
+// Retires when Story 05 ships its integration harness, mirroring the
+// retirement schedule for the other two opt-outs.
+
 //! Vault file Tauri commands — list / read / write / create / rename /
 //! delete notes and folders.
 //!
