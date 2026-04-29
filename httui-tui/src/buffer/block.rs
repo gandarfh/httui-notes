@@ -76,7 +76,7 @@ pub fn body_line_count(raw: &Rope) -> usize {
     } else {
         raw_lines
     };
-    visible.saturating_sub(2).max(0)
+    visible.saturating_sub(2)
 }
 
 /// Char offset where the closer line begins. For 1-line raws the
