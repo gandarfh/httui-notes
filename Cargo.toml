@@ -10,6 +10,7 @@ license = "MIT"
 authors = ["João Ferreira <joao@httui.com>"]
 repository = "https://github.com/gandarfh/httui-notes"
 homepage = "https://httui.com"
+documentation = "https://github.com/gandarfh/httui-notes#readme"
 
 # Slimmer dev-time artifacts. `line-tables-only` keeps panic backtraces
 # pointing at file:line but drops the heavy DWARF type info that pushes
