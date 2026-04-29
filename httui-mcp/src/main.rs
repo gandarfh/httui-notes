@@ -42,7 +42,11 @@ async fn main() -> Result<()> {
         .await
         .map_err(|e| anyhow::anyhow!("Failed to initialize database: {e}"))?;
 
+    // ConnectionsStore is the file-backed lookup for the active vault
+    // (Epic 19 Story 02 Phase 3 cutover).
+    let conn_lookup = httui_core::vault_config::ConnectionsStore::new(args.vault.clone());
     let conn_manager = Arc::new(httui_core::db::connections::PoolManager::new_standalone(
+        conn_lookup,
         pool.clone(),
     ));
 

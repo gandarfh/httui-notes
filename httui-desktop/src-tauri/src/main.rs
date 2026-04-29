@@ -17,7 +17,7 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 
 use httui_notes::chat::commands::*;
-use httui_notes::db::connections::{self, PoolManager, StatusEmitter};
+use httui_notes::db::connections::{PoolManager, StatusEmitter};
 
 // --- Tauri StatusEmitter implementation ---
 
@@ -543,68 +543,11 @@ fn stop_watching(
     Ok(())
 }
 
-// --- Connection commands ---
-
-/// List every saved DB connection with secrets stripped (only the
-/// `__KEYCHAIN__` sentinel reaches the frontend).
-#[tauri::command]
-async fn list_connections(
-    pool: tauri::State<'_, SqlitePool>,
-) -> Result<Vec<connections::ConnectionPublic>, String> {
-    connections::list_connections_public(&pool).await
-}
-
-/// Insert a new connection row. Passwords are stored in the OS keychain
-/// (sentinel in SQLite); fail-secure if the keychain is unavailable.
-#[tauri::command]
-async fn create_connection(
-    pool: tauri::State<'_, SqlitePool>,
-    input: connections::CreateConnection,
-) -> Result<connections::ConnectionPublic, String> {
-    let conn = connections::create_connection(&pool, input).await?;
-    Ok(conn.to_public())
-}
-
-/// Update a connection row. Invalidates any cached pool managed by
-/// `PoolManager` so the next execute re-handshakes.
-#[tauri::command]
-async fn update_connection(
-    pool: tauri::State<'_, SqlitePool>,
-    conn_manager: tauri::State<'_, Arc<PoolManager>>,
-    id: String,
-    input: connections::UpdateConnection,
-) -> Result<connections::ConnectionPublic, String> {
-    let result = connections::update_connection(&pool, &id, input).await?;
-    conn_manager.invalidate(&id).await;
-    Ok(result.to_public())
-}
-
-/// Delete a connection row, evict its pool, and remove the password
-/// from the keychain.
-#[tauri::command]
-async fn delete_connection(
-    pool: tauri::State<'_, SqlitePool>,
-    conn_manager: tauri::State<'_, Arc<PoolManager>>,
-    id: String,
-) -> Result<(), String> {
-    conn_manager.invalidate(&id).await;
-    connections::delete_connection(&pool, &id).await
-}
-
-/// Validate that the connection's credentials and reachability are
-/// good. Performs a lightweight query (e.g. `SELECT 1`) and returns
-/// the underlying error verbatim on failure.
-#[tauri::command]
-async fn test_connection(
-    conn_manager: tauri::State<'_, Arc<PoolManager>>,
-    id: String,
-) -> Result<(), String> {
-    conn_manager.test_connection(&id).await
-}
-
-// Environment commands moved to `commands::environments` (Epic 19
-// Story 02 Phase 2 — file-backed cutover; audit-015). Wire-compat is
-// preserved (Environment.id == name; EnvVariable.id == "<env>::<key>").
+// Connection + environment commands moved to `commands::connections`
+// and `commands::environments` (Epic 19 Story 02 Phase 2 + 3 —
+// file-backed cutover; audit-015). Wire-compat is preserved
+// (Connection.id == name; Environment.id == name;
+// EnvVariable.id == "<env>::<key>").
 
 // --- Internal DB query (audit/settings) ---
 
@@ -799,11 +742,29 @@ fn main() {
 
             app.manage(pool.clone());
 
+            // Per-vault store registry resolves ConnectionsStore +
+            // EnvironmentsStore for the active vault (Epic 19 Story 02
+            // Phase 1 — commit 037f470).
+            let store_registry =
+                httui_notes::commands::vault_stores::VaultStoreRegistry::new();
+
+            // Connection lookup wrapper threads the registry into the
+            // pool manager so pool builds resolve connections from the
+            // file-backed store, not legacy SQLite (Phase 3).
+            let conn_lookup = httui_notes::commands::vault_stores::VaultRegistryLookup::new(
+                pool.clone(),
+                store_registry.clone(),
+            );
+
             // Connection pool manager
             let emitter = Arc::new(TauriStatusEmitter {
                 app_handle: app.handle().clone(),
             });
-            let conn_manager = Arc::new(PoolManager::new_with_emitter(pool, emitter));
+            let conn_manager = Arc::new(PoolManager::new_with_emitter(
+                conn_lookup,
+                pool.clone(),
+                emitter,
+            ));
             app.manage(conn_manager.clone());
 
             // TTL cleanup + query log retention task
@@ -857,7 +818,7 @@ fn main() {
             // Per-vault file-backed store registry (Epic 19 cutover —
             // audit-015). Resolves ConnectionsStore + EnvironmentsStore
             // for the active vault on demand, caches per vault path.
-            app.manage(httui_notes::commands::vault_stores::VaultStoreRegistry::new());
+            app.manage(store_registry);
 
             Ok(())
         })
@@ -915,11 +876,11 @@ fn main() {
             rebuild_search_index,
             search_content,
             update_search_entry,
-            list_connections,
-            create_connection,
-            update_connection,
-            delete_connection,
-            test_connection,
+            httui_notes::commands::connections::list_connections,
+            httui_notes::commands::connections::create_connection,
+            httui_notes::commands::connections::update_connection,
+            httui_notes::commands::connections::delete_connection,
+            httui_notes::commands::connections::test_connection,
             introspect_schema,
             get_cached_schema,
             httui_notes::commands::environments::list_environments,

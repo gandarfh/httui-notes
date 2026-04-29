@@ -14,9 +14,12 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use tokio::sync::RwLock;
 
 use httui_core::config::get_config;
+use httui_core::db::connections::Connection;
+use httui_core::db::lookup::ConnectionLookup;
 use httui_core::vault_config::{
     user_store::default_user_config_path, ConnectionsStore, EnvironmentsStore,
 };
@@ -92,6 +95,29 @@ impl VaultStoreRegistry {
     pub async fn invalidate_vault(&self, vault_root: &std::path::Path) {
         let mut cache = self.cache.write().await;
         cache.remove(vault_root);
+    }
+}
+
+/// `ConnectionLookup` adapter that resolves the active vault on each
+/// call via `VaultStoreRegistry`. Production-only: feeds the
+/// `PoolManager` so pool builds use the file-backed connection
+/// records (Epic 19 Story 02 Phase 3).
+pub struct VaultRegistryLookup {
+    pool: SqlitePool,
+    registry: Arc<VaultStoreRegistry>,
+}
+
+impl VaultRegistryLookup {
+    pub fn new(pool: SqlitePool, registry: Arc<VaultStoreRegistry>) -> Arc<Self> {
+        Arc::new(Self { pool, registry })
+    }
+}
+
+#[async_trait]
+impl ConnectionLookup for VaultRegistryLookup {
+    async fn lookup(&self, name: &str) -> Result<Option<Connection>, String> {
+        let stores = self.registry.for_active_vault(&self.pool).await?;
+        stores.connections.lookup(name).await
     }
 }
 
