@@ -78,7 +78,7 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
   const [dbName, setDbName] = useState(connection?.database_name ?? "");
   const [username, setUsername] = useState(connection?.username ?? "");
   const [password, setPassword] = useState("");
-  const [sslMode, setSslMode] = useState(connection?.ssl_mode ?? "prefer");
+  const [sslMode, setSslMode] = useState(connection?.ssl_mode ?? "disable");
 
   // Advanced
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -122,7 +122,7 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
         database_name: dbName || undefined,
         ...(driver !== "sqlite" && { username: username || undefined }),
         ...(driver !== "sqlite" && { password: password || undefined }),
-        ssl_mode: sslMode,
+        ...(driver !== "sqlite" && { ssl_mode: sslMode }),
         timeout_ms: parseInt(timeoutMs) || undefined,
         query_timeout_ms: parseInt(queryTimeoutMs) || undefined,
         ttl_seconds: parseInt(ttlSeconds) || undefined,
