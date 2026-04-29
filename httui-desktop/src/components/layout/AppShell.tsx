@@ -22,6 +22,7 @@ import { WorkspaceContext } from "@/contexts/WorkspaceContext";
 import { useAutoUpdate } from "@/hooks/useAutoUpdate";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { EmptyVaultScreen } from "./EmptyVaultScreen";
+import { ColorModeSync } from "./ColorModeSync";
 
 export function AppShell() {
   const sidebarOpen = useSettingsStore((s) => s.sidebarOpen);
@@ -139,6 +140,7 @@ export function AppShell() {
 
   return (
     <WorkspaceContext.Provider value={workspaceValue}>
+      <ColorModeSync />
       <Flex
         h="100vh"
         direction="column"

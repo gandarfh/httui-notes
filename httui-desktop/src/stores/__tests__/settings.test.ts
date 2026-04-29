@@ -30,6 +30,7 @@ function userFile(uiOverrides: Record<string, unknown> = {}) {
       history_retention: 10,
       vim_enabled: false,
       sidebar_open: true,
+      color_mode: "system",
       ...uiOverrides,
     },
     shortcuts: {},
@@ -54,6 +55,7 @@ function resetStore() {
     settings: DEFAULT_SETTINGS,
     loaded: false,
     theme: DEFAULT_THEME,
+    colorMode: "system",
     vimEnabled: false,
     vimMode: "normal",
     sidebarOpen: true,
@@ -246,6 +248,46 @@ describe("settingsStore", () => {
       await useSettingsStore.getState().loadSettings();
 
       expect(useSettingsStore.getState().theme).toEqual(DEFAULT_THEME);
+    });
+  });
+
+  describe("colorMode", () => {
+    it("defaults to 'system'", () => {
+      expect(useSettingsStore.getState().colorMode).toBe("system");
+    });
+
+    it("setColorMode updates state and persists ui.color_mode", async () => {
+      const read = mockUserConfig();
+
+      useSettingsStore.getState().setColorMode("dark");
+
+      expect(useSettingsStore.getState().colorMode).toBe("dark");
+      await flushPersist();
+      expect(read().ui.color_mode).toBe("dark");
+    });
+
+    it("loadSettings hydrates colorMode from ui.color_mode", async () => {
+      mockUserConfig({ color_mode: "light" });
+
+      await useSettingsStore.getState().loadSettings();
+
+      expect(useSettingsStore.getState().colorMode).toBe("light");
+    });
+
+    it("falls back to 'system' when ui.color_mode is unrecognised", async () => {
+      mockUserConfig({ color_mode: "high-contrast" });
+
+      await useSettingsStore.getState().loadSettings();
+
+      expect(useSettingsStore.getState().colorMode).toBe("system");
+    });
+
+    it("falls back to 'system' when ui.color_mode is missing", async () => {
+      mockUserConfig({ color_mode: "" });
+
+      await useSettingsStore.getState().loadSettings();
+
+      expect(useSettingsStore.getState().colorMode).toBe("system");
     });
   });
 });

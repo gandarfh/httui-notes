@@ -59,6 +59,8 @@ export interface UserUiPrefs {
   vim_enabled: boolean;
   /** Sidebar open/closed flag. */
   sidebar_open: boolean;
+  /** Color mode: `"system"` | `"light"` | `"dark"`. */
+  color_mode: string;
 }
 
 /** `[secrets]` section. */

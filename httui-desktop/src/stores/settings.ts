@@ -23,12 +23,19 @@ const DEFAULTS: AppSettings = {
   historyRetention: 10,
 };
 
+/** Color mode contract (canvas §0): system | light | dark. Distinct
+ * from the legacy `theme` ThemeConfig (accent / radius / density /
+ * shadow customisation pending Epic 19 sweep). Wires to Chakra's
+ * `next-themes` provider via `<ColorModeSync />`. */
+export type ColorMode = "system" | "light" | "dark";
+
 interface SettingsState {
   // Settings
   settingsOpen: boolean;
   settings: AppSettings;
   loaded: boolean;
   theme: ThemeConfig;
+  colorMode: ColorMode;
 
   // Editor settings
   vimEnabled: boolean;
@@ -46,12 +53,25 @@ interface SettingsState {
   ) => void;
   updateTheme: (partial: Partial<ThemeConfig>) => void;
   resetTheme: () => void;
+  setColorMode: (mode: ColorMode) => void;
   toggleVim: () => void;
   setVimMode: (mode: string) => void;
   setVimEnabled: (enabled: boolean) => void;
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
   loadSettings: () => Promise<void>;
+}
+
+const COLOR_MODE_VALUES: ReadonlySet<ColorMode> = new Set([
+  "system",
+  "light",
+  "dark",
+]);
+
+function parseColorMode(raw: string | undefined): ColorMode {
+  return raw && COLOR_MODE_VALUES.has(raw as ColorMode)
+    ? (raw as ColorMode)
+    : "system";
 }
 
 /**
@@ -80,6 +100,7 @@ export const useSettingsStore = create<SettingsState>()(
       settings: DEFAULTS,
       loaded: false,
       theme: DEFAULT_THEME,
+      colorMode: "system" as ColorMode,
       vimEnabled: false,
       vimMode: "normal",
       sidebarOpen: true,
@@ -122,6 +143,11 @@ export const useSettingsStore = create<SettingsState>()(
           ...ui,
           theme: JSON.stringify(DEFAULT_THEME),
         })).catch(() => {});
+      },
+
+      setColorMode: (mode) => {
+        set({ colorMode: mode });
+        patchUiPrefs((ui) => ({ ...ui, color_mode: mode })).catch(() => {});
       },
 
       toggleVim: () =>
@@ -180,6 +206,7 @@ export const useSettingsStore = create<SettingsState>()(
               ui.history_retention || DEFAULTS.historyRetention,
           },
           theme: themeConfig,
+          colorMode: parseColorMode(ui.color_mode),
           vimEnabled: ui.vim_enabled ?? false,
           sidebarOpen: ui.sidebar_open ?? true,
           loaded: true,

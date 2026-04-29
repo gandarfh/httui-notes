@@ -1,10 +1,9 @@
 import { useCallback } from "react";
 import { Flex, Input, Text, Separator, Box, VStack } from "@chakra-ui/react";
 import { NativeSelectRoot, NativeSelectField } from "@chakra-ui/react";
-import { useColorMode } from "@/components/ui/color-mode";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { useSettingsStore } from "@/stores/settings";
-import { Switch } from "@/components/ui/switch";
+import { ColorModePicker } from "./ColorModePicker";
 
 const AUTO_SAVE_OPTIONS = [
   { value: "0", label: "Disabled (manual save only)" },
@@ -15,7 +14,6 @@ const AUTO_SAVE_OPTIONS = [
 ];
 
 export function GeneralSection() {
-  const { colorMode, toggleColorMode } = useColorMode();
   const { vaultPath, vaults } = useWorkspace();
   const settings = useSettingsStore((s) => s.settings);
   const updateSetting = useSettingsStore((s) => s.updateSetting);
@@ -34,19 +32,7 @@ export function GeneralSection() {
         <Text fontWeight="semibold" fontSize="sm" mb={3}>
           Appearance
         </Text>
-        <Flex align="center" justify="space-between">
-          <Flex direction="column" gap={0}>
-            <Text fontSize="sm">Dark mode</Text>
-            <Text fontSize="xs" color="fg.muted">
-              Switch between light and dark theme
-            </Text>
-          </Flex>
-          <Switch
-            checked={colorMode === "dark"}
-            onCheckedChange={toggleColorMode}
-            size="sm"
-          />
-        </Flex>
+        <ColorModePicker />
       </Box>
 
       <Separator />
