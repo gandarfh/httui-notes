@@ -1,12 +1,9 @@
-// size:exclude file — Tauri command orchestrator. Listed in
-// tech-debt.md "Storage" section under main.rs (1013 L baseline);
-// scheduled for split in Epic 17 / 20a sweep. Until then incremental
-// epics that need to register a command pay 5-15 lines and don't
-// trigger refactor.
-// coverage:exclude file — Tauri command shells + setup wiring with
-// no extractable logic. The substantive code is in `httui-core` and
-// the per-domain modules (`chat/`, `executions.rs`,
-// `vault_config_commands.rs`), each tested independently.
+// coverage:exclude file — Tauri command orchestrator + state wiring +
+// setup hooks. No extractable logic remains after Epic 20a Story 05;
+// the substantive code lives in `httui-core` and per-domain
+// `commands/*.rs` modules, each tested independently. The
+// size:exclude opt-out came off in commit XXX (Story 05 closeout) —
+// main.rs is now 547 prod lines, under the 600 gate.
 //
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -45,271 +42,14 @@ impl StatusEmitter for TauriStatusEmitter {
     }
 }
 
-// --- Execute block command ---
+// Block-related commands (execute_block, result cache, history,
+// settings, examples, hash computation) and the SharedDbExecutor /
+// SharedHttpExecutor registry wrappers moved to `commands::blocks`
+// (Epic 20a Story 05).
 
-/// Generic dispatch: route a `BlockRequest` to the executor registered
-/// under `block_type`. Used by the legacy non-streamed path; streamed
-/// HTTP/DB execution lives in `executions.rs`.
-#[tauri::command]
-async fn execute_block(
-    registry: tauri::State<'_, httui_notes::executor::ExecutorRegistry>,
-    block_type: String,
-    params: serde_json::Value,
-) -> Result<httui_notes::executor::BlockResult, String> {
-    let req = httui_notes::executor::BlockRequest { block_type, params };
-    registry.execute(req).await.map_err(|e| e.to_string())
-}
-
-/// Newtype wrapper letting the registry hold `DbExecutor` via `Arc` so the
-/// same instance can also back the streamed/cancel-aware Tauri command.
-struct SharedDbExecutor(Arc<httui_notes::executor::db::DbExecutor>);
-
-#[async_trait::async_trait]
-impl httui_notes::executor::Executor for SharedDbExecutor {
-    fn block_type(&self) -> &str {
-        self.0.block_type()
-    }
-
-    async fn validate(&self, params: &serde_json::Value) -> Result<(), String> {
-        self.0.validate(params).await
-    }
-
-    async fn execute(
-        &self,
-        params: serde_json::Value,
-    ) -> Result<httui_notes::executor::BlockResult, httui_notes::executor::ExecutorError> {
-        self.0.execute(params).await
-    }
-}
-
-/// Same pattern as `SharedDbExecutor` for the HTTP executor. The streamed
-/// command lives in `executions.rs` and pulls the `Arc<HttpExecutor>` from
-/// Tauri state; the legacy `execute_block` path continues through the
-/// registry via this wrapper.
-struct SharedHttpExecutor(Arc<httui_notes::executor::http::HttpExecutor>);
-
-#[async_trait::async_trait]
-impl httui_notes::executor::Executor for SharedHttpExecutor {
-    fn block_type(&self) -> &str {
-        self.0.block_type()
-    }
-
-    async fn validate(&self, params: &serde_json::Value) -> Result<(), String> {
-        self.0.validate(params).await
-    }
-
-    async fn execute(
-        &self,
-        params: serde_json::Value,
-    ) -> Result<httui_notes::executor::BlockResult, httui_notes::executor::ExecutorError> {
-        self.0.execute(params).await
-    }
-}
-
-// --- Block result cache commands ---
-
-/// Look up a previously cached `BlockResult` by `(file_path, block_hash)`.
-/// Returns `None` if no cached row matches.
-#[tauri::command]
-async fn get_block_result(
-    pool: tauri::State<'_, SqlitePool>,
-    file_path: String,
-    block_hash: String,
-) -> Result<Option<httui_notes::block_results::CachedBlockResult>, String> {
-    httui_notes::block_results::get_block_result(&pool, &file_path, &block_hash)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-/// Persist the terminal outcome of a block execution into the cache so
-/// the next run with the same content + env context can short-circuit.
-#[tauri::command]
-async fn save_block_result(
-    pool: tauri::State<'_, SqlitePool>,
-    file_path: String,
-    block_hash: String,
-    status: String,
-    response: String,
-    elapsed_ms: i64,
-    total_rows: Option<i64>,
-) -> Result<(), String> {
-    httui_notes::block_results::save_block_result(
-        &pool,
-        &file_path,
-        &block_hash,
-        &status,
-        &response,
-        elapsed_ms,
-        total_rows,
-    )
-    .await
-    .map_err(|e| e.to_string())
-}
-
-// --- Block run history (Story 24.6) ---
-
-/// Return the trim-capped run history (metadata only — no bodies)
-/// for `(file_path, block_alias)`.
-#[tauri::command]
-async fn list_block_history(
-    pool: tauri::State<'_, SqlitePool>,
-    file_path: String,
-    block_alias: String,
-) -> Result<Vec<httui_notes::block_history::HistoryEntry>, String> {
-    httui_notes::block_history::list_history(&pool, &file_path, &block_alias)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-/// Append a single run-history row; trim to the retention cap is
-/// handled by the underlying `insert_history_entry`.
-#[tauri::command]
-async fn insert_block_history(
-    pool: tauri::State<'_, SqlitePool>,
-    entry: httui_notes::block_history::InsertEntry,
-) -> Result<(), String> {
-    httui_notes::block_history::insert_history_entry(&pool, entry)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-/// Delete every run-history row for `(file_path, block_alias)`.
-/// Returns the number of rows removed.
-#[tauri::command]
-async fn purge_block_history(
-    pool: tauri::State<'_, SqlitePool>,
-    file_path: String,
-    block_alias: String,
-) -> Result<u64, String> {
-    httui_notes::block_history::purge_history(&pool, &file_path, &block_alias)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-// --- Per-block settings (Onda 1) ---
-
-/// Fetch persistent per-block settings (limit/timeout overrides) for
-/// `(file_path, block_alias)`. Returns defaults if no row exists.
-#[tauri::command]
-async fn get_block_settings(
-    pool: tauri::State<'_, SqlitePool>,
-    file_path: String,
-    block_alias: String,
-) -> Result<httui_notes::block_settings::BlockSettings, String> {
-    httui_notes::block_settings::get_settings(&pool, &file_path, &block_alias)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-/// Insert or update the per-block settings row.
-#[tauri::command]
-async fn upsert_block_settings(
-    pool: tauri::State<'_, SqlitePool>,
-    file_path: String,
-    block_alias: String,
-    settings: httui_notes::block_settings::BlockSettings,
-) -> Result<(), String> {
-    httui_notes::block_settings::upsert_settings(&pool, &file_path, &block_alias, settings)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-/// Delete per-block settings for `(file_path, block_alias)` — used when
-/// the block is removed from the document.
-#[tauri::command]
-async fn purge_block_settings(
-    pool: tauri::State<'_, SqlitePool>,
-    file_path: String,
-    block_alias: String,
-) -> Result<u64, String> {
-    httui_notes::block_settings::purge_settings(&pool, &file_path, &block_alias)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-// --- Pinned response examples (Onda 3) ---
-
-/// Pin a named response snapshot for a block so the user can revisit
-/// it later without re-running.
-#[tauri::command]
-async fn save_block_example(
-    pool: tauri::State<'_, SqlitePool>,
-    file_path: String,
-    block_alias: String,
-    name: String,
-    response_json: String,
-) -> Result<i64, String> {
-    httui_notes::block_examples::save_example(
-        &pool,
-        &file_path,
-        &block_alias,
-        &name,
-        &response_json,
-    )
-    .await
-    .map_err(|e| e.to_string())
-}
-
-/// List every pinned example for `(file_path, block_alias)`.
-#[tauri::command]
-async fn list_block_examples(
-    pool: tauri::State<'_, SqlitePool>,
-    file_path: String,
-    block_alias: String,
-) -> Result<Vec<httui_notes::block_examples::BlockExample>, String> {
-    httui_notes::block_examples::list_examples(&pool, &file_path, &block_alias)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-/// Delete a single pinned example by primary key.
-#[tauri::command]
-async fn delete_block_example(pool: tauri::State<'_, SqlitePool>, id: i64) -> Result<u64, String> {
-    httui_notes::block_examples::delete_example(&pool, id)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-/// Delete every pinned example for `(file_path, block_alias)`.
-#[tauri::command]
-async fn purge_block_examples(
-    pool: tauri::State<'_, SqlitePool>,
-    file_path: String,
-    block_alias: String,
-) -> Result<u64, String> {
-    httui_notes::block_examples::purge_examples_for_block(&pool, &file_path, &block_alias)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-/// T31/T35: Server-side hash computation including environment + connection context.
-#[tauri::command]
-async fn compute_block_hash(
-    pool: tauri::State<'_, SqlitePool>,
-    content: String,
-    connection_id: Option<String>,
-) -> Result<String, String> {
-    let env_id = httui_notes::db::environments::get_active_environment_id(&pool).await;
-    Ok(httui_notes::block_results::compute_block_hash(
-        &content,
-        env_id.as_deref(),
-        connection_id.as_deref(),
-    ))
-}
-
-// --- Schema introspection commands ---
-
-/// Walk the target DB's metadata tables to discover schemas, tables and
-/// columns. Caches the result in SQLite; falls through to fresh lookup
-/// when the cached row is older than 5s.
 // Schema commands moved to `commands::schema` (Epic 20a Story 05).
-
 // Config commands moved to `commands::settings` (Epic 20a Story 05).
 
-// --- Filesystem commands ---
-
-/// Walk `vault_path` and return the file tree, filtering out heavy
-/// directories (`node_modules`, `target`, etc.) the editor never opens.
 // Vault file commands moved to `commands::files` (Epic 20a Story 05).
 
 /// Re-read a file from disk and emit `file-reloaded` so the editor
@@ -657,8 +397,12 @@ fn main() {
             app.manage(http_executor.clone());
 
             let mut executor_registry = httui_notes::executor::ExecutorRegistry::new();
-            executor_registry.register(Box::new(SharedHttpExecutor(http_executor)));
-            executor_registry.register(Box::new(SharedDbExecutor(db_executor)));
+            executor_registry.register(Box::new(httui_notes::commands::blocks::SharedHttpExecutor(
+                http_executor,
+            )));
+            executor_registry.register(Box::new(httui_notes::commands::blocks::SharedDbExecutor(
+                db_executor,
+            )));
             app.manage(executor_registry);
 
             // Chat sidecar (lazy — spawned on first use, not at startup)
@@ -683,23 +427,23 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            execute_block,
+            httui_notes::commands::blocks::execute_block,
             httui_notes::executions::execute_db_streamed,
             httui_notes::executions::execute_http_streamed,
             httui_notes::executions::cancel_block,
-            list_block_history,
-            insert_block_history,
-            purge_block_history,
-            get_block_settings,
-            upsert_block_settings,
-            purge_block_settings,
-            save_block_example,
-            list_block_examples,
-            delete_block_example,
-            purge_block_examples,
-            get_block_result,
-            save_block_result,
-            compute_block_hash,
+            httui_notes::commands::blocks::list_block_history,
+            httui_notes::commands::blocks::insert_block_history,
+            httui_notes::commands::blocks::purge_block_history,
+            httui_notes::commands::blocks::get_block_settings,
+            httui_notes::commands::blocks::upsert_block_settings,
+            httui_notes::commands::blocks::purge_block_settings,
+            httui_notes::commands::blocks::save_block_example,
+            httui_notes::commands::blocks::list_block_examples,
+            httui_notes::commands::blocks::delete_block_example,
+            httui_notes::commands::blocks::purge_block_examples,
+            httui_notes::commands::blocks::get_block_result,
+            httui_notes::commands::blocks::save_block_result,
+            httui_notes::commands::blocks::compute_block_hash,
             httui_notes::commands::settings::get_config,
             httui_notes::commands::settings::set_config,
             // Epic 09 foundation — file-backed workspace + user config.
