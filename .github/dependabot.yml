@@ -1,0 +1,73 @@
+version: 2
+
+updates:
+  # Cargo workspace — covers httui-core, httui-desktop/src-tauri,
+  # httui-tui, httui-mcp.
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
+    labels:
+      - dependencies
+      - rust
+    groups:
+      rust-patches:
+        update-types: [patch]
+    ignore:
+      # Tauri major bumps are intentional, manual upgrades — they tend
+      # to ship breaking changes across the bundling toolchain.
+      - dependency-name: tauri
+        update-types: [version-update:semver-major]
+      - dependency-name: tauri-build
+        update-types: [version-update:semver-major]
+      - dependency-name: "tauri-plugin-*"
+        update-types: [version-update:semver-major]
+
+  # npm workspaces — root package.json + httui-desktop / httui-web /
+  # httui-sidecar.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
+    labels:
+      - dependencies
+      - javascript
+    groups:
+      js-patches:
+        update-types: [patch]
+    ignore:
+      # React/Tauri major bumps need product testing, not a Dependabot PR.
+      - dependency-name: react
+        update-types: [version-update:semver-major]
+      - dependency-name: react-dom
+        update-types: [version-update:semver-major]
+      - dependency-name: "@tauri-apps/api"
+        update-types: [version-update:semver-major]
+      - dependency-name: "@tauri-apps/cli"
+        update-types: [version-update:semver-major]
+
+  # GitHub Actions versions in workflows under .github/workflows.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: ci
+    labels:
+      - dependencies
+      - github-actions
