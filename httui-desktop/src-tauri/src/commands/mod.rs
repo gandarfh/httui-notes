@@ -5,4 +5,5 @@
 
 pub mod connections;
 pub mod environments;
+pub mod files;
 pub mod vault_stores;

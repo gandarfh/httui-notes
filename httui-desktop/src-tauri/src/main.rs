@@ -362,95 +362,7 @@ async fn set_config(
 
 /// Walk `vault_path` and return the file tree, filtering out heavy
 /// directories (`node_modules`, `target`, etc.) the editor never opens.
-#[tauri::command]
-fn list_workspace(vault_path: String) -> Result<Vec<httui_notes::fs::FileEntry>, String> {
-    httui_notes::fs::list_workspace(&vault_path)
-}
-
-/// Read a markdown note from disk. `file_path` is resolved relative to
-/// `vault_path`; resolved paths must stay inside the vault.
-#[tauri::command]
-fn read_note(vault_path: String, file_path: String) -> Result<String, String> {
-    httui_notes::fs::read_note(&vault_path, &file_path)
-}
-
-/// Save markdown content to a vault-relative path. Adds the path to a
-/// short-lived ignore list so the file watcher does not echo our own
-/// write back to the frontend as an external change.
-#[tauri::command]
-fn write_note(
-    vault_path: String,
-    file_path: String,
-    content: String,
-    ignore_paths: tauri::State<'_, Arc<Mutex<Vec<String>>>>,
-) -> Result<(), String> {
-    // Add to ignore list so file watcher skips this event
-    {
-        let mut ignored = ignore_paths.lock().unwrap();
-        if !ignored.contains(&file_path) {
-            ignored.push(file_path.clone());
-        }
-    }
-
-    let result = httui_notes::fs::write_note(&vault_path, &file_path, &content);
-
-    // Remove from ignore list after a short delay
-    let ignore = ignore_paths.inner().clone();
-    let fp = file_path.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(500));
-        let mut ignored = ignore.lock().unwrap();
-        ignored.retain(|p| p != &fp);
-    });
-
-    result
-}
-
-/// Create an empty markdown note. Errors if the file already exists.
-#[tauri::command]
-fn create_note(vault_path: String, file_path: String) -> Result<(), String> {
-    httui_notes::fs::create_note(&vault_path, &file_path)
-}
-
-/// Move a note to the OS trash (recoverable) and clear any related
-/// per-block cache rows.
-#[tauri::command]
-async fn delete_note(
-    vault_path: String,
-    file_path: String,
-    pool: tauri::State<'_, SqlitePool>,
-) -> Result<(), String> {
-    // Move the file to trash first; only purge SQLite state if the FS
-    // operation succeeded so we don't drop history/examples for a file
-    // that's still on disk.
-    httui_notes::fs::delete_note(&vault_path, &file_path)?;
-
-    // Cascade purge across every per-block table (Onda 1-3). Each call is
-    // best-effort — a failure here doesn't undo the trash operation.
-    let absolute = format!("{vault_path}/{file_path}");
-    for path_variant in [&file_path, &absolute] {
-        let _ = httui_notes::block_history::purge_history_for_file(&pool, path_variant).await;
-        let _ = httui_notes::block_settings::purge_settings_for_file(&pool, path_variant).await;
-        let _ = httui_notes::block_examples::purge_examples_for_file(&pool, path_variant).await;
-        let _ =
-            httui_notes::block_results::delete_block_results_for_file(&pool, path_variant).await;
-    }
-    Ok(())
-}
-
-/// Rename / move a note within the vault. Errors if `new_path` already
-/// exists or escapes the vault.
-#[tauri::command]
-fn rename_note(vault_path: String, old_path: String, new_path: String) -> Result<(), String> {
-    httui_notes::fs::rename_note(&vault_path, &old_path, &new_path)
-}
-
-/// Create a folder under `vault_path`. Idempotent — succeeds if the
-/// folder already exists.
-#[tauri::command]
-fn create_folder(vault_path: String, folder_path: String) -> Result<(), String> {
-    httui_notes::fs::create_folder(&vault_path, &folder_path)
-}
+// Vault file commands moved to `commands::files` (Epic 20a Story 05).
 
 /// Re-read a file from disk and emit `file-reloaded` so the editor
 /// replaces its in-memory copy. Used after MCP writes to defeat the
@@ -863,13 +775,13 @@ fn main() {
             httui_notes::git_commands::git_diff_cmd,
             httui_notes::git_commands::git_branch_list_cmd,
             restore_session,
-            list_workspace,
-            read_note,
-            write_note,
-            create_note,
-            delete_note,
-            rename_note,
-            create_folder,
+            httui_notes::commands::files::list_workspace,
+            httui_notes::commands::files::read_note,
+            httui_notes::commands::files::write_note,
+            httui_notes::commands::files::create_note,
+            httui_notes::commands::files::delete_note,
+            httui_notes::commands::files::rename_note,
+            httui_notes::commands::files::create_folder,
             start_watching,
             stop_watching,
             search_files,
