@@ -18,6 +18,11 @@
 
 set -euo pipefail
 
+# Force C locale so awk's %f always emits "80.0", never "80,0"
+# (some Brazilian/European locales use comma as decimal separator).
+export LC_ALL=C
+export LC_NUMERIC=C
+
 THRESHOLD="${THRESHOLD:-80}"
 MODE="${MODE:-enforce}"
 BASE_REF="${BASE_REF:-}"
@@ -88,8 +93,40 @@ if [ "$HAS_RS" -eq 1 ]; then
         echo "  cargo install cargo-llvm-cov"
         exit 2
     fi
-    echo "coverage-check: running cargo llvm-cov ..."
-    cargo llvm-cov --workspace --lcov --output-path "$RUST_LCOV" >/dev/null
+    # Detect which crates the touched .rs files belong to. Running
+    # llvm-cov per-crate avoids OOM on macOS — instrumented workspace
+    # builds spike memory above what 16 GB machines can handle.
+    PACKAGES=()
+    for f in "${CHANGED_FILES[@]}"; do
+        case "$f" in
+            httui-core/*) PACKAGES+=("httui-core") ;;
+            httui-desktop/src-tauri/*) PACKAGES+=("httui-notes") ;;
+            httui-tui/*) PACKAGES+=("httui-tui") ;;
+            httui-mcp/*) PACKAGES+=("httui-mcp") ;;
+        esac
+    done
+    # Dedupe
+    UNIQUE_PKGS=()
+    for p in "${PACKAGES[@]}"; do
+        already=0
+        for u in "${UNIQUE_PKGS[@]:-}"; do
+            [ "$p" = "$u" ] && already=1 && break
+        done
+        [ "$already" -eq 0 ] && UNIQUE_PKGS+=("$p")
+    done
+
+    if [ ${#UNIQUE_PKGS[@]} -eq 0 ]; then
+        echo "coverage-check: no recognized crate among touched .rs files; running workspace"
+        cargo llvm-cov --workspace --lcov --output-path "$RUST_LCOV" >/dev/null
+    else
+        echo "coverage-check: running cargo llvm-cov for ${UNIQUE_PKGS[*]} ..."
+        # Build a list of -p args
+        PKG_ARGS=()
+        for p in "${UNIQUE_PKGS[@]}"; do
+            PKG_ARGS+=("--package" "$p")
+        done
+        cargo llvm-cov "${PKG_ARGS[@]}" --lcov --output-path "$RUST_LCOV" >/dev/null
+    fi
 fi
 
 if [ "$HAS_FE" -eq 1 ]; then
@@ -131,6 +168,28 @@ extract_coverage() {
 printf "\n%-70s  %-9s  %-7s\n" "FILE" "COVERAGE" "STATUS"
 printf "%-70s  %-9s  %-7s\n" "----" "--------" "------"
 
+# is_structural_only <file>
+# True when the file has no executable code worth covering. Typical
+# matches: Rust `mod.rs` that does only `pub mod`/`pub use`/derive
+# enums/structs (no `fn` bodies). Coverage tools rarely emit useful
+# data for these and forcing every consumer to add an exclude comment
+# is friction. Heuristic: no `fn ` or `impl ` blocks anywhere in the
+# file.
+is_structural_only() {
+    local f="$1"
+    # Real executable code in Rust starts with `fn` (free fns + methods)
+    # or a `for`/`while`/`if`/`match` at column 0+ that isn't part of
+    # an attribute or doc comment. The simplest robust signal is `fn `
+    # or `impl ` — if neither appears, there's nothing to cover.
+    if grep -q -E '^\s*(pub\s+)?(async\s+)?(unsafe\s+)?fn\s+\w' "$f" 2>/dev/null; then
+        return 1
+    fi
+    if grep -q -E '^\s*impl\s+' "$f" 2>/dev/null; then
+        return 1
+    fi
+    return 0
+}
+
 FAILED=0
 for f in "${CHANGED_FILES[@]}"; do
     # Escape hatch
@@ -153,15 +212,19 @@ for f in "${CHANGED_FILES[@]}"; do
 
     pct="$(extract_coverage "$lcov" "$f" || echo "N/A")"
     if [ -z "$pct" ] || [ "$pct" = "N/A" ]; then
+        # Structural-only files (Rust mod.rs with just re-exports)
+        # have no executable lines; auto-pass.
+        if [ "${f##*.}" = "rs" ] && is_structural_only "$f"; then
+            printf "%-70s  %-9s  %-7s\n" "$f" "—" "STRUCT"
+            continue
+        fi
         printf "%-70s  %-9s  %-7s\n" "$f" "N/A" "MISSING"
         FAILED=1
         continue
     fi
 
-    # bash arithmetic doesn't do floats; multiply by 10 and compare ints
-    pct_int="${pct%.*}${pct##*.}"
-    threshold_int="$((THRESHOLD * 10))"
-    if [ "$pct_int" -ge "$threshold_int" ]; then
+    # Compare via awk to avoid bash's lack of float math.
+    if awk -v p="$pct" -v t="$THRESHOLD" 'BEGIN { exit !(p+0 >= t+0) }'; then
         printf "%-70s  %-9s  %-7s\n" "$f" "$pct%" "PASS"
     else
         printf "%-70s  %-9s  %-7s\n" "$f" "$pct%" "FAIL"
