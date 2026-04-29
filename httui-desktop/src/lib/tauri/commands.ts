@@ -84,6 +84,15 @@ export function setUserConfig(file: UserConfigFile): Promise<void> {
   return invoke("set_user_config", { file });
 }
 
+/** Outcome of `ensureVaultGitignore`. */
+export type GitignoreOutcome = "created" | "augmented" | "already_present";
+
+export function ensureVaultGitignore(
+  vaultPath: string,
+): Promise<GitignoreOutcome> {
+  return invoke("ensure_vault_gitignore", { vaultPath });
+}
+
 // --- Filesystem ---
 
 export function listWorkspace(vaultPath: string): Promise<FileEntry[]> {

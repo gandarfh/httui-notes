@@ -961,6 +961,8 @@ fn main() {
             httui_notes::vault_config_commands::set_workspace_config,
             httui_notes::vault_config_commands::get_user_config,
             httui_notes::vault_config_commands::set_user_config,
+            // Epic 10 — local override gitignore scaffolding.
+            httui_notes::vault_config_commands::ensure_vault_gitignore,
             restore_session,
             list_workspace,
             read_note,

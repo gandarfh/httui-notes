@@ -12,9 +12,11 @@
 //! and correct; the long-lived `Arc<Store>` cache pattern arrives with
 //! the cutover in epic 19.
 
+use httui_core::vault_config::gitignore::{ensure_local_overrides_in_gitignore, GitignoreOutcome};
 use httui_core::vault_config::user::UserFile;
 use httui_core::vault_config::workspace::WorkspaceDefaults;
 use httui_core::vault_config::{UserStore, WorkspaceStore};
+use std::path::PathBuf;
 
 #[tauri::command]
 pub async fn get_workspace_config(vault_path: String) -> Result<WorkspaceDefaults, String> {
@@ -41,6 +43,17 @@ pub async fn get_user_config() -> Result<UserFile, String> {
 pub async fn set_user_config(file: UserFile) -> Result<(), String> {
     let store = UserStore::from_default_path()?;
     store.replace(file).await
+}
+
+/// Ensure the vault's `.gitignore` carries the canonical block of
+/// `*.local.toml` patterns (ADR 0004). Idempotent. Used by the
+/// "Open / Clone / Create vault" flow (epic 17) and surfaced as a
+/// "fix it" button in the UI when an already-cloned vault is detected
+/// without our entries.
+#[tauri::command]
+pub async fn ensure_vault_gitignore(vault_path: String) -> Result<GitignoreOutcome, String> {
+    let path = PathBuf::from(vault_path);
+    ensure_local_overrides_in_gitignore(&path).map_err(|e| format!("ensure gitignore: {e}"))
 }
 
 #[cfg(test)]
@@ -87,6 +100,17 @@ mod tests {
         assert_eq!(after.environment.as_deref(), Some("staging"));
         assert_eq!(after.git_remote.as_deref(), Some("origin"));
         assert_eq!(after.git_branch.as_deref(), Some("main"));
+    }
+
+    #[tokio::test]
+    async fn ensure_vault_gitignore_creates_then_idempotent() {
+        let (_dir, vault) = temp_xdg();
+        let vault_str = vault.to_string_lossy().into_owned();
+        let first = ensure_vault_gitignore(vault_str.clone()).await.unwrap();
+        assert_eq!(first, GitignoreOutcome::Created);
+        let second = ensure_vault_gitignore(vault_str).await.unwrap();
+        assert_eq!(second, GitignoreOutcome::AlreadyPresent);
+        assert!(vault.join(".gitignore").exists());
     }
 
     #[tokio::test]
