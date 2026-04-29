@@ -1,4 +1,4 @@
-.PHONY: dev build release install install-deps install-app uninstall lint fmt check clean test test-rust test-front test-tui front icons sidecar tui tui-build tui-help coverage-check coverage-rust coverage-fe setup-hooks
+.PHONY: dev build release install install-deps install-app uninstall lint fmt check clean test test-rust test-front test-tui front icons sidecar tui tui-build tui-help coverage-check coverage-rust coverage-fe size-check quality-check setup-hooks
 
 # Development — frontend (Vite HMR) + backend (Rust rebuild on change)
 dev: sidecar
@@ -104,6 +104,15 @@ coverage-rust:
 # Frontend coverage report (HTML at httui-desktop/coverage/index.html).
 coverage-fe:
 	cd httui-desktop && npm run test -- --project unit --coverage
+
+# File-size gate — touched files must stay under MAX_LINES (default 600).
+# SOLID nudge for SRP. See docs-llm/v1/definition-of-done.md.
+size-check:
+	./scripts/size-check.sh
+
+# Combined gate — runs size-check then coverage-check. Same order as
+# the pre-push hook so local runs match remote behavior.
+quality-check: size-check coverage-check
 
 # Symlink tracked git hooks into .git/hooks (idempotent).
 setup-hooks:

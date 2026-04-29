@@ -50,21 +50,32 @@ make test             # cargo workspace + tui tests + vitest unit project
 make check            # tsc --noEmit + cargo fmt --check + cargo clippy --all-targets -D warnings
 make lint             # eslint across httui-desktop and httui-web
 make fmt              # cargo fmt --all + prettier --write across all source dirs
+make size-check       # touched-files size gate (≤600 lines per file)
 make coverage-check   # touched-files coverage gate (≥80% per file changed)
+make quality-check    # size-check + coverage-check (same as pre-push hook)
 make coverage-rust    # full HTML coverage report at target/llvm-cov/html
 make coverage-fe      # full HTML coverage report at httui-desktop/coverage
 make release          # check + test + build — run before tagging a release
 make clean            # drop dist/ and target/
 ```
 
-## Coverage gate (must-have)
+## Quality gates (must-have)
 
-Every file modified in a commit must have ≥80% line coverage in the
-file as a whole. Enforced two ways:
+Every file modified in a commit goes through two gates at push time:
+
+1. **Size gate** — `.rs`/`.ts`/`.tsx` files must stay ≤600 lines of
+   production code. (Rust `mod tests { ... }` blocks don't count;
+   `*.test.*` and `__tests__/` are skipped.) When a file exceeds the
+   limit, the gate prints **"Refactor with SOLID principles"** and
+   blocks the push — long files are an SRP smell almost every time.
+2. **Coverage gate** — same files must have ≥80% line coverage in the
+   file as a whole.
+
+Enforced two ways:
 
 - **Local pre-push hook** (`.git/hooks/pre-push`) blocks the push when
-  any touched `.rs`/`.ts`/`.tsx` file is below 80%
-- **CI** runs the same check against the PR's base branch
+  either gate fails
+- **CI** runs the same checks against the PR's base branch
 
 After cloning, run `make setup-hooks` once to wire the hooks in. The
 hooks live under `scripts/hooks/` (tracked) and are symlinked into
@@ -76,11 +87,18 @@ To inspect what the gate sees locally without trying to push:
 make coverage-check
 ```
 
-If a file truly cannot be tested (e.g. a Tauri command shell that just
-forwards arguments), put `// coverage:exclude file` on its first line
-and document the exclusion under "Coverage debt" in
-`docs-llm/v1/tech-debt.md`. Exclusions are reviewed during the sweep
-epics (20a, 30a) and reduced over time.
+### Escape hatches
+
+Both gates honor file-level opt-outs on line 1:
+
+- `// coverage:exclude file` — skip the coverage check
+- `// size:exclude file` — skip the size check
+
+Use sparingly. Each opt-out must be documented under the corresponding
+section of `docs-llm/v1/tech-debt.md`. Exclusions are reviewed during
+the sweep epics (20a, 30a) and reduced over time. Truly atomic files
+(generated tables, long but cohesive parser state machines, Tauri
+command shells with no logic) are the bar.
 
 ## Code style
 

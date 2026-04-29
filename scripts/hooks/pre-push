@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# Block push when any file modified between the upstream branch and
-# HEAD is below 80% line coverage. See docs-llm/v1/definition-of-done.md.
+# Pre-push gates. Runs in order; first failure aborts the push.
+#
+# 1. size-check  — refuse files over MAX_LINES (default 600); SOLID nudge
+# 2. coverage-check — refuse files below 80% line coverage
+#
+# See docs-llm/v1/definition-of-done.md.
 set -e
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
@@ -8,6 +12,7 @@ REPO_ROOT="$(git rev-parse --show-toplevel)"
 # Resolve the upstream branch we're pushing against.
 UPSTREAM="$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
 BASE_REF="${UPSTREAM:-origin/main}"
-
 export BASE_REF
+
+"$REPO_ROOT/scripts/size-check.sh"
 exec "$REPO_ROOT/scripts/coverage-check.sh"

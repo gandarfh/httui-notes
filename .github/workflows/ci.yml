@@ -170,7 +170,13 @@ jobs:
             echo "ref=origin/${{ github.event.repository.default_branch }}" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Size gate (≤600 lines per touched file)
+        env:
+          BASE_REF: ${{ steps.base.outputs.ref }}
+        run: ./scripts/size-check.sh
+
       - name: Coverage gate
+        if: ${{ !cancelled() }}
         env:
           BASE_REF: ${{ steps.base.outputs.ref }}
         run: ./scripts/coverage-check.sh
