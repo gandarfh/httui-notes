@@ -604,7 +604,7 @@ function InstallSection() {
         <Text as="span" fontFamily="mono" color="fg.muted">Linux</Text> ·{" "}
         <Text as="span" fontFamily="mono" color="fg.muted">Windows</Text> on the{" "}
         <Text as="span" color="accent.emphasized" fontWeight="600">GitHub releases</Text>.
-        VS Code extension and a Docker self-hosted build are also available.
+        A VS Code extension is also available.
       </Text>
     </Box>
   );
@@ -670,7 +670,7 @@ function CtaSection() {
 // ─────────────────────────────────────────────────────────
 function Footer() {
   const cols: { h: string; l: string[] }[] = [
-    { h: "Product", l: ["Workbench", "TUI", "VS Code", "Web app", "Self-host"] },
+    { h: "Product", l: ["Workbench", "TUI", "VS Code"] },
     { h: "Resources", l: ["Docs", "Examples", "Changelog", "Status"] },
     { h: "Community", l: ["GitHub", "Discord", "Contributing", "Code of Conduct"] },
     { h: "Legal", l: ["MIT License", "Privacy", "Security"] },
