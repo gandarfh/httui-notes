@@ -20,6 +20,7 @@ import { EmptyVaultSidebar } from "@/components/layout/empty-vault/EmptyVaultSid
 import { EmBrancoCard } from "@/components/layout/empty-vault/EmBrancoCard";
 import { TemplatesCard } from "@/components/layout/empty-vault/TemplatesCard";
 import { ImportarCard } from "@/components/layout/empty-vault/ImportarCard";
+import { EmptyVaultFooter } from "@/components/layout/empty-vault/EmptyVaultFooter";
 
 interface CreateState {
   busy: boolean;
@@ -128,6 +129,8 @@ export function EmptyVaultScreen() {
           <TemplatesCard onSelect={() => {}} />
           <ImportarCard onSelect={() => {}} />
         </Box>
+
+        <EmptyVaultFooter />
 
         <Stack direction="row" gap={3} mt={2} justify="center">
           <Button
