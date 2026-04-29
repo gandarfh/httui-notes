@@ -13,9 +13,12 @@
 //! the cutover in epic 19.
 
 use httui_core::vault_config::gitignore::{ensure_local_overrides_in_gitignore, GitignoreOutcome};
+use httui_core::vault_config::migration::{run_migration, MigrationOptions, MigrationReport};
 use httui_core::vault_config::user::UserFile;
+use httui_core::vault_config::user_store::default_user_config_path;
 use httui_core::vault_config::workspace::WorkspaceDefaults;
 use httui_core::vault_config::{UserStore, WorkspaceStore};
+use sqlx::sqlite::SqlitePool;
 use std::path::PathBuf;
 
 #[tauri::command]
@@ -54,6 +57,29 @@ pub async fn set_user_config(file: UserFile) -> Result<(), String> {
 pub async fn ensure_vault_gitignore(vault_path: String) -> Result<GitignoreOutcome, String> {
     let path = PathBuf::from(vault_path);
     ensure_local_overrides_in_gitignore(&path).map_err(|e| format!("ensure gitignore: {e}"))
+}
+
+/// Migrate the MVP SQLite-backed vault to the v1 file layout (Epic
+/// 12 / audit-005). Migrates `connections` and `environments` +
+/// `env_variables`. Prefs migration is part of Epic 19's settings
+/// split.
+///
+/// The Tauri command is the only entry point; there is no CLI flag
+/// in v1. Set `dry_run = true` to preview without writing.
+#[tauri::command]
+pub async fn migrate_vault_to_v1(
+    pool: tauri::State<'_, SqlitePool>,
+    vault_path: String,
+    dry_run: bool,
+) -> Result<MigrationReport, String> {
+    let user_path = default_user_config_path()?;
+    let opts = MigrationOptions {
+        dry_run,
+        backup: true,
+        user_config_path: user_path,
+    };
+    let path = PathBuf::from(vault_path);
+    run_migration(&pool, &path, &opts).await
 }
 
 #[cfg(test)]

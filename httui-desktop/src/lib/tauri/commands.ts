@@ -93,6 +93,28 @@ export function ensureVaultGitignore(
   return invoke("ensure_vault_gitignore", { vaultPath });
 }
 
+// --- Vault migration (epic 12) ---
+
+export interface MigrationReport {
+  vault_path: string;
+  backup_path: string | null;
+  connections_migrated: number;
+  connections_skipped: number;
+  environments_migrated: number;
+  environments_skipped: number;
+  variables_migrated: number;
+  variables_skipped: number;
+  dry_run: boolean;
+  notes: string[];
+}
+
+export function migrateVaultToV1(
+  vaultPath: string,
+  dryRun: boolean,
+): Promise<MigrationReport> {
+  return invoke("migrate_vault_to_v1", { vaultPath, dryRun });
+}
+
 // --- Filesystem ---
 
 export function listWorkspace(vaultPath: string): Promise<FileEntry[]> {

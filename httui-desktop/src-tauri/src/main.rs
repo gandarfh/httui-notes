@@ -963,6 +963,8 @@ fn main() {
             httui_notes::vault_config_commands::set_user_config,
             // Epic 10 — local override gitignore scaffolding.
             httui_notes::vault_config_commands::ensure_vault_gitignore,
+            // Epic 12 — vault migration script.
+            httui_notes::vault_config_commands::migrate_vault_to_v1,
             restore_session,
             list_workspace,
             read_note,
