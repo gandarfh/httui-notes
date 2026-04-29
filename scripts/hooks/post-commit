@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Report-only mode after every commit — fast feedback, never blocks.
+# The push-time gate (pre-push) is the actual enforcer.
+set -e
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+export MODE=report
+exec "$REPO_ROOT/scripts/coverage-check.sh"

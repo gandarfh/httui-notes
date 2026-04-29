@@ -30,21 +30,57 @@ Then:
 
 ```bash
 make install-deps   # cargo fetch + npm install + bun install (sidecar)
+make setup-hooks    # symlink the coverage-gate git hooks (see below)
 make dev            # boot the desktop app with HMR
+```
+
+For the coverage gate (required), also install:
+
+```bash
+rustup component add llvm-tools-preview
+cargo install cargo-llvm-cov
 ```
 
 Other useful targets:
 
 ```bash
-make tui            # run the terminal binary
-make sidecar        # rebuild the Node.js sidecar bundle
-make test           # cargo workspace + tui tests + vitest unit project
-make check          # tsc --noEmit + cargo fmt --check + cargo clippy --all-targets -D warnings
-make lint           # eslint across httui-desktop and httui-web
-make fmt            # cargo fmt --all + prettier --write across all source dirs
-make release        # check + test + build — run before tagging a release
-make clean          # drop dist/ and target/
+make tui              # run the terminal binary
+make sidecar          # rebuild the Node.js sidecar bundle
+make test             # cargo workspace + tui tests + vitest unit project
+make check            # tsc --noEmit + cargo fmt --check + cargo clippy --all-targets -D warnings
+make lint             # eslint across httui-desktop and httui-web
+make fmt              # cargo fmt --all + prettier --write across all source dirs
+make coverage-check   # touched-files coverage gate (≥80% per file changed)
+make coverage-rust    # full HTML coverage report at target/llvm-cov/html
+make coverage-fe      # full HTML coverage report at httui-desktop/coverage
+make release          # check + test + build — run before tagging a release
+make clean            # drop dist/ and target/
 ```
+
+## Coverage gate (must-have)
+
+Every file modified in a commit must have ≥80% line coverage in the
+file as a whole. Enforced two ways:
+
+- **Local pre-push hook** (`.git/hooks/pre-push`) blocks the push when
+  any touched `.rs`/`.ts`/`.tsx` file is below 80%
+- **CI** runs the same check against the PR's base branch
+
+After cloning, run `make setup-hooks` once to wire the hooks in. The
+hooks live under `scripts/hooks/` (tracked) and are symlinked into
+`.git/hooks/` (untracked).
+
+To inspect what the gate sees locally without trying to push:
+
+```bash
+make coverage-check
+```
+
+If a file truly cannot be tested (e.g. a Tauri command shell that just
+forwards arguments), put `// coverage:exclude file` on its first line
+and document the exclusion under "Coverage debt" in
+`docs-llm/v1/tech-debt.md`. Exclusions are reviewed during the sweep
+epics (20a, 30a) and reduced over time.
 
 ## Code style
 

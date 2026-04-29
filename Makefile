@@ -1,4 +1,4 @@
-.PHONY: dev build release install install-deps install-app uninstall lint fmt check clean test test-rust test-front test-tui front icons sidecar tui tui-build tui-help
+.PHONY: dev build release install install-deps install-app uninstall lint fmt check clean test test-rust test-front test-tui front icons sidecar tui tui-build tui-help coverage-check coverage-rust coverage-fe setup-hooks
 
 # Development — frontend (Vite HMR) + backend (Rust rebuild on change)
 dev: sidecar
@@ -90,6 +90,24 @@ test-rust:
 
 test-front:
 	npm run test --workspace httui-desktop -- --project unit
+
+# Coverage gate — touched-files rule (≥80% per file changed).
+# See docs-llm/v1/definition-of-done.md.
+coverage-check:
+	./scripts/coverage-check.sh
+
+# Run the full Rust coverage report. Used by coverage-check; exposed
+# for ad-hoc inspection (HTML report opens at target/llvm-cov/html/index.html).
+coverage-rust:
+	cargo llvm-cov --workspace --html
+
+# Frontend coverage report (HTML at httui-desktop/coverage/index.html).
+coverage-fe:
+	cd httui-desktop && npm run test -- --project unit --coverage
+
+# Symlink tracked git hooks into .git/hooks (idempotent).
+setup-hooks:
+	./scripts/setup-hooks.sh
 
 # Limpar artifacts
 clean:
