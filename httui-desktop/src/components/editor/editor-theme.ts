@@ -470,6 +470,38 @@ export const editorTheme = EditorView.theme(
       borderBottomLeftRadius: "var(--chakra-radii-md)",
       borderBottomRightRadius: "var(--chakra-radii-md)",
     },
+
+    // ── Numbered section headings (epic 39 / story 05) ──
+    // The CM6 extension adds `.cm-numbered-heading` + a
+    // `data-heading-number` attribute on every `#`/`##` line that
+    // isn't inside a fence. Style: serif title with a small accent
+    // circle carrying the number on the leading side.
+    ".cm-numbered-heading": {
+      position: "relative",
+      paddingLeft: "32px",
+      fontFamily: "var(--chakra-fonts-serif)",
+    },
+    ".cm-numbered-heading::before": {
+      content: "attr(data-heading-number)",
+      position: "absolute",
+      left: 0,
+      top: "50%",
+      transform: "translateY(-50%)",
+      width: "20px",
+      height: "20px",
+      borderRadius: "9999px",
+      background: "var(--chakra-colors-accent)",
+      color: "var(--chakra-colors-accent-fg)",
+      fontFamily: "var(--chakra-fonts-mono)",
+      fontSize: "10px",
+      fontWeight: 700,
+      lineHeight: 1,
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      userSelect: "none",
+      pointerEvents: "none",
+    },
   },
   { dark: true },
 );
