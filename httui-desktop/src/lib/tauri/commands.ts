@@ -38,12 +38,27 @@ export interface WorkspaceDefaults {
   git_branch?: string | null;
 }
 
-/** `[ui]` section of `~/.config/httui/user.toml`. */
+/** `[ui]` section of `~/.config/httui/user.toml`.
+ *
+ * Theme is serialized as JSON when the user has a richer ThemeConfig
+ * than just a mode string; the migration (Story 03) writes a bare
+ * mode string, so reads must accept both shapes.
+ */
 export interface UserUiPrefs {
   theme: string;
   font_family: string;
   font_size: number;
   density: string;
+  /** Editor auto-save debounce window (ms). */
+  auto_save_ms: number;
+  /** DB block default LIMIT when no explicit pin. */
+  default_fetch_size: number;
+  /** Per-block run-history retention cap. */
+  history_retention: number;
+  /** Editor vim-mode toggle. */
+  vim_enabled: boolean;
+  /** Sidebar open/closed flag. */
+  sidebar_open: boolean;
 }
 
 /** `[secrets]` section. */

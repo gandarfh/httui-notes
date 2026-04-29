@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { devtools } from "zustand/middleware";
-import { getConfig, setConfig } from "@/lib/tauri/commands";
+import { getUserConfig, setUserConfig } from "@/lib/tauri/commands";
+import type { UserConfigFile, UserUiPrefs } from "@/lib/tauri/commands";
 import type { ThemeConfig } from "@/lib/theme/config";
 import { DEFAULT_THEME } from "@/lib/theme/config";
 import { applyTheme } from "@/lib/theme/apply";
@@ -53,6 +54,23 @@ interface SettingsState {
   loadSettings: () => Promise<void>;
 }
 
+/**
+ * Read-modify-write the `[ui]` section of `~/.config/httui/user.toml`.
+ * Each call loads the whole file, applies `mutate` to the `ui`
+ * subtree, and writes it back. Errors swallow at the call site
+ * (we set in-memory state optimistically before persisting).
+ */
+async function patchUiPrefs(
+  mutate: (ui: UserUiPrefs) => UserUiPrefs,
+): Promise<void> {
+  const current: UserConfigFile = await getUserConfig();
+  const next: UserConfigFile = {
+    ...current,
+    ui: mutate(current.ui),
+  };
+  await setUserConfig(next);
+}
+
 // --- Store ---
 
 export const useSettingsStore = create<SettingsState>()(
@@ -73,22 +91,26 @@ export const useSettingsStore = create<SettingsState>()(
         set((state) => ({
           settings: { ...state.settings, [key]: value },
         }));
-        const configKey =
-          key === "autoSaveMs"
-            ? "auto_save_ms"
-            : key === "editorFontSize"
-              ? "editor_font_size"
-              : key === "defaultFetchSize"
-                ? "default_fetch_size"
-                : "history_retention";
-        setConfig(configKey, String(value)).catch(() => {});
+        patchUiPrefs((ui) => ({
+          ...ui,
+          ...(key === "autoSaveMs" ? { auto_save_ms: value as number } : {}),
+          ...(key === "editorFontSize" ? { font_size: value as number } : {}),
+          ...(key === "defaultFetchSize"
+            ? { default_fetch_size: value as number }
+            : {}),
+          ...(key === "historyRetention"
+            ? { history_retention: value as number }
+            : {}),
+        })).catch(() => {});
       },
 
       updateTheme: (partial) => {
         set((state) => {
           const next = { ...state.theme, ...partial };
           applyTheme(next);
-          setConfig("theme", JSON.stringify(next)).catch(() => {});
+          patchUiPrefs((ui) => ({ ...ui, theme: JSON.stringify(next) })).catch(
+            () => {},
+          );
           return { theme: next };
         });
       },
@@ -96,50 +118,70 @@ export const useSettingsStore = create<SettingsState>()(
       resetTheme: () => {
         set({ theme: DEFAULT_THEME });
         applyTheme(DEFAULT_THEME);
-        setConfig("theme", JSON.stringify(DEFAULT_THEME)).catch(() => {});
+        patchUiPrefs((ui) => ({
+          ...ui,
+          theme: JSON.stringify(DEFAULT_THEME),
+        })).catch(() => {});
       },
 
-      toggleVim: () => set((state) => ({ vimEnabled: !state.vimEnabled })),
+      toggleVim: () =>
+        set((state) => {
+          const next = !state.vimEnabled;
+          patchUiPrefs((ui) => ({ ...ui, vim_enabled: next })).catch(() => {});
+          return { vimEnabled: next };
+        }),
       setVimMode: (mode) => set({ vimMode: mode }),
-      setVimEnabled: (enabled) => set({ vimEnabled: enabled }),
+      setVimEnabled: (enabled) => {
+        set({ vimEnabled: enabled });
+        patchUiPrefs((ui) => ({ ...ui, vim_enabled: enabled })).catch(() => {});
+      },
       toggleSidebar: () =>
-        set((state) => ({ sidebarOpen: !state.sidebarOpen })),
-      setSidebarOpen: (open) => set({ sidebarOpen: open }),
+        set((state) => {
+          const next = !state.sidebarOpen;
+          patchUiPrefs((ui) => ({ ...ui, sidebar_open: next })).catch(() => {});
+          return { sidebarOpen: next };
+        }),
+      setSidebarOpen: (open) => {
+        set({ sidebarOpen: open });
+        patchUiPrefs((ui) => ({ ...ui, sidebar_open: open })).catch(() => {});
+      },
 
       loadSettings: async () => {
-        const [autoSave, fontSize, fetchSize, retention, themeJson] =
-          await Promise.all([
-            getConfig("auto_save_ms"),
-            getConfig("editor_font_size"),
-            getConfig("default_fetch_size"),
-            getConfig("history_retention"),
-            getConfig("theme"),
-          ]);
+        const file = await getUserConfig();
+        const ui = file.ui;
 
+        // Theme is persisted as JSON of the full ThemeConfig. The
+        // legacy migration (Story 03) writes a bare mode string —
+        // since ThemeConfig has no `mode` field anymore (the v1
+        // theme is structural: accentColor, density, shadow, …),
+        // bare-string values fall through to DEFAULT_THEME and get
+        // overwritten on the next save.
         let themeConfig = DEFAULT_THEME;
-        if (themeJson) {
+        const raw = ui.theme;
+        if (raw) {
           try {
-            themeConfig = { ...DEFAULT_THEME, ...JSON.parse(themeJson) };
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === "object") {
+              themeConfig = { ...DEFAULT_THEME, ...parsed };
+            }
           } catch {
-            /* ignore */
+            // bare string from migration — keep DEFAULT_THEME
           }
         }
         applyTheme(themeConfig);
 
         set({
           settings: {
-            autoSaveMs: autoSave ? Number(autoSave) : DEFAULTS.autoSaveMs,
-            editorFontSize: fontSize
-              ? Number(fontSize)
-              : DEFAULTS.editorFontSize,
-            defaultFetchSize: fetchSize
-              ? Number(fetchSize)
-              : DEFAULTS.defaultFetchSize,
-            historyRetention: retention
-              ? Number(retention)
-              : DEFAULTS.historyRetention,
+            autoSaveMs: ui.auto_save_ms || DEFAULTS.autoSaveMs,
+            editorFontSize: ui.font_size || DEFAULTS.editorFontSize,
+            defaultFetchSize:
+              ui.default_fetch_size || DEFAULTS.defaultFetchSize,
+            historyRetention:
+              ui.history_retention || DEFAULTS.historyRetention,
           },
           theme: themeConfig,
+          vimEnabled: ui.vim_enabled ?? false,
+          sidebarOpen: ui.sidebar_open ?? true,
           loaded: true,
         });
       },
