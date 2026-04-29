@@ -56,17 +56,24 @@ done < <(git diff --name-only "$DIFF_RANGE" 2>/dev/null \
     | grep -v -E '/test/' \
     || true)
 
+# Bash 3 (default on macOS) under `set -u` errors on `${empty_array[@]}`.
+# Skip early when there's nothing to check.
+if [ ${#CHANGED_FILES[@]} -eq 0 ]; then
+    echo "size-check: no .rs/.ts/.tsx changes; gate skipped"
+    exit 0
+fi
+
 # Filter to existing files (rename + delete leave entries that no longer exist)
 KEPT=()
 for f in "${CHANGED_FILES[@]}"; do
     [ -f "$f" ] && KEPT+=("$f")
 done
-CHANGED_FILES=("${KEPT[@]:-}")
 
-if [ ${#CHANGED_FILES[@]} -eq 0 ]; then
-    echo "size-check: no .rs/.ts/.tsx changes; gate skipped"
+if [ ${#KEPT[@]} -eq 0 ]; then
+    echo "size-check: all touched files were deleted; gate skipped"
     exit 0
 fi
+CHANGED_FILES=("${KEPT[@]}")
 
 # ---------- evaluate ---------------------------------------------------------
 
