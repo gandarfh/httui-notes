@@ -36,6 +36,33 @@ export default tseslint.config(
         "error",
         { argsIgnorePattern: "^_" },
       ],
+
+      // SOLID nudges at function granularity — see httui-desktop/
+      // eslint.config.js for the rationale + threshold reasoning.
+      // Mirrored here so the two frontend codebases share the same gate.
+      complexity: ["warn", 15],
+      "max-lines-per-function": [
+        "warn",
+        { max: 150, skipBlankLines: true, skipComments: true, IIFEs: true },
+      ],
+      "max-params": ["warn", 5],
+      "max-depth": ["warn", 4],
+    },
+  },
+  {
+    files: [
+      "**/__tests__/**",
+      "**/*.test.ts",
+      "**/*.test.tsx",
+      "**/*.spec.ts",
+      "**/*.spec.tsx",
+      "**/test/**",
+    ],
+    rules: {
+      "max-lines-per-function": "off",
+      complexity: "off",
+      "max-depth": "off",
+      "max-params": "off",
     },
   },
 );
