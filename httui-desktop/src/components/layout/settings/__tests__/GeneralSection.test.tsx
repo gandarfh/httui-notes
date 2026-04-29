@@ -68,4 +68,66 @@ describe("GeneralSection", () => {
 
     expect(useSettingsStore.getState().settings.autoSaveMs).toBe(2000);
   });
+
+  it("shows the autosave-disabled banner only when interval is 0", () => {
+    useSettingsStore.setState({
+      settings: {
+        autoSaveMs: 0,
+        editorFontSize: 14,
+        defaultFetchSize: 80,
+        historyRetention: 10,
+      },
+      colorMode: "system",
+      loaded: true,
+    });
+    renderWithWorkspace(<GeneralSection />);
+    expect(
+      screen.getByText(/Auto-save is disabled\./i),
+    ).toBeInTheDocument();
+  });
+
+  it("does not show the autosave-disabled banner when interval is positive", () => {
+    renderWithWorkspace(<GeneralSection />);
+    expect(screen.queryByText(/Auto-save is disabled/i)).toBeNull();
+  });
+
+  it("renders the history-retention input bound to the store", () => {
+    renderWithWorkspace(<GeneralSection />);
+    const input = screen.getByRole("spinbutton") as HTMLInputElement;
+    expect(input.value).toBe("10");
+  });
+
+  it("history-retention input writes valid numbers through to the store", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    renderWithWorkspace(<GeneralSection />);
+    const input = screen.getByRole("spinbutton") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "25" } });
+    expect(useSettingsStore.getState().settings.historyRetention).toBe(25);
+  });
+
+  it("history-retention rejects out-of-range numbers", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    renderWithWorkspace(<GeneralSection />);
+    const input = screen.getByRole("spinbutton") as HTMLInputElement;
+    // 0 fails the `n > 0` guard; the store value stays at the seeded 10.
+    fireEvent.change(input, { target: { value: "0" } });
+    expect(useSettingsStore.getState().settings.historyRetention).toBe(10);
+    // 101 fails the `n <= 100` guard.
+    fireEvent.change(input, { target: { value: "101" } });
+    expect(useSettingsStore.getState().settings.historyRetention).toBe(10);
+    // NaN (empty / non-numeric) also rejected by Number.isFinite.
+    fireEvent.change(input, { target: { value: "" } });
+    expect(useSettingsStore.getState().settings.historyRetention).toBe(10);
+  });
+
+  it("renders 'None' when no vault is active", () => {
+    renderWithWorkspace(<GeneralSection />, { vaultPath: null });
+    // The Workspace section renders the literal "None" string.
+    expect(screen.getByText("None")).toBeInTheDocument();
+  });
+
+  it("renders the active-vault path when present", () => {
+    renderWithWorkspace(<GeneralSection />, { vaultPath: "/tmp/v" });
+    expect(screen.getByText("/tmp/v")).toBeInTheDocument();
+  });
 });

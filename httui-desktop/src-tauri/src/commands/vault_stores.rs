@@ -1,5 +1,3 @@
-// coverage:exclude file — DB pool/exec/lookup or vault-store registry. Coverage requires live DB integration tests; owned by Epic 32 (critical-path tests). Audit-027.
-
 //! Per-vault registry for `ConnectionsStore` and `EnvironmentsStore`.
 //!
 //! The desktop app supports vault switching at runtime; the file-backed
@@ -168,5 +166,62 @@ mod tests {
 
         assert!(!Arc::ptr_eq(&sa.connections, &sb.connections));
         assert!(!Arc::ptr_eq(&sa.environments, &sb.environments));
+    }
+
+    async fn pool_with_active_vault(active: Option<&str>) -> (TempDir, SqlitePool) {
+        let dir = TempDir::new().unwrap();
+        let pool = httui_core::db::init_db(&dir.path().join("notes.db"))
+            .await
+            .unwrap();
+        if let Some(p) = active {
+            httui_core::config::set_config(&pool, "active_vault", p)
+                .await
+                .unwrap();
+        }
+        (dir, pool)
+    }
+
+    #[tokio::test]
+    async fn for_active_vault_resolves_against_app_config() {
+        let v = TempDir::new().unwrap();
+        let vault_str = v.path().to_string_lossy().into_owned();
+        let (_db_dir, pool) = pool_with_active_vault(Some(&vault_str)).await;
+        let registry = VaultStoreRegistry::new();
+
+        let stores = registry.for_active_vault(&pool).await.unwrap();
+        let again = registry
+            .for_vault(v.path().to_path_buf())
+            .await
+            .unwrap();
+        // for_active_vault populated the cache — the second call hits it.
+        assert!(Arc::ptr_eq(&stores.connections, &again.connections));
+    }
+
+    #[tokio::test]
+    async fn for_active_vault_errors_when_unset() {
+        let (_db_dir, pool) = pool_with_active_vault(None).await;
+        let registry = VaultStoreRegistry::new();
+        let err = registry.for_active_vault(&pool).await.err().expect("expected an error");
+        assert!(err.contains("No active vault"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn vault_registry_lookup_returns_none_for_unknown_connection() {
+        let v = TempDir::new().unwrap();
+        let vault_str = v.path().to_string_lossy().into_owned();
+        let (_db_dir, pool) = pool_with_active_vault(Some(&vault_str)).await;
+        let registry = VaultStoreRegistry::new();
+        let lookup = VaultRegistryLookup::new(pool, registry);
+        let res = lookup.lookup("missing").await.unwrap();
+        assert!(res.is_none());
+    }
+
+    #[tokio::test]
+    async fn vault_registry_lookup_propagates_no_active_vault_error() {
+        let (_db_dir, pool) = pool_with_active_vault(None).await;
+        let registry = VaultStoreRegistry::new();
+        let lookup = VaultRegistryLookup::new(pool, registry);
+        let err = lookup.lookup("anything").await.err().expect("expected an error");
+        assert!(err.contains("No active vault"), "got: {err}");
     }
 }
