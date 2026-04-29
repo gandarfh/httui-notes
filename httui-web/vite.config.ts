@@ -7,7 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       // Point @/ to the real app source — imports resolve against the actual codebase
-      "@": path.resolve(__dirname, "../src"),
+      "@": path.resolve(__dirname, "../httui-desktop/src"),
       // Stub out modules that don't exist in a static landing page context
       "@tauri-apps/api/core": path.resolve(__dirname, "src/stubs/tauri.ts"),
       "@tauri-apps/api/event": path.resolve(__dirname, "src/stubs/tauri.ts"),

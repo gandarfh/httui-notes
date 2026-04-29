@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "bun build src/index.ts --outfile ../src-tauri/resources/claude-sidecar.mjs --target=node",
+    "build": "bun build src/index.ts --outfile ../httui-desktop/src-tauri/resources/claude-sidecar.mjs --target=node",
     "dev": "bun run src/index.ts"
   },
   "dependencies": {

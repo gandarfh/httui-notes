@@ -1,0 +1,22 @@
+{
+  "name": "httui-monorepo",
+  "private": true,
+  "workspaces": [
+    "httui-desktop",
+    "httui-web",
+    "httui-sidecar"
+  ],
+  "scripts": {
+    "dev": "npm --workspace httui-desktop run dev",
+    "build": "npm --workspace httui-desktop run build",
+    "tauri": "npm --workspace httui-desktop run tauri",
+    "lint": "npm --workspace httui-desktop run lint",
+    "format": "npm --workspace httui-desktop run format",
+    "test": "npm --workspace httui-desktop run test",
+    "test:watch": "npm --workspace httui-desktop run test:watch",
+    "test:coverage": "npm --workspace httui-desktop run test:coverage",
+    "web:dev": "npm --workspace httui-web run dev",
+    "web:build": "npm --workspace httui-web run build",
+    "sidecar:build": "npm --workspace httui-sidecar run build"
+  }
+}
