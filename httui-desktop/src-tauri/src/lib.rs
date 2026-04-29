@@ -19,3 +19,9 @@ pub mod chat;
 
 // Cancel-aware DB execution plumbing (stage 3 of db block redesign)
 pub mod executions;
+
+// File-backed config (epic 09 foundation; cutover in epic 19).
+pub mod vault_config_commands;
+
+// Re-export the schemas frontend code needs at the IPC boundary.
+pub use httui_core::vault_config;

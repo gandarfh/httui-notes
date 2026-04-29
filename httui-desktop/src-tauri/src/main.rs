@@ -945,6 +945,12 @@ fn main() {
             compute_block_hash,
             get_config,
             set_config,
+            // Epic 09 foundation — file-backed workspace + user config.
+            // Frontend cutover lands in epic 19 (settings split).
+            httui_notes::vault_config_commands::get_workspace_config,
+            httui_notes::vault_config_commands::set_workspace_config,
+            httui_notes::vault_config_commands::get_user_config,
+            httui_notes::vault_config_commands::set_user_config,
             restore_session,
             list_workspace,
             read_note,

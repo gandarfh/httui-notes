@@ -19,6 +19,66 @@ export function setConfig(key: string, value: string): Promise<void> {
   return invoke("set_config", { key, value });
 }
 
+// --- File-backed vault config (epic 09 foundation) ---
+//
+// These wrap the new `WorkspaceStore` / `UserStore` surface in
+// `httui-core::vault_config`. The frontend keeps using the legacy
+// `getConfig`/`setConfig` for prefs until epic 19 cuts the settings
+// store over.
+
+/** `[defaults]` section of `<vault>/.httui/workspace.toml`. */
+export interface WorkspaceDefaults {
+  environment?: string | null;
+  git_remote?: string | null;
+  git_branch?: string | null;
+}
+
+/** `[ui]` section of `~/.config/httui/user.toml`. */
+export interface UserUiPrefs {
+  theme: string;
+  font_family: string;
+  font_size: number;
+  density: string;
+}
+
+/** `[secrets]` section. */
+export interface UserSecretsBackend {
+  backend: string;
+  biometric: boolean;
+  prompt_timeout_s: number;
+}
+
+/** Whole `~/.config/httui/user.toml` document (per-machine). */
+export interface UserConfigFile {
+  version: "1";
+  ui: UserUiPrefs;
+  shortcuts: Record<string, string>;
+  secrets: UserSecretsBackend;
+  mcp: { servers: Record<string, unknown> };
+  active_envs: Record<string, string>;
+}
+
+export function getWorkspaceConfig(
+  vaultPath: string,
+): Promise<WorkspaceDefaults> {
+  return invoke("get_workspace_config", { vaultPath });
+}
+
+export function setWorkspaceConfig(
+  vaultPath: string,
+  defaults: WorkspaceDefaults,
+): Promise<void> {
+  return invoke("set_workspace_config", { vaultPath, defaults });
+}
+
+export function getUserConfig(): Promise<UserConfigFile> {
+  return invoke("get_user_config");
+}
+
+export function setUserConfig(file: UserConfigFile): Promise<void> {
+  return invoke("set_user_config", { file });
+}
+
 // --- Filesystem ---
 
 export function listWorkspace(vaultPath: string): Promise<FileEntry[]> {
