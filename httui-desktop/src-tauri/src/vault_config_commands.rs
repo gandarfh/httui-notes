@@ -12,8 +12,10 @@
 //! and correct; the long-lived `Arc<Store>` cache pattern arrives with
 //! the cutover in epic 19.
 
+use httui_core::secrets::Keychain;
 use httui_core::vault_config::gitignore::{ensure_local_overrides_in_gitignore, GitignoreOutcome};
 use httui_core::vault_config::migration::{run_migration, MigrationOptions, MigrationReport};
+use httui_core::vault_config::missing_secrets::{scan_missing_secrets, MissingRef};
 use httui_core::vault_config::scaffold::{is_vault, scaffold_new_vault, ScaffoldReport};
 use httui_core::vault_config::user::UserFile;
 use httui_core::vault_config::user_store::default_user_config_path;
@@ -74,6 +76,16 @@ pub async fn check_is_vault(vault_path: String) -> Result<bool, String> {
 pub async fn scaffold_vault(vault_path: String) -> Result<ScaffoldReport, String> {
     let path = PathBuf::from(vault_path);
     scaffold_new_vault(&path).map_err(|e| format!("scaffold vault: {e}"))
+}
+
+/// Walk the vault for `{{keychain:...}}` references and report
+/// which ones are missing from the local OS keychain (Epic 18 /
+/// Story 01). Used by the first-run flow to batch-prompt the user
+/// instead of stamping a prompt on every block execution.
+#[tauri::command]
+pub async fn list_missing_secrets(vault_path: String) -> Result<Vec<MissingRef>, String> {
+    let path = PathBuf::from(vault_path);
+    scan_missing_secrets(&path, &Keychain)
 }
 
 /// Migrate the MVP SQLite-backed vault to the v1 file layout (Epic

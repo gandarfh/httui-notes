@@ -968,6 +968,8 @@ fn main() {
             // Epic 17 — vault scaffold + validate.
             httui_notes::vault_config_commands::check_is_vault,
             httui_notes::vault_config_commands::scaffold_vault,
+            // Epic 18 — first-run missing-secrets scan.
+            httui_notes::vault_config_commands::list_missing_secrets,
             restore_session,
             list_workspace,
             read_note,

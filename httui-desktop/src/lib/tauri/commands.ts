@@ -134,6 +134,20 @@ export function scaffoldVault(vaultPath: string): Promise<ScaffoldReport> {
   return invoke("scaffold_vault", { vaultPath });
 }
 
+// --- Missing secrets scan (epic 18) ---
+
+export interface MissingRef {
+  source_file: string;
+  label: string;
+  keychain_key: string;
+  kind: "connection" | "env";
+}
+
+/** Scan the vault for `{{keychain:...}}` refs missing from local OS keychain. */
+export function listMissingSecrets(vaultPath: string): Promise<MissingRef[]> {
+  return invoke("list_missing_secrets", { vaultPath });
+}
+
 // --- Filesystem ---
 
 export function listWorkspace(vaultPath: string): Promise<FileEntry[]> {
