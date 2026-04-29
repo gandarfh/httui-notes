@@ -177,23 +177,36 @@ printf "%-70s  %-9s  %-7s\n" "----" "--------" "------"
 # is_structural_only <file>
 # True when the file has no executable code worth covering. Typical
 # matches: Rust `mod.rs` that does only `pub mod`/`pub use`/derive
-# enums/structs (no `fn` bodies). Coverage tools rarely emit useful
-# data for these and forcing every consumer to add an exclude comment
-# is friction. Heuristic: no `fn ` or `impl ` blocks anywhere in the
-# file.
+# enums/structs (no `fn` bodies); TS `index.ts` barrels that only
+# `export ... from "..."`. Coverage tools rarely emit useful data
+# for these and forcing every consumer to add an exclude comment is
+# friction.
 is_structural_only() {
     local f="$1"
-    # Real executable code in Rust starts with `fn` (free fns + methods)
-    # or a `for`/`while`/`if`/`match` at column 0+ that isn't part of
-    # an attribute or doc comment. The simplest robust signal is `fn `
-    # or `impl ` — if neither appears, there's nothing to cover.
-    if grep -q -E '^\s*(pub\s+)?(async\s+)?(unsafe\s+)?fn\s+\w' "$f" 2>/dev/null; then
-        return 1
-    fi
-    if grep -q -E '^\s*impl\s+' "$f" 2>/dev/null; then
-        return 1
-    fi
-    return 0
+    case "$f" in
+        *.rs)
+            if grep -q -E '^\s*(pub\s+)?(async\s+)?(unsafe\s+)?fn\s+\w' "$f" 2>/dev/null; then
+                return 1
+            fi
+            if grep -q -E '^\s*impl\s+' "$f" 2>/dev/null; then
+                return 1
+            fi
+            return 0
+            ;;
+        *.ts | *.tsx)
+            # Barrel files: every non-blank, non-comment line is an
+            # `export ... from "..."` (value or type). Anything else —
+            # `const`, `function`, arrow fn, `class`, JSX — disqualifies.
+            local non_export
+            non_export="$(grep -v -E '^\s*(//|/\*|\*|$)' "$f" 2>/dev/null \
+                | grep -v -E '^\s*export\s+(\*|\{[^}]*\}|type\s+\{[^}]*\})\s+from\s+["'"'"'][^"'"'"']+["'"'"']\s*;?\s*$' \
+                || true)"
+            [ -z "$non_export" ]
+            ;;
+        *)
+            return 1
+            ;;
+    esac
 }
 
 FAILED=0
@@ -220,9 +233,9 @@ for f in "${CHANGED_FILES[@]}"; do
 
     pct="$(extract_coverage "$lcov" "$f" || echo "N/A")"
     if [ -z "$pct" ] || [ "$pct" = "N/A" ]; then
-        # Structural-only files (Rust mod.rs with just re-exports)
-        # have no executable lines; auto-pass.
-        if [ "${f##*.}" = "rs" ] && is_structural_only "$f"; then
+        # Structural-only files (Rust `mod.rs` with re-exports + TS
+        # `index.ts` barrels) have no executable lines; auto-pass.
+        if is_structural_only "$f"; then
             printf "%-70s  %-9s  %-7s\n" "$f" "—" "STRUCT"
             continue
         fi
