@@ -21,6 +21,7 @@ import { useSessionPersistence } from "@/hooks/useSessionPersistence";
 import { WorkspaceContext } from "@/contexts/WorkspaceContext";
 import { useAutoUpdate } from "@/hooks/useAutoUpdate";
 import { ChatPanel } from "@/components/chat/ChatPanel";
+import { EmptyVaultScreen } from "./EmptyVaultScreen";
 
 export function AppShell() {
   const sidebarOpen = useSettingsStore((s) => s.sidebarOpen);
@@ -159,27 +160,36 @@ export function AppShell() {
         />
 
         <Flex flex={1} overflow="hidden">
-          {sidebarOpen && (
+          {vaultPath === null ? (
+            <EmptyVaultScreen />
+          ) : (
             <>
-              <Sidebar width={sidebarWidth} />
-              <Box
-                w="4px"
-                cursor="col-resize"
-                _hover={{ bg: "brand.500/30" }}
-                _active={{ bg: "brand.500/50" }}
-                transition="background 0.15s"
-                onMouseDown={startResize}
+              {sidebarOpen && (
+                <>
+                  <Sidebar width={sidebarWidth} />
+                  <Box
+                    w="4px"
+                    cursor="col-resize"
+                    _hover={{ bg: "brand.500/30" }}
+                    _active={{ bg: "brand.500/50" }}
+                    transition="background 0.15s"
+                    onMouseDown={startResize}
+                  />
+                </>
+              )}
+              <PaneContainer
+                handleEditorChange={editorSession.handleEditorChange}
+                onNavigateFile={editorSession.handleFileSelect}
               />
+              {schemaPanelOpen && (
+                <SchemaPanel
+                  width={schemaPanelWidth}
+                  onClose={toggleSchemaPanel}
+                />
+              )}
+              {chatOpen && <ChatPanel width={chatWidth} />}
             </>
           )}
-          <PaneContainer
-            handleEditorChange={editorSession.handleEditorChange}
-            onNavigateFile={editorSession.handleFileSelect}
-          />
-          {schemaPanelOpen && (
-            <SchemaPanel width={schemaPanelWidth} onClose={toggleSchemaPanel} />
-          )}
-          {chatOpen && <ChatPanel width={chatWidth} />}
         </Flex>
 
         <StatusBar />
