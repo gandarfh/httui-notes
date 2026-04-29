@@ -304,30 +304,7 @@ async fn compute_block_hash(
 /// when the cached row is older than 5s.
 // Schema commands moved to `commands::schema` (Epic 20a Story 05).
 
-// --- Config commands ---
-
-/// Read a single key from the `app_config` table.
-#[tauri::command]
-async fn get_config(
-    pool: tauri::State<'_, SqlitePool>,
-    key: String,
-) -> Result<Option<String>, String> {
-    httui_notes::config::get_config(&pool, &key)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-/// Upsert a single key into the `app_config` table.
-#[tauri::command]
-async fn set_config(
-    pool: tauri::State<'_, SqlitePool>,
-    key: String,
-    value: String,
-) -> Result<(), String> {
-    httui_notes::config::set_config(&pool, &key, &value)
-        .await
-        .map_err(|e| e.to_string())
-}
+// Config commands moved to `commands::settings` (Epic 20a Story 05).
 
 // --- Filesystem commands ---
 
@@ -723,8 +700,8 @@ fn main() {
             get_block_result,
             save_block_result,
             compute_block_hash,
-            get_config,
-            set_config,
+            httui_notes::commands::settings::get_config,
+            httui_notes::commands::settings::set_config,
             // Epic 09 foundation — file-backed workspace + user config.
             // Frontend cutover lands in epic 19 (settings split).
             httui_notes::vault_config_commands::get_workspace_config,
