@@ -23,6 +23,12 @@ jobs:
           - platform: ubuntu-22.04
             args: --bundles appimage,deb
             target: ""
+          # Windows MSI — Epic 35 Story 01. Code-signing cert is Epic
+          # 34 Story 02; until that lands the MSI ships unsigned and
+          # SmartScreen will warn on first install. Bundle still builds.
+          - platform: windows-latest
+            args: --bundles msi
+            target: ""
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -47,6 +53,7 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - name: Sync version from tag
+        shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           echo "Setting version to $VERSION"
@@ -56,6 +63,36 @@ jobs:
           sed -i.bak "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" httui-desktop/package.json && rm httui-desktop/package.json.bak
           # Update Cargo.toml of the tauri crate
           sed -i.bak "s/^version = \".*\"/version = \"$VERSION\"/" httui-desktop/src-tauri/Cargo.toml && rm httui-desktop/src-tauri/Cargo.toml.bak
+
+      - name: Extract release notes from CHANGELOG.md
+        id: notes
+        shell: bash
+        run: |
+          # Pull the matching `## [VERSION]` section out of CHANGELOG.md.
+          # Falls back to a generic body when the section is missing so a
+          # tag without a CHANGELOG entry still ships.
+          VERSION="${GITHUB_REF_NAME#v}"
+          NOTES_FILE="$(mktemp)"
+          if [ -f CHANGELOG.md ] && grep -q "^## \[${VERSION}\]" CHANGELOG.md; then
+            awk -v v="${VERSION}" '
+              $0 ~ "^## \\[" v "\\]" { found = 1; next }
+              found && /^## \[/        { exit }
+              found                    { print }
+            ' CHANGELOG.md > "$NOTES_FILE"
+            echo "Extracted notes for $VERSION (CHANGELOG)"
+          else
+            echo "No CHANGELOG section for $VERSION; using generic body" > "$NOTES_FILE"
+            echo "" >> "$NOTES_FILE"
+            echo "See the assets below to download and install." >> "$NOTES_FILE"
+          fi
+          # Surface the file path to subsequent steps via outputs.
+          echo "path=$NOTES_FILE" >> "$GITHUB_OUTPUT"
+          # Detect prerelease: tags shaped `vX.Y.Z-rc.N` are prereleases.
+          if [[ "$GITHUB_REF_NAME" =~ -rc\.[0-9]+$ ]] || [[ "$GITHUB_REF_NAME" =~ -beta\.[0-9]+$ ]] || [[ "$GITHUB_REF_NAME" =~ -alpha\.[0-9]+$ ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Install frontend dependencies
         run: npm ci
@@ -69,6 +106,17 @@ jobs:
         run: |
           find target -path "*/bundle/*" -type f 2>/dev/null || echo "No bundle directory found"
 
+      - name: Read release body
+        id: body
+        shell: bash
+        run: |
+          # GitHub Actions multi-line outputs need the heredoc form.
+          {
+            echo 'body<<HTTUI_NOTES_EOF'
+            cat "${{ steps.notes.outputs.path }}"
+            echo HTTUI_NOTES_EOF
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build and release
         uses: tauri-apps/tauri-action@v0
         env:
@@ -79,7 +127,7 @@ jobs:
           projectPath: httui-desktop
           tagName: ${{ github.ref_name }}
           releaseName: "httui notes ${{ github.ref_name }}"
-          releaseBody: "See the assets below to download and install."
+          releaseBody: ${{ steps.body.outputs.body }}
           releaseDraft: false
-          prerelease: false
+          prerelease: ${{ steps.notes.outputs.prerelease == 'true' }}
           args: ${{ matrix.args }}
