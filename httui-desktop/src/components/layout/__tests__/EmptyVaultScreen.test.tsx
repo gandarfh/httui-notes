@@ -37,6 +37,14 @@ describe("EmptyVaultScreen", () => {
     expect(screen.getByTestId("em-branco-cta")).toBeInTheDocument();
   });
 
+  it("renders the canvas-spec 3-card grid (Em branco / Templates / Importar)", () => {
+    renderWithProviders(<EmptyVaultScreen />);
+    expect(screen.getByTestId("empty-vault-card-grid")).toBeInTheDocument();
+    expect(screen.getByTestId("em-branco-card")).toBeInTheDocument();
+    expect(screen.getByTestId("templates-card")).toBeInTheDocument();
+    expect(screen.getByTestId("importar-card")).toBeInTheDocument();
+  });
+
   it("Choose folder dispatches the workspace store openVault action", async () => {
     const user = userEvent.setup();
     // Spy on the store's openVault — exact wiring of the dialog

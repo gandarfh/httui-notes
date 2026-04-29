@@ -18,6 +18,8 @@ import { useWorkspaceStore } from "@/stores/workspace";
 import { scaffoldVault } from "@/lib/tauri/commands";
 import { EmptyVaultSidebar } from "@/components/layout/empty-vault/EmptyVaultSidebar";
 import { EmBrancoCard } from "@/components/layout/empty-vault/EmBrancoCard";
+import { TemplatesCard } from "@/components/layout/empty-vault/TemplatesCard";
+import { ImportarCard } from "@/components/layout/empty-vault/ImportarCard";
 
 interface CreateState {
   busy: boolean;
@@ -111,43 +113,32 @@ export function EmptyVaultScreen() {
           </Box>
         )}
 
-        <Stack
-          direction={{ base: "column", md: "row" }}
-          gap={4}
-          align="stretch"
+        <Box
+          data-testid="empty-vault-card-grid"
+          display="grid"
+          gridTemplateColumns={{
+            base: "1fr",
+            md: "1.3fr 1fr 1fr",
+          }}
+          gap="14px"
+          maxW="760px"
+          alignItems="stretch"
         >
-          <Stack
-            flex={1}
-            border="1px solid"
-            borderColor="border.subtle"
-            borderRadius="md"
-            p={4}
-            gap={2}
-            bg="bg"
+          <EmBrancoCard onCreateClick={handleCreate} />
+          <TemplatesCard onSelect={() => {}} />
+          <ImportarCard onSelect={() => {}} />
+        </Box>
+
+        <Stack direction="row" gap={3} mt={2} justify="center">
+          <Button
+            data-testid="empty-vault-open"
+            onClick={() => openVault()}
+            disabled={createState.busy}
+            variant="ghost"
+            size="sm"
           >
-            <Heading as="h2" size="md">
-              Open
-            </Heading>
-            <Text fontSize="sm" color="fg.muted">
-              Pick an existing folder. httui activates it as a vault if
-              it has runbooks, a `connections.toml`, or a `.httui/` marker.
-            </Text>
-            <Button
-              data-testid="empty-vault-open"
-              onClick={() => openVault()}
-              disabled={createState.busy}
-              colorPalette="brand"
-              variant="solid"
-              mt="auto"
-            >
-              Choose folder
-            </Button>
-          </Stack>
-
-          <Box flex={1.3} data-testid="empty-vault-create-card">
-            <EmBrancoCard onCreateClick={handleCreate} />
-          </Box>
-
+            Open existing folder…
+          </Button>
         </Stack>
 
         <Text fontSize="xs" color="fg.muted" textAlign="center">
