@@ -54,6 +54,8 @@ done < <(git diff --name-only "$DIFF_RANGE" 2>/dev/null \
     | grep -v -E '/(__tests__|tests)/' \
     | grep -v -E '\.(test|spec|browser\.test|browser\.spec)\.(ts|tsx)$' \
     | grep -v -E '/test/' \
+    | grep -v -E '\.d\.ts$' \
+    | grep -v -E '(^|/)(vite|vitest|playwright|tsup|tsconfig)\.config\.(ts|tsx)$' \
     || true)
 
 # Bash 3 (default on macOS) under `set -u` errors on `${empty_array[@]}`.
