@@ -31,7 +31,7 @@ import { parseDbFenceInfo } from "../db-fence";
 // Rust runner.
 const FIXTURES_DIR = path.resolve(
   path.dirname(new URL(import.meta.url).pathname),
-  "../../../../httui-core/tests/parity-fixtures/blocks",
+  "../../../../../httui-core/tests/parity-fixtures/blocks",
 );
 
 interface CanonicalBlock {
