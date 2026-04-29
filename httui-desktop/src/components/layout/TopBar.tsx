@@ -29,6 +29,7 @@ import { BreadcrumbNav } from "@/components/layout/topbar/BreadcrumbNav";
 import { SegmentedEnvSwitcher } from "@/components/layout/topbar/SegmentedEnvSwitcher";
 import { Btn, Kbd } from "@/components/atoms";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { useGitStatus } from "@/hooks/useGitStatus";
 import { useSettingsStore } from "@/stores/settings";
 import {
   usePaneStore,
@@ -82,6 +83,8 @@ export function TopBar({
 
   const activeFilePath = usePaneStore(selectActiveTabPath);
   const activeUnsaved = usePaneStore(selectActiveTabUnsaved);
+  const { status: gitState } = useGitStatus(vaultPath);
+  const branchLabel = gitState?.branch ?? "main";
 
   const workspace = vaultPath ? vaultPath.split("/").pop() ?? vaultPath : null;
 
@@ -167,7 +170,7 @@ export function TopBar({
         title="Branch switcher (Epic 48)"
       >
         <LuGitBranch size={12} />
-        main
+        {branchLabel}
       </Btn>
 
       <Btn

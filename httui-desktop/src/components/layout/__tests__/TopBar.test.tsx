@@ -194,6 +194,34 @@ describe("TopBar", () => {
       dispatch.mockRestore();
     });
 
+    it("branch label reflects gitStatus.branch when a vault is open", async () => {
+      const { mockTauriCommand } = await import("@/test/mocks/tauri");
+      mockTauriCommand("git_status_cmd", () => ({
+        branch: "feat/login",
+        upstream: null,
+        ahead: 0,
+        behind: 0,
+        changed: [],
+        clean: true,
+      }));
+
+      const { findByLabelText } = renderWithWorkspace(
+        <TopBar {...baseProps} />,
+        { vaultPath: "/v" },
+      );
+      const btn = await findByLabelText("Switch branch");
+      // useGitStatus polls async; allow a microtask flush.
+      await new Promise((r) => setTimeout(r, 0));
+      expect(btn.textContent).toContain("feat/login");
+    });
+
+    it("branch label falls back to 'main' when no gitStatus has resolved yet", () => {
+      renderWithWorkspace(<TopBar {...baseProps} />, { vaultPath: null });
+      expect(
+        screen.getByLabelText("Switch branch").textContent,
+      ).toContain("main");
+    });
+
     it("clicking the workspace breadcrumb cycles to the next vault when multi-vault", async () => {
       const user = userEvent.setup();
       const switchVault = vi.fn(async () => {});
