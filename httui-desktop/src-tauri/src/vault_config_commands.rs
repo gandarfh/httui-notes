@@ -19,7 +19,7 @@ use httui_core::vault_config::missing_secrets::{scan_missing_secrets, MissingRef
 use httui_core::vault_config::scaffold::{is_vault, scaffold_new_vault, ScaffoldReport};
 use httui_core::vault_config::user::UserFile;
 use httui_core::vault_config::user_store::default_user_config_path;
-use httui_core::vault_config::workspace::WorkspaceDefaults;
+use httui_core::vault_config::workspace::{FileSettings, WorkspaceDefaults};
 use httui_core::vault_config::{UserStore, WorkspaceStore};
 use sqlx::sqlite::SqlitePool;
 use std::path::PathBuf;
@@ -37,6 +37,32 @@ pub async fn set_workspace_config(
 ) -> Result<(), String> {
     let store = WorkspaceStore::new(vault_path);
     store.set_defaults(defaults).await
+}
+
+/// Read the per-file settings entry for `file_path` (vault-relative).
+/// Returns `FileSettings::default()` when no entry exists. Carry-over
+/// from Epic 39 Story 03 — feeds the editor toolbar's auto-capture
+/// toggle.
+#[tauri::command]
+pub async fn get_file_settings(
+    vault_path: String,
+    file_path: String,
+) -> Result<FileSettings, String> {
+    let store = WorkspaceStore::new(vault_path);
+    store.file_settings(&file_path).await
+}
+
+/// Toggle `auto_capture` for `file_path`. Writes through to
+/// `workspace.toml`'s base (never `.local.toml`) and prunes default-
+/// valued entries so the file stays minimal.
+#[tauri::command]
+pub async fn set_file_auto_capture(
+    vault_path: String,
+    file_path: String,
+    auto_capture: bool,
+) -> Result<(), String> {
+    let store = WorkspaceStore::new(vault_path);
+    store.set_file_auto_capture(&file_path, auto_capture).await
 }
 
 #[tauri::command]
@@ -188,6 +214,36 @@ mod tests {
         let r2 = scaffold_vault(folder_str).await.unwrap();
         assert!(r2.already_a_vault);
         assert!(r2.created.is_empty());
+    }
+
+    #[tokio::test]
+    async fn file_settings_round_trip_via_commands() {
+        let (_dir, vault) = temp_xdg();
+        let vault_str = vault.to_string_lossy().into_owned();
+
+        let initial = get_file_settings(vault_str.clone(), "rollout.md".into())
+            .await
+            .unwrap();
+        assert!(!initial.auto_capture);
+
+        set_file_auto_capture(vault_str.clone(), "rollout.md".into(), true)
+            .await
+            .unwrap();
+
+        let after = get_file_settings(vault_str, "rollout.md".into())
+            .await
+            .unwrap();
+        assert!(after.auto_capture);
+    }
+
+    #[tokio::test]
+    async fn set_file_auto_capture_validates_path() {
+        let (_dir, vault) = temp_xdg();
+        let vault_str = vault.to_string_lossy().into_owned();
+        let err = set_file_auto_capture(vault_str, "  ".into(), true)
+            .await
+            .unwrap_err();
+        assert!(err.contains("must not be empty"), "got: {err}");
     }
 
     #[tokio::test]

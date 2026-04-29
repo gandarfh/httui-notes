@@ -450,6 +450,8 @@ fn main() {
             // Frontend cutover lands in epic 19 (settings split).
             httui_notes::vault_config_commands::get_workspace_config,
             httui_notes::vault_config_commands::set_workspace_config,
+            httui_notes::vault_config_commands::get_file_settings,
+            httui_notes::vault_config_commands::set_file_auto_capture,
             httui_notes::vault_config_commands::get_user_config,
             httui_notes::vault_config_commands::set_user_config,
             // Epic 10 — local override gitignore scaffolding.
