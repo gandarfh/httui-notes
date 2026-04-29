@@ -3,4 +3,5 @@
 //! connections command modules follow as Phase 2/3 of Epic 19's
 //! cutover land.
 
+pub mod environments;
 pub mod vault_stores;

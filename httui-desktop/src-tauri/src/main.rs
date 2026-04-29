@@ -602,88 +602,9 @@ async fn test_connection(
     conn_manager.test_connection(&id).await
 }
 
-// --- Environment commands ---
-
-/// List every environment for the active vault.
-#[tauri::command]
-async fn list_environments(
-    pool: tauri::State<'_, SqlitePool>,
-) -> Result<Vec<httui_notes::db::environments::Environment>, String> {
-    httui_notes::db::environments::list_environments(&pool).await
-}
-
-/// Create an empty environment with the given display name.
-#[tauri::command]
-async fn create_environment(
-    pool: tauri::State<'_, SqlitePool>,
-    name: String,
-) -> Result<httui_notes::db::environments::Environment, String> {
-    httui_notes::db::environments::create_environment(&pool, name).await
-}
-
-/// Delete an environment and its variables. Cascade clears any
-/// keychain-stored secret values.
-#[tauri::command]
-async fn delete_environment(pool: tauri::State<'_, SqlitePool>, id: String) -> Result<(), String> {
-    httui_notes::db::environments::delete_environment(&pool, &id).await
-}
-
-/// Copy an existing environment (and its variables) under a new name.
-#[tauri::command]
-async fn duplicate_environment(
-    pool: tauri::State<'_, SqlitePool>,
-    source_id: String,
-    new_name: String,
-) -> Result<httui_notes::db::environments::Environment, String> {
-    httui_notes::db::environments::duplicate_environment(&pool, &source_id, new_name).await
-}
-
-/// Mark an environment as active (or `None` to clear). Used by the
-/// TopBar dropdown.
-#[tauri::command]
-async fn set_active_environment(
-    pool: tauri::State<'_, SqlitePool>,
-    id: Option<String>,
-) -> Result<(), String> {
-    httui_notes::db::environments::set_active_environment(&pool, id.as_deref()).await
-}
-
-/// List variables for an environment with secrets masked (the real
-/// values stay in the OS keychain — readers must call the masked
-/// helper to avoid leaking via IPC logs).
-#[tauri::command]
-async fn list_env_variables(
-    pool: tauri::State<'_, SqlitePool>,
-    environment_id: String,
-) -> Result<Vec<httui_notes::db::environments::EnvVariable>, String> {
-    httui_notes::db::environments::list_env_variables_masked(&pool, &environment_id).await
-}
-
-/// Upsert a variable. When `is_secret = true` the value is written to
-/// the keychain and a sentinel is stored in SQLite.
-#[tauri::command]
-async fn set_env_variable(
-    pool: tauri::State<'_, SqlitePool>,
-    environment_id: String,
-    key: String,
-    value: String,
-    is_secret: Option<bool>,
-) -> Result<httui_notes::db::environments::EnvVariable, String> {
-    httui_notes::db::environments::set_env_variable(
-        &pool,
-        &environment_id,
-        key,
-        value,
-        is_secret.unwrap_or(false),
-    )
-    .await
-}
-
-/// Delete a variable. If `is_secret`, also drops the keychain entry.
-#[tauri::command]
-async fn delete_env_variable(pool: tauri::State<'_, SqlitePool>, id: String) -> Result<(), String> {
-    httui_notes::db::environments::delete_env_variable(&pool, &id).await
-}
+// Environment commands moved to `commands::environments` (Epic 19
+// Story 02 Phase 2 — file-backed cutover; audit-015). Wire-compat is
+// preserved (Environment.id == name; EnvVariable.id == "<env>::<key>").
 
 // --- Internal DB query (audit/settings) ---
 
@@ -1001,14 +922,14 @@ fn main() {
             test_connection,
             introspect_schema,
             get_cached_schema,
-            list_environments,
-            create_environment,
-            delete_environment,
-            duplicate_environment,
-            set_active_environment,
-            list_env_variables,
-            set_env_variable,
-            delete_env_variable,
+            httui_notes::commands::environments::list_environments,
+            httui_notes::commands::environments::create_environment,
+            httui_notes::commands::environments::delete_environment,
+            httui_notes::commands::environments::duplicate_environment,
+            httui_notes::commands::environments::set_active_environment,
+            httui_notes::commands::environments::list_env_variables,
+            httui_notes::commands::environments::set_env_variable,
+            httui_notes::commands::environments::delete_env_variable,
             // Chat
             create_chat_session,
             list_chat_sessions,
