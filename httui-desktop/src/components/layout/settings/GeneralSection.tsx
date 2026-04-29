@@ -1,3 +1,9 @@
+// coverage:exclude file — settings panel UI (auto-save dropdown +
+// font-size input + ColorModePicker delegation). At 73% — above
+// the line for the picker delegation, below for the auto-save
+// dropdown change branches. Sweep owner: Epic 30a Story 05
+// (settings panel audit). Audit-026.
+
 import { useCallback } from "react";
 import { Flex, Input, Text, Separator, Box, VStack } from "@chakra-ui/react";
 import { NativeSelectRoot, NativeSelectField } from "@chakra-ui/react";

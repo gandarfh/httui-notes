@@ -1,3 +1,9 @@
+// coverage:exclude file — MCP server binary entrypoint (clap parse +
+// rmcp stdio bootstrap). Same rationale as `httui-desktop/src-tauri/
+// src/main.rs`: no extractable logic, integration-style coverage
+// only. Sweep owner: Epic 32 (critical-path tests, integration
+// harness for the chat/MCP boundary). Audit-025.
+
 use anyhow::Result;
 use clap::Parser;
 use rmcp::{transport::stdio, ServiceExt};
