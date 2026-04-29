@@ -469,3 +469,44 @@ export function useLayoutAndActive() {
     useShallow((s) => ({ layout: s.layout, activePaneId: s.activePaneId })),
   );
 }
+
+/**
+ * Walk the pane tree to find the active tab on the active pane and
+ * return its `filePath`. Used by the TopBar breadcrumb to surface
+ * the currently-focused file. Returns `null` when no leaf has any
+ * tabs (cold start / empty vault).
+ */
+export function selectActiveTabPath(s: PaneState): string | null {
+  function find(node: PaneLayout): { filePath: string; unsaved: boolean } | null {
+    if (node.type === "split") {
+      return find(node.children[0]) ?? find(node.children[1]);
+    }
+    if (s.activePaneId && node.id === s.activePaneId) {
+      const tab = node.tabs[node.activeTab];
+      return tab ? { filePath: tab.filePath, unsaved: tab.unsaved } : null;
+    }
+    return null;
+  }
+  // First try exact match on activePaneId.
+  const direct = find(s.layout);
+  if (direct) return direct.filePath;
+  // Fall back to the first leaf with a tab — handles "no active pane
+  // marked" cold-start.
+  function firstWithTab(node: PaneLayout): string | null {
+    if (node.type === "split") {
+      return firstWithTab(node.children[0]) ?? firstWithTab(node.children[1]);
+    }
+    return node.tabs[node.activeTab]?.filePath ?? null;
+  }
+  return firstWithTab(s.layout);
+}
+
+/**
+ * True when the *active* tab on the active pane has unsaved changes.
+ * Powers the dirty-dot indicator on the breadcrumb's last segment.
+ */
+export function selectActiveTabUnsaved(s: PaneState): boolean {
+  const path = selectActiveTabPath(s);
+  if (!path) return false;
+  return s.unsavedFiles.has(path);
+}

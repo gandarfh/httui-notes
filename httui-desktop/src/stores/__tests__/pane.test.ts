@@ -8,6 +8,8 @@ import {
   allLeafIds,
   updateSplitRatio,
   replacePaneInLayout,
+  selectActiveTabPath,
+  selectActiveTabUnsaved,
 } from "@/stores/pane";
 import { mockTauriCommand, clearTauriMocks } from "@/test/mocks/tauri";
 import {
@@ -376,6 +378,48 @@ describe("paneStore — extended coverage", () => {
       emitTauriEvent("file-reloaded", { path: "a.md", markdown: "y" });
 
       expect(usePaneStore.getState().hasConflict("a.md")).toBe(false);
+    });
+  });
+
+  describe("active tab selectors", () => {
+    it("selectActiveTabPath returns null on cold start (no tabs)", () => {
+      resetStore();
+      const path = selectActiveTabPath(usePaneStore.getState());
+      expect(path).toBeNull();
+    });
+
+    it("selectActiveTabPath returns the active leaf's active tab path", () => {
+      resetStore();
+      usePaneStore.getState().openFile("notes.md", "v=", VAULT);
+      const path = selectActiveTabPath(usePaneStore.getState());
+      expect(path).toBe("notes.md");
+    });
+
+    it("selectActiveTabPath falls back to first leaf with a tab if activePaneId is unset", () => {
+      resetStore();
+      usePaneStore.getState().openFile("a.md", "v=", VAULT);
+      usePaneStore.setState({ activePaneId: null } as never);
+      const path = selectActiveTabPath(usePaneStore.getState());
+      expect(path).toBe("a.md");
+    });
+
+    it("selectActiveTabUnsaved is false when the active path is clean", () => {
+      resetStore();
+      usePaneStore.getState().openFile("notes.md", "v=", VAULT);
+      expect(selectActiveTabUnsaved(usePaneStore.getState())).toBe(false);
+    });
+
+    it("selectActiveTabUnsaved is true when the active path is unsaved", () => {
+      resetStore();
+      usePaneStore.getState().openFile("notes.md", "v=", VAULT);
+      usePaneStore.getState().markUnsaved("p1", "notes.md", true);
+      expect(selectActiveTabUnsaved(usePaneStore.getState())).toBe(true);
+    });
+
+    it("selectActiveTabUnsaved is false when no tab is open even if some path was unsaved", () => {
+      resetStore();
+      usePaneStore.getState().markUnsaved("p1", "orphan.md", true);
+      expect(selectActiveTabUnsaved(usePaneStore.getState())).toBe(false);
     });
   });
 });
