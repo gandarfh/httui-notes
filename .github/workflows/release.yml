@@ -51,18 +51,18 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           echo "Setting version to $VERSION"
           # Update tauri.conf.json
-          sed -i.bak "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json && rm src-tauri/tauri.conf.json.bak
-          # Update package.json (root)
-          sed -i.bak "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json && rm package.json.bak
-          # Update Cargo.toml
-          sed -i.bak "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml && rm src-tauri/Cargo.toml.bak
+          sed -i.bak "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" httui-desktop/src-tauri/tauri.conf.json && rm httui-desktop/src-tauri/tauri.conf.json.bak
+          # Update httui-desktop/package.json (the desktop workspace)
+          sed -i.bak "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" httui-desktop/package.json && rm httui-desktop/package.json.bak
+          # Update Cargo.toml of the tauri crate
+          sed -i.bak "s/^version = \".*\"/version = \"$VERSION\"/" httui-desktop/src-tauri/Cargo.toml && rm httui-desktop/src-tauri/Cargo.toml.bak
 
       - name: Install frontend dependencies
         run: npm ci
 
       - name: Build sidecar
         run: |
-          cd sidecar && bun install && bun run build
+          cd httui-sidecar && bun install && bun run build
 
       - name: Debug - list bundle directory
         if: always()
@@ -76,6 +76,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         with:
+          projectPath: httui-desktop
           tagName: ${{ github.ref_name }}
           releaseName: "httui notes ${{ github.ref_name }}"
           releaseBody: "See the assets below to download and install."

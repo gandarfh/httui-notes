@@ -1,11 +1,14 @@
-name: Deploy Landing Page
+name: Deploy Web
 
 on:
   push:
     branches: [main]
     paths:
-      - "landing-page/**"
-      - ".github/workflows/deploy-landing.yml"
+      - "httui-web/**"
+      - "httui-desktop/src/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/deploy-web.yml"
   workflow_dispatch:
 
 permissions:
@@ -27,22 +30,16 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: landing-page/package-lock.json
 
-      - name: Install dependencies
+      - name: Install dependencies (workspace root)
         run: npm ci
-        working-directory: landing-page
 
-      - name: Link node_modules for shared imports
-        run: ln -s landing-page/node_modules node_modules
-
-      - name: Build
-        run: npm run build
-        working-directory: landing-page
+      - name: Build httui-web
+        run: npm run build --workspace httui-web
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: landing-page/dist
+          path: httui-web/dist
 
   deploy:
     needs: build

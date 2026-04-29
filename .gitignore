@@ -8,7 +8,7 @@ dist/
 coverage/
 
 # Rust
-src-tauri/target/
+target/
 
 # IDE
 .vscode/
@@ -21,20 +21,20 @@ Thumbs.db
 # Env
 .env
 .env.local
-target/
 
-# Sidecar binaries (built, not committed)
-src-tauri/binaries/
-sidecar/package-lock.json
+# Sidecar binaries (built per-platform, not committed)
+httui-desktop/src-tauri/binaries/
+httui-sidecar/package-lock.json
 
 # Sidecar build artifacts and lock files
-sidecar/.*.bun-build
-sidecar/bun.lock
-sidecar/bun.lockb
-sidecar/node_modules/
+httui-sidecar/bun.lock
+httui-sidecar/bun.lockb
 
 # Bun build artifacts (any directory — bun writes these on incomplete builds)
 .*.bun-build
+
+# Vite cache (any workspace)
+.vite/
 
 # Local-only dev notes / scratch docs (not committed)
 docs-llm/

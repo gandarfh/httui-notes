@@ -70,8 +70,8 @@ make dev
 make build
 
 # Tests
-npm run test                       # Frontend
-cd src-tauri && cargo test         # Backend
+npm run test                       # Frontend (vitest, runs against httui-desktop)
+cargo test --workspace             # Backend (all Rust crates)
 ```
 
 ## Security

@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Notes — desktop markdown editor with executable blocks (HTTP client, DB query runner) inline in documents. Built with Tauri v2 (Rust backend) + React + TypeScript + CodeMirror 6 (`@uiw/react-codemirror`) + Chakra UI v3.
 
+> **Repo layout (post epic 00):** the desktop app lives in `httui-desktop/` (`httui-desktop/src/` for the React frontend, `httui-desktop/src-tauri/` for the Rust backend). The marketing landing is `httui-web/`, the Claude sidecar is `httui-sidecar/`. The shared Rust crate is `httui-core/`, the terminal binary `httui-tui/`, the MCP server `httui-mcp/`. **Path references like `src/components/...` in this doc are relative to `httui-desktop/`** unless otherwise prefixed.
+
 > **Recent migrations:** TipTap and the E2E block were removed (commits `7aa97e8`, `0aa2868`, `9124ad4`). The editor is now CodeMirror 6 only. State is managed by Zustand stores, not React Contexts (one legacy context remains: `WorkspaceContext`). Older docs may still reference the old architecture.
 
 ## Commands
@@ -20,8 +22,8 @@ cargo tauri build                  # Production build
 npm run build                      # Frontend production build
 
 # Backend tests
-cd src-tauri && cargo test         # Run all Rust tests
-cd src-tauri && cargo test <name>  # Run specific test
+cargo test --workspace             # Run all Rust tests across all crates
+cargo test -p httui-notes <name>   # Run specific test in tauri crate
 
 # Frontend tests
 npm run test                       # Run all frontend tests (vitest)
@@ -30,7 +32,7 @@ npm run test:coverage              # Run with v8 coverage report (HTML at covera
 
 # Lint
 npm run lint                       # ESLint
-cd src-tauri && cargo clippy       # Rust linter
+cargo clippy --workspace           # Rust linter (all crates)
 ```
 
 ## Architecture
@@ -195,7 +197,7 @@ Info-string tokens: `alias`, `timeout`, `display`, `mode` (`raw|form`). Canonica
 
 ## Security — Keychain
 
-- Module: `src-tauri/src/db/keychain.rs` — `store_secret`, `get_secret`, `delete_secret`, `resolve_value`.
+- Module: `httui-desktop/src-tauri/src/db/keychain.rs` — `store_secret`, `get_secret`, `delete_secret`, `resolve_value`.
 - Connection passwords: stored in keychain on create/update, sentinel in SQLite. Resolved in `build_connection_string`.
 - Environment variables: `is_secret` field (migration `002_env_is_secret.sql`). Secret values stored in keychain, resolved on read in `row_to_variable`.
 - Fallback: if keychain unavailable, values stored plaintext with no error.
@@ -221,13 +223,13 @@ Test coverage is high (~95%) for everything in `src/lib/blocks/` — see `src/li
 ## Chat system
 
 - Full design in `docs/chat-design.md`. Chat panel in `src/components/chat/`. State lives in `src/stores/chat.ts`.
-- Architecture: React frontend → Tauri Rust backend → Node.js sidecar (`sidecar/src/`) → Claude Agent SDK. Communication via NDJSON protocol over stdin/stdout.
+- Architecture: React frontend → Tauri Rust backend → Node.js sidecar (`httui-sidecar/src/`) → Claude Agent SDK. Communication via NDJSON protocol over stdin/stdout.
 - Sidecar spawned lazily on first chat message. Health-checked via ping/pong. Auto-respawn with exponential backoff.
 - MCP server: `httui-mcp` binary with 14 tools (list/read/create/update notes, search, connections, environments). Registered as MCP tool for the sidecar.
 
 **Sessions:** SQLite-backed (`sessions` table). `claude_session_id` for resume across restarts. On resume failure, offers "Continue as new conversation" (clears `claude_session_id`, re-sends last message).
 
-**Permission system:** `PermissionBroker` (`src-tauri/src/chat/permissions.rs`) intercepts tool calls before prompting the user. Cascading logic:
+**Permission system:** `PermissionBroker` (`httui-desktop/src-tauri/src/chat/permissions.rs`) intercepts tool calls before prompting the user. Cascading logic:
 1. Bash → always ask user
 2. Edit/Write outside session `cwd` → hard deny (no prompt)
 3. Read/Glob/Grep inside session `cwd` → auto-allow
