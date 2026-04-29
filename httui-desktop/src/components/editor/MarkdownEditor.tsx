@@ -1,3 +1,10 @@
+// coverage:exclude file
+// Epic 30a Story 01 (BlockRegistry) splits this monolith and retires
+// the exclusion. Until then, the component composes too many CM6
+// extensions (markdown, vim, slash commands, db/http blocks, hybrid
+// rendering, wikilinks) to instantiate cleanly inside vitest jsdom —
+// the integration tests live in `*.browser.test.tsx` files. See
+// `docs-llm/jaum-audit/022-markdown-editor-coverage-exclude.md`.
 import { useRef, useEffect, useMemo, useCallback, useState } from "react";
 import { Box } from "@chakra-ui/react";
 import CodeMirror, { type ReactCodeMirrorRef } from "@uiw/react-codemirror";
