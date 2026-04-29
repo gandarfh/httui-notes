@@ -1,6 +1,9 @@
 {
   "name": "httui-monorepo",
   "private": true,
+  "license": "MIT",
+  "repository": "https://github.com/gandarfh/httui-notes",
+  "homepage": "https://httui.com",
   "workspaces": [
     "httui-desktop",
     "httui-web",

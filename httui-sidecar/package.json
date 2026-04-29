@@ -2,6 +2,7 @@
   "name": "claude-sidecar",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "build": "bun build src/index.ts --outfile ../httui-desktop/src-tauri/resources/claude-sidecar.mjs --target=node",
