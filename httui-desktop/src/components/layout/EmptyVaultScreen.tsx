@@ -1,16 +1,14 @@
 /**
  * Welcome screen rendered by AppShell when no vault is active.
  *
- * Functional MVP for Epic 41 Story 01 — three CTAs the user can
- * reach: open an existing folder, scaffold a new vault, or clone
- * a git repo. The visual treatment (Fuji bg, serif typography,
- * card layout from canvas §3) lands in a follow-up — design polish
- * is the user's job per the autonomous mode constraint.
+ * Lays out the canvas §3 surface: 260px workspace sidebar +
+ * centred main column with the three CTAs (open / scaffold /
+ * clone-stub). Story 01 functional MVP shipped in `d5917f1`;
+ * Story 02 sidebar wired here.
  *
- * Stories 02-07 (importar, templates registry, sidebar workspace
- * pill, footer paste-URL handler, post-MVP migration banner) are
- * carry-overs; this slice ships the path that unblocks the
- * empty-app first run.
+ * Stories 03-07 (card design, templates registry, importar
+ * parsers, footer paste-URL handler, post-MVP migration banner)
+ * are pending.
  */
 
 import { useCallback, useState } from "react";
@@ -18,6 +16,7 @@ import { Box, Flex, Heading, Stack, Text, Button } from "@chakra-ui/react";
 
 import { useWorkspaceStore } from "@/stores/workspace";
 import { scaffoldVault } from "@/lib/tauri/commands";
+import { EmptyVaultSidebar } from "@/components/layout/empty-vault/EmptyVaultSidebar";
 
 interface CreateState {
   busy: boolean;
@@ -61,13 +60,17 @@ export function EmptyVaultScreen() {
     <Flex
       data-testid="empty-vault-screen"
       flex={1}
-      align="center"
-      justify="center"
       bg="bg.subtle"
-      px={8}
-      py={12}
     >
-      <Stack maxW="640px" gap={6} align="stretch">
+      <EmptyVaultSidebar onCreateRunbook={handleCreate} />
+      <Flex
+        flex={1}
+        align="center"
+        justify="center"
+        px={8}
+        py={12}
+      >
+        <Stack maxW="640px" gap={6} align="stretch">
         <Box>
           <Text
             fontSize="xs"
@@ -184,7 +187,8 @@ export function EmptyVaultScreen() {
           </Box>{" "}
           for the longer walkthrough.
         </Text>
-      </Stack>
+        </Stack>
+      </Flex>
     </Flex>
   );
 }
