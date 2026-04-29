@@ -148,7 +148,13 @@ extract_coverage() {
     awk -v t="$target" -v abs="$abs" '
         /^SF:/ {
             sf = substr($0, 4)
-            match_now = (sf == t || sf == abs || sf ~ "(^|/)" t "$")
+            # Match in either direction: sf may be a tail-fragment of t
+            # (vitest writes httui-desktop-relative SF lines while we
+            # diff repo-relative paths) or t may be a suffix of sf
+            # (cargo-llvm-cov writes absolute paths in CI).
+            match_now = (sf == t || sf == abs \
+                || sf ~ "(^|/)" t "$" \
+                || t ~ "(^|/)" sf "$")
             lf = 0; lh = 0
         }
         /^LF:/ { if (match_now) lf = substr($0, 4) }
