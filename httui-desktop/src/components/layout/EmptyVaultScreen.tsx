@@ -17,6 +17,7 @@ import { Box, Flex, Heading, Stack, Text, Button } from "@chakra-ui/react";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { scaffoldVault } from "@/lib/tauri/commands";
 import { EmptyVaultSidebar } from "@/components/layout/empty-vault/EmptyVaultSidebar";
+import { EmBrancoCard } from "@/components/layout/empty-vault/EmBrancoCard";
 
 interface CreateState {
   busy: boolean;
@@ -143,32 +144,9 @@ export function EmptyVaultScreen() {
             </Button>
           </Stack>
 
-          <Stack
-            flex={1}
-            border="1px solid"
-            borderColor="border.subtle"
-            borderRadius="md"
-            p={4}
-            gap={2}
-            bg="bg"
-          >
-            <Heading as="h2" size="md">
-              Create
-            </Heading>
-            <Text fontSize="sm" color="fg.muted">
-              Scaffold a fresh vault: `runbooks/`, `connections.toml`,
-              `envs/local.toml`, `.httui/`, and a `.gitignore`.
-            </Text>
-            <Button
-              data-testid="empty-vault-create"
-              onClick={handleCreate}
-              disabled={createState.busy}
-              variant="outline"
-              mt="auto"
-            >
-              {createState.busy ? "Working…" : "New vault"}
-            </Button>
-          </Stack>
+          <Box flex={1.3} data-testid="empty-vault-create-card">
+            <EmBrancoCard onCreateClick={handleCreate} />
+          </Box>
 
         </Stack>
 

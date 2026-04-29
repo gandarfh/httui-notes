@@ -34,7 +34,7 @@ describe("EmptyVaultScreen", () => {
       screen.getByRole("heading", { name: /Welcome to httui notes/i }),
     ).toBeInTheDocument();
     expect(screen.getByTestId("empty-vault-open")).toBeInTheDocument();
-    expect(screen.getByTestId("empty-vault-create")).toBeInTheDocument();
+    expect(screen.getByTestId("em-branco-cta")).toBeInTheDocument();
   });
 
   it("Choose folder dispatches the workspace store openVault action", async () => {
@@ -70,7 +70,7 @@ describe("EmptyVaultScreen", () => {
     mockTauriCommand("stop_watching", () => null);
 
     renderWithProviders(<EmptyVaultScreen />);
-    await user.click(screen.getByTestId("empty-vault-create"));
+    await user.click(screen.getByTestId("em-branco-cta"));
 
     await new Promise((r) => setTimeout(r, 10));
     expect(scaffolded).toBe("/tmp/fresh-vault");
@@ -85,7 +85,7 @@ describe("EmptyVaultScreen", () => {
     });
 
     renderWithProviders(<EmptyVaultScreen />);
-    await user.click(screen.getByTestId("empty-vault-create"));
+    await user.click(screen.getByTestId("em-branco-cta"));
 
     await new Promise((r) => setTimeout(r, 10));
     expect(screen.getByTestId("empty-vault-error")).toBeInTheDocument();
@@ -105,7 +105,7 @@ describe("EmptyVaultScreen", () => {
     });
 
     renderWithProviders(<EmptyVaultScreen />);
-    await user.click(screen.getByTestId("empty-vault-create"));
+    await user.click(screen.getByTestId("em-branco-cta"));
 
     await new Promise((r) => setTimeout(r, 10));
     expect(scaffoldCalled).toBe(false);
