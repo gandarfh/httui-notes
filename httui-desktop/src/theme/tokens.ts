@@ -192,3 +192,31 @@ export const RADII = {
   "2xl": "16px",
   full: "9999px",
 } as const;
+
+// --- Fuji watercolor backgrounds (Epic 40 Story 03) --------------------
+// CSS-gradient fallback per the spec's "if Tauri webview can't render
+// large PNGs efficiently, fall back to a CSS gradient that approximates
+// the Fuji palette" — no PNG assets required. Mount on empty states
+// only (Epic 41), never behind dense data tables.
+
+export const FUJI_BG_DARK = `
+  radial-gradient(ellipse at 22% 18%, oklch(0.32 0.03 230 / 0.55) 0%, transparent 55%),
+  radial-gradient(ellipse at 78% 24%, oklch(0.36 0.04 220 / 0.40) 0%, transparent 60%),
+  linear-gradient(180deg,
+    oklch(0.22 0.02 230) 0%,
+    oklch(0.18 0.012 230) 35%,
+    oklch(0.16 0.012 230) 65%,
+    oklch(0.18 0.02 95) 100%
+  )
+`.trim();
+
+export const FUJI_BG_LIGHT = `
+  radial-gradient(ellipse at 22% 18%, oklch(0.92 0.03 220 / 0.55) 0%, transparent 55%),
+  radial-gradient(ellipse at 78% 28%, oklch(0.94 0.04 95 / 0.40) 0%, transparent 60%),
+  linear-gradient(180deg,
+    oklch(0.97 0.012 220) 0%,
+    oklch(0.985 0.006 90) 38%,
+    oklch(0.99 0.008 95) 70%,
+    oklch(0.94 0.05 95) 100%
+  )
+`.trim();

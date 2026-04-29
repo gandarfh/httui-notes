@@ -11,6 +11,7 @@ import { LuArrowRight, LuX } from "react-icons/lu";
 import { Btn } from "@/components/atoms";
 
 const DismissBtn = chakra("button");
+const DocsLink = chakra("a");
 
 export interface MigrationBannerProps {
   /** Click → run the v1 migration. */
@@ -47,8 +48,7 @@ export function MigrationBanner({
         </Text>
         <Text fontSize="12px" color="fg.2" mt={0.5}>
           See{" "}
-          <Box
-            as="a"
+          <DocsLink
             href={docsHref}
             target="_blank"
             rel="noreferrer"
@@ -57,7 +57,7 @@ export function MigrationBanner({
             textDecoration="underline"
           >
             docs/MIGRATION.md
-          </Box>{" "}
+          </DocsLink>{" "}
           for what changes (vault data is backed up before any
           destructive write).
         </Text>

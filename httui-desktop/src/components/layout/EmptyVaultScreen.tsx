@@ -21,6 +21,7 @@ import { EmBrancoCard } from "@/components/layout/empty-vault/EmBrancoCard";
 import { TemplatesCard } from "@/components/layout/empty-vault/TemplatesCard";
 import { ImportarCard } from "@/components/layout/empty-vault/ImportarCard";
 import { EmptyVaultFooter } from "@/components/layout/empty-vault/EmptyVaultFooter";
+import { FUJI_BG_DARK, FUJI_BG_LIGHT } from "@/theme/tokens";
 
 interface CreateState {
   busy: boolean;
@@ -63,8 +64,15 @@ export function EmptyVaultScreen() {
   return (
     <Flex
       data-testid="empty-vault-screen"
+      data-fuji-bg="true"
       flex={1}
       bg="bg.subtle"
+      backgroundImage={{
+        _light: FUJI_BG_LIGHT,
+        _dark: FUJI_BG_DARK,
+      }}
+      backgroundSize="cover"
+      backgroundRepeat="no-repeat"
     >
       <EmptyVaultSidebar onCreateRunbook={handleCreate} />
       <Flex

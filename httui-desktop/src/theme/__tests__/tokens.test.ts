@@ -6,6 +6,8 @@ import {
   FONT_MONO,
   FONT_SANS,
   FONT_SERIF,
+  FUJI_BG_DARK,
+  FUJI_BG_LIGHT,
   METHOD_COLORS,
   METHOD_PILL_STYLE,
   RADII,
@@ -194,5 +196,19 @@ describe("radii", () => {
 
   it("full is the pill 9999px", () => {
     expect(RADII.full).toBe("9999px");
+  });
+});
+
+describe("Fuji watercolor backgrounds", () => {
+  it("dark variant is a multi-layer gradient stack", () => {
+    expect(FUJI_BG_DARK).toContain("radial-gradient");
+    expect(FUJI_BG_DARK).toContain("linear-gradient");
+    expect(FUJI_BG_DARK).toContain("oklch(0.16 0.012 230)");
+  });
+
+  it("light variant ends in canola yellow", () => {
+    expect(FUJI_BG_LIGHT).toContain("radial-gradient");
+    expect(FUJI_BG_LIGHT).toContain("oklch(0.985 0.006 90)");
+    expect(FUJI_BG_LIGHT).toContain("0.94 0.05 95");
   });
 });
