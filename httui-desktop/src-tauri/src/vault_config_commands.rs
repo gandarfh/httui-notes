@@ -14,6 +14,7 @@
 
 use httui_core::vault_config::gitignore::{ensure_local_overrides_in_gitignore, GitignoreOutcome};
 use httui_core::vault_config::migration::{run_migration, MigrationOptions, MigrationReport};
+use httui_core::vault_config::scaffold::{is_vault, scaffold_new_vault, ScaffoldReport};
 use httui_core::vault_config::user::UserFile;
 use httui_core::vault_config::user_store::default_user_config_path;
 use httui_core::vault_config::workspace::WorkspaceDefaults;
@@ -57,6 +58,22 @@ pub async fn set_user_config(file: UserFile) -> Result<(), String> {
 pub async fn ensure_vault_gitignore(vault_path: String) -> Result<GitignoreOutcome, String> {
     let path = PathBuf::from(vault_path);
     ensure_local_overrides_in_gitignore(&path).map_err(|e| format!("ensure gitignore: {e}"))
+}
+
+/// Heuristic check: does `vault_path` look like a httui vault?
+/// Used by the Open-vault flow before activating it (Epic 17).
+#[tauri::command]
+pub async fn check_is_vault(vault_path: String) -> Result<bool, String> {
+    Ok(is_vault(&PathBuf::from(vault_path)))
+}
+
+/// Scaffold a brand-new vault under `vault_path`. Idempotent —
+/// safe to run on an existing folder. Returns the list of files
+/// the call actually wrote (Epic 17 / Story 04).
+#[tauri::command]
+pub async fn scaffold_vault(vault_path: String) -> Result<ScaffoldReport, String> {
+    let path = PathBuf::from(vault_path);
+    scaffold_new_vault(&path).map_err(|e| format!("scaffold vault: {e}"))
 }
 
 /// Migrate the MVP SQLite-backed vault to the v1 file layout (Epic

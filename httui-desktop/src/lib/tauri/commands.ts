@@ -115,6 +115,25 @@ export function migrateVaultToV1(
   return invoke("migrate_vault_to_v1", { vaultPath, dryRun });
 }
 
+// --- Vault scaffold + validate (epic 17) ---
+
+export interface ScaffoldReport {
+  vault_path: string;
+  /** Vault-relative paths the scaffold actually wrote. */
+  created: string[];
+  already_a_vault: boolean;
+}
+
+/** Heuristic: does the folder look like a httui vault? */
+export function checkIsVault(vaultPath: string): Promise<boolean> {
+  return invoke("check_is_vault", { vaultPath });
+}
+
+/** Scaffold default structure under the path. Idempotent. */
+export function scaffoldVault(vaultPath: string): Promise<ScaffoldReport> {
+  return invoke("scaffold_vault", { vaultPath });
+}
+
 // --- Filesystem ---
 
 export function listWorkspace(vaultPath: string): Promise<FileEntry[]> {
