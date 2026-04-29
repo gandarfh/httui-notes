@@ -3,15 +3,17 @@
 // (canvas: top, NOT bottom). The atom owns the strip + tab visuals;
 // consumers wire id/onSelect/active state.
 
-import { Box, HStack, type BoxProps } from "@chakra-ui/react";
+import { chakra, HStack, type StackProps } from "@chakra-ui/react";
 import type { ReactNode } from "react";
+
+const TabButton = chakra("button");
 
 export type TabItem = {
   id: string;
   label: ReactNode;
 };
 
-export type TabbarProps = Omit<BoxProps, "children" | "onSelect"> & {
+export type TabbarProps = Omit<StackProps, "children" | "onSelect"> & {
   tabs: TabItem[];
   activeId: string | null;
   onSelect: (id: string) => void;
@@ -39,8 +41,7 @@ export function Tabbar({
       {tabs.map((t) => {
         const active = t.id === activeId;
         return (
-          <Box
-            as="button"
+          <TabButton
             type="button"
             key={t.id}
             data-tab-id={t.id}
@@ -64,7 +65,7 @@ export function Tabbar({
             _hover={{ color: "fg" }}
           >
             {t.label}
-          </Box>
+          </TabButton>
         );
       })}
     </HStack>

@@ -6,9 +6,9 @@
 // children. Distinct from `layout/StatusBar.tsx` which is the wired-
 // up feature component.
 
-import { HStack, type HStackProps } from "@chakra-ui/react";
+import { HStack, type StackProps } from "@chakra-ui/react";
 
-export type StatusBarShellProps = HStackProps;
+export type StatusBarShellProps = StackProps;
 
 export function StatusBarShell({ children, ...rest }: StatusBarShellProps) {
   return (
