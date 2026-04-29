@@ -13,7 +13,7 @@ import {
   LuX,
 } from "react-icons/lu";
 import { ChatMessageBubble } from "@/components/chat/ChatMessageBubble";
-import type { ChatMessage, ChatToolCall } from "@/lib/tauri/chat";
+import type { ChatMessage } from "@/lib/tauri/chat";
 import { Badge } from "@chakra-ui/react";
 
 /* ── Types ────────────────────────────────────────────── */
