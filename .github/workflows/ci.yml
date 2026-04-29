@@ -39,12 +39,8 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
-      # Advisory until Epic 04 (rustfmt config) lands — flip to gating
-      # by removing `continue-on-error` once `.rustfmt.toml` and the
-      # workspace-wide `cargo fmt --all` baseline are committed.
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
-        continue-on-error: true
 
       - name: cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings

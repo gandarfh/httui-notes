@@ -43,6 +43,33 @@ make check          # tsc --noEmit + cargo clippy --workspace -D warnings
 make clean          # drop dist/ and target/
 ```
 
+## Code style
+
+Rust:
+
+- `cargo fmt --all` is the source of truth — CI enforces it via
+  `cargo fmt --all -- --check`. Settings live in `rustfmt.toml`
+  (only `edition = "2021"` is pinned; everything else uses rustfmt
+  defaults — 100-char line, 4-space indent).
+- `cargo clippy --workspace --all-targets -- -D warnings` must pass.
+  Project-wide thresholds live in `clippy.toml`. Lint exceptions are
+  per-item `#[allow(clippy::...)]` with a comment, never blanket
+  disables in the config.
+
+Frontend:
+
+- `prettier` settings in the root `.prettierrc` (semi, double quotes,
+  2-space indent, trailing commas).
+- ESLint config per workspace (`httui-desktop/eslint.config.js`).
+  React Compiler-driven rules (`react-hooks/refs`,
+  `react-hooks/set-state-in-effect`, `react-hooks/purity`, etc.) are
+  warnings, not errors — they flag intentional patterns in this
+  codebase. The two stable rules (`rules-of-hooks`,
+  `exhaustive-deps`) stay as errors.
+
+Editor: a `.editorconfig` at the repo root pins line endings (LF),
+charset (UTF-8), and indent width per filetype.
+
 ## Commit conventions
 
 We use [Conventional Commits](https://www.conventionalcommits.org/). Allowed types:

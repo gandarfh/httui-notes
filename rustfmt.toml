@@ -1,0 +1,12 @@
+# rustfmt configuration — keep close to defaults so contributors don't
+# need to think about it.
+#
+# Pinning `edition` is the only setting that's load-bearing here:
+# rustfmt's idiom-fixer behavior changes per edition, and the workspace
+# is locked at 2021 (`Cargo.toml [workspace.package].edition`).
+#
+# Everything else uses rustfmt defaults — `max_width = 100`, 4-space
+# indent, `imports_granularity = "Preserve"`, etc. The CI step
+# `cargo fmt --all -- --check` enforces this file.
+
+edition = "2021"

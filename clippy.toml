@@ -1,0 +1,19 @@
+# Clippy configuration — minimal on purpose.
+#
+# We run with the default lint set (`cargo clippy -- -D warnings` in CI)
+# rather than enabling `pedantic` / `nursery`. Adding pedantic creates
+# hundreds of stylistic findings that don't catch real bugs and tend to
+# generate `#[allow(...)]` graffiti.
+#
+# Lint-level decisions that *do* matter live as targeted
+# `#[allow(clippy::...)]` annotations on individual items, with a
+# comment explaining why. See for example:
+# - httui-core/src/db/connections.rs (await_holding_lock test guard)
+# - httui-tui/src/buffer/cursor.rs   (enum_variant_names: In*-prefix is semantic)
+#
+# The keys below are global thresholds clippy reads from this file.
+# Bumping `cognitive-complexity-threshold` from the default of 25 reflects
+# the codebase's reality: the executor / parser code paths legitimately
+# have higher branch density. Lowering this would push us toward
+# extracting helpers that don't make the code clearer.
+cognitive-complexity-threshold = 50
