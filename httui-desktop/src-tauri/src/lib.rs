@@ -20,6 +20,9 @@ pub mod chat;
 // Cancel-aware DB execution plumbing (stage 3 of db block redesign)
 pub mod executions;
 
+// Git panel (Epic 20).
+pub mod git_commands;
+
 // File-backed config (epic 09 foundation; cutover in epic 19).
 pub mod vault_config_commands;
 

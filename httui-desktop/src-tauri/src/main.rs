@@ -970,6 +970,11 @@ fn main() {
             httui_notes::vault_config_commands::scaffold_vault,
             // Epic 18 — first-run missing-secrets scan.
             httui_notes::vault_config_commands::list_missing_secrets,
+            // Epic 20 — git panel.
+            httui_notes::git_commands::git_status_cmd,
+            httui_notes::git_commands::git_log_cmd,
+            httui_notes::git_commands::git_diff_cmd,
+            httui_notes::git_commands::git_branch_list_cmd,
             restore_session,
             list_workspace,
             read_note,
