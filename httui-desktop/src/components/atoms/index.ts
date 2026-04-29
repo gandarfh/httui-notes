@@ -4,6 +4,9 @@ export type { BtnProps, BtnVariant } from "./Btn";
 export { Dot } from "./Dot";
 export type { DotProps, DotVariant } from "./Dot";
 
+export { Input } from "./Input";
+export type { InputAtomProps } from "./Input";
+
 export { Kbd } from "./Kbd";
 export type { KbdProps } from "./Kbd";
 

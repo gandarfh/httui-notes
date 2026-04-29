@@ -33,3 +33,35 @@ body,
 [data-vim-mode="insert"] .ProseMirror {
   caret-color: auto;
 }
+
+/*
+ * Scrollbar atom — `docs-llm/v1/design-canvas-microdetails.md` §0.
+ * 10px wide thumb in `--bg-3`, 2px transparent border for an inset
+ * effect against the scroll surface. Track stays transparent so the
+ * Fuji bg / paper bg shows through. Firefox honours the
+ * `scrollbar-color` shorthand; webkit/chromium uses pseudo-elements.
+ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--chakra-colors-bg-3) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: var(--chakra-colors-bg-3);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--chakra-colors-fg-3);
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
