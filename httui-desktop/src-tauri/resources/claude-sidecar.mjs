@@ -53,7 +53,7 @@ function parseCommand(line) {
   }
 }
 
-// node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs
+// ../node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs
 import { join as join5 } from "path";
 import { fileURLToPath as fileURLToPath2 } from "url";
 import { setMaxListeners } from "events";
