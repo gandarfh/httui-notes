@@ -160,12 +160,17 @@ export function parseCommand(line: string): IncomingCommand | null {
     // T25: If message has HMAC envelope, verify before parsing
     if (raw.hmac && raw.payload && HMAC_SECRET) {
       // payload is a JSON string — verify directly without re-serialization
-      const payloadStr = typeof raw.payload === "string" ? raw.payload : JSON.stringify(raw.payload);
+      const payloadStr =
+        typeof raw.payload === "string"
+          ? raw.payload
+          : JSON.stringify(raw.payload);
       if (!verifyHmac(payloadStr, raw.hmac)) {
         log("HMAC verification failed — dropping message");
         return null;
       }
-      return (typeof raw.payload === "string" ? JSON.parse(raw.payload) : raw.payload) as IncomingCommand;
+      return (
+        typeof raw.payload === "string" ? JSON.parse(raw.payload) : raw.payload
+      ) as IncomingCommand;
     }
     // No envelope — use raw (backward compat)
     return raw as IncomingCommand;

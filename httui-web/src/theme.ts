@@ -153,7 +153,10 @@ const config = defineConfig({
         border: {
           DEFAULT: {
             // light = oklch(0.870 0.010 90) ≈ paper.500; dark = oklch(0.285 0.014 230)
-            value: { base: "{colors.paper.500}", _dark: "oklch(0.285 0.014 230)" },
+            value: {
+              base: "{colors.paper.500}",
+              _dark: "oklch(0.285 0.014 230)",
+            },
           },
           subtle: {
             // light = oklch(0.928 0.008 90) (literal); dark = oklch(0.235 0.012 230)
@@ -181,7 +184,10 @@ const config = defineConfig({
         // Accent (canola)
         accent: {
           DEFAULT: {
-            value: { base: "{colors.canola.500}", _dark: "{colors.canola.400}" },
+            value: {
+              base: "{colors.canola.500}",
+              _dark: "{colors.canola.400}",
+            },
           },
           fg: {
             // Design --accent-fg light = oklch(0.22 0.040 240); dark = oklch(0.18 0.04 90)
@@ -192,10 +198,16 @@ const config = defineConfig({
           },
           subtle: {
             // Design --accent-soft light = oklch(0.93 0.10 95); dark = oklch(0.32 0.06 90)
-            value: { base: "{colors.canola.200}", _dark: "{colors.canola.900}" },
+            value: {
+              base: "{colors.canola.200}",
+              _dark: "{colors.canola.900}",
+            },
           },
           emphasized: {
-            value: { base: "{colors.canola.600}", _dark: "{colors.canola.300}" },
+            value: {
+              base: "{colors.canola.600}",
+              _dark: "{colors.canola.300}",
+            },
           },
         },
         // Sky highlight

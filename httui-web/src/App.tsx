@@ -76,7 +76,8 @@ function Pill({ children, variant = "solid", size = "md", href }: PillProps) {
     ghost: {
       bg: "color-mix(in oklch, var(--chakra-colors-bg) 60%, transparent)",
       color: "fg",
-      borderColor: "color-mix(in oklch, var(--chakra-colors-border) 60%, transparent)",
+      borderColor:
+        "color-mix(in oklch, var(--chakra-colors-border) 60%, transparent)",
     },
   } as const;
   const style = styleMap[variant];
@@ -110,7 +111,13 @@ function Pill({ children, variant = "solid", size = "md", href }: PillProps) {
 // ─────────────────────────────────────────────────────────
 // Eyebrow — uppercase mono kicker above section titles
 // ─────────────────────────────────────────────────────────
-function Eyebrow({ children, color = "accent" }: { children: React.ReactNode; color?: string }) {
+function Eyebrow({
+  children,
+  color = "accent",
+}: {
+  children: React.ReactNode;
+  color?: string;
+}) {
   return (
     <Text
       as="span"
@@ -150,39 +157,44 @@ function Nav() {
         py={3}
         fontSize="sm"
       >
-      <Logo variant="full" size={22} />
-      <HStack flex="1" justify="center" gap={1} display={{ base: "none", md: "flex" }}>
-        {["Product", "Docs", "GitHub", "Changelog"].map((l) => (
-          <Text
-            key={l}
-            px={3}
-            py={1.5}
-            fontSize="13px"
-            fontWeight="500"
-            color="fg.muted"
-            rounded="md"
-            cursor="pointer"
-            _hover={{ color: "fg" }}
-          >
-            {l}
-          </Text>
-        ))}
-      </HStack>
-      <HStack gap={3}>
+        <Logo variant="full" size={22} />
         <HStack
+          flex="1"
+          justify="center"
           gap={1}
-          fontSize="12px"
-          fontWeight="500"
-          color="fg.muted"
           display={{ base: "none", md: "flex" }}
         >
-          <Text as="span">★</Text>
-          <Text>{stats.stars}</Text>
+          {["Product", "Docs", "GitHub", "Changelog"].map((l) => (
+            <Text
+              key={l}
+              px={3}
+              py={1.5}
+              fontSize="13px"
+              fontWeight="500"
+              color="fg.muted"
+              rounded="md"
+              cursor="pointer"
+              _hover={{ color: "fg" }}
+            >
+              {l}
+            </Text>
+          ))}
         </HStack>
-        <Pill variant="ink" size="sm" href={stats.repoUrl}>
-          View on GitHub <LuArrowRight size={11} />
-        </Pill>
-      </HStack>
+        <HStack gap={3}>
+          <HStack
+            gap={1}
+            fontSize="12px"
+            fontWeight="500"
+            color="fg.muted"
+            display={{ base: "none", md: "flex" }}
+          >
+            <Text as="span">★</Text>
+            <Text>{stats.stars}</Text>
+          </HStack>
+          <Pill variant="ink" size="sm" href={stats.repoUrl}>
+            View on GitHub <LuArrowRight size={11} />
+          </Pill>
+        </HStack>
       </Flex>
     </Box>
   );
@@ -228,7 +240,9 @@ function Hero() {
           overflow="hidden"
         >
           <Box w="6px" h="6px" rounded="full" bg="ok" flexShrink={0} />
-          <Text display={{ base: "none", sm: "inline" }}>v0.8 · open beta —</Text>
+          <Text display={{ base: "none", sm: "inline" }}>
+            v0.8 · open beta —
+          </Text>
           <Text display={{ base: "inline", sm: "none" }}>v0.8 —</Text>
           <Text fontFamily="mono" color="fg.muted">
             20k blocks last week
@@ -239,7 +253,13 @@ function Hero() {
           as="h1"
           fontFamily="heading"
           fontWeight="600"
-          fontSize={{ base: "34px", sm: "40px", md: "64px", lg: "88px", xl: "96px" }}
+          fontSize={{
+            base: "34px",
+            sm: "40px",
+            md: "64px",
+            lg: "88px",
+            xl: "96px",
+          }}
           lineHeight={{ base: "1.06", lg: "1.02" }}
           letterSpacing="tighter"
           color="fg"
@@ -265,7 +285,13 @@ function Hero() {
           tool, versioned in git, shareable with your team.
         </Text>
 
-        <HStack gap={3} mt={{ base: 7, md: 9 }} mb={{ base: 10, md: 14 }} flexWrap="wrap" justify="center">
+        <HStack
+          gap={3}
+          mt={{ base: 7, md: 9 }}
+          mb={{ base: 10, md: 14 }}
+          flexWrap="wrap"
+          justify="center"
+        >
           <Pill variant="solid" href={stats.repoUrl}>
             Get started <LuArrowRight size={11} />
           </Pill>
@@ -274,7 +300,6 @@ function Hero() {
           </Pill>
         </HStack>
       </Flex>
-
     </Box>
   );
 }
@@ -376,10 +401,18 @@ function HeroPreview() {
 function OssStrip() {
   const stats = useGithubStats();
   const cells = [
-    { v: stats.stars, k: "GitHub stars", sub: stats.repoUrl.replace(/^https?:\/\//, "") },
+    {
+      v: stats.stars,
+      k: "GitHub stars",
+      sub: stats.repoUrl.replace(/^https?:\/\//, ""),
+    },
     { v: stats.contributors, k: "contributors", sub: "growing in the open" },
     { v: stats.license, k: "license", sub: "no strings attached" },
-    { v: stats.version, k: "latest release", sub: stats.versionDate || "release pending" },
+    {
+      v: stats.version,
+      k: "latest release",
+      sub: stats.versionDate || "release pending",
+    },
   ];
   return (
     <Box as="section" px={{ base: 6, md: 14 }} pt={24} pb={16} bg="bg">
@@ -396,7 +429,15 @@ function OssStrip() {
           Built in the open. Hack on it, fork it, send a PR.
         </Text>
       </VStack>
-      <Box maxW="980px" mx="auto" border="1px solid" borderColor="border" rounded="lg" bg="bg.surface" overflow="hidden">
+      <Box
+        maxW="980px"
+        mx="auto"
+        border="1px solid"
+        borderColor="border"
+        rounded="lg"
+        bg="bg.surface"
+        overflow="hidden"
+      >
         <SimpleGrid columns={{ base: 2, md: 4 }} gap={0}>
           {cells.map((s, i) => (
             <Box
@@ -404,17 +445,33 @@ function OssStrip() {
               px={5}
               py={6}
               textAlign="center"
-              borderRight={{ base: i % 2 === 0 ? "1px solid" : "none", md: i < 3 ? "1px solid" : "none" }}
+              borderRight={{
+                base: i % 2 === 0 ? "1px solid" : "none",
+                md: i < 3 ? "1px solid" : "none",
+              }}
               borderBottom={{ base: i < 2 ? "1px solid" : "none", md: "none" }}
               borderColor="border"
             >
-              <Text fontFamily="heading" fontSize="48px" fontWeight="600" letterSpacing="tight" color="fg" lineHeight="1">
+              <Text
+                fontFamily="heading"
+                fontSize="48px"
+                fontWeight="600"
+                letterSpacing="tight"
+                color="fg"
+                lineHeight="1"
+              >
                 {s.v}
               </Text>
               <Text mt={2} fontSize="xs" color="fg.muted" fontWeight="500">
                 {s.k}
               </Text>
-              <Text mt={0.5} fontSize="11px" color="fg.subtle" fontFamily="mono" truncate>
+              <Text
+                mt={0.5}
+                fontSize="11px"
+                color="fg.subtle"
+                fontFamily="mono"
+                truncate
+              >
                 {s.sub}
               </Text>
             </Box>
@@ -437,7 +494,14 @@ type FeatureRowProps = {
   preview: React.ReactNode;
   reverse?: boolean;
 };
-function FeatureRow({ kicker, title, body, points, preview, reverse }: FeatureRowProps) {
+function FeatureRow({
+  kicker,
+  title,
+  body,
+  points,
+  preview,
+  reverse,
+}: FeatureRowProps) {
   return (
     <Box
       as="section"
@@ -466,12 +530,26 @@ function FeatureRow({ kicker, title, body, points, preview, reverse }: FeatureRo
         >
           {title}
         </Text>
-        <Text mt={4} fontSize="md" lineHeight="1.6" color="fg.muted" maxW="460px">
+        <Text
+          mt={4}
+          fontSize="md"
+          lineHeight="1.6"
+          color="fg.muted"
+          maxW="460px"
+        >
           {body}
         </Text>
         <VStack as="ul" align="stretch" mt={5} gap={2.5} listStyleType="none">
           {points.map((p, i) => (
-            <HStack as="li" key={i} gap={2.5} fontSize="sm" color="fg.muted" lineHeight="1.5" align="flex-start">
+            <HStack
+              as="li"
+              key={i}
+              gap={2.5}
+              fontSize="sm"
+              color="fg.muted"
+              lineHeight="1.5"
+              align="flex-start"
+            >
               <Text color="accent" fontWeight="700" flexShrink={0}>
                 —
               </Text>
@@ -535,7 +613,12 @@ function InstallSection() {
           </Text>{" "}
           to fork.
         </Text>
-        <Text fontFamily="heading" fontSize="17px" color="fg.muted" maxW="580px">
+        <Text
+          fontFamily="heading"
+          fontSize="17px"
+          color="fg.muted"
+          maxW="580px"
+        >
           One terminal command. No signup, no card, no telemetry.
         </Text>
       </VStack>
@@ -554,20 +637,38 @@ function InstallSection() {
         fontFamily="mono"
         shadow="photo"
       >
-        <HStack px={3.5} py={2.5} gap={2} borderBottom="1px solid" borderColor="stone.500">
+        <HStack
+          px={3.5}
+          py={2.5}
+          gap={2}
+          borderBottom="1px solid"
+          borderColor="stone.500"
+        >
           <Box w="10px" h="10px" rounded="full" bg="#ed6a5e" />
           <Box w="10px" h="10px" rounded="full" bg="#f4be4f" />
           <Box w="10px" h="10px" rounded="full" bg="#62c554" />
           <Text flex="1" textAlign="center" fontSize="11px" color="stone.200">
             ~/projects · zsh
           </Text>
-          <Text fontSize="10px" color="moss.300" px={2} py={0.5} border="1px solid" borderColor="moss.700" rounded="sm" fontWeight="600">
+          <Text
+            fontSize="10px"
+            color="moss.300"
+            px={2}
+            py={0.5}
+            border="1px solid"
+            borderColor="moss.700"
+            rounded="sm"
+            fontWeight="600"
+          >
             COPY
           </Text>
         </HStack>
         <Box px={5} py={5} fontSize="14px" lineHeight="1.8">
           <Text>
-            <Text as="span" color="moss.300">$</Text> curl -fsSL httui.sh/install | sh
+            <Text as="span" color="moss.300">
+              $
+            </Text>{" "}
+            curl -fsSL httui.sh/install | sh
           </Text>
           <Text color="stone.200" fontSize="13px">
             ✓ httui 0.8.2 installed in ~/.httui/bin
@@ -576,7 +677,10 @@ function InstallSection() {
             ✓ shell: zsh detected, alias 'httui' added
           </Text>
           <Text>
-            <Text as="span" color="moss.300">$</Text> httui new my-runbook.md
+            <Text as="span" color="moss.300">
+              $
+            </Text>{" "}
+            httui new my-runbook.md
           </Text>
         </Box>
       </Box>
@@ -584,7 +688,14 @@ function InstallSection() {
       {/* Alt installs */}
       <SimpleGrid maxW="920px" mx="auto" columns={{ base: 2, md: 4 }} gap={2.5}>
         {distros.map((p) => (
-          <Box key={p.label} p={3.5} bg="bg" border="1px solid" borderColor="border" rounded="md">
+          <Box
+            key={p.label}
+            p={3.5}
+            bg="bg"
+            border="1px solid"
+            borderColor="border"
+            rounded="md"
+          >
             <HStack gap={2} mb={1.5} fontSize="11px" color="fg.subtle">
               <Text fontFamily="mono">{p.icon}</Text>
               <Text fontWeight="600" color="fg.muted">
@@ -598,13 +709,32 @@ function InstallSection() {
         ))}
       </SimpleGrid>
 
-      <Text textAlign="center" mt={7} fontSize="xs" color="fg.muted" maxW="700px" mx="auto" lineHeight="1.7">
+      <Text
+        textAlign="center"
+        mt={7}
+        fontSize="xs"
+        color="fg.muted"
+        maxW="700px"
+        mx="auto"
+        lineHeight="1.7"
+      >
         Prefer a GUI? Builds for{" "}
-        <Text as="span" fontFamily="mono" color="fg.muted">macOS</Text> ·{" "}
-        <Text as="span" fontFamily="mono" color="fg.muted">Linux</Text> ·{" "}
-        <Text as="span" fontFamily="mono" color="fg.muted">Windows</Text> on the{" "}
-        <Text as="span" color="accent.emphasized" fontWeight="600">GitHub releases</Text>.
-        A VS Code extension is also available.
+        <Text as="span" fontFamily="mono" color="fg.muted">
+          macOS
+        </Text>{" "}
+        ·{" "}
+        <Text as="span" fontFamily="mono" color="fg.muted">
+          Linux
+        </Text>{" "}
+        ·{" "}
+        <Text as="span" fontFamily="mono" color="fg.muted">
+          Windows
+        </Text>{" "}
+        on the{" "}
+        <Text as="span" color="accent.emphasized" fontWeight="600">
+          GitHub releases
+        </Text>
+        . A VS Code extension is also available.
       </Text>
     </Box>
   );
@@ -648,9 +778,24 @@ function CtaSection() {
         </Text>{" "}
         instead.
       </Text>
-      <Text mt={5} fontFamily="heading" fontSize="17px" color="fg.muted" maxW="540px" mx="auto">
+      <Text
+        mt={5}
+        fontFamily="heading"
+        fontSize="17px"
+        color="fg.muted"
+        maxW="540px"
+        mx="auto"
+      >
         Open source, MIT licensed.{" "}
-        <Text as="span" fontFamily="mono" bg="bg.elevated" px={1.5} py={0.5} rounded="sm" fontSize="13px">
+        <Text
+          as="span"
+          fontFamily="mono"
+          bg="bg.elevated"
+          px={1.5}
+          py={0.5}
+          rounded="sm"
+          fontSize="13px"
+        >
           brew install httui
         </Text>{" "}
         and it's yours.
@@ -672,16 +817,30 @@ function Footer() {
   const cols: { h: string; l: string[] }[] = [
     { h: "Product", l: ["Workbench", "TUI", "VS Code"] },
     { h: "Resources", l: ["Docs", "Examples", "Changelog", "Status"] },
-    { h: "Community", l: ["GitHub", "Discord", "Contributing", "Code of Conduct"] },
+    {
+      h: "Community",
+      l: ["GitHub", "Discord", "Contributing", "Code of Conduct"],
+    },
     { h: "Legal", l: ["MIT License", "Privacy", "Security"] },
   ];
   return (
-    <Box as="footer" px={{ base: 6, md: 20 }} pt={14} pb={9} bg="bg.surface" borderTop="1px solid" borderColor="border" fontSize="xs" color="fg.muted">
+    <Box
+      as="footer"
+      px={{ base: 6, md: 20 }}
+      pt={14}
+      pb={9}
+      bg="bg.surface"
+      borderTop="1px solid"
+      borderColor="border"
+      fontSize="xs"
+      color="fg.muted"
+    >
       <SimpleGrid columns={{ base: 2, md: 5 }} gap={10} maxW="1280px" mx="auto">
         <Box gridColumn={{ base: "span 2", md: "span 1" }}>
           <Logo variant="logo" size={28} />
           <Text mt={3} fontSize="13px" lineHeight="1.55" maxW="280px">
-            The markdown editor for debugging APIs and databases. Open source · MIT · v0.8.2.
+            The markdown editor for debugging APIs and databases. Open source ·
+            MIT · v0.8.2.
           </Text>
           <Text mt={4} fontSize="11px" fontFamily="mono" color="fg.subtle">
             SHA-256 · a3f2…7c81
@@ -689,7 +848,13 @@ function Footer() {
         </Box>
         {cols.map((col) => (
           <Box key={col.h}>
-            <Text fontSize="11px" fontWeight="700" letterSpacing="wide" color="fg" mb={3}>
+            <Text
+              fontSize="11px"
+              fontWeight="700"
+              letterSpacing="wide"
+              color="fg"
+              mb={3}
+            >
               {col.h}
             </Text>
             <VStack align="stretch" gap={1.5} fontSize="13px" color="fg.muted">
@@ -736,19 +901,52 @@ export default function App() {
         body="Each block is executable: HTTP, SQL, Mongo, gRPC, WebSocket, shell. Captures from one block become variables for the next, chaining the entire flow inside a single .md."
         points={[
           <>
-            <Text as="b" color="fg">Chained captures</Text> — extract{" "}
-            <Text as="code" fontFamily="mono" px={1} bg="bg.elevated" rounded="sm">$.id</Text>{" "}
+            <Text as="b" color="fg">
+              Chained captures
+            </Text>{" "}
+            — extract{" "}
+            <Text
+              as="code"
+              fontFamily="mono"
+              px={1}
+              bg="bg.elevated"
+              rounded="sm"
+            >
+              $.id
+            </Text>{" "}
             from a response and reuse it as{" "}
-            <Text as="code" fontFamily="mono" px={1} bg="bg.elevated" rounded="sm">{"{{order_id}}"}</Text>{" "}
+            <Text
+              as="code"
+              fontFamily="mono"
+              px={1}
+              bg="bg.elevated"
+              rounded="sm"
+            >
+              {"{{order_id}}"}
+            </Text>{" "}
             later.
           </>,
           <>
-            <Text as="b" color="fg">Inline assertions</Text> —{" "}
-            <Text as="code" fontFamily="mono" px={1} bg="bg.elevated" rounded="sm">expect: time {"<"} 500ms</Text>{" "}
+            <Text as="b" color="fg">
+              Inline assertions
+            </Text>{" "}
+            —{" "}
+            <Text
+              as="code"
+              fontFamily="mono"
+              px={1}
+              bg="bg.elevated"
+              rounded="sm"
+            >
+              expect: time {"<"} 500ms
+            </Text>{" "}
             fails the runbook on regression.
           </>,
           <>
-            <Text as="b" color="fg">Variables &amp; secrets</Text> referenced by key. The value never touches git.
+            <Text as="b" color="fg">
+              Variables &amp; secrets
+            </Text>{" "}
+            referenced by key. The value never touches git.
           </>,
         ]}
         preview={<BlocksPreview />}
@@ -761,13 +959,23 @@ export default function App() {
         body="Connect PostgreSQL, MySQL, Mongo, BigQuery. Browse tables with foreign keys, indexes, row counts. EXPLAIN ANALYZE in tree form shows where your query spends time."
         points={[
           <>
-            <Text as="b" color="fg">Multi-database</Text> in a single runbook — query Postgres, then the warehouse, without switching windows.
+            <Text as="b" color="fg">
+              Multi-database
+            </Text>{" "}
+            in a single runbook — query Postgres, then the warehouse, without
+            switching windows.
           </>,
           <>
-            <Text as="b" color="fg">Read-only environments</Text> — staging in one click, prod with double-confirm and a red badge.
+            <Text as="b" color="fg">
+              Read-only environments
+            </Text>{" "}
+            — staging in one click, prod with double-confirm and a red badge.
           </>,
           <>
-            <Text as="b" color="fg">Plan visualizer</Text> highlights costly seq scans and unused indexes.
+            <Text as="b" color="fg">
+              Plan visualizer
+            </Text>{" "}
+            highlights costly seq scans and unused indexes.
           </>,
         ]}
         preview={<SchemaPreview />}
@@ -779,13 +987,23 @@ export default function App() {
         body="Runbooks are .md files in your repo. Pull request review like any other code. Diff between runs shows what changed in the response across executions."
         points={[
           <>
-            <Text as="b" color="fg">PR review</Text> for runbooks on GitHub or GitLab.
+            <Text as="b" color="fg">
+              PR review
+            </Text>{" "}
+            for runbooks on GitHub or GitLab.
           </>,
           <>
-            <Text as="b" color="fg">Diff between runs</Text> — compare today's execution with yesterday's in two clicks.
+            <Text as="b" color="fg">
+              Diff between runs
+            </Text>{" "}
+            — compare today's execution with yesterday's in two clicks.
           </>,
           <>
-            <Text as="b" color="fg">Share links</Text> with expiry and password — hand a runbook to support without granting repo access.
+            <Text as="b" color="fg">
+              Share links
+            </Text>{" "}
+            with expiry and password — hand a runbook to support without
+            granting repo access.
           </>,
         ]}
         preview={<GitDiffPreview />}

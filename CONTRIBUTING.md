@@ -38,8 +38,11 @@ Other useful targets:
 ```bash
 make tui            # run the terminal binary
 make sidecar        # rebuild the Node.js sidecar bundle
-make test           # run all tests (cargo workspace + vitest)
-make check          # tsc --noEmit + cargo clippy --workspace -D warnings
+make test           # cargo workspace + tui tests + vitest unit project
+make check          # tsc --noEmit + cargo fmt --check + cargo clippy --all-targets -D warnings
+make lint           # eslint across httui-desktop and httui-web
+make fmt            # cargo fmt --all + prettier --write across all source dirs
+make release        # check + test + build — run before tagging a release
 make clean          # drop dist/ and target/
 ```
 

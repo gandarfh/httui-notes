@@ -1,4 +1,4 @@
-.PHONY: dev build install install-deps install-app uninstall lint check clean test test-rust test-front test-tui front icons sidecar tui tui-build tui-help
+.PHONY: dev build release install install-deps install-app uninstall lint fmt check clean test test-rust test-front test-tui front icons sidecar tui tui-build tui-help
 
 # Development — frontend (Vite HMR) + backend (Rust rebuild on change)
 dev: sidecar
@@ -61,14 +61,26 @@ uninstall:
 	@rm -rf "/Applications/$(APP_NAME).app"
 	@echo "Done."
 
-# Type check + clippy
+# Type check + clippy + fmt-check + prettier-check. Mirrors the CI gate.
 check:
 	./node_modules/.bin/tsc --noEmit -p httui-desktop/tsconfig.json
-	cargo clippy --workspace -- -D warnings
+	cargo fmt --all -- --check
+	cargo clippy --workspace --all-targets -- -D warnings
 
-# Lint frontend
+# Lint TS/TSX in both frontend workspaces (eslint, not tsc).
 lint:
-	./node_modules/.bin/tsc --noEmit -p httui-desktop/tsconfig.json
+	npm run lint --workspace httui-desktop
+	npm run lint --workspace httui-web
+
+# Format Rust + frontend in place.
+fmt:
+	cargo fmt --all
+	./node_modules/.bin/prettier --write 'httui-desktop/src/**/*.{ts,tsx,js,jsx,css,md}' 'httui-web/src/**/*.{ts,tsx,js,jsx,css,md}' 'httui-sidecar/src/**/*.{ts,tsx,js,jsx}'
+
+# Pre-release validation: every gate the CI runs, then the release build.
+# Use this before tagging a version to catch regressions locally.
+release: check test build
+	@echo "Release artifacts ready in $(APP_BUNDLE)"
 
 # Testes
 test: test-rust test-tui test-front
@@ -77,7 +89,7 @@ test-rust:
 	cargo test --workspace
 
 test-front:
-	npm run test 2>/dev/null || echo "No frontend tests configured yet"
+	npm run test --workspace httui-desktop -- --project unit
 
 # Limpar artifacts
 clean:
