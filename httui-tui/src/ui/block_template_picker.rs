@@ -19,10 +19,6 @@ const MAX_VISIBLE_ROWS: usize = 12;
 
 pub fn render(frame: &mut Frame, editor_area: Rect, state: &BlockTemplatePickerState) {
     let templates = BlockTemplate::ALL;
-    if templates.is_empty() {
-        return;
-    }
-
     let popup = compute_popup_rect(editor_area, templates);
     let bg_style = Style::default().bg(Color::Black).fg(Color::White);
 

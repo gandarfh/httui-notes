@@ -2,8 +2,8 @@
 ///
 /// - `InProse` — cursor lives inside a prose run at a given char offset.
 /// - `InBlock` — cursor lives inside a block's `raw` rope at a given
-///   char offset. The rope spans the entire block (fence header + body
-///   + closer); callers that need to discriminate use
+///   char offset. The rope spans the entire block (fence header, body,
+///   and closer); callers that need to discriminate use
 ///   [`raw_section_at`](crate::buffer::block::raw_section_at) to map
 ///   `offset` to a [`RawSection`](crate::buffer::block::RawSection).
 /// - `InBlockResult` — cursor is parked on a row of a DB block's

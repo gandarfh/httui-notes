@@ -121,10 +121,7 @@ pub fn handle_http_block_result(
     // user can't move tabs while we hold the event in flight).
     let file_path = active_file_path_string(app);
     let (block_alias, method, url_canonical, request_size) =
-        match snapshot_block_meta(app, segment_idx) {
-            Some(meta) => meta,
-            None => (None, String::new(), String::new(), None),
-        };
+        snapshot_block_meta(app, segment_idx).unwrap_or_default();
 
     let Some(doc) = app.tabs.active_document_mut() else {
         return;
@@ -361,6 +358,7 @@ pub fn copy_as_curl(app: &mut crate::app::App) {
 ///   2. block has an alias (history rows are keyed by alias)
 ///   3. active doc has a file path on disk
 ///   4. there's at least one row to show
+///
 /// Each failure surfaces a status hint instead of opening an empty
 /// modal — empty modals waste a keystroke.
 pub fn open_block_history(app: &mut crate::app::App) -> Result<(), String> {
@@ -642,12 +640,7 @@ pub(crate) fn resolve_text_refs(
 }
 
 fn find_close(bytes: &[u8]) -> Option<usize> {
-    for i in 0..bytes.len().saturating_sub(1) {
-        if bytes[i] == b'}' && bytes[i + 1] == b'}' {
-            return Some(i);
-        }
-    }
-    None
+    (0..bytes.len().saturating_sub(1)).find(|&i| bytes[i] == b'}' && bytes[i + 1] == b'}')
 }
 
 #[cfg(test)]

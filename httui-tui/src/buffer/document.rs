@@ -628,7 +628,7 @@ impl Document {
             .enumerate()
             .filter(|(_, s)| !is_empty_prose(s))
             .map(|(i, _)| i)
-            .last()
+            .next_back()
             .unwrap_or(0);
         let mut emitted_so_far = String::new();
         for (i, seg) in self.segments.iter().enumerate() {

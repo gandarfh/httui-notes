@@ -276,7 +276,7 @@ impl SidecarManager {
             .env("ANTHROPIC_AUTH_TOKEN", "")
             .env("CLAUDE_CLI_PATH", &claude_path)
             .env("PATH", &enriched_path)
-            .env("SIDECAR_HMAC_SECRET", &hmac_secret);
+            .env("SIDECAR_HMAC_SECRET", hmac_secret);
 
         let (rx, new_child) = sidecar_cmd
             .spawn()

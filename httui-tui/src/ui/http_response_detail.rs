@@ -385,6 +385,6 @@ mod tests {
         let line = style_status_line("200 OK · 142 ms", bg);
         // Smoke test: the renderer produces at least the status span
         // plus separator + rest spans.
-        assert!(line.spans.len() >= 1);
+        assert!(!line.spans.is_empty());
     }
 }

@@ -215,38 +215,6 @@ fn running_chip_label(app: &App) -> Option<String> {
     Some(format!("▶ {kind} · {elapsed:.1}s"))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::compact_vault_path;
-    use std::path::PathBuf;
-
-    #[test]
-    fn short_paths_stay_intact() {
-        assert_eq!(
-            compact_vault_path(&PathBuf::from("/notes")),
-            "/notes"
-        );
-    }
-
-    #[test]
-    fn long_paths_collapse_to_tail() {
-        // Pure-string path: > 40 chars and no HOME prefix → tail
-        // truncation should kick in.
-        let p = PathBuf::from("/very/deeply/nested/repository/projects/work/notes");
-        let out = compact_vault_path(&p);
-        assert_eq!(out, "…/work/notes");
-    }
-
-    #[test]
-    fn tail_truncation_handles_double_slashes() {
-        // Empty segments from `//` are filtered out by the walker.
-        let p = PathBuf::from("/a/b//c/d/e/f/g/h/i/j/k/l/m/n/o/p/q/r/s/t/u/v/w/x/y/z");
-        let out = compact_vault_path(&p);
-        // Tail picks the two last non-empty segments.
-        assert_eq!(out, "…/y/z");
-    }
-}
-
 fn count_blocks(doc: &Document) -> usize {
     doc.segments()
         .iter()
@@ -335,5 +303,37 @@ fn describe_cursor(doc: &Document) -> String {
                 .count();
             format!("Block #{block_idx} · Result row {}", row + 1)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::compact_vault_path;
+    use std::path::PathBuf;
+
+    #[test]
+    fn short_paths_stay_intact() {
+        assert_eq!(
+            compact_vault_path(&PathBuf::from("/notes")),
+            "/notes"
+        );
+    }
+
+    #[test]
+    fn long_paths_collapse_to_tail() {
+        // Pure-string path: > 40 chars and no HOME prefix → tail
+        // truncation should kick in.
+        let p = PathBuf::from("/very/deeply/nested/repository/projects/work/notes");
+        let out = compact_vault_path(&p);
+        assert_eq!(out, "…/work/notes");
+    }
+
+    #[test]
+    fn tail_truncation_handles_double_slashes() {
+        // Empty segments from `//` are filtered out by the walker.
+        let p = PathBuf::from("/a/b//c/d/e/f/g/h/i/j/k/l/m/n/o/p/q/r/s/t/u/v/w/x/y/z");
+        let out = compact_vault_path(&p);
+        // Tail picks the two last non-empty segments.
+        assert_eq!(out, "…/y/z");
     }
 }

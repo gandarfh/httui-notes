@@ -49,7 +49,7 @@ impl NotesMcpServer {
         let window = std::time::Duration::from_secs(EXECUTE_RATE_WINDOW_SECS);
 
         // Remove expired entries
-        while timestamps.front().map_or(false, |t| now.duration_since(*t) > window) {
+        while timestamps.front().is_some_and(|t| now.duration_since(*t) > window) {
             timestamps.pop_front();
         }
 

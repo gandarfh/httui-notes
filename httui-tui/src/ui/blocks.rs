@@ -228,13 +228,10 @@ fn render_db_header_bar(
     }
 
     let used: u16 = left.iter().map(|s| s.content.chars().count() as u16).sum();
-    // Block-type aware chip line. Wired chords per type:
-    // - DB:   r run · gh history · gx export · gs settings
-    // - HTTP: r run · gh history · gx export · gs settings
-    // - other: placeholder (chords not wired yet)
-    let hint = if b.is_db() {
-        "r run  ·  gh history  ·  gx export  ·  gs settings "
-    } else if b.is_http() {
+    // Block-type aware chip line. Wired chords:
+    // - DB / HTTP: r run · gh history · gx export · gs settings
+    // - other:     r run · gh history · gs settings (export not wired yet)
+    let hint = if b.is_db() || b.is_http() {
         "r run  ·  gh history  ·  gx export  ·  gs settings "
     } else {
         "r run  ·  gh history  ·  gs settings "
@@ -388,7 +385,7 @@ fn http_host_of(url: &str) -> String {
         .map(|i| &url[i + 3..])
         .unwrap_or(url);
     let host_end = after_scheme
-        .find(|c| c == '/' || c == '?' || c == '#')
+        .find(['/', '?', '#'])
         .unwrap_or(after_scheme.len());
     let host = &after_scheme[..host_end];
     if host.is_empty() {
@@ -472,15 +469,16 @@ fn db_footer_spans(
             .cloned()
             .unwrap_or_else(|| conn_raw.to_string())
     };
-    let mut left: Vec<Span<'static>> = Vec::new();
-    left.push(Span::raw(" "));
-    left.push(Span::styled("●", bg.fg(dot_color)));
-    left.push(Span::styled("  ", bg));
-    left.push(Span::styled(dot_label, bg.fg(Color::Gray)));
-    left.push(Span::styled("  ·  ", dim));
-    left.push(Span::styled(vault, bg.fg(Color::Gray)));
-    left.push(Span::styled(" (rw)", dim));
-    left.push(Span::styled("  │  ", dim));
+    let left: Vec<Span<'static>> = vec![
+        Span::raw(" "),
+        Span::styled("●", bg.fg(dot_color)),
+        Span::styled("  ", bg),
+        Span::styled(dot_label, bg.fg(Color::Gray)),
+        Span::styled("  ·  ", dim),
+        Span::styled(vault, bg.fg(Color::Gray)),
+        Span::styled(" (rw)", dim),
+        Span::styled("  │  ", dim),
+    ];
 
     let mut right: Vec<Span<'static>> = Vec::new();
     if let Some(s) = db_summary(b) {
@@ -2108,10 +2106,10 @@ fn build_messages_lines(b: &BlockNode) -> Vec<Line<'static>> {
     }
     messages
         .iter()
-        .filter_map(|m| {
+        .map(|m| {
             let sev = m.get("severity").and_then(|v| v.as_str()).unwrap_or("notice");
             let text = m.get("text").and_then(|v| v.as_str()).unwrap_or("");
-            Some(Line::from(vec![
+            Line::from(vec![
                 Span::styled(
                     format!(" [{sev}] "),
                     Style::default().fg(match sev {
@@ -2121,7 +2119,7 @@ fn build_messages_lines(b: &BlockNode) -> Vec<Line<'static>> {
                     }),
                 ),
                 Span::raw(text.to_string()),
-            ]))
+            ])
         })
         .collect()
 }

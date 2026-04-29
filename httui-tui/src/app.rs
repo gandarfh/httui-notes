@@ -479,8 +479,8 @@ pub struct App {
     /// the selection cursor.
     pub block_template_picker: Option<BlockTemplatePickerState>,
     /// `Some` while the tab picker is open (`gb`). Mode flips to
-    /// `Mode::TabPicker`. Snapshot of every tab's focused-leaf path
-    /// + dirty flag is computed at open-time so the picker survives
+    /// `Mode::TabPicker`. Snapshot of every tab's focused-leaf path and
+    /// dirty flag is computed at open-time so the picker survives
     /// unrelated edits while it's up.
     pub tab_picker: Option<TabPickerState>,
     /// Coordinates of the most-recently run block, used by the

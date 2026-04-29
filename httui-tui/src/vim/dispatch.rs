@@ -1751,7 +1751,7 @@ fn cursor_at_global_offset(doc: &crate::buffer::Document, target_global: usize) 
         .enumerate()
         .filter(|(_, s)| !is_empty_prose(s))
         .map(|(i, _)| i)
-        .last()
+        .next_back()
         .unwrap_or(0);
     let mut emitted_so_far = String::new();
     for (i, seg) in doc.segments().iter().enumerate() {

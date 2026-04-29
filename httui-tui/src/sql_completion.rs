@@ -197,7 +197,7 @@ pub enum SqlContext {
     Open { in_scope: Vec<String> },
     /// User is naming a table next: `FROM ⌷`, `JOIN ⌷`, `INTO ⌷`,
     /// `UPDATE ⌷`. Schema source contributes table names; keywords
-    /// + builtins still appear (a subquery start with `SELECT` is
+    /// and builtins still appear (a subquery start with `SELECT` is
     /// legal here too).
     Table,
     /// User is naming a column on a known table: `users.⌷`. Schema

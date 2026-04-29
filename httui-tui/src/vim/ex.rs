@@ -165,7 +165,7 @@ fn next_unescaped_slash(s: &str, from: usize) -> Option<usize> {
                 backslashes += 1;
                 j -= 1;
             }
-            if backslashes.is_multiple_of(2) {
+            if backslashes % 2 == 0 {
                 return Some(i);
             }
         }
