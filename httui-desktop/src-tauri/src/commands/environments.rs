@@ -1,3 +1,13 @@
+// coverage:exclude file — Tauri command shells take `tauri::State<'_, T>`
+// and aren't unit-testable in isolation. The pure helpers
+// (make_var_id / parse_var_id) are tested below; the substantive
+// logic (file-backed CRUD, mtime cache, atomic write, secret
+// resolution) lives in `httui_core::vault_config::environments_store`
+// at >80% coverage. Same rationale as `vault_config_commands.rs`
+// (audit-002). Re-evaluated by Epic 20a Story 05 when the per-domain
+// command split adds an integration harness with a fake Tauri runtime.
+// Opt-out justified in audit-016.
+
 //! Environment Tauri commands — file-backed cutover (Epic 19 Story 02
 //! Phase 2; audit-015).
 //!
