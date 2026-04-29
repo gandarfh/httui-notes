@@ -1,3 +1,4 @@
+use httui_core::vault_config::watch_paths::{classify, env_name_from_path, WatchCategory};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -20,6 +21,22 @@ pub enum FileEvent {
 pub struct FileReloaded {
     pub path: String,
     pub markdown: String,
+}
+
+/// Emitted when a watched config TOML file changes (ADR 0003).
+/// The frontend re-fetches the relevant store on receipt — backend
+/// stores are constructed per Tauri call (epic 09 design), so there's
+/// nothing to invalidate process-side until epic 19 introduces
+/// long-lived store instances.
+#[derive(Debug, Clone, Serialize)]
+pub struct ConfigChanged {
+    pub category: WatchCategory,
+    /// Vault-relative path that changed (forward slashes).
+    pub path: String,
+    /// For `category == "env"`, the env name (filename stem with the
+    /// optional `.local` suffix stripped). `None` for connections /
+    /// workspace.
+    pub env: Option<String>,
 }
 
 pub struct VaultWatcher {
@@ -48,41 +65,70 @@ pub fn watch_vault(
     let handle = app_handle.clone();
     let vault_for_thread = vault.clone();
     std::thread::spawn(move || {
-        let debounce = Duration::from_millis(500);
+        let md_debounce = Duration::from_millis(500);
+        // ADR 0003: TOML changes use a 250ms trailing debounce — git
+        // pull / editor save bursts coalesce in that window.
+        let toml_debounce = Duration::from_millis(250);
         // Per-file debounce tracking
         let mut last_emit_per_file: HashMap<String, Instant> = HashMap::new();
 
         for event in rx {
-            let paths: Vec<String> = event
+            // Map raw paths to vault-relative strings + classify each
+            // into one of three buckets: markdown, watched config TOML,
+            // or ignore.
+            #[derive(Clone)]
+            enum Kind {
+                Md,
+                Config(WatchCategory),
+            }
+            let entries: Vec<(String, Kind)> = event
                 .paths
                 .iter()
-                .filter(|p| {
+                .filter_map(|p| {
                     let s = p.to_string_lossy().to_string();
-                    (s.ends_with(".md") || p.is_dir()) && !s.contains("/.") && !s.contains("\\.")
-                })
-                .map(|p| {
-                    p.strip_prefix(&vault_for_thread)
+                    let rel = p
+                        .strip_prefix(&vault_for_thread)
                         .unwrap_or(p)
                         .to_string_lossy()
                         .trim_start_matches('/')
-                        .to_string()
+                        .to_string();
+
+                    // Markdown — keep the legacy filter that rejects
+                    // dotfiles in note paths (avoids `.git/...` noise).
+                    if s.ends_with(".md") && !s.contains("/.") && !s.contains("\\.") {
+                        return Some((rel, Kind::Md));
+                    }
+
+                    // Config TOML — let the classifier decide. It
+                    // already restricts to our exact paths (vault root
+                    // connections.toml, .httui/workspace.toml, envs/*.toml)
+                    // so we don't need the dotfile reject here.
+                    if s.ends_with(".toml") {
+                        if let Some(cat) = classify(&rel) {
+                            return Some((rel, Kind::Config(cat)));
+                        }
+                    }
+                    None
                 })
                 .collect();
 
-            if paths.is_empty() {
+            if entries.is_empty() {
                 continue;
             }
 
             // Check if path is in ignore list (self-triggered saves)
             {
                 let ignored = ignore_paths.lock().unwrap();
-                if paths.iter().any(|p| ignored.contains(p)) {
+                if entries.iter().any(|(p, _)| ignored.contains(p)) {
                     continue;
                 }
             }
 
-            for path in paths {
-                // Per-file debounce
+            for (path, kind) in entries {
+                let debounce = match kind {
+                    Kind::Md => md_debounce,
+                    Kind::Config(_) => toml_debounce,
+                };
                 if let Some(last) = last_emit_per_file.get(&path) {
                     if last.elapsed() < debounce {
                         continue;
@@ -90,36 +136,69 @@ pub fn watch_vault(
                 }
                 last_emit_per_file.insert(path.clone(), Instant::now());
 
-                match event.kind {
-                    EventKind::Modify(_) => {
-                        // Read file content and emit file-reloaded with markdown
-                        match crate::fs::read_note(&vault_for_thread, &path) {
-                            Ok(markdown) => {
-                                let _ = handle.emit(
-                                    "file-reloaded",
-                                    FileReloaded {
-                                        path: path.clone(),
-                                        markdown,
-                                    },
-                                );
-                            }
-                            Err(_) => {
-                                // File might be mid-write, emit plain event
-                                let _ = handle.emit("fs-event", FileEvent::Modified { path });
-                            }
-                        }
-                    }
-                    EventKind::Create(_) => {
-                        let _ = handle.emit("fs-event", FileEvent::Created { path });
-                    }
-                    EventKind::Remove(_) => {
-                        let _ = handle.emit("fs-event", FileEvent::Removed { path });
-                    }
-                    _ => {}
+                match kind {
+                    Kind::Md => emit_md_event(&handle, &vault_for_thread, &event.kind, &path),
+                    Kind::Config(cat) => emit_config_changed(&handle, cat, &path),
                 }
             }
         }
     });
 
     Ok(VaultWatcher { _watcher: watcher })
+}
+
+fn emit_md_event(handle: &AppHandle, vault: &str, kind: &EventKind, path: &str) {
+    match kind {
+        EventKind::Modify(_) => match crate::fs::read_note(vault, path) {
+            Ok(markdown) => {
+                let _ = handle.emit(
+                    "file-reloaded",
+                    FileReloaded {
+                        path: path.to_string(),
+                        markdown,
+                    },
+                );
+            }
+            Err(_) => {
+                // File might be mid-write, fall back to a plain event.
+                let _ = handle.emit(
+                    "fs-event",
+                    FileEvent::Modified {
+                        path: path.to_string(),
+                    },
+                );
+            }
+        },
+        EventKind::Create(_) => {
+            let _ = handle.emit(
+                "fs-event",
+                FileEvent::Created {
+                    path: path.to_string(),
+                },
+            );
+        }
+        EventKind::Remove(_) => {
+            let _ = handle.emit(
+                "fs-event",
+                FileEvent::Removed {
+                    path: path.to_string(),
+                },
+            );
+        }
+        _ => {}
+    }
+}
+
+fn emit_config_changed(handle: &AppHandle, category: WatchCategory, path: &str) {
+    let env = matches!(category, WatchCategory::Env)
+        .then(|| env_name_from_path(path).map(|s| s.to_string()))
+        .flatten();
+    let _ = handle.emit(
+        "config-changed",
+        ConfigChanged {
+            category,
+            path: path.to_string(),
+            env,
+        },
+    );
 }
