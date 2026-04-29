@@ -1,0 +1,26 @@
+# EditorConfig — https://editorconfig.org
+#
+# Default style across the repo. Override per-language only when the
+# upstream tooling expects something different (rustfmt, GNU make).
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# rustfmt's default and what the codebase already uses.
+[*.rs]
+indent_size = 4
+
+# GNU make requires real tabs in recipes.
+[Makefile]
+indent_style = tab
+
+# Two trailing spaces in Markdown are a hard line break — preserve them.
+[*.md]
+trim_trailing_whitespace = false
