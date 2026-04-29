@@ -157,6 +157,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn check_is_vault_round_trip() {
+        let (_dir, folder) = temp_xdg();
+        let folder_str = folder.to_string_lossy().into_owned();
+        // Empty folder isn't a vault.
+        assert!(!check_is_vault(folder_str.clone()).await.unwrap());
+        // Scaffold turns it into one.
+        let report = scaffold_vault(folder_str.clone()).await.unwrap();
+        assert!(!report.already_a_vault);
+        assert!(check_is_vault(folder_str).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn scaffold_vault_is_idempotent_via_command() {
+        let (_dir, folder) = temp_xdg();
+        let folder_str = folder.to_string_lossy().into_owned();
+        scaffold_vault(folder_str.clone()).await.unwrap();
+        let r2 = scaffold_vault(folder_str).await.unwrap();
+        assert!(r2.already_a_vault);
+        assert!(r2.created.is_empty());
+    }
+
+    #[tokio::test]
     async fn workspace_get_returns_defaults_when_missing() {
         let (_dir, vault) = temp_xdg();
         let vault_str = vault.to_string_lossy().into_owned();
