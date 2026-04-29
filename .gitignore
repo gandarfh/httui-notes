@@ -33,5 +33,8 @@ sidecar/bun.lock
 sidecar/bun.lockb
 sidecar/node_modules/
 
+# Bun build artifacts (any directory — bun writes these on incomplete builds)
+.*.bun-build
+
 # Local-only dev notes / scratch docs (not committed)
 docs-llm/
