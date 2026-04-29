@@ -1,3 +1,8 @@
+// size:exclude file — Connection-form monolith (driver-conditional
+// fields + secret pickup + test-button + dialog overlay in one
+// component). Sweep owner: Epic 42 (Connections refined UI);
+// audit-024 documents the rationale.
+
 import {
   Box,
   Flex,

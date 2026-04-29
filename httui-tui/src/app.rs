@@ -1,3 +1,11 @@
+// size:exclude file — TUI app entrypoint, frozen scope per
+// `feedback_notes_app_focus`. Sweep owner: Epic 31 (TUI parity);
+// audit-023 documents the rationale.
+
+// size:exclude file — TUI app entrypoint, frozen scope per
+// `feedback_notes_app_focus`. Sweep owner: Epic 31 (TUI parity);
+// audit-023 documents the rationale.
+
 use crossterm::event::KeyEvent;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
