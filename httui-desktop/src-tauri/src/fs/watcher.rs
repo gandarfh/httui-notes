@@ -1,3 +1,11 @@
+// coverage:exclude file — Thread-driven OS-level FS watcher.
+// Substantive logic (path classification + env-name extraction) lives
+// in `httui_core::vault_config::watch_paths` and is fully unit-tested
+// at 100%. The remaining code here is the notify-crate event loop +
+// Tauri emitters, which require an integration harness to exercise
+// (real filesystem, real Tauri AppHandle). Documented in
+// tech-debt.md and audit-004.
+
 use httui_core::vault_config::watch_paths::{classify, env_name_from_path, WatchCategory};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
