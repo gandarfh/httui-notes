@@ -51,7 +51,6 @@ async fn main() -> Result<()> {
     registry.register(Box::new(httui_core::executor::db::DbExecutor::new(
         conn_manager.clone(),
     )));
-    registry.register(Box::new(httui_core::executor::e2e::E2eExecutor::new()));
 
     let server = server::NotesMcpServer::new(
         pool,
