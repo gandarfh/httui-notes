@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question / general discussion
+    url: https://github.com/gandarfh/httui-notes/discussions
+    about: Use Discussions for usage questions and ideas before they are refined into issues.
+  - name: Security vulnerability
+    url: https://github.com/gandarfh/httui-notes/security/advisories/new
+    about: Please do NOT open a public issue for security reports. See SECURITY.md for the disclosure flow.
