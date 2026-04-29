@@ -274,3 +274,22 @@ PermissionBanner (`src/components/chat/PermissionBanner.tsx`): scope selector (O
 - `docs/ARCHITECTURE.md` — Plugin architecture description (aspirational in places — see Architecture section above).
 - `docs/chat-design.md` — Chat system technical design (1000 lines): protocol spec, session lifecycle, streaming, permissions, MCP integration.
 - `docs/backlog/` — Epics with stories and tasks. `README.md` has dependency graph and implementation order.
+
+## Compact Instructions
+
+When auto-compacting this conversation, **preserve at all costs**:
+
+- Active epic and story (look at the most recent commit message + `docs-llm/v1/backlog/README.md` for ground truth)
+- Quality gate state — whether the last `make quality-check` passed, the threshold (80% / 600 lines), and any active `// size:exclude file` / `// coverage:exclude file` opt-outs
+- Recent decisions logged in `docs-llm/jaum-audit/` (autonomous-mode audit trail) — keep the gist; details can be re-read
+- The Definition-of-Done rules (`docs-llm/v1/definition-of-done.md`) — non-negotiable
+- The `docs-llm/v1/out-of-scope.md` list — never touch these
+- For autonomous mode (`/auto-start`): the loop discipline — decide-and-audit, never ask, never push to remote, never bypass gates by editing scripts
+
+You can drop:
+- Verbose tool output (cargo build/test stdout, file listings)
+- Earlier exploration of files that are now well-understood
+- Old plan-mode discussions that already resulted in committed code
+- Step-by-step user prompts/agreements once the action is reflected in commits
+
+When in doubt, re-read the active epic file from `docs-llm/v1/backlog/` rather than relying on summarized memory of it.

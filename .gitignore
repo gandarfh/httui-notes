@@ -38,3 +38,8 @@ httui-sidecar/bun.lockb
 
 # Local-only dev notes / scratch docs (not committed)
 docs-llm/
+
+# Per-machine Claude Code state — do not commit
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+
