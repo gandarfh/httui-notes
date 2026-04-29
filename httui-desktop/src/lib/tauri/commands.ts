@@ -213,49 +213,6 @@ export function createFolder(
   return invoke("create_folder", { vaultPath, folderPath });
 }
 
-/** Last modification timestamp for a vault note in epoch milliseconds.
- * `null` if the file is absent or its mtime can't be read. Backed by
- * `httui_core::vault_config::merge::mtime_or_none`. Carry-over from
- * Epic 39 Story 03 — feeds the editor toolbar "edited Xm ago". */
-export function getFileMtime(
-  vaultPath: string,
-  filePath: string,
-): Promise<number | null> {
-  return invoke("get_file_mtime", { vaultPath, filePath });
-}
-
-/** Per-file workspace settings persisted under
- * `[files."<file_path>"]` in `.httui/workspace.toml`. Carry-over from
- * Epic 39 Story 03 — backs the editor toolbar's auto-capture toggle. */
-export interface FileSettings {
-  auto_capture: boolean;
-}
-
-/** Read the per-file workspace settings entry. Returns the
- * `Default::default()` value (auto_capture = false) when no entry
- * exists for `file_path`. */
-export function getFileSettings(
-  vaultPath: string,
-  filePath: string,
-): Promise<FileSettings> {
-  return invoke("get_file_settings", { vaultPath, filePath });
-}
-
-/** Set the auto-capture flag for `file_path`. Writes through to
- * `workspace.toml` (base, never `.local.toml`). Default-valued
- * entries are pruned so the file stays minimal. */
-export function setFileAutoCapture(
-  vaultPath: string,
-  filePath: string,
-  autoCapture: boolean,
-): Promise<void> {
-  return invoke("set_file_auto_capture", {
-    vaultPath,
-    filePath,
-    autoCapture,
-  });
-}
-
 // --- Vault management ---
 
 export async function listVaults(): Promise<string[]> {

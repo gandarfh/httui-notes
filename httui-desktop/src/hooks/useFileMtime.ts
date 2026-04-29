@@ -14,7 +14,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { getFileMtime } from "@/lib/tauri/commands";
+import { getFileMtime } from "@/lib/tauri/files";
 
 export interface UseFileMtimeResult {
   mtime: number | null;
