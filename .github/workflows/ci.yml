@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Cancel in-progress runs for the same ref when a new commit lands.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    name: Rust (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Tauri's webkit2gtk binding is required even for `cargo check`
+      # of the httui-notes (Tauri) crate.
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      # Advisory until Epic 03 (clippy clean) and Epic 04 (rustfmt config)
+      # land. Flip to gating by removing `continue-on-error` then.
+      - name: cargo fmt --check
+        run: cargo fmt --all -- --check
+        continue-on-error: true
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+        continue-on-error: true
+
+      - name: cargo test
+        run: cargo test --workspace
+
+      - name: cargo check (all targets)
+        run: cargo check --workspace --all-targets
+
+  rust-macos-smoke:
+    name: Rust (macOS smoke)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: macos-smoke
+
+      # Excludes httui-notes (Tauri) — we'd need the full bundling
+      # toolchain to build that. Smoke covers the platform-sensitive
+      # crates: keyring (httui-core), TUI bindings (httui-tui),
+      # MCP server (httui-mcp).
+      - name: cargo check (excluding Tauri crate)
+        run: cargo check --workspace --exclude httui-notes
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: tsc --noEmit (httui-desktop)
+        run: ./node_modules/.bin/tsc --noEmit -p httui-desktop/tsconfig.json
+
+      # Advisory until Epic 03 (eslint clean) lands.
+      - name: eslint (httui-desktop)
+        run: npm run lint --workspace httui-desktop
+        continue-on-error: true
+
+      # Runs the `unit` project only (jsdom). The `browser` project uses
+      # @vitest/browser-playwright and would require installing chromium
+      # in CI; skip until browser-test coverage is needed in the gate.
+      - name: vitest (httui-desktop, unit)
+        run: npm run test --workspace httui-desktop -- --project unit
+
+      - name: Build httui-web (smoke)
+        run: npm run build --workspace httui-web
+
+      - name: Build httui-sidecar (smoke)
+        run: npm run build --workspace httui-sidecar
