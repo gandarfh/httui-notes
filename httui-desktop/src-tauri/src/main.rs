@@ -474,6 +474,7 @@ fn main() {
             httui_notes::commands::files::delete_note,
             httui_notes::commands::files::rename_note,
             httui_notes::commands::files::create_folder,
+            httui_notes::commands::files::get_file_mtime,
             start_watching,
             stop_watching,
             search_files,

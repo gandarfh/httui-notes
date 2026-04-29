@@ -112,3 +112,22 @@ pub fn rename_note(
 pub fn create_folder(vault_path: String, folder_path: String) -> Result<(), String> {
     crate::fs::create_folder(&vault_path, &folder_path)
 }
+
+/// Last modification timestamp for a vault note, in **epoch
+/// milliseconds**. Returns `None` if the file is absent or its mtime
+/// can't be read. Wraps the existing `httui_core::vault_config::merge
+/// ::mtime_or_none` helper so the same source of truth backs both
+/// vault-config cache invalidation and the editor toolbar timestamp.
+///
+/// Carry-over from Epic 39 Story 03 — feeds the `useFileMtime` hook
+/// that drives "edited Xm ago" in the toolbar. Polled on focus / save
+/// rather than continuously.
+#[tauri::command]
+pub fn get_file_mtime(vault_path: String, file_path: String) -> Option<i64> {
+    let absolute = std::path::Path::new(&vault_path).join(&file_path);
+    httui_core::vault_config::merge::mtime_or_none(&absolute).and_then(|t| {
+        t.duration_since(std::time::UNIX_EPOCH)
+            .ok()
+            .map(|d| d.as_millis() as i64)
+    })
+}

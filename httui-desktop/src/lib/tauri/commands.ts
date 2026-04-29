@@ -213,6 +213,17 @@ export function createFolder(
   return invoke("create_folder", { vaultPath, folderPath });
 }
 
+/** Last modification timestamp for a vault note in epoch milliseconds.
+ * `null` if the file is absent or its mtime can't be read. Backed by
+ * `httui_core::vault_config::merge::mtime_or_none`. Carry-over from
+ * Epic 39 Story 03 — feeds the editor toolbar "edited Xm ago". */
+export function getFileMtime(
+  vaultPath: string,
+  filePath: string,
+): Promise<number | null> {
+  return invoke("get_file_mtime", { vaultPath, filePath });
+}
+
 // --- Vault management ---
 
 export async function listVaults(): Promise<string[]> {
