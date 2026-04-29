@@ -225,7 +225,7 @@ impl TabState {
             return CloseResult::LastLeaf;
         }
         let mut path = self.focused.clone();
-        let last = path.pop().unwrap();
+        let last = path.pop().expect("focused.is_empty() checked above");
         // Walk to the parent split.
         let parent = self
             .root

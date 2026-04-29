@@ -35,7 +35,9 @@ fn with_parser<R>(f: impl FnOnce(&mut Parser) -> R) -> Option<R> {
             p.set_language(&lang).ok()?;
             *slot = Some(p);
         }
-        Some(f(slot.as_mut().unwrap()))
+        Some(f(slot
+            .as_mut()
+            .expect("slot was set to Some on the line above (or already Some on entry)")))
     })
 }
 
@@ -222,7 +224,10 @@ fn classify_by_text(text: &str) -> Option<Style> {
     {
         return Some(string);
     }
-    let first = text.chars().next().unwrap();
+    let first = text
+        .chars()
+        .next()
+        .expect("text is_empty checked at function entry");
     if first.is_ascii_digit() && text.chars().all(|c| c.is_ascii_digit() || c == '.') {
         return Some(number);
     }

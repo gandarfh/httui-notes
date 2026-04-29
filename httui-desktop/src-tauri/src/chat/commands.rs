@@ -70,8 +70,6 @@ pub async fn send_chat_message(
     text: String,
     attachments: Vec<AttachmentInput>,
 ) -> Result<String, String> {
-    eprintln!("[chat cmd] send_chat_message session_id={session_id} text={text:?}");
-
     // 1. Persist user message
     // 2. Build content blocks for DB (paths) and sidecar (base64) separately
     let mut db_blocks: Vec<serde_json::Value> = vec![
@@ -146,7 +144,8 @@ pub async fn send_chat_message(
 
     // Resolve [[wikilinks]] in the user text and inject note content for the sidecar
     if let Some(ref cwd) = effective_cwd {
-        let wikilink_re = regex::Regex::new(r"\[\[([^\]]+)\]\]").unwrap();
+        let wikilink_re = regex::Regex::new(r"\[\[([^\]]+)\]\]")
+            .expect("static wikilink regex compiles");
         for cap in wikilink_re.captures_iter(&text) {
             let target = &cap[1];
             if let Ok(content) = resolve_wikilink(cwd, target) {
@@ -161,23 +160,21 @@ pub async fn send_chat_message(
     // 4. Send to sidecar (lazy spawn on first use)
     let effective_cwd_for_broker = effective_cwd.clone();
     let request_id = Uuid::new_v4().to_string();
-    eprintln!("[chat cmd] request_id={request_id}");
     {
         let mut guard = sidecar.lock().await;
         if guard.is_none() {
-            eprintln!("[chat cmd] Spawning sidecar...");
             let mgr = SidecarManager::spawn(&app).await
                 .map_err(|e| format!("Failed to spawn sidecar: {e}"))?;
-            eprintln!("[chat cmd] Sidecar spawned OK");
             *guard = Some(mgr);
         }
     }
     let mut rx = {
         let sidecar_guard = sidecar.lock().await;
-        let mgr = sidecar_guard.as_ref().unwrap();
+        let mgr = sidecar_guard
+            .as_ref()
+            .expect("sidecar guard set to Some above");
         let rx = mgr.register_request(&request_id).await;
 
-        eprintln!("[chat cmd] Sending Chat message to sidecar...");
         mgr.send(OutgoingMessage::Chat {
             request_id: request_id.clone(),
             claude_session_id: session.claude_session_id,
@@ -193,7 +190,6 @@ pub async fn send_chat_message(
             content: sidecar_blocks,
         })
         .await?;
-        eprintln!("[chat cmd] Chat message sent to sidecar, waiting for events...");
         rx
     }; // sidecar_guard dropped here
 
@@ -479,8 +475,6 @@ pub async fn respond_chat_permission(
     tool_name: Option<String>,
     message: Option<String>,
 ) -> Result<(), String> {
-    eprintln!("[chat cmd] respond_chat_permission id={permission_id} behavior={behavior} scope={scope:?} tool_name={tool_name:?}");
-
     let decision_behavior = match behavior.as_str() {
         "allow" => PermissionBehavior::Allow,
         "deny" => PermissionBehavior::Deny,
@@ -489,8 +483,10 @@ pub async fn respond_chat_permission(
 
     // Persist rule if scope is "session" or "always" and we have a tool_name
     let scope_str = scope.as_deref().unwrap_or("once");
-    if (scope_str == "session" || scope_str == "always") && tool_name.is_some() {
-        let tn = tool_name.as_deref().unwrap();
+    if let (true, Some(tn)) = (
+        scope_str == "session" || scope_str == "always",
+        tool_name.as_deref(),
+    ) {
         let _ = chat::insert_permission(
             &pool,
             tn,

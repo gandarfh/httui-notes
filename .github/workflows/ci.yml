@@ -39,15 +39,15 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
-      # Advisory until Epic 03 (clippy clean) and Epic 04 (rustfmt config)
-      # land. Flip to gating by removing `continue-on-error` then.
+      # Advisory until Epic 04 (rustfmt config) lands — flip to gating
+      # by removing `continue-on-error` once `.rustfmt.toml` and the
+      # workspace-wide `cargo fmt --all` baseline are committed.
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
         continue-on-error: true
 
       - name: cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
-        continue-on-error: true
 
       - name: cargo test
         run: cargo test --workspace
@@ -95,10 +95,8 @@ jobs:
       - name: tsc --noEmit (httui-desktop)
         run: ./node_modules/.bin/tsc --noEmit -p httui-desktop/tsconfig.json
 
-      # Advisory until Epic 03 (eslint clean) lands.
       - name: eslint (httui-desktop)
         run: npm run lint --workspace httui-desktop
-        continue-on-error: true
 
       # Runs the `unit` project only (jsdom). The `browser` project uses
       # @vitest/browser-playwright and would require installing chromium

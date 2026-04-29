@@ -9,9 +9,9 @@
  *  - Disabled rows (enabled=false) are dropped — generated code never
  *    includes commented-out values.
  *  - Empty `params` / `headers` / `body` are emitted only when non-empty.
- *  - Aspas e caracteres especiais nos valores são escapados conforme o
- *    target (shell single-quote, JS string literal, Python string literal).
- *  - Query params são serializados com `URLSearchParams`-style encoding
+ *  - Quotes and special characters in values are escaped per target
+ *    (shell single-quote, JS string literal, Python string literal).
+ *  - Query params are serialized with `URLSearchParams`-style encoding
  *    (`encodeURIComponent`).
  */
 
