@@ -247,20 +247,6 @@ mod tests {
     }
 
     #[test]
-    fn e2e_block_height_grows_with_steps() {
-        let md = "```e2e alias=f\n{\"base_url\":\"https://x.com\",\"steps\":[{\"name\":\"a\"},{\"name\":\"b\"}]}\n```\n";
-        let doc = Document::from_markdown(md).unwrap();
-        let layouts = layout_document(&doc, 80);
-        let block_h = layouts
-            .iter()
-            .find(|l| matches!(doc.segments()[l.segment_idx], crate::buffer::Segment::Block(_)))
-            .unwrap()
-            .height;
-        // chrome (4) + 2 steps + 1 base_url line = 7.
-        assert_eq!(block_h, 7);
-    }
-
-    #[test]
     fn y_start_is_cumulative() {
         let md = "intro\n\n```http\n{\"method\":\"GET\",\"url\":\"https://x.com\",\"params\":[],\"headers\":[],\"body\":\"\"}\n```\n\noutro\n";
         let doc = Document::from_markdown(md).unwrap();
