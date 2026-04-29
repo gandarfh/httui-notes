@@ -933,6 +933,11 @@ fn main() {
             app.manage(Arc::new(Mutex::new(Vec::<String>::new()))); // ignore_paths
             app.manage(Mutex::new(None::<httui_notes::fs::watcher::VaultWatcher>));
 
+            // Per-vault file-backed store registry (Epic 19 cutover —
+            // audit-015). Resolves ConnectionsStore + EnvironmentsStore
+            // for the active vault on demand, caches per vault path.
+            app.manage(httui_notes::commands::vault_stores::VaultStoreRegistry::new());
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

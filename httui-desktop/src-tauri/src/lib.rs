@@ -26,5 +26,10 @@ pub mod git_commands;
 // File-backed config (epic 09 foundation; cutover in epic 19).
 pub mod vault_config_commands;
 
+// Per-domain Tauri command split (Epic 20a Story 05 lands the full
+// split; this `commands/` tree starts with the cutover helpers
+// introduced in audit-015).
+pub mod commands;
+
 // Re-export the schemas frontend code needs at the IPC boundary.
 pub use httui_core::vault_config;
