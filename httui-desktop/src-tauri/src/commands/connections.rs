@@ -30,9 +30,8 @@ use sqlx::sqlite::SqlitePool;
 use tauri::State;
 
 use httui_core::db::connections::PoolManager;
-use httui_core::vault_config::connections_store::{
-    ConnectionPublic as FileConnectionPublic, CreateConnectionInput, UpdateConnectionInput,
-};
+use httui_core::vault_config::connection_views::ConnectionPublic as FileConnectionPublic;
+use httui_core::vault_config::connections_store::{CreateConnectionInput, UpdateConnectionInput};
 
 use super::vault_stores::VaultStoreRegistry;
 
