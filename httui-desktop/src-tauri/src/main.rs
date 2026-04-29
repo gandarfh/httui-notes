@@ -302,36 +302,7 @@ async fn compute_block_hash(
 /// Walk the target DB's metadata tables to discover schemas, tables and
 /// columns. Caches the result in SQLite; falls through to fresh lookup
 /// when the cached row is older than 5s.
-#[tauri::command]
-async fn introspect_schema(
-    pool: tauri::State<'_, SqlitePool>,
-    conn_manager: tauri::State<'_, Arc<PoolManager>>,
-    connection_id: String,
-) -> Result<Vec<httui_notes::db::schema_cache::SchemaEntry>, String> {
-    // T24: Debounce — return cached schema if fresh (< 5s) to prevent hammering target DB
-    if let Ok(Some(cached)) =
-        httui_notes::db::schema_cache::get_cached_schema(&pool, &connection_id, 5).await
-    {
-        return Ok(cached);
-    }
-    httui_notes::db::schema_cache::introspect_schema(&conn_manager, &pool, &connection_id).await
-}
-
-/// Read-only access to the cached schema for `connection_id`. Returns
-/// `None` if no cache hit younger than `ttl_seconds` (default 300s).
-#[tauri::command]
-async fn get_cached_schema(
-    pool: tauri::State<'_, SqlitePool>,
-    connection_id: String,
-    ttl_seconds: Option<i64>,
-) -> Result<Option<Vec<httui_notes::db::schema_cache::SchemaEntry>>, String> {
-    httui_notes::db::schema_cache::get_cached_schema(
-        &pool,
-        &connection_id,
-        ttl_seconds.unwrap_or(300),
-    )
-    .await
-}
+// Schema commands moved to `commands::schema` (Epic 20a Story 05).
 
 // --- Config commands ---
 
@@ -793,8 +764,8 @@ fn main() {
             httui_notes::commands::connections::update_connection,
             httui_notes::commands::connections::delete_connection,
             httui_notes::commands::connections::test_connection,
-            introspect_schema,
-            get_cached_schema,
+            httui_notes::commands::schema::introspect_schema,
+            httui_notes::commands::schema::get_cached_schema,
             httui_notes::commands::environments::list_environments,
             httui_notes::commands::environments::create_environment,
             httui_notes::commands::environments::delete_environment,
