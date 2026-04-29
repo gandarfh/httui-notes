@@ -424,7 +424,8 @@ function canInlineQuery(
 ): boolean {
   if (params.length === 0) return true;
   // Force continuation if any disabled or any has description.
-  if (params.some((p) => !p.enabled || p.description !== undefined)) return false;
+  if (params.some((p) => !p.enabled || p.description !== undefined))
+    return false;
   const inline = params.map((p) => formatParam(p, true)).join("&");
   const total = method.length + 1 + url.length + 1 + inline.length;
   return total <= URL_INLINE_LIMIT;
@@ -476,7 +477,8 @@ export function parseLegacyHttpBody(body: string): LegacyHttpBody | null {
   if (!parsed || typeof parsed !== "object") return null;
 
   const obj = parsed as Record<string, unknown>;
-  if (typeof obj.method !== "string" || typeof obj.url !== "string") return null;
+  if (typeof obj.method !== "string" || typeof obj.url !== "string")
+    return null;
 
   const methodUpper = obj.method.toUpperCase();
   if (!HTTP_METHODS.has(methodUpper as HttpMethod)) return null;
@@ -502,7 +504,9 @@ export function parseLegacyHttpBody(body: string): LegacyHttpBody | null {
   return out;
 }
 
-function normalizeKVArray(value: unknown): Array<{ key: string; value: string }> {
+function normalizeKVArray(
+  value: unknown,
+): Array<{ key: string; value: string }> {
   if (!Array.isArray(value)) return [];
   const out: Array<{ key: string; value: string }> = [];
   for (const item of value) {
@@ -573,9 +577,7 @@ const STRUCTURED_MODES: ReadonlySet<HttpBodyMode> = new Set([
 const CONTENT_TYPE_HEADER = "Content-Type";
 
 function findContentTypeIndex(headers: HttpKVRow[]): number {
-  return headers.findIndex(
-    (h) => h.key.toLowerCase() === "content-type",
-  );
+  return headers.findIndex((h) => h.key.toLowerCase() === "content-type");
 }
 
 /**
@@ -592,7 +594,11 @@ export function deriveBodyMode(headers: HttpKVRow[]): HttpBodyMode {
   const mime = row.value.split(";")[0].trim().toLowerCase();
   if (mime === "") return "none";
   if (mime === "application/json" || mime.endsWith("+json")) return "json";
-  if (mime === "application/xml" || mime === "text/xml" || mime.endsWith("+xml"))
+  if (
+    mime === "application/xml" ||
+    mime === "text/xml" ||
+    mime.endsWith("+xml")
+  )
     return "xml";
   if (mime === "text/plain") return "text";
   if (mime === "application/x-www-form-urlencoded") return "form-urlencoded";
@@ -702,25 +708,48 @@ export function inferContentType(filename: string): string {
   const idx = filename.lastIndexOf(".");
   const ext = idx === -1 ? "" : filename.slice(idx + 1).toLowerCase();
   switch (ext) {
-    case "json": return "application/json";
-    case "xml": return "application/xml";
-    case "html": case "htm": return "text/html";
-    case "css": return "text/css";
-    case "js": return "application/javascript";
-    case "txt": case "log": case "md": return "text/plain";
-    case "csv": return "text/csv";
-    case "png": return "image/png";
-    case "jpg": case "jpeg": return "image/jpeg";
-    case "gif": return "image/gif";
-    case "webp": return "image/webp";
-    case "svg": return "image/svg+xml";
-    case "pdf": return "application/pdf";
-    case "zip": return "application/zip";
-    case "mp3": return "audio/mpeg";
-    case "mp4": return "video/mp4";
-    case "wav": return "audio/wav";
-    case "webm": return "video/webm";
-    default: return "application/octet-stream";
+    case "json":
+      return "application/json";
+    case "xml":
+      return "application/xml";
+    case "html":
+    case "htm":
+      return "text/html";
+    case "css":
+      return "text/css";
+    case "js":
+      return "application/javascript";
+    case "txt":
+    case "log":
+    case "md":
+      return "text/plain";
+    case "csv":
+      return "text/csv";
+    case "png":
+      return "image/png";
+    case "jpg":
+    case "jpeg":
+      return "image/jpeg";
+    case "gif":
+      return "image/gif";
+    case "webp":
+      return "image/webp";
+    case "svg":
+      return "image/svg+xml";
+    case "pdf":
+      return "application/pdf";
+    case "zip":
+      return "application/zip";
+    case "mp3":
+      return "audio/mpeg";
+    case "mp4":
+      return "video/mp4";
+    case "wav":
+      return "audio/wav";
+    case "webm":
+      return "video/webm";
+    default:
+      return "application/octet-stream";
   }
 }
 

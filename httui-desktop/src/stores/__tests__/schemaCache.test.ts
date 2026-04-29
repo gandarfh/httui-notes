@@ -61,9 +61,7 @@ describe("schemaCacheStore", () => {
         return [];
       });
 
-      const result = await useSchemaCacheStore
-        .getState()
-        .ensureLoaded(CONN);
+      const result = await useSchemaCacheStore.getState().ensureLoaded(CONN);
 
       expect(introspectCalls).toBe(0);
       expect(result?.tables[0].name).toBe("t1");
@@ -75,9 +73,7 @@ describe("schemaCacheStore", () => {
         mkEntry("public", "fresh", "id"),
       ]);
 
-      const result = await useSchemaCacheStore
-        .getState()
-        .ensureLoaded(CONN);
+      const result = await useSchemaCacheStore.getState().ensureLoaded(CONN);
 
       expect(result?.tables[0].name).toBe("fresh");
     });
@@ -120,9 +116,7 @@ describe("schemaCacheStore", () => {
         throw new Error("connection refused");
       });
 
-      const result = await useSchemaCacheStore
-        .getState()
-        .ensureLoaded(CONN);
+      const result = await useSchemaCacheStore.getState().ensureLoaded(CONN);
 
       expect(result).toBeNull();
       const entry = useSchemaCacheStore.getState().byConnection[CONN];
@@ -222,9 +216,7 @@ describe("schemaCacheStore", () => {
       ]);
       mockTauriCommand("introspect_schema", () => []);
 
-      const result = await useSchemaCacheStore
-        .getState()
-        .ensureLoaded(CONN);
+      const result = await useSchemaCacheStore.getState().ensureLoaded(CONN);
 
       expect(result?.tables).toHaveLength(1);
       expect(result?.tables[0].columns).toEqual([
@@ -241,9 +233,7 @@ describe("schemaCacheStore", () => {
       ]);
       mockTauriCommand("introspect_schema", () => []);
 
-      const result = await useSchemaCacheStore
-        .getState()
-        .ensureLoaded(CONN);
+      const result = await useSchemaCacheStore.getState().ensureLoaded(CONN);
 
       expect(result?.tables).toHaveLength(2);
       const schemas = result?.tables.map((t) => t.schema);
@@ -260,9 +250,7 @@ describe("schemaCacheStore", () => {
       ]);
       mockTauriCommand("introspect_schema", () => []);
 
-      const result = await useSchemaCacheStore
-        .getState()
-        .ensureLoaded(CONN);
+      const result = await useSchemaCacheStore.getState().ensureLoaded(CONN);
 
       expect(result?.tables.map((t) => `${t.schema}.${t.name}`)).toEqual([
         "auth.a",
@@ -278,9 +266,7 @@ describe("schemaCacheStore", () => {
       ]);
       mockTauriCommand("introspect_schema", () => []);
 
-      const result = await useSchemaCacheStore
-        .getState()
-        .ensureLoaded(CONN);
+      const result = await useSchemaCacheStore.getState().ensureLoaded(CONN);
 
       expect(result?.tables[0].schema).toBeNull();
     });

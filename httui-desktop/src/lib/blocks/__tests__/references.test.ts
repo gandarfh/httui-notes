@@ -46,10 +46,7 @@ describe("navigateJson", () => {
     status_code: 200,
     body: {
       id: 42,
-      items: [
-        { name: "first" },
-        { name: "second" },
-      ],
+      items: [{ name: "first" }, { name: "second" }],
     },
   };
 
@@ -67,7 +64,10 @@ describe("navigateJson", () => {
   });
 
   it("returns object if path ends at object", () => {
-    expect(navigateJson(data, ["body"])).toEqual({ id: 42, items: [{ name: "first" }, { name: "second" }] });
+    expect(navigateJson(data, ["body"])).toEqual({
+      id: 42,
+      items: [{ name: "first" }, { name: "second" }],
+    });
   });
 
   it("returns root if path is empty", () => {
@@ -75,15 +75,21 @@ describe("navigateJson", () => {
   });
 
   it("throws on missing key", () => {
-    expect(() => navigateJson(data, ["nonexistent"])).toThrow('Key "nonexistent" not found');
+    expect(() => navigateJson(data, ["nonexistent"])).toThrow(
+      'Key "nonexistent" not found',
+    );
   });
 
   it("throws on out of bounds array index", () => {
-    expect(() => navigateJson(data, ["body", "items", "5"])).toThrow("out of bounds");
+    expect(() => navigateJson(data, ["body", "items", "5"])).toThrow(
+      "out of bounds",
+    );
   });
 
   it("throws on accessing property of primitive", () => {
-    expect(() => navigateJson(data, ["status_code", "foo"])).toThrow('Cannot access "foo" on number');
+    expect(() => navigateJson(data, ["status_code", "foo"])).toThrow(
+      'Cannot access "foo" on number',
+    );
   });
 });
 
@@ -138,13 +144,21 @@ describe("resolveAllReferences", () => {
   });
 
   it("returns text unchanged when no references", () => {
-    const { resolved, errors } = resolveAllReferences("plain text", blocks, 100);
+    const { resolved, errors } = resolveAllReferences(
+      "plain text",
+      blocks,
+      100,
+    );
     expect(resolved).toBe("plain text");
     expect(errors).toHaveLength(0);
   });
 
   it("returns error for unknown alias", () => {
-    const { errors } = resolveAllReferences("{{unknown.response.x}}", blocks, 100);
+    const { errors } = resolveAllReferences(
+      "{{unknown.response.x}}",
+      blocks,
+      100,
+    );
     expect(errors).toHaveLength(1);
     expect(errors[0].message).toContain("not found");
   });
@@ -161,27 +175,50 @@ describe("resolveAllReferences", () => {
 
   it("returns error for block without cache", () => {
     const blocksNoCache: BlockContext[] = [
-      { alias: "nocache", blockType: "http", pos: 5, content: "{}", cachedResult: null },
+      {
+        alias: "nocache",
+        blockType: "http",
+        pos: 5,
+        content: "{}",
+        cachedResult: null,
+      },
     ];
-    const { errors } = resolveAllReferences("{{nocache.response.x}}", blocksNoCache, 100);
+    const { errors } = resolveAllReferences(
+      "{{nocache.response.x}}",
+      blocksNoCache,
+      100,
+    );
     expect(errors).toHaveLength(1);
     expect(errors[0].message).toContain("no result yet");
   });
 
   it("returns error for invalid JSON path", () => {
-    const { errors } = resolveAllReferences("{{login.response.body.nonexistent}}", blocks, 100);
+    const { errors } = resolveAllReferences(
+      "{{login.response.body.nonexistent}}",
+      blocks,
+      100,
+    );
     expect(errors).toHaveLength(1);
     expect(errors[0].message).toContain("not found");
   });
 
   it("serializes object values as JSON", () => {
-    const { resolved } = resolveAllReferences("{{login.response.body}}", blocks, 100);
+    const { resolved } = resolveAllReferences(
+      "{{login.response.body}}",
+      blocks,
+      100,
+    );
     expect(resolved).toBe(JSON.stringify({ id: 101, token: "abc123" }));
   });
 
   it("resolves env variable when no matching block alias", () => {
     const envVars = { API_KEY: "secret-key" };
-    const { resolved, errors } = resolveAllReferences("Bearer {{API_KEY}}", blocks, 100, envVars);
+    const { resolved, errors } = resolveAllReferences(
+      "Bearer {{API_KEY}}",
+      blocks,
+      100,
+      envVars,
+    );
     expect(errors).toHaveLength(0);
     expect(resolved).toBe("Bearer secret-key");
   });
@@ -215,12 +252,23 @@ describe("resolveAllReferences", () => {
 
   it("falls back to env var when block has no cache and ref has no path", () => {
     const blocksNoCache: BlockContext[] = [
-      { alias: "myvar", blockType: "http", pos: 5, content: "{}", cachedResult: null },
+      {
+        alias: "myvar",
+        blockType: "http",
+        pos: 5,
+        content: "{}",
+        cachedResult: null,
+      },
     ];
     const envVars = { myvar: "from-env" };
     // Block exists but has no cache, and ref has no path → should NOT fall back to env
     // because block alias match takes priority (produces error about missing cache)
-    const { errors } = resolveAllReferences("{{myvar}}", blocksNoCache, 100, envVars);
+    const { errors } = resolveAllReferences(
+      "{{myvar}}",
+      blocksNoCache,
+      100,
+      envVars,
+    );
     expect(errors).toHaveLength(1);
     expect(errors[0].message).toContain("no result yet");
   });
@@ -392,7 +440,9 @@ describe("db block reference shim (stage-2 response shape)", () => {
       100,
     );
     expect(errors).toHaveLength(1);
-    expect(errors[0].message.toLowerCase()).toMatch(/(not found|out of bounds|undefined)/);
+    expect(errors[0].message.toLowerCase()).toMatch(
+      /(not found|out of bounds|undefined)/,
+    );
   });
 
   it("legacy cache shape (pre-stage-2) still navigates directly", () => {

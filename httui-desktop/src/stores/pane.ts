@@ -48,13 +48,21 @@ interface PaneState {
   updateContent: (filePath: string, content: string) => void;
   markUnsaved: (paneId: string, filePath: string, unsaved: boolean) => void;
   resizeSplit: (path: number[], ratio: number) => void;
-  restoreLayout: (layout: PaneLayout, activePaneId: string, contents?: Map<string, string>) => void;
+  restoreLayout: (
+    layout: PaneLayout,
+    activePaneId: string,
+    contents?: Map<string, string>,
+  ) => void;
   setScrollPosition: (filePath: string, position: number) => void;
   getScrollPosition: (filePath: string) => number | undefined;
 
   // Conflict actions
   hasConflict: (filePath: string) => boolean;
-  resolveConflict: (filePath: string, action: "reload" | "keep", vaultPath: string | null) => Promise<void>;
+  resolveConflict: (
+    filePath: string,
+    action: "reload" | "keep",
+    vaultPath: string | null,
+  ) => Promise<void>;
 }
 
 // --- Pure helper functions (exported for testing) ---
@@ -173,7 +181,10 @@ export const usePaneStore = create<PaneState>()(
 
       selectTab: (paneId, index) => {
         set((state) => ({
-          layout: updateLeaf(state.layout, paneId, (l) => ({ ...l, activeTab: index })),
+          layout: updateLeaf(state.layout, paneId, (l) => ({
+            ...l,
+            activeTab: index,
+          })),
           activePaneId: paneId,
         }));
       },
@@ -194,12 +205,20 @@ export const usePaneStore = create<PaneState>()(
               };
             }
             return {
-              layout: updateLeaf(state.layout, paneId, (l) => ({ ...l, tabs: [], activeTab: 0 })),
+              layout: updateLeaf(state.layout, paneId, (l) => ({
+                ...l,
+                tabs: [],
+                activeTab: 0,
+              })),
             };
           }
           const newActive = Math.min(leaf.activeTab, newTabs.length - 1);
           return {
-            layout: updateLeaf(state.layout, paneId, (l) => ({ ...l, tabs: newTabs, activeTab: newActive })),
+            layout: updateLeaf(state.layout, paneId, (l) => ({
+              ...l,
+              tabs: newTabs,
+              activeTab: newActive,
+            })),
           };
         });
       },
@@ -271,7 +290,10 @@ export const usePaneStore = create<PaneState>()(
           if (!leaf || leaf.tabs.length <= 1) return state;
           const next = (leaf.activeTab + 1) % leaf.tabs.length;
           return {
-            layout: updateLeaf(state.layout, activePaneId, (l) => ({ ...l, activeTab: next })),
+            layout: updateLeaf(state.layout, activePaneId, (l) => ({
+              ...l,
+              activeTab: next,
+            })),
           };
         });
       },
@@ -319,7 +341,10 @@ export const usePaneStore = create<PaneState>()(
           const existing = leaf.tabs.findIndex((t) => t.diffId === diffId);
           if (existing >= 0) {
             return {
-              layout: updateLeaf(state.layout, activePaneId, (l) => ({ ...l, activeTab: existing })),
+              layout: updateLeaf(state.layout, activePaneId, (l) => ({
+                ...l,
+                activeTab: existing,
+              })),
             };
           }
           const tab: TabState = {
@@ -356,12 +381,20 @@ export const usePaneStore = create<PaneState>()(
                 const result = removeLeaf(state.layout, leafId);
                 if (result) return { layout: result };
                 return {
-                  layout: updateLeaf(state.layout, leafId, (l) => ({ ...l, tabs: [], activeTab: 0 })),
+                  layout: updateLeaf(state.layout, leafId, (l) => ({
+                    ...l,
+                    tabs: [],
+                    activeTab: 0,
+                  })),
                 };
               }
               const newActive = Math.min(leaf.activeTab, newTabs.length - 1);
               return {
-                layout: updateLeaf(state.layout, leafId, (l) => ({ ...l, tabs: newTabs, activeTab: newActive })),
+                layout: updateLeaf(state.layout, leafId, (l) => ({
+                  ...l,
+                  tabs: newTabs,
+                  activeTab: newActive,
+                })),
               };
             }
           }
@@ -408,14 +441,17 @@ export const usePaneStore = create<PaneState>()(
 export function setupPaneListeners() {
   listen<FileReloadedPayload>("file-reloaded", (event) => {
     const { path } = event.payload;
-    const { editorContents, unsavedFiles, conflictFiles } = usePaneStore.getState();
+    const { editorContents, unsavedFiles, conflictFiles } =
+      usePaneStore.getState();
 
     // Only care about open files
     if (!editorContents.has(path)) return;
 
     // If file has unsaved edits, show conflict banner
     if (unsavedFiles.has(path)) {
-      usePaneStore.setState({ conflictFiles: new Set(conflictFiles).add(path) });
+      usePaneStore.setState({
+        conflictFiles: new Set(conflictFiles).add(path),
+      });
     }
   });
 }

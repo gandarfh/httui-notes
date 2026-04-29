@@ -39,7 +39,10 @@ interface SettingsState {
   // Actions
   openSettings: () => void;
   closeSettings: () => void;
-  updateSetting: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void;
+  updateSetting: <K extends keyof AppSettings>(
+    key: K,
+    value: AppSettings[K],
+  ) => void;
   updateTheme: (partial: Partial<ThemeConfig>) => void;
   resetTheme: () => void;
   toggleVim: () => void;
@@ -99,7 +102,8 @@ export const useSettingsStore = create<SettingsState>()(
       toggleVim: () => set((state) => ({ vimEnabled: !state.vimEnabled })),
       setVimMode: (mode) => set({ vimMode: mode }),
       setVimEnabled: (enabled) => set({ vimEnabled: enabled }),
-      toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
+      toggleSidebar: () =>
+        set((state) => ({ sidebarOpen: !state.sidebarOpen })),
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
 
       loadSettings: async () => {
@@ -116,15 +120,21 @@ export const useSettingsStore = create<SettingsState>()(
         if (themeJson) {
           try {
             themeConfig = { ...DEFAULT_THEME, ...JSON.parse(themeJson) };
-          } catch { /* ignore */ }
+          } catch {
+            /* ignore */
+          }
         }
         applyTheme(themeConfig);
 
         set({
           settings: {
             autoSaveMs: autoSave ? Number(autoSave) : DEFAULTS.autoSaveMs,
-            editorFontSize: fontSize ? Number(fontSize) : DEFAULTS.editorFontSize,
-            defaultFetchSize: fetchSize ? Number(fetchSize) : DEFAULTS.defaultFetchSize,
+            editorFontSize: fontSize
+              ? Number(fontSize)
+              : DEFAULTS.editorFontSize,
+            defaultFetchSize: fetchSize
+              ? Number(fetchSize)
+              : DEFAULTS.defaultFetchSize,
             historyRetention: retention
               ? Number(retention)
               : DEFAULTS.historyRetention,

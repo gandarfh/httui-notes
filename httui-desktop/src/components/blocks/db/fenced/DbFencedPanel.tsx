@@ -13,14 +13,7 @@
  * (`{{alias.response.col}}`) continue to work across reloads.
  */
 
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { EditorView } from "@codemirror/view";
 
@@ -43,14 +36,8 @@ import {
   type DbResponse,
 } from "@/components/blocks/db/types";
 import { computeDbCacheHash } from "@/lib/blocks/hash";
-import {
-  getBlockResult,
-  saveBlockResult,
-} from "@/lib/tauri/commands";
-import {
-  listConnections,
-  type Connection,
-} from "@/lib/tauri/connections";
+import { getBlockResult, saveBlockResult } from "@/lib/tauri/commands";
+import { listConnections, type Connection } from "@/lib/tauri/connections";
 import { resolveRefsToBindParams } from "@/lib/blocks/references";
 import { collectBlocksAboveCM } from "@/lib/blocks/document";
 import { resolveConnectionIdentifier } from "@/lib/blocks/connection-resolve";
@@ -85,8 +72,7 @@ export const DbFencedPanel = memo(function DbFencedPanel({
   view,
   filePath,
 }: DbFencedPanelProps) {
-  const [executionState, setExecutionState] =
-    useState<ExecutionState>("idle");
+  const [executionState, setExecutionState] = useState<ExecutionState>("idle");
   const [response, setResponse] = useState<DbResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [durationMs, setDurationMs] = useState<number | null>(null);
@@ -124,7 +110,9 @@ export const DbFencedPanel = memo(function DbFencedPanel({
 
   // Load connections once
   useEffect(() => {
-    listConnections().then(setConnections).catch(() => {});
+    listConnections()
+      .then(setConnections)
+      .catch(() => {});
   }, []);
 
   // Warm the schema cache so SQL autocomplete (tables/columns) is ready
@@ -230,7 +218,14 @@ export const DbFencedPanel = memo(function DbFencedPanel({
         },
       ],
     });
-  }, [block.body, block.bodyFrom, block.bodyTo, block.metadata, block.openLineFrom, view]);
+  }, [
+    block.body,
+    block.bodyFrom,
+    block.bodyTo,
+    block.metadata,
+    block.openLineFrom,
+    view,
+  ]);
 
   // Load cached result on mount / when block body + connection change
   useEffect(() => {
@@ -297,16 +292,13 @@ export const DbFencedPanel = memo(function DbFencedPanel({
         block.from,
         filePath,
       );
-      const envVars = await useEnvironmentStore
-        .getState()
-        .getActiveVariables();
+      const envVars = await useEnvironmentStore.getState().getActiveVariables();
 
-      const { sql, bindValues, errors: refErrors } = resolveRefsToBindParams(
-        block.body,
-        blocksAbove,
-        block.from,
-        envVars,
-      );
+      const {
+        sql,
+        bindValues,
+        errors: refErrors,
+      } = resolveRefsToBindParams(block.body, blocksAbove, block.from, envVars);
       if (refErrors.length > 0) {
         setError(`Reference errors:\n${refErrors.join("\n")}`);
         setExecutionState("error");
@@ -448,7 +440,10 @@ export const DbFencedPanel = memo(function DbFencedPanel({
     // EXPLAIN — strings/identifiers containing `;` are vanishingly rare in
     // a query someone is debugging.
     const firstStatement =
-      body.split(";").map((s) => s.trim()).find((s) => s.length > 0) ?? body;
+      body
+        .split(";")
+        .map((s) => s.trim())
+        .find((s) => s.length > 0) ?? body;
 
     // Pick the EXPLAIN flavour from the actual driver, falling back to
     // the fence dialect, then to plain `EXPLAIN`. The fence dialect alone
@@ -478,16 +473,17 @@ export const DbFencedPanel = memo(function DbFencedPanel({
         block.from,
         filePath,
       );
-      const envVars = await useEnvironmentStore
-        .getState()
-        .getActiveVariables();
-      const { sql: resolvedBody, bindValues, errors: refErrors } =
-        resolveRefsToBindParams(
-          firstStatement,
-          blocksAbove,
-          block.from,
-          envVars,
-        );
+      const envVars = await useEnvironmentStore.getState().getActiveVariables();
+      const {
+        sql: resolvedBody,
+        bindValues,
+        errors: refErrors,
+      } = resolveRefsToBindParams(
+        firstStatement,
+        blocksAbove,
+        block.from,
+        envVars,
+      );
       if (refErrors.length > 0) {
         setError(`Reference errors:\n${refErrors.join("\n")}`);
         setExecutionState("error");
@@ -553,12 +549,11 @@ export const DbFencedPanel = memo(function DbFencedPanel({
       }
 
       setResponse((prev) => {
-        const base: DbResponse =
-          prev ?? {
-            results: [],
-            messages: [],
-            stats: { elapsed_ms: 0 },
-          };
+        const base: DbResponse = prev ?? {
+          results: [],
+          messages: [],
+          stats: { elapsed_ms: 0 },
+        };
         return {
           ...base,
           plan: explainResult.rows,
@@ -609,9 +604,7 @@ export const DbFencedPanel = memo(function DbFencedPanel({
         block.from,
         filePath,
       );
-      const envVars = await useEnvironmentStore
-        .getState()
-        .getActiveVariables();
+      const envVars = await useEnvironmentStore.getState().getActiveVariables();
       const { sql, bindValues } = resolveRefsToBindParams(
         block.body,
         blocksAbove,
@@ -783,6 +776,4 @@ export const DbFencedPanel = memo(function DbFencedPanel({
   );
 });
 
-
 // DbStatusBar moved to ./DbStatusBar.tsx
-

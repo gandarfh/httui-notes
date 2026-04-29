@@ -1,17 +1,17 @@
-"use client"
+"use client";
 
-import { Carousel } from "@chakra-ui/react"
-import { Box, IconButton, Image } from "@chakra-ui/react"
-import * as React from "react"
-import { LuPause, LuPlay } from "react-icons/lu"
+import { Carousel } from "@chakra-ui/react";
+import { Box, IconButton, Image } from "@chakra-ui/react";
+import * as React from "react";
+import { LuPause, LuPlay } from "react-icons/lu";
 
 interface CarouselRootProps extends Carousel.RootProps {
-  withAutoplay?: boolean
+  withAutoplay?: boolean;
 }
 
 export const CarouselRoot = React.forwardRef<HTMLDivElement, CarouselRootProps>(
   function CarouselRoot(props, ref) {
-    const { children, withAutoplay, ...rest } = props
+    const { children, withAutoplay, ...rest } = props;
     return (
       <Carousel.Root {...rest} ref={ref}>
         {children}
@@ -33,9 +33,9 @@ export const CarouselRoot = React.forwardRef<HTMLDivElement, CarouselRootProps>(
           </Box>
         )}
       </Carousel.Root>
-    )
+    );
   },
-)
+);
 
 export const CarouselControls = React.forwardRef<
   HTMLDivElement,
@@ -46,15 +46,15 @@ export const CarouselControls = React.forwardRef<
       <Carousel.PrevTrigger aria-label="Previous" />
       <Carousel.NextTrigger aria-label="Next" />
     </Carousel.Control>
-  )
-})
+  );
+});
 
 export const CarouselIndicators = React.forwardRef<
   HTMLDivElement,
   Carousel.IndicatorGroupProps
 >(function CarouselIndicators(props, ref) {
-  return <Carousel.IndicatorGroup ref={ref} {...props} />
-})
+  return <Carousel.IndicatorGroup ref={ref} {...props} />;
+});
 
 export const CarouselItem = React.forwardRef<
   HTMLDivElement,
@@ -75,17 +75,17 @@ export const CarouselItem = React.forwardRef<
         children
       )}
     </Carousel.Item>
-  )
-})
+  );
+});
 
 const AutoplayIcon = () => {
-  const [running, setRunning] = React.useState(true)
-  const toggle = () => setRunning(!running)
-  return <Box onClick={toggle}>{running ? <LuPause /> : <LuPlay />}</Box>
-}
+  const [running, setRunning] = React.useState(true);
+  const toggle = () => setRunning(!running);
+  return <Box onClick={toggle}>{running ? <LuPause /> : <LuPlay />}</Box>;
+};
 
-export const CarouselItemGroup = Carousel.ItemGroup
-export const CarouselIndicator = Carousel.Indicator
-export const CarouselPrevTrigger = Carousel.PrevTrigger
-export const CarouselNextTrigger = Carousel.NextTrigger
-export const CarouselAutoplayTrigger = Carousel.AutoplayTrigger
+export const CarouselItemGroup = Carousel.ItemGroup;
+export const CarouselIndicator = Carousel.Indicator;
+export const CarouselPrevTrigger = Carousel.PrevTrigger;
+export const CarouselNextTrigger = Carousel.NextTrigger;
+export const CarouselAutoplayTrigger = Carousel.AutoplayTrigger;

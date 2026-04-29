@@ -8,7 +8,10 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { createEditorBlockWidgets, getWidgetContainers } from "../cm-block-widgets";
+import {
+  createEditorBlockWidgets,
+  getWidgetContainers,
+} from "../cm-block-widgets";
 
 // Long document with a block in the middle so we have room to scroll.
 // Uses e2e (not db) because db-* blocks migrated to a different
@@ -86,7 +89,8 @@ describe("CM6 widget height change scroll bug", () => {
 
     // Simulate block execution: widget grows dramatically (e.g., results table)
     widgetEl.style.minHeight = "500px";
-    widgetEl.innerHTML = "<div style='height: 500px; background: red'>Results table</div>";
+    widgetEl.innerHTML =
+      "<div style='height: 500px; background: red'>Results table</div>";
 
     // Wait for ResizeObserver to fire and CM6 measure to run
     await waitFrames(5);
@@ -100,5 +104,4 @@ describe("CM6 widget height change scroll bug", () => {
     expect(view.scrollDOM.scrollTop).not.toBe(0);
     expect(view.scrollDOM.scrollTop).toBeGreaterThan(100);
   });
-
 });

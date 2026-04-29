@@ -36,7 +36,9 @@ describe("isUnscopedWriteQuery", () => {
   });
 
   it("accepts scoped writes", () => {
-    expect(isUnscopedWriteQuery("UPDATE users SET x = 1 WHERE id = 2")).toBe(false);
+    expect(isUnscopedWriteQuery("UPDATE users SET x = 1 WHERE id = 2")).toBe(
+      false,
+    );
     expect(isUnscopedWriteQuery("DELETE FROM users WHERE id = 2")).toBe(false);
   });
 

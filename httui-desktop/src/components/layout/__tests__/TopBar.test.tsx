@@ -80,9 +80,7 @@ describe("TopBar", () => {
       <TopBar {...baseProps} onToggleSidebar={onToggleSidebar} />,
     );
 
-    await user.click(
-      screen.getByRole("button", { name: /hide sidebar/i }),
-    );
+    await user.click(screen.getByRole("button", { name: /hide sidebar/i }));
     expect(onToggleSidebar).toHaveBeenCalledTimes(1);
   });
 
@@ -96,18 +94,14 @@ describe("TopBar", () => {
   it("chat button calls onToggleChat", async () => {
     const user = userEvent.setup();
     const onToggleChat = vi.fn();
-    renderWithWorkspace(
-      <TopBar {...baseProps} onToggleChat={onToggleChat} />,
-    );
+    renderWithWorkspace(<TopBar {...baseProps} onToggleChat={onToggleChat} />);
 
     await user.click(screen.getByRole("button", { name: /open chat/i }));
     expect(onToggleChat).toHaveBeenCalledTimes(1);
   });
 
   it("schema panel button reflects open state in aria-label", () => {
-    renderWithWorkspace(
-      <TopBar {...baseProps} schemaPanelOpen={true} />,
-    );
+    renderWithWorkspace(<TopBar {...baseProps} schemaPanelOpen={true} />);
     expect(
       screen.getByRole("button", { name: /close schema panel/i }),
     ).toBeInTheDocument();

@@ -85,7 +85,8 @@ export function insertDbSnippetIntoActiveEditor(options: {
   const lineIsEmpty = line.text.trim().length === 0;
   const leadingNewline = atLineStart || lineIsEmpty ? "" : "\n";
   const fence = `${leadingNewline}\`\`\`${info}\n${snippet}\n\`\`\`\n`;
-  const cursor = pos + leadingNewline.length + 3 + info.length + 1 + snippet.length;
+  const cursor =
+    pos + leadingNewline.length + 3 + info.length + 1 + snippet.length;
   view.dispatch({
     changes: { from: pos, insert: fence },
     selection: { anchor: cursor },

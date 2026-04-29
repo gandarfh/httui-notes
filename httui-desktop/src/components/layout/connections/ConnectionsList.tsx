@@ -1,5 +1,22 @@
-import { Box, Flex, HStack, Text, Badge, IconButton, Menu, Portal, Spinner } from "@chakra-ui/react";
-import { LuPlus, LuDatabase, LuPencil, LuTrash2, LuPlugZap, LuRefreshCw } from "react-icons/lu";
+import {
+  Box,
+  Flex,
+  HStack,
+  Text,
+  Badge,
+  IconButton,
+  Menu,
+  Portal,
+  Spinner,
+} from "@chakra-ui/react";
+import {
+  LuPlus,
+  LuDatabase,
+  LuPencil,
+  LuTrash2,
+  LuPlugZap,
+  LuRefreshCw,
+} from "react-icons/lu";
 import { useCallback, useEffect, useState } from "react";
 import type { Connection } from "@/lib/tauri/connections";
 import {
@@ -26,7 +43,9 @@ export function ConnectionsList() {
   const [editingConn, setEditingConn] = useState<Connection | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [testing, setTesting] = useState<string | null>(null);
-  const [testResults, setTestResults] = useState<Record<string, "success" | "error">>({});
+  const [testResults, setTestResults] = useState<
+    Record<string, "success" | "error">
+  >({});
 
   const refresh = useCallback(async () => {
     try {
@@ -53,25 +72,22 @@ export function ConnectionsList() {
     [refresh],
   );
 
-  const handleTest = useCallback(
-    async (id: string) => {
-      setTesting(id);
-      setTestResults((prev) => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
-      try {
-        await testConnection(id);
-        setTestResults((prev) => ({ ...prev, [id]: "success" }));
-      } catch {
-        setTestResults((prev) => ({ ...prev, [id]: "error" }));
-      } finally {
-        setTesting(null);
-      }
-    },
-    [],
-  );
+  const handleTest = useCallback(async (id: string) => {
+    setTesting(id);
+    setTestResults((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    try {
+      await testConnection(id);
+      setTestResults((prev) => ({ ...prev, [id]: "success" }));
+    } catch {
+      setTestResults((prev) => ({ ...prev, [id]: "error" }));
+    } finally {
+      setTesting(null);
+    }
+  }, []);
 
   const handleFormClose = useCallback(() => {
     setShowForm(false);
@@ -113,7 +129,10 @@ export function ConnectionsList() {
       ) : (
         <Box px={1} pb={2}>
           {connections.map((conn) => (
-            <Menu.Root key={conn.id} positioning={{ placement: "bottom-start" }}>
+            <Menu.Root
+              key={conn.id}
+              positioning={{ placement: "bottom-start" }}
+            >
               <Menu.Trigger asChild>
                 <Flex
                   align="center"
@@ -146,7 +165,11 @@ export function ConnectionsList() {
                       w={2}
                       h={2}
                       rounded="full"
-                      bg={testResults[conn.id] === "success" ? "green.500" : "red.500"}
+                      bg={
+                        testResults[conn.id] === "success"
+                          ? "green.500"
+                          : "red.500"
+                      }
                     />
                   ) : null}
                 </Flex>
@@ -164,7 +187,10 @@ export function ConnectionsList() {
                       <LuPencil />
                       Edit
                     </Menu.Item>
-                    <Menu.Item value="test" onSelect={() => handleTest(conn.id)}>
+                    <Menu.Item
+                      value="test"
+                      onSelect={() => handleTest(conn.id)}
+                    >
                       <LuPlugZap />
                       Test Connection
                     </Menu.Item>
@@ -190,10 +216,7 @@ export function ConnectionsList() {
       )}
 
       {showForm && (
-        <ConnectionForm
-          connection={editingConn}
-          onClose={handleFormClose}
-        />
+        <ConnectionForm connection={editingConn} onClose={handleFormClose} />
       )}
     </>
   );

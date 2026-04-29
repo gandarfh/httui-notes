@@ -97,18 +97,12 @@ describe("paneStore — extended coverage", () => {
     });
 
     it("allLeafIds returns ids in DFS order", () => {
-      const tree = mkSplit([
-        mkSplit([mkLeaf("a"), mkLeaf("b")]),
-        mkLeaf("c"),
-      ]);
+      const tree = mkSplit([mkSplit([mkLeaf("a"), mkLeaf("b")]), mkLeaf("c")]);
       expect(allLeafIds(tree)).toEqual(["a", "b", "c"]);
     });
 
     it("updateSplitRatio walks the path correctly", () => {
-      const tree = mkSplit([
-        mkSplit([mkLeaf("a"), mkLeaf("b")]),
-        mkLeaf("c"),
-      ]);
+      const tree = mkSplit([mkSplit([mkLeaf("a"), mkLeaf("b")]), mkLeaf("c")]);
       const out = updateSplitRatio(tree, [0], 0.7) as SplitPane;
       const child = out.children[0] as SplitPane;
       expect(child.ratio).toBe(0.7);
@@ -250,7 +244,9 @@ describe("paneStore — extended coverage", () => {
     });
 
     it("getScrollPosition returns undefined for unknown file", () => {
-      expect(usePaneStore.getState().getScrollPosition("nope.md")).toBeUndefined();
+      expect(
+        usePaneStore.getState().getScrollPosition("nope.md"),
+      ).toBeUndefined();
     });
   });
 
@@ -294,9 +290,7 @@ describe("paneStore — extended coverage", () => {
       });
       usePaneStore.setState({ conflictFiles: new Set(["a.md"]) });
 
-      await usePaneStore
-        .getState()
-        .resolveConflict("a.md", "reload", VAULT);
+      await usePaneStore.getState().resolveConflict("a.md", "reload", VAULT);
 
       expect(reloadArgs).toEqual({ vaultPath: VAULT, filePath: "a.md" });
       expect(usePaneStore.getState().hasConflict("a.md")).toBe(false);
@@ -309,9 +303,7 @@ describe("paneStore — extended coverage", () => {
       const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
       usePaneStore.setState({ conflictFiles: new Set(["a.md"]) });
 
-      await usePaneStore
-        .getState()
-        .resolveConflict("a.md", "reload", VAULT);
+      await usePaneStore.getState().resolveConflict("a.md", "reload", VAULT);
 
       expect(errSpy).toHaveBeenCalled();
       expect(usePaneStore.getState().hasConflict("a.md")).toBe(false);
@@ -325,9 +317,7 @@ describe("paneStore — extended coverage", () => {
       });
       usePaneStore.setState({ conflictFiles: new Set(["a.md"]) });
 
-      await usePaneStore
-        .getState()
-        .resolveConflict("a.md", "keep", VAULT);
+      await usePaneStore.getState().resolveConflict("a.md", "keep", VAULT);
 
       expect(reloadCalls).toBe(0);
       expect(usePaneStore.getState().hasConflict("a.md")).toBe(false);
@@ -340,9 +330,7 @@ describe("paneStore — extended coverage", () => {
       });
       usePaneStore.setState({ conflictFiles: new Set(["a.md"]) });
 
-      await usePaneStore
-        .getState()
-        .resolveConflict("a.md", "reload", null);
+      await usePaneStore.getState().resolveConflict("a.md", "reload", null);
 
       expect(reloadCalls).toBe(0);
       expect(usePaneStore.getState().hasConflict("a.md")).toBe(false);
@@ -377,9 +365,7 @@ describe("paneStore — extended coverage", () => {
         markdown: "x",
       });
 
-      expect(
-        usePaneStore.getState().hasConflict("not-open.md"),
-      ).toBe(false);
+      expect(usePaneStore.getState().hasConflict("not-open.md")).toBe(false);
     });
 
     it("file-reloaded does not flag conflict when file has no unsaved edits", () => {

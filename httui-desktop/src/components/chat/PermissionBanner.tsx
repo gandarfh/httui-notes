@@ -11,7 +11,8 @@ type PermissionScope = "once" | "session" | "always";
 function formatToolInput(input: Record<string, unknown>): string {
   if ("command" in input) return String(input.command);
   if ("file_path" in input) return String(input.file_path);
-  if ("pattern" in input) return `${input.pattern}${input.path ? ` in ${input.path}` : ""}`;
+  if ("pattern" in input)
+    return `${input.pattern}${input.path ? ` in ${input.path}` : ""}`;
   return JSON.stringify(input, null, 2);
 }
 
@@ -25,7 +26,10 @@ function isUpdateNote(toolName: string): boolean {
   return toolName.includes("update_note");
 }
 
-function computeLineStats(original: string, proposed: string): { added: number; removed: number } {
+function computeLineStats(
+  original: string,
+  proposed: string,
+): { added: number; removed: number } {
   const origLines = original.split("\n");
   const propLines = proposed.split("\n");
   const origSet = new Set(origLines);
@@ -60,7 +64,9 @@ export function PermissionBanner() {
       if (isUpdateNote(pendingPermission.toolName) && vaultPath) {
         const path = String(pendingPermission.toolInput.path ?? "");
         if (path) {
-          readNote(vaultPath, path).then(setOriginalContent).catch(() => setOriginalContent(""));
+          readNote(vaultPath, path)
+            .then(setOriginalContent)
+            .catch(() => setOriginalContent(""));
         }
       }
     }
@@ -92,9 +98,10 @@ export function PermissionBanner() {
   const isNoteUpdate = isUpdateNote(toolName);
   const notePath = isNoteUpdate ? String(toolInput.path ?? "") : "";
   const proposedContent = isNoteUpdate ? String(toolInput.content ?? "") : "";
-  const stats = isNoteUpdate && originalContent !== null
-    ? computeLineStats(originalContent, proposedContent)
-    : null;
+  const stats =
+    isNoteUpdate && originalContent !== null
+      ? computeLineStats(originalContent, proposedContent)
+      : null;
 
   const handleViewDiff = () => {
     if (!vaultPath || originalContent === null) return;
@@ -126,8 +133,16 @@ export function PermissionBanner() {
           </Text>
           {stats && (
             <>
-              {stats.added > 0 && <Badge size="sm" colorPalette="green" variant="subtle">+{stats.added}</Badge>}
-              {stats.removed > 0 && <Badge size="sm" colorPalette="red" variant="subtle">-{stats.removed}</Badge>}
+              {stats.added > 0 && (
+                <Badge size="sm" colorPalette="green" variant="subtle">
+                  +{stats.added}
+                </Badge>
+              )}
+              {stats.removed > 0 && (
+                <Badge size="sm" colorPalette="red" variant="subtle">
+                  -{stats.removed}
+                </Badge>
+              )}
             </>
           )}
           <Box

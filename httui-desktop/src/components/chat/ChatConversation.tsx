@@ -24,12 +24,7 @@ export function ChatConversation() {
 
   return (
     <Box flex={1} position="relative" overflow="hidden">
-      <Box
-        ref={scrollRef}
-        h="100%"
-        overflowY="auto"
-        py={2}
-      >
+      <Box ref={scrollRef} h="100%" overflowY="auto" py={2}>
         {!hasMessages && (
           <Box
             display="flex"
@@ -44,8 +39,12 @@ export function ChatConversation() {
         )}
 
         {messages.map((msg, idx) => {
-          const lastAssistantIdx = [...messages].reverse().findIndex((m) => m.role === "assistant");
-          const isLastAssistant = lastAssistantIdx >= 0 && idx === messages.length - 1 - lastAssistantIdx;
+          const lastAssistantIdx = [...messages]
+            .reverse()
+            .findIndex((m) => m.role === "assistant");
+          const isLastAssistant =
+            lastAssistantIdx >= 0 &&
+            idx === messages.length - 1 - lastAssistantIdx;
           return (
             <ChatMessageBubble
               key={msg.id}
@@ -89,22 +88,40 @@ export function ChatConversation() {
               rounded="lg"
               bg="bg.subtle"
             >
-              <Box w="6px" h="6px" rounded="full" bg="fg.muted" css={{
-                animation: "pulse 1.4s infinite",
-                animationDelay: "0s",
-                "@keyframes pulse": {
-                  "0%, 80%, 100%": { opacity: 0.3 },
-                  "40%": { opacity: 1 },
-                },
-              }} />
-              <Box w="6px" h="6px" rounded="full" bg="fg.muted" css={{
-                animation: "pulse 1.4s infinite",
-                animationDelay: "0.2s",
-              }} />
-              <Box w="6px" h="6px" rounded="full" bg="fg.muted" css={{
-                animation: "pulse 1.4s infinite",
-                animationDelay: "0.4s",
-              }} />
+              <Box
+                w="6px"
+                h="6px"
+                rounded="full"
+                bg="fg.muted"
+                css={{
+                  animation: "pulse 1.4s infinite",
+                  animationDelay: "0s",
+                  "@keyframes pulse": {
+                    "0%, 80%, 100%": { opacity: 0.3 },
+                    "40%": { opacity: 1 },
+                  },
+                }}
+              />
+              <Box
+                w="6px"
+                h="6px"
+                rounded="full"
+                bg="fg.muted"
+                css={{
+                  animation: "pulse 1.4s infinite",
+                  animationDelay: "0.2s",
+                }}
+              />
+              <Box
+                w="6px"
+                h="6px"
+                rounded="full"
+                bg="fg.muted"
+                css={{
+                  animation: "pulse 1.4s infinite",
+                  animationDelay: "0.4s",
+                }}
+              />
             </Box>
           </Box>
         )}

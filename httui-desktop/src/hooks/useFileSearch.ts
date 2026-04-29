@@ -8,7 +8,11 @@ interface UseFileSearchOpts {
   onClose: () => void;
 }
 
-export function useFileSearch({ vaultPath, onSelect, onClose }: UseFileSearchOpts) {
+export function useFileSearch({
+  vaultPath,
+  onSelect,
+  onClose,
+}: UseFileSearchOpts) {
   return useDebounceSearch<SearchResult>({
     searchFn: (q) => (vaultPath ? searchFiles(vaultPath, q) : null),
     loadOnMount: vaultPath ? () => searchFiles(vaultPath, "") : undefined,

@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { EditorState, Text } from "@codemirror/state";
-import type { CompletionContext, CompletionResult } from "@codemirror/autocomplete";
+import type {
+  CompletionContext,
+  CompletionResult,
+} from "@codemirror/autocomplete";
 
 import {
   createDbBlockExtension,
@@ -12,9 +15,9 @@ import {
 import { useSchemaCacheStore } from "@/stores/schemaCache";
 
 vi.mock("@/lib/tauri/connections", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/tauri/connections")>(
-    "@/lib/tauri/connections",
-  );
+  const actual = await vi.importActual<
+    typeof import("@/lib/tauri/connections")
+  >("@/lib/tauri/connections");
   return {
     ...actual,
     listConnections: vi.fn(async () => [
@@ -136,11 +139,7 @@ describe("findDbBlocks", () => {
   });
 
   it("exposes open/close/body positions", () => {
-    const doc = Text.of([
-      "```db-postgres alias=q",
-      "SELECT 1",
-      "```",
-    ]);
+    const doc = Text.of(["```db-postgres alias=q", "SELECT 1", "```"]);
     const [block] = findDbBlocks(doc);
     expect(block.openLineFrom).toBe(0);
     const openLine = doc.lineAt(block.openLineFrom);
@@ -349,7 +348,7 @@ describe("createDbSchemaCompletionSource", () => {
     expect(result).not.toBeNull();
     const labels = result!.options.map((o) => o.label);
     expect(labels).toContain("select");
-    expect(labels.some((l) => l.startsWith("⋯ connection \"ghost\""))).toBe(true);
+    expect(labels.some((l) => l.startsWith('⋯ connection "ghost"'))).toBe(true);
   });
 
   it("offers table names after FROM", async () => {
@@ -362,7 +361,8 @@ describe("createDbSchemaCompletionSource", () => {
   });
 
   it("offers columns after `table.`", async () => {
-    const doc = "```db-postgres connection=prod\nSELECT users.| FROM users\n```\n";
+    const doc =
+      "```db-postgres connection=prod\nSELECT users.| FROM users\n```\n";
     const result = await runCompletion(doc);
     expect(result).not.toBeNull();
     const labels = result!.options.map((o) => o.label);
@@ -374,7 +374,8 @@ describe("createDbSchemaCompletionSource", () => {
   });
 
   it("returns null inside an active {{ref}} expression", async () => {
-    const doc = "```db-postgres connection=prod\nSELECT * WHERE id = {{|}}\n```\n";
+    const doc =
+      "```db-postgres connection=prod\nSELECT * WHERE id = {{|}}\n```\n";
     const result = await runCompletion(doc);
     expect(result).toBeNull();
   });
@@ -391,7 +392,8 @@ describe("createDbSchemaCompletionSource", () => {
   });
 
   it("offers columns after a `schema.table.` prefix", async () => {
-    const doc = "```db-postgres connection=prod\nSELECT vendas.pedidos.| FROM vendas.pedidos\n```\n";
+    const doc =
+      "```db-postgres connection=prod\nSELECT vendas.pedidos.| FROM vendas.pedidos\n```\n";
     const result = await runCompletion(doc);
     expect(result).not.toBeNull();
     const labels = result!.options.map((o) => o.label);

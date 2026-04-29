@@ -7,7 +7,11 @@ interface ConflictBannerProps {
   onKeep: () => void;
 }
 
-export function ConflictBanner({ filePath, onReload, onKeep }: ConflictBannerProps) {
+export function ConflictBanner({
+  filePath,
+  onReload,
+  onKeep,
+}: ConflictBannerProps) {
   const fileName = filePath.includes("/")
     ? filePath.substring(filePath.lastIndexOf("/") + 1)
     : filePath;
@@ -28,7 +32,12 @@ export function ConflictBanner({ filePath, onReload, onKeep }: ConflictBannerPro
           </Text>
         </HStack>
         <HStack gap={1}>
-          <Button size="xs" variant="subtle" colorPalette="orange" onClick={onReload}>
+          <Button
+            size="xs"
+            variant="subtle"
+            colorPalette="orange"
+            onClick={onReload}
+          >
             Reload
           </Button>
           <Button size="xs" variant="ghost" onClick={onKeep}>

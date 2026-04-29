@@ -1,4 +1,11 @@
-import { RangeSetBuilder, StateField, type Extension, type EditorState, EditorSelection, Prec } from "@codemirror/state";
+import {
+  RangeSetBuilder,
+  StateField,
+  type Extension,
+  type EditorState,
+  EditorSelection,
+  Prec,
+} from "@codemirror/state";
 import {
   Decoration,
   type DecorationSet,
@@ -25,7 +32,10 @@ function parseRow(line: string): string[] | null {
   return match[1].split("|").map((cell) => cell.trim());
 }
 
-function findTables(doc: { lines: number; line(n: number): { from: number; to: number; text: string } }): TableRange[] {
+function findTables(doc: {
+  lines: number;
+  line(n: number): { from: number; to: number; text: string };
+}): TableRange[] {
   const tables: TableRange[] = [];
   let i = 1;
 
@@ -63,7 +73,10 @@ function findTables(doc: { lines: number; line(n: number): { from: number; to: n
 
 // ── Table formatting (align columns with spaces) ────────────────────────────
 
-function formatTable(doc: EditorState["doc"], table: TableRange): string | null {
+function formatTable(
+  doc: EditorState["doc"],
+  table: TableRange,
+): string | null {
   const startLine = doc.lineAt(table.from).number;
   const endLine = doc.lineAt(table.to).number;
 
@@ -84,7 +97,9 @@ function formatTable(doc: EditorState["doc"], table: TableRange): string | null 
 
   // Compute max width per column
   const colCount = Math.max(
-    ...parsedRows.filter((r): r is string[] => r !== "separator").map(r => r.length),
+    ...parsedRows
+      .filter((r): r is string[] => r !== "separator")
+      .map((r) => r.length),
   );
   if (colCount === 0) return null;
 
@@ -100,7 +115,7 @@ function formatTable(doc: EditorState["doc"], table: TableRange): string | null 
   const formatted: string[] = [];
   for (const row of parsedRows) {
     if (row === "separator") {
-      const sep = colWidths.map(w => "-".repeat(w)).join(" | ");
+      const sep = colWidths.map((w) => "-".repeat(w)).join(" | ");
       formatted.push(`| ${sep} |`);
     } else {
       const cells = colWidths.map((w, c) => {
@@ -119,7 +134,10 @@ function formatTable(doc: EditorState["doc"], table: TableRange): string | null 
 // ── Table widget ─────────────────────────────────────────────────────────────
 
 class TableWidget extends WidgetType {
-  constructor(readonly rows: string[][], readonly hasHeader: boolean) {
+  constructor(
+    readonly rows: string[][],
+    readonly hasHeader: boolean,
+  ) {
     super();
   }
 
@@ -177,7 +195,10 @@ class TableWidget extends WidgetType {
 // Track which table the cursor was previously inside (for format-on-exit)
 let prevCursorTableIdx = -1;
 
-function buildTableDecorations(state: EditorState, view?: EditorView): DecorationSet {
+function buildTableDecorations(
+  state: EditorState,
+  view?: EditorView,
+): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
 
   const cursorLines = new Set<number>();
@@ -208,7 +229,11 @@ function buildTableDecorations(state: EditorState, view?: EditorView): Decoratio
   }
 
   // Format-on-exit: if cursor left a table, format it
-  if (prevCursorTableIdx !== -1 && currentTableIdx !== prevCursorTableIdx && view) {
+  if (
+    prevCursorTableIdx !== -1 &&
+    currentTableIdx !== prevCursorTableIdx &&
+    view
+  ) {
     const prevTable = tables[prevCursorTableIdx];
     if (prevTable) {
       const formatted = formatTable(state.doc, prevTable);
@@ -216,7 +241,11 @@ function buildTableDecorations(state: EditorState, view?: EditorView): Decoratio
         // Schedule the format dispatch after this update completes
         queueMicrotask(() => {
           view.dispatch({
-            changes: { from: prevTable.from, to: prevTable.to, insert: formatted },
+            changes: {
+              from: prevTable.from,
+              to: prevTable.to,
+              insert: formatted,
+            },
           });
         });
       }
@@ -234,7 +263,11 @@ function buildTableDecorations(state: EditorState, view?: EditorView): Decoratio
       const tableEndLine = state.doc.lineAt(table.to).number;
       for (let line = tableStartLine; line <= tableEndLine; line++) {
         const lineObj = state.doc.line(line);
-        builder.add(lineObj.from, lineObj.from, Decoration.line({ class: "cm-table-raw" }));
+        builder.add(
+          lineObj.from,
+          lineObj.from,
+          Decoration.line({ class: "cm-table-raw" }),
+        );
       }
       continue;
     }
@@ -261,7 +294,9 @@ const tableField = StateField.define<DecorationSet>({
     return buildTableDecorations(state);
   },
   update(decos, tr) {
-    const currentLine = tr.state.doc.lineAt(tr.state.selection.main.head).number;
+    const currentLine = tr.state.doc.lineAt(
+      tr.state.selection.main.head,
+    ).number;
     const cursorLineMoved = currentLine !== lastTableCursorLine;
 
     if (cursorLineMoved) {
@@ -280,7 +315,11 @@ const tableField = StateField.define<DecorationSet>({
 
 // ── Arrow key navigation into tables ─────────────────────────────────────────
 
-function findTableAtBoundary(doc: EditorState["doc"], lineNum: number, direction: "down" | "up"): TableRange | null {
+function findTableAtBoundary(
+  doc: EditorState["doc"],
+  lineNum: number,
+  direction: "down" | "up",
+): TableRange | null {
   const tables = findTables(doc);
   for (const table of tables) {
     const startLine = doc.lineAt(table.from).number;

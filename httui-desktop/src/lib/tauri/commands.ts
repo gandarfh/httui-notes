@@ -25,10 +25,7 @@ export function listWorkspace(vaultPath: string): Promise<FileEntry[]> {
   return invoke("list_workspace", { vaultPath });
 }
 
-export function readNote(
-  vaultPath: string,
-  filePath: string,
-): Promise<string> {
+export function readNote(vaultPath: string, filePath: string): Promise<string> {
   return invoke("read_note", { vaultPath, filePath });
 }
 
@@ -47,17 +44,11 @@ export function writeNote(
   return invoke("write_note", { vaultPath, filePath, content });
 }
 
-export function createNote(
-  vaultPath: string,
-  filePath: string,
-): Promise<void> {
+export function createNote(vaultPath: string, filePath: string): Promise<void> {
   return invoke("create_note", { vaultPath, filePath });
 }
 
-export function deleteNote(
-  vaultPath: string,
-  filePath: string,
-): Promise<void> {
+export function deleteNote(vaultPath: string, filePath: string): Promise<void> {
   return invoke("delete_note", { vaultPath, filePath });
 }
 
@@ -218,7 +209,9 @@ export function setActiveEnvironment(id: string | null): Promise<void> {
   return invoke("set_active_environment", { id });
 }
 
-export function listEnvVariables(environmentId: string): Promise<EnvVariable[]> {
+export function listEnvVariables(
+  environmentId: string,
+): Promise<EnvVariable[]> {
   return invoke("list_env_variables", { environmentId });
 }
 

@@ -86,7 +86,12 @@ export function VariablesEditor({
       </Flex>
 
       {/* Variable list */}
-      <Box border="1px solid" borderColor="border" rounded="md" overflow="hidden">
+      <Box
+        border="1px solid"
+        borderColor="border"
+        rounded="md"
+        overflow="hidden"
+      >
         {variables.map((v, i) => (
           <VariableRow
             key={v.id}

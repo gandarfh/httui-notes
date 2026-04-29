@@ -2,7 +2,10 @@ import { useState } from "react";
 import { Box, Flex, Badge, Text } from "@chakra-ui/react";
 import { ExecutableBlockShell } from "@/components/blocks/ExecutableBlockShell";
 import { ResultTable } from "@/components/blocks/db/ResultTable";
-import type { DisplayMode, ExecutionState } from "@/components/blocks/ExecutableBlock";
+import type {
+  DisplayMode,
+  ExecutionState,
+} from "@/components/blocks/ExecutableBlock";
 import { CodeBlock } from "./SyntaxHighlight";
 
 interface Column {
@@ -38,8 +41,21 @@ export function MockDbBlock({
 
   const inputSlot = (
     <Box>
-      <Flex align="center" gap={2} px={3} py={2} borderBottom="1px solid" borderColor="border">
-        <Badge size="sm" colorPalette="purple" variant="solid" fontFamily="mono" fontSize="xs">
+      <Flex
+        align="center"
+        gap={2}
+        px={3}
+        py={2}
+        borderBottom="1px solid"
+        borderColor="border"
+      >
+        <Badge
+          size="sm"
+          colorPalette="purple"
+          variant="solid"
+          fontFamily="mono"
+          fontSize="xs"
+        >
           SQL
         </Badge>
         <Text fontFamily="mono" fontSize="xs" color="fg.muted">
@@ -50,16 +66,20 @@ export function MockDbBlock({
     </Box>
   );
 
-  const outputSlot = columns && rows ? (
-    <ResultTable
-      columns={columns}
-      rows={rows}
-      totalRows={totalRows ?? rows.length}
-      page={page}
-      pageSize={pageSize}
-      onPageChange={(p, ps) => { setPage(p); setPageSize(ps); }}
-    />
-  ) : undefined;
+  const outputSlot =
+    columns && rows ? (
+      <ResultTable
+        columns={columns}
+        rows={rows}
+        totalRows={totalRows ?? rows.length}
+        page={page}
+        pageSize={pageSize}
+        onPageChange={(p, ps) => {
+          setPage(p);
+          setPageSize(ps);
+        }}
+      />
+    ) : undefined;
 
   return (
     <ExecutableBlockShell

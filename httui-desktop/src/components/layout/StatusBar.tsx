@@ -40,7 +40,13 @@ export function StatusBar() {
           <Badge
             size="xs"
             variant="outline"
-            colorPalette={vimMode === "insert" ? "blue" : vimMode === "visual" ? "purple" : "gray"}
+            colorPalette={
+              vimMode === "insert"
+                ? "blue"
+                : vimMode === "visual"
+                  ? "purple"
+                  : "gray"
+            }
           >
             {vimMode.toUpperCase()}
           </Badge>
@@ -55,7 +61,11 @@ export function StatusBar() {
               w="6px"
               h="6px"
               rounded="full"
-              bg={activeConnection.status === "connected" ? "green.500" : "red.500"}
+              bg={
+                activeConnection.status === "connected"
+                  ? "green.500"
+                  : "red.500"
+              }
             />
             <Text>{activeConnection.name}</Text>
           </HStack>

@@ -32,31 +32,59 @@ function MockTopBar() {
     >
       {/* Left */}
       <HStack gap={2}>
-        <Box color="fg.muted"><LuMenu size={16} /></Box>
-        <Text fontWeight="semibold" fontSize="sm">Notes</Text>
+        <Box color="fg.muted">
+          <LuMenu size={16} />
+        </Box>
+        <Text fontWeight="semibold" fontSize="sm">
+          Notes
+        </Text>
       </HStack>
 
       {/* Center */}
       <HStack gap={2}>
-        <HStack gap={1.5} px={3} py={1} rounded="md" fontSize="sm" cursor="default" _hover={{ bg: "bg.subtle" }}>
+        <HStack
+          gap={1.5}
+          px={3}
+          py={1}
+          rounded="md"
+          fontSize="sm"
+          cursor="default"
+          _hover={{ bg: "bg.subtle" }}
+        >
           <LuFolder size={14} />
           <Text fontSize="xs">my-api</Text>
           <LuChevronDown size={12} />
         </HStack>
 
-        <HStack gap={1.5} px={3} py={1} rounded="md" fontSize="sm" cursor="default" _hover={{ bg: "bg.subtle" }}>
+        <HStack
+          gap={1.5}
+          px={3}
+          py={1}
+          rounded="md"
+          fontSize="sm"
+          cursor="default"
+          _hover={{ bg: "bg.subtle" }}
+        >
           <LuGlobe size={14} />
           <Text fontSize="xs">local</Text>
-          <Badge size="xs" colorPalette="green" variant="subtle">active</Badge>
+          <Badge size="xs" colorPalette="green" variant="subtle">
+            active
+          </Badge>
           <LuChevronDown size={12} />
         </HStack>
       </HStack>
 
       {/* Right */}
       <HStack gap={1} color="fg.muted">
-        <Box p={1.5} rounded="md" cursor="default"><LuSearch size={16} /></Box>
-        <Box p={1.5} rounded="md" cursor="default" color="brand.400"><LuMessageSquare size={16} /></Box>
-        <Box p={1.5} rounded="md" cursor="default"><LuMoon size={16} /></Box>
+        <Box p={1.5} rounded="md" cursor="default">
+          <LuSearch size={16} />
+        </Box>
+        <Box p={1.5} rounded="md" cursor="default" color="brand.400">
+          <LuMessageSquare size={16} />
+        </Box>
+        <Box p={1.5} rounded="md" cursor="default">
+          <LuMoon size={16} />
+        </Box>
       </HStack>
     </HStack>
   );
@@ -85,7 +113,9 @@ function MockTabs() {
         cursor="default"
       >
         <Text>api-docs.md</Text>
-        <Box color="fg.muted"><LuX size={10} /></Box>
+        <Box color="fg.muted">
+          <LuX size={10} />
+        </Box>
       </HStack>
     </HStack>
   );
@@ -106,13 +136,23 @@ function MockStatusBar() {
       flexShrink={0}
     >
       <HStack gap={3}>
-        <Badge size="xs" variant="subtle" colorPalette="green">VIM</Badge>
-        <Badge size="xs" variant="outline" colorPalette="gray">NORMAL</Badge>
+        <Badge size="xs" variant="subtle" colorPalette="green">
+          VIM
+        </Badge>
+        <Badge size="xs" variant="outline" colorPalette="gray">
+          NORMAL
+        </Badge>
         <Text>local</Text>
       </HStack>
       <HStack gap={3}>
-        <HStack gap={1}><Kbd size="sm">⌘P</Kbd><Text>search</Text></HStack>
-        <HStack gap={1}><Kbd size="sm">⌘\</Kbd><Text>split</Text></HStack>
+        <HStack gap={1}>
+          <Kbd size="sm">⌘P</Kbd>
+          <Text>search</Text>
+        </HStack>
+        <HStack gap={1}>
+          <Kbd size="sm">⌘\</Kbd>
+          <Text>split</Text>
+        </HStack>
         <Text>UTF-8</Text>
         <Text>Ln 1, Col 1</Text>
       </HStack>

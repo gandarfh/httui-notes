@@ -34,10 +34,7 @@ import {
   LuX,
 } from "react-icons/lu";
 
-import {
-  listConnections,
-  type Connection,
-} from "@/lib/tauri/connections";
+import { listConnections, type Connection } from "@/lib/tauri/connections";
 import { useSchemaCacheStore, type SchemaTable } from "@/stores/schemaCache";
 import { insertDbSnippetIntoActiveEditor } from "@/lib/codemirror/active-editor";
 import type { DbDialect } from "@/lib/blocks/db-fence";
@@ -192,10 +189,22 @@ export function SchemaPanel({ width, onClose }: SchemaPanelProps) {
       flexShrink={0}
     >
       {/* Header */}
-      <HStack px={3} py={2} borderBottomWidth="1px" borderColor="border" justify="space-between">
+      <HStack
+        px={3}
+        py={2}
+        borderBottomWidth="1px"
+        borderColor="border"
+        justify="space-between"
+      >
         <HStack gap={2}>
           <LuDatabase size={14} />
-          <Text fontSize="xs" fontWeight="semibold" color="fg.subtle" textTransform="uppercase" letterSpacing="wider">
+          <Text
+            fontSize="xs"
+            fontWeight="semibold"
+            color="fg.subtle"
+            textTransform="uppercase"
+            letterSpacing="wider"
+          >
             Schema
           </Text>
         </HStack>
@@ -266,13 +275,15 @@ export function SchemaPanel({ width, onClose }: SchemaPanelProps) {
             </Text>
           </Box>
         )}
-        {!schemaEntry?.loading && filteredTables.length === 0 && selectedConnection && (
-          <Box px={3} py={4} textAlign="center">
-            <Text fontSize="xs" color="fg.muted">
-              {filter ? "No matches." : "No tables found."}
-            </Text>
-          </Box>
-        )}
+        {!schemaEntry?.loading &&
+          filteredTables.length === 0 &&
+          selectedConnection && (
+            <Box px={3} py={4} textAlign="center">
+              <Text fontSize="xs" color="fg.muted">
+                {filter ? "No matches." : "No tables found."}
+              </Text>
+            </Box>
+          )}
         {groupedBySchema.map((group) => (
           <Box key={group.schema ?? "__none__"}>
             {showSchemaHeaders && (
@@ -304,7 +315,11 @@ export function SchemaPanel({ width, onClose }: SchemaPanelProps) {
                     onClick={() => toggleTable(tableKey)}
                     onDoubleClick={() => handleDoubleClickTable(table)}
                   >
-                    {open ? <LuChevronDown size={12} /> : <LuChevronRight size={12} />}
+                    {open ? (
+                      <LuChevronDown size={12} />
+                    ) : (
+                      <LuChevronRight size={12} />
+                    )}
                     <LuTable size={12} />
                     <Text fontSize="xs" fontFamily="mono" flex={1} truncate>
                       {table.name}
@@ -324,11 +339,20 @@ export function SchemaPanel({ width, onClose }: SchemaPanelProps) {
                           _hover={{ bg: "bg.subtle" }}
                           borderRadius="sm"
                         >
-                          <Text fontSize="xs" fontFamily="mono" flex={1} truncate>
+                          <Text
+                            fontSize="xs"
+                            fontFamily="mono"
+                            flex={1}
+                            truncate
+                          >
                             {col.name}
                           </Text>
                           {col.dataType && (
-                            <Text fontSize="2xs" color="fg.muted" fontFamily="mono">
+                            <Text
+                              fontSize="2xs"
+                              color="fg.muted"
+                              fontFamily="mono"
+                            >
                               {col.dataType}
                             </Text>
                           )}

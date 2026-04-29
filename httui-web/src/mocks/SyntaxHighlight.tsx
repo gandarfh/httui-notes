@@ -5,7 +5,8 @@ import { Box } from "@chakra-ui/react";
 function highlightJson(code: string): React.ReactNode[] {
   const parts: React.ReactNode[] = [];
   // Match: strings, numbers, booleans, null, keys
-  const regex = /("(?:\\.|[^"\\])*")\s*(?=:)|("(?:\\.|[^"\\])*")|(true|false|null)|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g;
+  const regex =
+    /("(?:\\.|[^"\\])*")\s*(?=:)|("(?:\\.|[^"\\])*")|(true|false|null)|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
@@ -17,16 +18,32 @@ function highlightJson(code: string): React.ReactNode[] {
 
     if (match[1]) {
       // Key (before colon)
-      parts.push(<span key={match.index} style={{ color: "#79c0ff" }}>{match[1]}</span>);
+      parts.push(
+        <span key={match.index} style={{ color: "#79c0ff" }}>
+          {match[1]}
+        </span>,
+      );
     } else if (match[2]) {
       // String value
-      parts.push(<span key={match.index} style={{ color: "#a5d6ff" }}>{match[2]}</span>);
+      parts.push(
+        <span key={match.index} style={{ color: "#a5d6ff" }}>
+          {match[2]}
+        </span>,
+      );
     } else if (match[3]) {
       // boolean / null
-      parts.push(<span key={match.index} style={{ color: "#ff7b72" }}>{match[3]}</span>);
+      parts.push(
+        <span key={match.index} style={{ color: "#ff7b72" }}>
+          {match[3]}
+        </span>,
+      );
     } else if (match[4]) {
       // number
-      parts.push(<span key={match.index} style={{ color: "#d2a8ff" }}>{match[4]}</span>);
+      parts.push(
+        <span key={match.index} style={{ color: "#d2a8ff" }}>
+          {match[4]}
+        </span>,
+      );
     }
 
     lastIndex = match.index + match[0].length;
@@ -43,11 +60,49 @@ function highlightJson(code: string): React.ReactNode[] {
 /* ── SQL Syntax Highlighting ──────────────────────────── */
 
 const SQL_KEYWORDS = new Set([
-  "SELECT", "FROM", "WHERE", "JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "ON",
-  "GROUP", "BY", "ORDER", "HAVING", "LIMIT", "OFFSET", "INSERT", "INTO",
-  "VALUES", "UPDATE", "SET", "DELETE", "CREATE", "ALTER", "DROP", "TABLE",
-  "INDEX", "AND", "OR", "NOT", "IN", "IS", "NULL", "AS", "COUNT", "SUM",
-  "AVG", "MIN", "MAX", "DISTINCT", "DESC", "ASC", "LOWER", "UPPER",
+  "SELECT",
+  "FROM",
+  "WHERE",
+  "JOIN",
+  "LEFT",
+  "RIGHT",
+  "INNER",
+  "OUTER",
+  "ON",
+  "GROUP",
+  "BY",
+  "ORDER",
+  "HAVING",
+  "LIMIT",
+  "OFFSET",
+  "INSERT",
+  "INTO",
+  "VALUES",
+  "UPDATE",
+  "SET",
+  "DELETE",
+  "CREATE",
+  "ALTER",
+  "DROP",
+  "TABLE",
+  "INDEX",
+  "AND",
+  "OR",
+  "NOT",
+  "IN",
+  "IS",
+  "NULL",
+  "AS",
+  "COUNT",
+  "SUM",
+  "AVG",
+  "MIN",
+  "MAX",
+  "DISTINCT",
+  "DESC",
+  "ASC",
+  "LOWER",
+  "UPPER",
 ]);
 
 function highlightSql(code: string): React.ReactNode[] {
@@ -64,17 +119,33 @@ function highlightSql(code: string): React.ReactNode[] {
 
     if (match[1]) {
       // String literal
-      parts.push(<span key={match.index} style={{ color: "#a5d6ff" }}>{match[1]}</span>);
+      parts.push(
+        <span key={match.index} style={{ color: "#a5d6ff" }}>
+          {match[1]}
+        </span>,
+      );
     } else if (match[2]) {
       // Number
-      parts.push(<span key={match.index} style={{ color: "#d2a8ff" }}>{match[2]}</span>);
+      parts.push(
+        <span key={match.index} style={{ color: "#d2a8ff" }}>
+          {match[2]}
+        </span>,
+      );
     } else if (match[3]) {
       if (SQL_KEYWORDS.has(match[3].toUpperCase())) {
         // SQL keyword
-        parts.push(<span key={match.index} style={{ color: "#ff7b72" }}>{match[3]}</span>);
+        parts.push(
+          <span key={match.index} style={{ color: "#ff7b72" }}>
+            {match[3]}
+          </span>,
+        );
       } else {
         // Identifier (table/column name)
-        parts.push(<span key={match.index} style={{ color: "#c9d1d9" }}>{match[3]}</span>);
+        parts.push(
+          <span key={match.index} style={{ color: "#c9d1d9" }}>
+            {match[3]}
+          </span>,
+        );
       }
     }
 

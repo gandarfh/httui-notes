@@ -7,7 +7,12 @@
  * for those.
  */
 
-import type { CellValue, DbColumn, DbResult, DbRow } from "@/components/blocks/db/types";
+import type {
+  CellValue,
+  DbColumn,
+  DbResult,
+  DbRow,
+} from "@/components/blocks/db/types";
 
 type SelectResult = Extract<DbResult, { kind: "select" }>;
 
@@ -70,7 +75,10 @@ export function toMarkdown(result: SelectResult): string {
 }
 
 function mdEscape(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/\|/g, "\\|")
+    .replace(/\r?\n/g, " ");
 }
 
 function formatCellMd(value: CellValue | undefined): string {
@@ -115,7 +123,8 @@ function identOrQuote(name: string): string {
 
 function sqlLiteral(value: CellValue | undefined): string {
   if (value === null || value === undefined) return "NULL";
-  if (typeof value === "number") return Number.isFinite(value) ? String(value) : "NULL";
+  if (typeof value === "number")
+    return Number.isFinite(value) ? String(value) : "NULL";
   if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
   if (typeof value === "string") {
     return `'${value.replace(/'/g, "''")}'`;
@@ -133,10 +142,10 @@ function sqlLiteral(value: CellValue | undefined): string {
  * falls back to `<table>` in that case.
  */
 export function inferTableName(sql: string): string | null {
-  const cleaned = sql
-    .replace(/--[^\n]*/g, "")
-    .replace(/\/\*[\s\S]*?\*\//g, "");
-  const match = cleaned.match(/\bFROM\s+([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)?)/i);
+  const cleaned = sql.replace(/--[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
+  const match = cleaned.match(
+    /\bFROM\s+([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)?)/i,
+  );
   return match ? match[1] : null;
 }
 

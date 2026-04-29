@@ -8,34 +8,39 @@ export function useEditorSession() {
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suppressedFiles = useRef<Set<string>>(new Set());
 
-  const handleFileSelect = useCallback(
-    async (filePath: string) => {
-      const vaultPath = useWorkspaceStore.getState().vaultPath;
-      if (!vaultPath) return;
-      try {
-        const { editorContents, openFile } = usePaneStore.getState();
-        const cached = editorContents.get(filePath);
-        // Legacy TipTap sessions cached HTML — detect and force a fresh
-        // markdown read so the CM6 editor doesn't render an HTML string.
-        const needsRead = !cached || cached.trimStart().startsWith("<");
-        if (needsRead) {
-          const markdown = await readNote(vaultPath, filePath);
-          openFile(filePath, markdown, vaultPath);
-        } else {
-          openFile(filePath, cached, vaultPath);
-        }
-        setConfig("active_file", filePath).catch(() => {});
-      } catch (err) {
-        console.error("Failed to read note:", err);
+  const handleFileSelect = useCallback(async (filePath: string) => {
+    const vaultPath = useWorkspaceStore.getState().vaultPath;
+    if (!vaultPath) return;
+    try {
+      const { editorContents, openFile } = usePaneStore.getState();
+      const cached = editorContents.get(filePath);
+      // Legacy TipTap sessions cached HTML — detect and force a fresh
+      // markdown read so the CM6 editor doesn't render an HTML string.
+      const needsRead = !cached || cached.trimStart().startsWith("<");
+      if (needsRead) {
+        const markdown = await readNote(vaultPath, filePath);
+        openFile(filePath, markdown, vaultPath);
+      } else {
+        openFile(filePath, cached, vaultPath);
       }
-    },
-    [],
-  );
+      setConfig("active_file", filePath).catch(() => {});
+    } catch (err) {
+      console.error("Failed to read note:", err);
+    }
+  }, []);
 
   const handleEditorChange = useCallback(
-    (_paneId: string, filePath: string, content: string, tabVaultPath: string) => {
-      const { updateContent, markUnsaved, activePaneId } = usePaneStore.getState();
-      const { settings: { autoSaveMs } } = useSettingsStore.getState();
+    (
+      _paneId: string,
+      filePath: string,
+      content: string,
+      tabVaultPath: string,
+    ) => {
+      const { updateContent, markUnsaved, activePaneId } =
+        usePaneStore.getState();
+      const {
+        settings: { autoSaveMs },
+      } = useSettingsStore.getState();
       updateContent(filePath, content);
       markUnsaved(activePaneId, filePath, true);
 
@@ -59,7 +64,8 @@ export function useEditorSession() {
   );
 
   const forceSave = useCallback(() => {
-    const { getActiveLeaf, editorContents, markUnsaved } = usePaneStore.getState();
+    const { getActiveLeaf, editorContents, markUnsaved } =
+      usePaneStore.getState();
     const leaf = getActiveLeaf();
     if (!leaf || leaf.tabs.length === 0) return;
     const tab = leaf.tabs[leaf.activeTab];

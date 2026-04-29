@@ -18,9 +18,7 @@ const mkMetadata = (
   ...over,
 });
 
-const mkHistory = (
-  over: Partial<HistoryEntry> = {},
-): HistoryEntry => ({
+const mkHistory = (over: Partial<HistoryEntry> = {}): HistoryEntry => ({
   id: 1,
   file_path: "/v/note.md",
   block_alias: "createUser",
@@ -35,9 +33,7 @@ const mkHistory = (
   ...over,
 });
 
-const mkExample = (
-  over: Partial<BlockExample> = {},
-): BlockExample => ({
+const mkExample = (over: Partial<BlockExample> = {}): BlockExample => ({
   id: 7,
   file_path: "/v/note.md",
   block_alias: "createUser",
@@ -276,7 +272,9 @@ describe("HttpSettingsDrawer", () => {
       );
       const btn = screen.getByRole("button", { name: /pin current response/i });
       expect(btn).not.toBeDisabled();
-      expect(screen.queryByText(/run the request first/i)).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(/run the request first/i),
+      ).not.toBeInTheDocument();
     });
 
     it("save button calls onSaveExample with prompted name", async () => {
@@ -350,9 +348,7 @@ describe("HttpSettingsDrawer", () => {
         />,
       );
 
-      await user.click(
-        screen.getByRole("button", { name: /delete example/i }),
-      );
+      await user.click(screen.getByRole("button", { name: /delete example/i }));
       expect(onDeleteExample).toHaveBeenCalledWith(42);
     });
   });

@@ -46,7 +46,11 @@ interface CanonicalEnvelope {
 }
 
 /** Each fixture is one folder with `input.md` + `expected.json`. */
-function listFixtures(): { name: string; input: string; expected: CanonicalEnvelope }[] {
+function listFixtures(): {
+  name: string;
+  input: string;
+  expected: CanonicalEnvelope;
+}[] {
   return readdirSync(FIXTURES_DIR, { withFileTypes: true })
     .filter((d) => d.isDirectory())
     .map((d) => d.name)
@@ -57,7 +61,9 @@ function listFixtures(): { name: string; input: string; expected: CanonicalEnvel
       const expectedPath = path.join(dir, "expected.json");
       try {
         const input = readFileSync(inputPath, "utf8");
-        const expected = JSON.parse(readFileSync(expectedPath, "utf8")) as CanonicalEnvelope;
+        const expected = JSON.parse(
+          readFileSync(expectedPath, "utf8"),
+        ) as CanonicalEnvelope;
         return [{ name, input, expected }];
       } catch {
         // Stub fixture (in-flight) — skip silently.
@@ -108,7 +114,9 @@ function normalizeKv(row: HttpKVRow): { key: string; value: string } {
   return { key: row.key, value: row.value };
 }
 
-function httpMessageToCanonicalParams(parsed: HttpMessageParsed): Record<string, unknown> {
+function httpMessageToCanonicalParams(
+  parsed: HttpMessageParsed,
+): Record<string, unknown> {
   return {
     method: parsed.method,
     url: parsed.url,

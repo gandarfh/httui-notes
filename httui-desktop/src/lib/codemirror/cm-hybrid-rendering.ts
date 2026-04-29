@@ -16,11 +16,15 @@ class BulletWidget extends WidgetType {
     span.className = "cm-list-bullet";
     return span;
   }
-  eq() { return true; }
+  eq() {
+    return true;
+  }
 }
 
 class CheckboxWidget extends WidgetType {
-  constructor(readonly checked: boolean) { super(); }
+  constructor(readonly checked: boolean) {
+    super();
+  }
   toDOM() {
     const cb = document.createElement("input");
     cb.type = "checkbox";
@@ -29,11 +33,18 @@ class CheckboxWidget extends WidgetType {
     cb.disabled = true; // Read-only when rendered; interactive version can be added later
     return cb;
   }
-  eq(other: CheckboxWidget) { return this.checked === other.checked; }
+  eq(other: CheckboxWidget) {
+    return this.checked === other.checked;
+  }
 }
 
 class ImageWidget extends WidgetType {
-  constructor(readonly src: string, readonly alt: string) { super(); }
+  constructor(
+    readonly src: string,
+    readonly alt: string,
+  ) {
+    super();
+  }
   toDOM() {
     const img = document.createElement("img");
     img.src = this.src;
@@ -45,7 +56,9 @@ class ImageWidget extends WidgetType {
     img.style.margin = "4px 0";
     return img;
   }
-  eq(other: ImageWidget) { return this.src === other.src; }
+  eq(other: ImageWidget) {
+    return this.src === other.src;
+  }
 }
 
 const FORMATTABLE_LANGS = new Set(["json"]);
@@ -157,7 +170,11 @@ class CodeToolbarWidget extends WidgetType {
   }
 }
 
-function flash(btn: HTMLButtonElement, msg: string, kind: "ok" | "error" = "ok") {
+function flash(
+  btn: HTMLButtonElement,
+  msg: string,
+  kind: "ok" | "error" = "ok",
+) {
   const prev = btn.textContent;
   btn.textContent = msg;
   btn.dataset.flash = kind;
@@ -170,7 +187,10 @@ function flash(btn: HTMLButtonElement, msg: string, kind: "ok" | "error" = "ok")
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Get the set of line numbers that contain any part of the cursor/selection */
-function getCursorLines(state: { doc: { lineAt(pos: number): { number: number } }; selection: { ranges: readonly { from: number; to: number }[] } }): Set<number> {
+function getCursorLines(state: {
+  doc: { lineAt(pos: number): { number: number } };
+  selection: { ranges: readonly { from: number; to: number }[] };
+}): Set<number> {
   const lines = new Set<number>();
   for (const range of state.selection.ranges) {
     const startLine = state.doc.lineAt(range.from).number;
@@ -224,7 +244,11 @@ function buildDecorations(view: EditorView): DecorationSet {
       if (name.startsWith("ATXHeading") && headingLineClasses[name]) {
         // Always apply heading line class — keeps font size/weight even on cursor line
         const line = state.doc.lineAt(node.from);
-        decorations.push({ from: line.from, to: line.from, deco: headingLineClasses[name] });
+        decorations.push({
+          from: line.from,
+          to: line.from,
+          deco: headingLineClasses[name],
+        });
         // Only hide # marks when cursor is NOT on this line
         if (!overlapsWithCursor(state, node.from, node.to, cursorLines)) {
           const headerMark = node.node.getChild("HeaderMark");
@@ -386,11 +410,18 @@ function buildDecorations(view: EditorView): DecorationSet {
       // ── Horizontal rule (Tier 2: always a styled line) ──
       if (name === "HorizontalRule") {
         const line = state.doc.lineAt(node.from);
-        const onCursor = overlapsWithCursor(state, node.from, node.to, cursorLines);
+        const onCursor = overlapsWithCursor(
+          state,
+          node.from,
+          node.to,
+          cursorLines,
+        );
         decorations.push({
           from: line.from,
           to: line.from,
-          deco: Decoration.line({ class: onCursor ? "cm-hr-line cm-hr-editing" : "cm-hr-line" }),
+          deco: Decoration.line({
+            class: onCursor ? "cm-hr-line cm-hr-editing" : "cm-hr-line",
+          }),
         });
       }
 
@@ -404,7 +435,10 @@ function buildDecorations(view: EditorView): DecorationSet {
             const parent = node.node.parent;
             const hasTaskMarker = parent?.getChild("TaskMarker");
             if (!hasTaskMarker) {
-              const hideEnd = Math.min(node.to + 1, state.doc.lineAt(node.from).to);
+              const hideEnd = Math.min(
+                node.to + 1,
+                state.doc.lineAt(node.from).to,
+              );
               decorations.push({
                 from: node.from,
                 to: hideEnd,
@@ -423,7 +457,10 @@ function buildDecorations(view: EditorView): DecorationSet {
           // Hide the ListMark (- ) before the task marker
           const listMark = node.node.parent?.getChild("ListMark");
           if (listMark) {
-            const hideEnd = Math.min(listMark.to + 1, state.doc.lineAt(listMark.from).to);
+            const hideEnd = Math.min(
+              listMark.to + 1,
+              state.doc.lineAt(listMark.from).to,
+            );
             decorations.push({
               from: listMark.from,
               to: hideEnd,
@@ -458,7 +495,12 @@ function buildDecorations(view: EditorView): DecorationSet {
         if (!isExecutable) {
           const startLine = state.doc.lineAt(node.from).number;
           const endLine = state.doc.lineAt(node.to).number;
-          const onCursor = overlapsWithCursor(state, node.from, node.to, cursorLines);
+          const onCursor = overlapsWithCursor(
+            state,
+            node.from,
+            node.to,
+            cursorLines,
+          );
           // Visually collapsed range when cursor is away: [startLine + 1, endLine - 1]
           const contentStart = onCursor ? startLine : startLine + 1;
           const contentEnd = onCursor ? endLine : endLine - 1;
@@ -555,11 +597,15 @@ const hybridPlugin = ViewPlugin.fromClass(
 
     constructor(view: EditorView) {
       this.decorations = buildDecorations(view);
-      this.lastCursorLine = view.state.doc.lineAt(view.state.selection.main.head).number;
+      this.lastCursorLine = view.state.doc.lineAt(
+        view.state.selection.main.head,
+      ).number;
     }
 
     update(update: ViewUpdate) {
-      const currentLine = update.state.doc.lineAt(update.state.selection.main.head).number;
+      const currentLine = update.state.doc.lineAt(
+        update.state.selection.main.head,
+      ).number;
       const cursorLineMoved = currentLine !== this.lastCursorLine;
 
       if (cursorLineMoved) {
@@ -579,12 +625,27 @@ const hybridPlugin = ViewPlugin.fromClass(
 
 const hybridTheme = EditorView.theme({
   // Headings — clean Notion-like style, no margins (avoid layout shift on cursor move)
-  ".cm-heading-1": { fontSize: "1.875em", fontWeight: "700", lineHeight: "1.4", letterSpacing: "-0.02em" },
-  ".cm-heading-2": { fontSize: "1.5em", fontWeight: "600", lineHeight: "1.4", letterSpacing: "-0.01em" },
+  ".cm-heading-1": {
+    fontSize: "1.875em",
+    fontWeight: "700",
+    lineHeight: "1.4",
+    letterSpacing: "-0.02em",
+  },
+  ".cm-heading-2": {
+    fontSize: "1.5em",
+    fontWeight: "600",
+    lineHeight: "1.4",
+    letterSpacing: "-0.01em",
+  },
   ".cm-heading-3": { fontSize: "1.25em", fontWeight: "600", lineHeight: "1.4" },
   ".cm-heading-4": { fontSize: "1.1em", fontWeight: "600", lineHeight: "1.4" },
   ".cm-heading-5": { fontSize: "1em", fontWeight: "600", lineHeight: "1.4" },
-  ".cm-heading-6": { fontSize: "0.9em", fontWeight: "600", lineHeight: "1.4", color: "var(--chakra-colors-fg-muted)" },
+  ".cm-heading-6": {
+    fontSize: "0.9em",
+    fontWeight: "600",
+    lineHeight: "1.4",
+    color: "var(--chakra-colors-fg-muted)",
+  },
 
   // Inline formatting
   ".cm-strong": { fontWeight: "600" },

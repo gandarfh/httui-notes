@@ -1,5 +1,15 @@
 import { useCallback } from "react";
-import { Box, Flex, Text, VStack, HStack, Separator, Button, Badge, Input } from "@chakra-ui/react";
+import {
+  Box,
+  Flex,
+  Text,
+  VStack,
+  HStack,
+  Separator,
+  Button,
+  Badge,
+  Input,
+} from "@chakra-ui/react";
 import { NativeSelectRoot, NativeSelectField } from "@chakra-ui/react";
 import { LuRotateCcw, LuSun, LuMoon } from "react-icons/lu";
 import { useColorMode } from "@/components/ui/color-mode";
@@ -47,7 +57,11 @@ function ColorSwatch({
         transition="all 0.15s"
         _hover={{ transform: "scale(1.15)" }}
       />
-      <Text fontSize="2xs" color={selected ? "fg" : "fg.muted"} fontWeight={selected ? "medium" : "normal"}>
+      <Text
+        fontSize="2xs"
+        color={selected ? "fg" : "fg.muted"}
+        fontWeight={selected ? "medium" : "normal"}
+      >
         {label}
       </Text>
     </Flex>
@@ -133,7 +147,9 @@ function ColorInput({
 }) {
   return (
     <Flex align="center" justify="space-between" gap={3}>
-      <Text fontSize="xs" color="fg.muted" flex={1}>{label}</Text>
+      <Text fontSize="xs" color="fg.muted" flex={1}>
+        {label}
+      </Text>
       <HStack gap={2}>
         <Box
           as="label"
@@ -213,9 +229,12 @@ export function ThemeSection() {
   const updateTheme = useSettingsStore((s) => s.updateTheme);
   const resetTheme = useSettingsStore((s) => s.resetTheme);
   const { colorMode } = useColorMode();
-  const currentMode = (colorMode === "dark" ? "dark" : "light") as "light" | "dark";
+  const currentMode = (colorMode === "dark" ? "dark" : "light") as
+    | "light"
+    | "dark";
 
-  const currentModeColors: ModeColors | null = theme.customColors?.[currentMode] ?? null;
+  const currentModeColors: ModeColors | null =
+    theme.customColors?.[currentMode] ?? null;
 
   const initCustomColors = useCallback(() => {
     // Capture current computed colors as starting point
@@ -292,7 +311,10 @@ export function ThemeSection() {
       <Separator />
 
       {/* Presets */}
-      <SettingGroup title="Presets" description="Quick-apply a predefined theme combination">
+      <SettingGroup
+        title="Presets"
+        description="Quick-apply a predefined theme combination"
+      >
         <HStack gap={2} flexWrap="wrap">
           {THEME_PRESETS.map((preset) => {
             const accent = ACCENT_PALETTES[preset.config.accentColor];
@@ -319,7 +341,12 @@ export function ThemeSection() {
                 minW="72px"
               >
                 <HStack gap={1}>
-                  <Box w="10px" h="10px" borderRadius="full" bg={accent?.swatch ?? "#888"} />
+                  <Box
+                    w="10px"
+                    h="10px"
+                    borderRadius="full"
+                    bg={accent?.swatch ?? "#888"}
+                  />
                   <Box
                     w="16px"
                     h="10px"
@@ -328,7 +355,10 @@ export function ThemeSection() {
                     borderColor={accent?.swatch ?? "#888"}
                   />
                 </HStack>
-                <Text fontSize="2xs" fontWeight={isActive ? "semibold" : "normal"}>
+                <Text
+                  fontSize="2xs"
+                  fontWeight={isActive ? "semibold" : "normal"}
+                >
                   {preset.name}
                 </Text>
               </Flex>
@@ -340,7 +370,10 @@ export function ThemeSection() {
       <Separator />
 
       {/* Accent color */}
-      <SettingGroup title="Accent color" description="Primary color used for buttons, links, and highlights">
+      <SettingGroup
+        title="Accent color"
+        description="Primary color used for buttons, links, and highlights"
+      >
         <HStack gap={3} flexWrap="wrap">
           {Object.entries(ACCENT_PALETTES).map(([key, palette]) => (
             <ColorSwatch
@@ -357,7 +390,10 @@ export function ThemeSection() {
       <Separator />
 
       {/* Gray tone */}
-      <SettingGroup title="Gray tone" description="Neutral color palette for backgrounds, text, and borders">
+      <SettingGroup
+        title="Gray tone"
+        description="Neutral color palette for backgrounds, text, and borders"
+      >
         <HStack gap={3} flexWrap="wrap">
           {Object.entries(GRAY_PALETTES).map(([key, palette]) => (
             <ColorSwatch
@@ -432,9 +468,14 @@ export function ThemeSection() {
               </Text>
             </Flex>
             <NativeSelectRoot size="sm" w="200px">
-              <NativeSelectField value={theme.fontBody} onChange={handleSelectChange("fontBody")}>
+              <NativeSelectField
+                value={theme.fontBody}
+                onChange={handleSelectChange("fontBody")}
+              >
                 {Object.entries(FONT_BODY_OPTIONS).map(([key, opt]) => (
-                  <option key={key} value={key}>{opt.label}</option>
+                  <option key={key} value={key}>
+                    {opt.label}
+                  </option>
                 ))}
               </NativeSelectField>
             </NativeSelectRoot>
@@ -449,9 +490,14 @@ export function ThemeSection() {
               </Text>
             </Flex>
             <NativeSelectRoot size="sm" w="200px">
-              <NativeSelectField value={theme.fontMono} onChange={handleSelectChange("fontMono")}>
+              <NativeSelectField
+                value={theme.fontMono}
+                onChange={handleSelectChange("fontMono")}
+              >
                 {Object.entries(FONT_MONO_OPTIONS).map(([key, opt]) => (
-                  <option key={key} value={key}>{opt.label}</option>
+                  <option key={key} value={key}>
+                    {opt.label}
+                  </option>
                 ))}
               </NativeSelectField>
             </NativeSelectRoot>
@@ -466,9 +512,14 @@ export function ThemeSection() {
               </Text>
             </Flex>
             <NativeSelectRoot size="sm" w="200px">
-              <NativeSelectField value={String(theme.fontSize)} onChange={handleFontSizeChange}>
+              <NativeSelectField
+                value={String(theme.fontSize)}
+                onChange={handleFontSizeChange}
+              >
                 {[12, 13, 14, 15, 16].map((s) => (
-                  <option key={s} value={s}>{s}px{s === 14 ? " (default)" : ""}</option>
+                  <option key={s} value={s}>
+                    {s}px{s === 14 ? " (default)" : ""}
+                  </option>
                 ))}
               </NativeSelectField>
             </NativeSelectRoot>
@@ -495,7 +546,9 @@ export function ThemeSection() {
                   key={key}
                   size="xs"
                   variant={theme.density === key ? "subtle" : "ghost"}
-                  onClick={() => updateTheme({ density: key as ThemeConfig["density"] })}
+                  onClick={() =>
+                    updateTheme({ density: key as ThemeConfig["density"] })
+                  }
                 >
                   {opt.label}
                 </Button>
@@ -517,7 +570,9 @@ export function ThemeSection() {
                   key={key}
                   size="xs"
                   variant={theme.shadow === key ? "subtle" : "ghost"}
-                  onClick={() => updateTheme({ shadow: key as ThemeConfig["shadow"] })}
+                  onClick={() =>
+                    updateTheme({ shadow: key as ThemeConfig["shadow"] })
+                  }
                 >
                   {opt.label}
                 </Button>
@@ -535,15 +590,23 @@ export function ThemeSection() {
       >
         <Flex align="center" justify="space-between" mb={3}>
           <HStack gap={2}>
-            {currentMode === "dark" ? <LuMoon size={14} /> : <LuSun size={14} />}
+            {currentMode === "dark" ? (
+              <LuMoon size={14} />
+            ) : (
+              <LuSun size={14} />
+            )}
             <Text fontSize="sm" fontWeight="medium">
               {currentMode === "dark" ? "Dark" : "Light"} mode
             </Text>
             {theme.customColors?.light && (
-              <Badge size="xs" variant="subtle" colorPalette="yellow">light customized</Badge>
+              <Badge size="xs" variant="subtle" colorPalette="yellow">
+                light customized
+              </Badge>
             )}
             {theme.customColors?.dark && (
-              <Badge size="xs" variant="subtle" colorPalette="purple">dark customized</Badge>
+              <Badge size="xs" variant="subtle" colorPalette="purple">
+                dark customized
+              </Badge>
             )}
           </HStack>
           <Button
@@ -556,18 +619,46 @@ export function ThemeSection() {
         </Flex>
 
         {currentModeColors && (
-          <VStack gap={2} align="stretch" p={3} borderRadius="md" borderWidth="1px" borderColor="border">
-            <ColorInput label="Background" value={currentModeColors.bg} onChange={(v) => updateModeColor("bg", v)} />
-            <ColorInput label="Surface" value={currentModeColors.bgSubtle} onChange={(v) => updateModeColor("bgSubtle", v)} />
-            <ColorInput label="Text" value={currentModeColors.fg} onChange={(v) => updateModeColor("fg", v)} />
-            <ColorInput label="Muted text" value={currentModeColors.fgMuted} onChange={(v) => updateModeColor("fgMuted", v)} />
-            <ColorInput label="Borders" value={currentModeColors.border} onChange={(v) => updateModeColor("border", v)} />
+          <VStack
+            gap={2}
+            align="stretch"
+            p={3}
+            borderRadius="md"
+            borderWidth="1px"
+            borderColor="border"
+          >
+            <ColorInput
+              label="Background"
+              value={currentModeColors.bg}
+              onChange={(v) => updateModeColor("bg", v)}
+            />
+            <ColorInput
+              label="Surface"
+              value={currentModeColors.bgSubtle}
+              onChange={(v) => updateModeColor("bgSubtle", v)}
+            />
+            <ColorInput
+              label="Text"
+              value={currentModeColors.fg}
+              onChange={(v) => updateModeColor("fg", v)}
+            />
+            <ColorInput
+              label="Muted text"
+              value={currentModeColors.fgMuted}
+              onChange={(v) => updateModeColor("fgMuted", v)}
+            />
+            <ColorInput
+              label="Borders"
+              value={currentModeColors.border}
+              onChange={(v) => updateModeColor("border", v)}
+            />
           </VStack>
         )}
 
         {!currentModeColors && (
           <Text fontSize="xs" color="fg.muted">
-            Colors are derived from the gray tone palette. Click "Customize" to override individually.
+            Colors are derived from the gray tone palette. Click "Customize" to
+            override individually.
           </Text>
         )}
       </SettingGroup>
@@ -576,14 +667,30 @@ export function ThemeSection() {
       <Separator />
       <Box px={3} py={2} borderRadius="md" bg="bg.subtle">
         <HStack gap={2} flexWrap="wrap" fontSize="2xs" color="fg.muted">
-          <Badge size="xs" variant="subtle">{ACCENT_PALETTES[theme.accentColor]?.label}</Badge>
-          <Badge size="xs" variant="subtle">{GRAY_PALETTES[theme.grayTone]?.label}</Badge>
-          <Badge size="xs" variant="subtle">{theme.borderRadius}px radius</Badge>
-          <Badge size="xs" variant="subtle">{FONT_BODY_OPTIONS[theme.fontBody]?.label}</Badge>
-          <Badge size="xs" variant="subtle">{FONT_MONO_OPTIONS[theme.fontMono]?.label}</Badge>
-          <Badge size="xs" variant="subtle">{theme.fontSize}px</Badge>
-          <Badge size="xs" variant="subtle">{theme.density}</Badge>
-          <Badge size="xs" variant="subtle">{theme.shadow} shadow</Badge>
+          <Badge size="xs" variant="subtle">
+            {ACCENT_PALETTES[theme.accentColor]?.label}
+          </Badge>
+          <Badge size="xs" variant="subtle">
+            {GRAY_PALETTES[theme.grayTone]?.label}
+          </Badge>
+          <Badge size="xs" variant="subtle">
+            {theme.borderRadius}px radius
+          </Badge>
+          <Badge size="xs" variant="subtle">
+            {FONT_BODY_OPTIONS[theme.fontBody]?.label}
+          </Badge>
+          <Badge size="xs" variant="subtle">
+            {FONT_MONO_OPTIONS[theme.fontMono]?.label}
+          </Badge>
+          <Badge size="xs" variant="subtle">
+            {theme.fontSize}px
+          </Badge>
+          <Badge size="xs" variant="subtle">
+            {theme.density}
+          </Badge>
+          <Badge size="xs" variant="subtle">
+            {theme.shadow} shadow
+          </Badge>
         </HStack>
       </Box>
     </Flex>

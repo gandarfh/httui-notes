@@ -21,7 +21,10 @@ const scopeLabels: Record<PermissionScope, string> = {
   always: "Always",
 };
 
-function computeLineStats(original: string, proposed: string): { added: number; removed: number } {
+function computeLineStats(
+  original: string,
+  proposed: string,
+): { added: number; removed: number } {
   const origLines = original.split("\n");
   const propLines = proposed.split("\n");
   const origSet = new Set(origLines);
@@ -64,11 +67,19 @@ export function DiffViewer({ tab }: DiffViewerProps) {
     const view = new MergeView({
       a: {
         doc: original,
-        extensions: [readOnlyExtension, themeExtension, createBlockWidgetPlugin(proposed, "a")],
+        extensions: [
+          readOnlyExtension,
+          themeExtension,
+          createBlockWidgetPlugin(proposed, "a"),
+        ],
       },
       b: {
         doc: proposed,
-        extensions: [readOnlyExtension, themeExtension, createBlockWidgetPlugin(original, "b")],
+        extensions: [
+          readOnlyExtension,
+          themeExtension,
+          createBlockWidgetPlugin(original, "b"),
+        ],
       },
       parent: containerRef.current,
       highlightChanges: true,
@@ -93,7 +104,10 @@ export function DiffViewer({ tab }: DiffViewerProps) {
       return;
     }
     if (!tab.permissionId) return;
-    if (!pendingPermission || pendingPermission.permissionId !== tab.permissionId) {
+    if (
+      !pendingPermission ||
+      pendingPermission.permissionId !== tab.permissionId
+    ) {
       closeDiffTab(tab.permissionId);
     }
   }, [pendingPermission, tab.permissionId, closeDiffTab]);
@@ -126,10 +140,14 @@ export function DiffViewer({ tab }: DiffViewerProps) {
           {tab.filePath}
         </Text>
         {stats.added > 0 && (
-          <Badge size="sm" colorPalette="green" variant="subtle">+{stats.added}</Badge>
+          <Badge size="sm" colorPalette="green" variant="subtle">
+            +{stats.added}
+          </Badge>
         )}
         {stats.removed > 0 && (
-          <Badge size="sm" colorPalette="red" variant="subtle">-{stats.removed}</Badge>
+          <Badge size="sm" colorPalette="red" variant="subtle">
+            -{stats.removed}
+          </Badge>
         )}
 
         {/* Scope selector */}
@@ -198,12 +216,28 @@ export function DiffViewer({ tab }: DiffViewerProps) {
       </HStack>
 
       {/* Labels */}
-      <HStack gap={0} flexShrink={0} borderBottom="1px solid" borderColor="border">
+      <HStack
+        gap={0}
+        flexShrink={0}
+        borderBottom="1px solid"
+        borderColor="border"
+      >
         <Box flex={1} px={3} py={1} bg="red.500/5">
-          <Text fontSize="2xs" color="fg.muted" fontWeight="medium">Current</Text>
+          <Text fontSize="2xs" color="fg.muted" fontWeight="medium">
+            Current
+          </Text>
         </Box>
-        <Box flex={1} px={3} py={1} bg="green.500/5" borderLeft="1px solid" borderColor="border">
-          <Text fontSize="2xs" color="fg.muted" fontWeight="medium">Proposed</Text>
+        <Box
+          flex={1}
+          px={3}
+          py={1}
+          bg="green.500/5"
+          borderLeft="1px solid"
+          borderColor="border"
+        >
+          <Text fontSize="2xs" color="fg.muted" fontWeight="medium">
+            Proposed
+          </Text>
         </Box>
       </HStack>
 
@@ -220,14 +254,26 @@ export function DiffViewer({ tab }: DiffViewerProps) {
           "& .cm-content": { minWidth: 0 },
           "& .cm-block-widget": { maxWidth: "100%", overflow: "hidden" },
           /* Side A (current/deleted) — red background like GitHub */
-          "& .cm-mergeViewEditor:first-child .cm-changedLine": { backgroundColor: "rgba(248, 81, 73, 0.1) !important" },
-          "& .cm-mergeViewEditor:first-child .cm-changedText": { backgroundColor: "rgba(248, 81, 73, 0.3) !important" },
-          "& .cm-deletedChunk": { backgroundColor: "rgba(248, 81, 73, 0.08) !important" },
+          "& .cm-mergeViewEditor:first-child .cm-changedLine": {
+            backgroundColor: "rgba(248, 81, 73, 0.1) !important",
+          },
+          "& .cm-mergeViewEditor:first-child .cm-changedText": {
+            backgroundColor: "rgba(248, 81, 73, 0.3) !important",
+          },
+          "& .cm-deletedChunk": {
+            backgroundColor: "rgba(248, 81, 73, 0.08) !important",
+          },
           /* Side B (proposed/added) — green background like GitHub */
-          "& .cm-mergeViewEditor:last-child .cm-changedLine": { backgroundColor: "rgba(63, 185, 80, 0.1) !important" },
-          "& .cm-mergeViewEditor:last-child .cm-changedText": { backgroundColor: "rgba(63, 185, 80, 0.3) !important" },
+          "& .cm-mergeViewEditor:last-child .cm-changedLine": {
+            backgroundColor: "rgba(63, 185, 80, 0.1) !important",
+          },
+          "& .cm-mergeViewEditor:last-child .cm-changedText": {
+            backgroundColor: "rgba(63, 185, 80, 0.3) !important",
+          },
           /* Gutter markers */
-          "& .cm-changeGutter .cm-gutterElement": { color: "rgba(63, 185, 80, 0.7)" },
+          "& .cm-changeGutter .cm-gutterElement": {
+            color: "rgba(63, 185, 80, 0.7)",
+          },
         }}
       />
     </Box>

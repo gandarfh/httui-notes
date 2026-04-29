@@ -95,7 +95,13 @@ export function MethodPill({
 // ─────────────────────────────────────────────────────────
 
 // Numbered section heading — accent circle + serif title + rule
-function NumberedSection({ num, children }: { num: number; children: React.ReactNode }) {
+function NumberedSection({
+  num,
+  children,
+}: {
+  num: number;
+  children: React.ReactNode;
+}) {
   return (
     <HStack gap={3} alignItems="baseline" mt={6}>
       <Box
@@ -115,7 +121,14 @@ function NumberedSection({ num, children }: { num: number; children: React.React
       >
         {num}
       </Box>
-      <Text fontFamily="heading" fontSize="22px" fontWeight="600" color="fg" letterSpacing="snug" lineHeight="1.25">
+      <Text
+        fontFamily="heading"
+        fontSize="22px"
+        fontWeight="600"
+        color="fg"
+        letterSpacing="snug"
+        lineHeight="1.25"
+      >
         {children}
       </Text>
       <Box flex="1" h="1px" bg="border.subtle" position="relative" top="-4px" />
@@ -148,7 +161,14 @@ function BlockShell({
       bg="bg.surface"
       overflow="hidden"
     >
-      <HStack h="30px" px={2} gap={2.5} bg="bg.elevated" borderBottom="1px solid" borderColor="border">
+      <HStack
+        h="30px"
+        px={2}
+        gap={2.5}
+        bg="bg.elevated"
+        borderBottom="1px solid"
+        borderColor="border"
+      >
         <Text
           w="22px"
           textAlign="center"
@@ -188,7 +208,13 @@ function BlockShell({
 }
 
 // Section header used across both sidebars
-function PaneHead({ children, right }: { children: React.ReactNode; right?: React.ReactNode }) {
+function PaneHead({
+  children,
+  right,
+}: {
+  children: React.ReactNode;
+  right?: React.ReactNode;
+}) {
   return (
     <HStack
       h="28px"
@@ -207,7 +233,11 @@ function PaneHead({ children, right }: { children: React.ReactNode; right?: Reac
   );
 }
 
-function StatusDot({ kind }: { kind: "ok" | "warn" | "err" | "info" | "idle" }) {
+function StatusDot({
+  kind,
+}: {
+  kind: "ok" | "warn" | "err" | "info" | "idle";
+}) {
   const tokenMap = {
     ok: "ok",
     warn: "warn",
@@ -301,7 +331,14 @@ export function WorkbenchPreview() {
         <Box flex="1" />
 
         {/* Env switcher */}
-        <HStack gap={0} h="24px" border="1px solid" borderColor="border" rounded="sm" overflow="hidden">
+        <HStack
+          gap={0}
+          h="24px"
+          border="1px solid"
+          borderColor="border"
+          rounded="sm"
+          overflow="hidden"
+        >
           {(["local", "staging", "prod"] as const).map((e, i) => {
             const active = e === "staging";
             return (
@@ -412,12 +449,24 @@ export function WorkbenchPreview() {
       >
         {/* Files */}
         <PaneHead right={<LuPlus size={11} />}>Files</PaneHead>
-        <Box flex="1 1 50%" overflow="hidden" borderBottom="1px solid" borderColor="border" pb={1.5}>
+        <Box
+          flex="1 1 50%"
+          overflow="hidden"
+          borderBottom="1px solid"
+          borderColor="border"
+          pb={1.5}
+        >
           {(
             [
               { n: "runbooks", folder: true, depth: 0, open: true },
               { n: "payments", folder: true, depth: 1, open: true },
-              { n: "rollout-v2.3.md", folder: false, depth: 2, active: true, dirty: true },
+              {
+                n: "rollout-v2.3.md",
+                folder: false,
+                depth: 2,
+                active: true,
+                dirty: true,
+              },
               { n: "rollback.md", folder: false, depth: 2 },
               { n: "incident-2026-03-19.md", folder: false, depth: 2 },
               { n: "onboarding", folder: true, depth: 1, open: false },
@@ -445,13 +494,38 @@ export function WorkbenchPreview() {
               fontWeight={r.active ? "600" : "400"}
               bg={r.active ? "bg.subtle" : "transparent"}
             >
-              <Box w="10px" color="fg.disabled" display="flex" alignItems="center">
-                {r.folder ? r.open ? <LuChevronDown size={11} /> : <LuChevronRight size={11} /> : null}
+              <Box
+                w="10px"
+                color="fg.disabled"
+                display="flex"
+                alignItems="center"
+              >
+                {r.folder ? (
+                  r.open ? (
+                    <LuChevronDown size={11} />
+                  ) : (
+                    <LuChevronRight size={11} />
+                  )
+                ) : null}
               </Box>
-              <Box color={r.folder ? "fg.subtle" : "accent"} display="flex" alignItems="center">
-                {r.folder ? r.open ? <LuFolderOpen size={12} /> : <LuFolder size={12} /> : <LuFile size={12} />}
+              <Box
+                color={r.folder ? "fg.subtle" : "accent"}
+                display="flex"
+                alignItems="center"
+              >
+                {r.folder ? (
+                  r.open ? (
+                    <LuFolderOpen size={12} />
+                  ) : (
+                    <LuFolder size={12} />
+                  )
+                ) : (
+                  <LuFile size={12} />
+                )}
               </Box>
-              <Text flex="1" truncate>{r.n}</Text>
+              <Text flex="1" truncate>
+                {r.n}
+              </Text>
               {r.dirty && <StatusDot kind="warn" />}
             </HStack>
           ))}
@@ -468,14 +542,28 @@ export function WorkbenchPreview() {
               { n: "redis · cache", k: "warn", l: 88 },
               { n: "API · payments", k: "ok", l: 142 },
             ].map((c, i) => (
-              <HStack key={i} h="26px" px={2.5} gap={2} fontSize="12px" color="fg.muted">
+              <HStack
+                key={i}
+                h="26px"
+                px={2.5}
+                gap={2}
+                fontSize="12px"
+                color="fg.muted"
+              >
                 <StatusDot kind={c.k as "ok" | "warn"} />
                 <Box color="fg.subtle" display="flex" alignItems="center">
                   <LuDatabase size={12} />
                 </Box>
-                <Text flex="1" truncate>{c.n}</Text>
+                <Text flex="1" truncate>
+                  {c.n}
+                </Text>
                 {c.prod && (
-                  <Text fontSize="9px" fontWeight="700" color="err" letterSpacing="wide">
+                  <Text
+                    fontSize="9px"
+                    fontWeight="700"
+                    color="err"
+                    letterSpacing="wide"
+                  >
                     PROD
                   </Text>
                 )}
@@ -492,17 +580,40 @@ export function WorkbenchPreview() {
           <PaneHead right={<LuPlus size={11} />}>Variables — staging</PaneHead>
           <VStack align="stretch" gap={0} pb={2}>
             {[
-              { k: "BASE_URL", v: "https://api.staging.acme.dev", secret: false },
+              {
+                k: "BASE_URL",
+                v: "https://api.staging.acme.dev",
+                secret: false,
+              },
               { k: "TENANT_ID", v: "tnt_8f2a91", secret: false },
               { k: "ADMIN_TOKEN", v: "••••••••••••mB9k", secret: true },
               { k: "PG_DSN", v: "postgres://app@db-staging…", secret: false },
             ].map((v) => (
               <HStack key={v.k} h="22px" px={2.5} gap={1.5} fontSize="11px">
-                <Box color={v.secret ? "warn" : "fg.disabled"} display="flex" alignItems="center" w="11px" justifyContent="center">
-                  {v.secret ? <LuKeyRound size={11} /> : <Box w="3px" h="3px" rounded="full" bg="fg.disabled" />}
+                <Box
+                  color={v.secret ? "warn" : "fg.disabled"}
+                  display="flex"
+                  alignItems="center"
+                  w="11px"
+                  justifyContent="center"
+                >
+                  {v.secret ? (
+                    <LuKeyRound size={11} />
+                  ) : (
+                    <Box w="3px" h="3px" rounded="full" bg="fg.disabled" />
+                  )}
                 </Box>
-                <Text fontFamily="mono" color="fg">{v.k}</Text>
-                <Text fontFamily="mono" color="fg.subtle" flex="1" truncate textAlign="right" maxW="130px">
+                <Text fontFamily="mono" color="fg">
+                  {v.k}
+                </Text>
+                <Text
+                  fontFamily="mono"
+                  color="fg.subtle"
+                  flex="1"
+                  truncate
+                  textAlign="right"
+                  maxW="130px"
+                >
                   {v.v}
                 </Text>
               </HStack>
@@ -516,7 +627,13 @@ export function WorkbenchPreview() {
       ═════════════════════════════════════════════════════ */}
       <Flex gridColumn="2" gridRow="2" direction="column" minH="0" bg="bg">
         {/* Tab bar */}
-        <HStack h="32px" gap={0} bg="bg.surface" borderBottom="1px solid" borderColor="border">
+        <HStack
+          h="32px"
+          gap={0}
+          bg="bg.surface"
+          borderBottom="1px solid"
+          borderColor="border"
+        >
           <HStack
             h="100%"
             px={3.5}
@@ -525,22 +642,60 @@ export function WorkbenchPreview() {
             borderRight="1px solid"
             borderColor="border"
             position="relative"
-            _after={{ content: '""', position: "absolute", top: 0, left: 0, right: 0, h: "1px", bg: "accent" }}
+            _after={{
+              content: '""',
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              h: "1px",
+              bg: "accent",
+            }}
           >
-            <Box color="accent" display="flex" alignItems="center"><LuFile size={12} /></Box>
-            <Text fontSize="12px" color="fg">rollout-v2.3.md</Text>
+            <Box color="accent" display="flex" alignItems="center">
+              <LuFile size={12} />
+            </Box>
+            <Text fontSize="12px" color="fg">
+              rollout-v2.3.md
+            </Text>
             <StatusDot kind="warn" />
-            <Box color="fg.disabled" display="flex" alignItems="center" ml={1}><LuX size={12} /></Box>
+            <Box color="fg.disabled" display="flex" alignItems="center" ml={1}>
+              <LuX size={12} />
+            </Box>
           </HStack>
-          <HStack h="100%" px={3.5} gap={2} borderRight="1px solid" borderColor="border">
-            <Box color="fg.disabled" display="flex" alignItems="center"><LuFile size={12} /></Box>
-            <Text fontSize="12px" color="fg.subtle">rollback.md</Text>
-            <Box color="fg.disabled" display="flex" alignItems="center"><LuX size={12} /></Box>
+          <HStack
+            h="100%"
+            px={3.5}
+            gap={2}
+            borderRight="1px solid"
+            borderColor="border"
+          >
+            <Box color="fg.disabled" display="flex" alignItems="center">
+              <LuFile size={12} />
+            </Box>
+            <Text fontSize="12px" color="fg.subtle">
+              rollback.md
+            </Text>
+            <Box color="fg.disabled" display="flex" alignItems="center">
+              <LuX size={12} />
+            </Box>
           </HStack>
-          <HStack h="100%" px={3.5} gap={2} borderRight="1px solid" borderColor="border">
-            <Box color="fg.disabled" display="flex" alignItems="center"><LuFile size={12} /></Box>
-            <Text fontSize="12px" color="fg.subtle">ad-hoc.md</Text>
-            <Box color="fg.disabled" display="flex" alignItems="center"><LuX size={12} /></Box>
+          <HStack
+            h="100%"
+            px={3.5}
+            gap={2}
+            borderRight="1px solid"
+            borderColor="border"
+          >
+            <Box color="fg.disabled" display="flex" alignItems="center">
+              <LuFile size={12} />
+            </Box>
+            <Text fontSize="12px" color="fg.subtle">
+              ad-hoc.md
+            </Text>
+            <Box color="fg.disabled" display="flex" alignItems="center">
+              <LuX size={12} />
+            </Box>
           </HStack>
           <Box flex="1" borderRight="1px solid" borderColor="border" />
           <HStack px={2.5} gap={2.5} color="fg.subtle">
@@ -551,7 +706,16 @@ export function WorkbenchPreview() {
         </HStack>
 
         {/* Editor toolbar */}
-        <HStack h="30px" px={3} gap={3} bg="bg.surface" borderBottom="1px solid" borderColor="border" fontSize="11px" color="fg.subtle">
+        <HStack
+          h="30px"
+          px={3}
+          gap={3}
+          bg="bg.surface"
+          borderBottom="1px solid"
+          borderColor="border"
+          fontSize="11px"
+          color="fg.subtle"
+        >
           <Text>runbooks / payments / rollout-v2.3.md</Text>
           <Text>·</Text>
           <Text>edited há 4 min by rafael</Text>
@@ -570,7 +734,13 @@ export function WorkbenchPreview() {
             {/* DocHeader frontmatter */}
             <Box pb={5} borderBottom="1px solid" borderColor="border">
               {/* breadcrumb */}
-              <HStack gap={1.5} fontSize="11px" color="fg.disabled" fontFamily="mono" mb={3.5}>
+              <HStack
+                gap={1.5}
+                fontSize="11px"
+                color="fg.disabled"
+                fontFamily="mono"
+                mb={3.5}
+              >
                 <LuFolder size={11} />
                 <Text>runbooks</Text>
                 <Text>/</Text>
@@ -608,7 +778,13 @@ export function WorkbenchPreview() {
               </Text>
 
               {/* Meta strip */}
-              <HStack gap={3.5} flexWrap="wrap" mb={4} fontSize="12px" color="fg.subtle">
+              <HStack
+                gap={3.5}
+                flexWrap="wrap"
+                mb={4}
+                fontSize="12px"
+                color="fg.subtle"
+              >
                 <HStack gap={1.5}>
                   <Box
                     w="18px"
@@ -627,15 +803,22 @@ export function WorkbenchPreview() {
                 </HStack>
                 <Text>·</Text>
                 <Text>
-                  edited <Text as="span" fontFamily="mono" color="fg.muted">há 4 min</Text>
+                  edited{" "}
+                  <Text as="span" fontFamily="mono" color="fg.muted">
+                    há 4 min
+                  </Text>
                 </Text>
                 <Text>·</Text>
                 <Text fontFamily="mono">10 blocks</Text>
                 <Text>·</Text>
                 <HStack gap={1.5}>
                   <LuGitBranch size={11} />
-                  <Text fontFamily="mono" color="fg.muted">main</Text>
-                  <Text color="accent.emphasized" fontWeight="600">+3 ~1</Text>
+                  <Text fontFamily="mono" color="fg.muted">
+                    main
+                  </Text>
+                  <Text color="accent.emphasized" fontWeight="600">
+                    +3 ~1
+                  </Text>
                 </HStack>
                 <Text>·</Text>
                 <HStack gap={1.5} color="ok">
@@ -654,23 +837,58 @@ export function WorkbenchPreview() {
                 maxW="720px"
               >
                 Deploy do novo provider de cartão (
-                <Text as="code" fontFamily="mono" px={1} bg="bg.elevated" rounded="sm" fontSize="13px">
+                <Text
+                  as="code"
+                  fontFamily="mono"
+                  px={1}
+                  bg="bg.elevated"
+                  rounded="sm"
+                  fontSize="13px"
+                >
                   stripe_v2
                 </Text>
                 ) para o tenant{" "}
-                <Text as="code" fontFamily="mono" px={1} bg="bg.elevated" rounded="sm" fontSize="13px">
+                <Text
+                  as="code"
+                  fontFamily="mono"
+                  px={1}
+                  bg="bg.elevated"
+                  rounded="sm"
+                  fontSize="13px"
+                >
                   acme-payments
                 </Text>{" "}
-                em staging. Antes de promover para prod, validar que a config foi propagada, que{" "}
-                <Text as="code" fontFamily="mono" px={1} bg="bg.elevated" rounded="sm" fontSize="13px">
+                em staging. Antes de promover para prod, validar que a config
+                foi propagada, que{" "}
+                <Text
+                  as="code"
+                  fontFamily="mono"
+                  px={1}
+                  bg="bg.elevated"
+                  rounded="sm"
+                  fontSize="13px"
+                >
                   payments_route
                 </Text>{" "}
-                não tem rotas órfãs, e que a latência do stream de captura fica abaixo de 800ms.
+                não tem rotas órfãs, e que a latência do stream de captura fica
+                abaixo de 800ms.
               </Text>
 
               {/* Pre-flight + Tags */}
-              <Box display="grid" gridTemplateColumns="1fr auto" gap={6} alignItems="start">
-                <Box bg="bg.surface" border="1px solid" borderColor="border.subtle" rounded="md" px={3.5} py={2.5}>
+              <Box
+                display="grid"
+                gridTemplateColumns="1fr auto"
+                gap={6}
+                alignItems="start"
+              >
+                <Box
+                  bg="bg.surface"
+                  border="1px solid"
+                  borderColor="border.subtle"
+                  rounded="md"
+                  px={3.5}
+                  py={2.5}
+                >
                   <Text
                     fontSize="10px"
                     fontWeight="700"
@@ -682,12 +900,29 @@ export function WorkbenchPreview() {
                   </Text>
                   <VStack align="stretch" gap={1} fontSize="13px">
                     {[
-                      { ok: true, t: "config do tenant atualizada em ", code: "tenants.config" },
-                      { ok: true, t: "0 registros órfãos em ", code: "payments_route" },
-                      { ok: false, t: "subscrever stream WS por ", code: "30s" },
+                      {
+                        ok: true,
+                        t: "config do tenant atualizada em ",
+                        code: "tenants.config",
+                      },
+                      {
+                        ok: true,
+                        t: "0 registros órfãos em ",
+                        code: "payments_route",
+                      },
+                      {
+                        ok: false,
+                        t: "subscrever stream WS por ",
+                        code: "30s",
+                      },
                       { ok: false, t: "rollout_pct ≤ 25 antes de prod" },
                     ].map((it, i) => (
-                      <HStack key={i} gap={2} color={it.ok ? "fg.subtle" : "fg"} align="center">
+                      <HStack
+                        key={i}
+                        gap={2}
+                        color={it.ok ? "fg.subtle" : "fg"}
+                        align="center"
+                      >
                         <Box
                           w="14px"
                           h="14px"
@@ -702,7 +937,10 @@ export function WorkbenchPreview() {
                         >
                           {it.ok && <LuCheck size={10} strokeWidth={3} />}
                         </Box>
-                        <Text textDecoration={it.ok ? "line-through" : "none"} textDecorationColor="var(--chakra-colors-fg-disabled)">
+                        <Text
+                          textDecoration={it.ok ? "line-through" : "none"}
+                          textDecorationColor="var(--chakra-colors-fg-disabled)"
+                        >
                           {it.t}
                           {it.code && (
                             <Text
@@ -722,11 +960,23 @@ export function WorkbenchPreview() {
                   </VStack>
                 </Box>
                 <VStack align="stretch" gap={1.5} fontSize="11px">
-                  <Text fontSize="10px" fontWeight="700" letterSpacing="wider" color="fg.disabled">
+                  <Text
+                    fontSize="10px"
+                    fontWeight="700"
+                    letterSpacing="wider"
+                    color="fg.disabled"
+                  >
                     TAGS
                   </Text>
-                  {["#rollout", "#payments", "#staging", "#breaking-change"].map((t) => (
-                    <Text key={t} fontFamily="mono" color="fg.muted">{t}</Text>
+                  {[
+                    "#rollout",
+                    "#payments",
+                    "#staging",
+                    "#breaking-change",
+                  ].map((t) => (
+                    <Text key={t} fontFamily="mono" color="fg.muted">
+                      {t}
+                    </Text>
                   ))}
                 </VStack>
               </Box>
@@ -738,38 +988,90 @@ export function WorkbenchPreview() {
             </NumberedSection>
 
             {/* Block 02 — HTTP GET /v2/health */}
-            <BlockShell index="02" pillRight={<>
-              <Text fontSize="11px" color="fg.disabled">ran 14:22:08</Text>
-              <HStack gap={1.5} fontFamily="mono" fontSize="11px" color="ok" fontWeight="600">
-                <StatusDot kind="ok" />
-                <Text>200 · 142ms</Text>
-              </HStack>
-            </>}>
+            <BlockShell
+              index="02"
+              pillRight={
+                <>
+                  <Text fontSize="11px" color="fg.disabled">
+                    ran 14:22:08
+                  </Text>
+                  <HStack
+                    gap={1.5}
+                    fontFamily="mono"
+                    fontSize="11px"
+                    color="ok"
+                    fontWeight="600"
+                  >
+                    <StatusDot kind="ok" />
+                    <Text>200 · 142ms</Text>
+                  </HStack>
+                </>
+              }
+            >
               <HStack gap={2}>
                 <MethodPill method="GET" />
-                <Text fontFamily="mono" fontSize="12px" color="fg" flex="1" truncate>
+                <Text
+                  fontFamily="mono"
+                  fontSize="12px"
+                  color="fg"
+                  flex="1"
+                  truncate
+                >
                   {"{{BASE_URL}}/v2/health"}
                 </Text>
               </HStack>
-              <Box mt={1.5} fontFamily="mono" fontSize="11px" lineHeight="1.6" color="fg.muted">
+              <Box
+                mt={1.5}
+                fontFamily="mono"
+                fontSize="11px"
+                lineHeight="1.6"
+                color="fg.muted"
+              >
                 <Text>{"{"}</Text>
                 <Text pl={3.5}>
-                  <Text as="span" color="accent.emphasized">"status"</Text>
-                  : <Text as="span" color="ok">"ok"</Text>,
-                  {" "}
-                  <Text as="span" color="accent.emphasized">"version"</Text>
-                  : <Text as="span" color="ok">"2.3.0-rc4"</Text>,
+                  <Text as="span" color="accent.emphasized">
+                    "status"
+                  </Text>
+                  :{" "}
+                  <Text as="span" color="ok">
+                    "ok"
+                  </Text>
+                  ,{" "}
+                  <Text as="span" color="accent.emphasized">
+                    "version"
+                  </Text>
+                  :{" "}
+                  <Text as="span" color="ok">
+                    "2.3.0-rc4"
+                  </Text>
+                  ,
                 </Text>
                 <Text pl={3.5}>
-                  <Text as="span" color="accent.emphasized">"deps"</Text>
+                  <Text as="span" color="accent.emphasized">
+                    "deps"
+                  </Text>
                   :{" "}
-                  <Text as="span" color="fg.muted">{"{ "}</Text>
-                  <Text as="span" color="accent.emphasized">"db"</Text>
-                  : <Text as="span" color="ok">"ok"</Text>,
-                  {" "}
-                  <Text as="span" color="accent.emphasized">"kafka"</Text>
-                  : <Text as="span" color="warn">"degraded"</Text>
-                  <Text as="span" color="fg.muted">{" }"}</Text>
+                  <Text as="span" color="fg.muted">
+                    {"{ "}
+                  </Text>
+                  <Text as="span" color="accent.emphasized">
+                    "db"
+                  </Text>
+                  :{" "}
+                  <Text as="span" color="ok">
+                    "ok"
+                  </Text>
+                  ,{" "}
+                  <Text as="span" color="accent.emphasized">
+                    "kafka"
+                  </Text>
+                  :{" "}
+                  <Text as="span" color="warn">
+                    "degraded"
+                  </Text>
+                  <Text as="span" color="fg.muted">
+                    {" }"}
+                  </Text>
                 </Text>
                 <Text>{"}"}</Text>
               </Box>
@@ -781,36 +1083,85 @@ export function WorkbenchPreview() {
             </NumberedSection>
 
             {/* Block 04 — POST /v2/auth/admin */}
-            <BlockShell index="04" pillRight={<>
-              <Text fontSize="11px" color="fg.disabled">ran 14:22:14</Text>
-              <HStack gap={1.5} fontFamily="mono" fontSize="11px" color="ok" fontWeight="600">
-                <StatusDot kind="ok" />
-                <Text>201 · 318ms</Text>
-              </HStack>
-            </>} footer={
-              <HStack px={2.5} py={1.5} gap={1.5} bg="accent.subtle" borderTop="1px solid" borderColor="border.subtle" fontSize="10px" color="fg.muted">
-                <LuLink size={11} color="var(--chakra-colors-accent)" />
-                <Text>captured →</Text>
-                <Text fontFamily="mono" color="accent.emphasized" fontWeight="600">SESSION_ID</Text>
-                <Text fontFamily="mono">= ses_01HZ4RTQ8VK7…</Text>
-              </HStack>
-            }>
+            <BlockShell
+              index="04"
+              pillRight={
+                <>
+                  <Text fontSize="11px" color="fg.disabled">
+                    ran 14:22:14
+                  </Text>
+                  <HStack
+                    gap={1.5}
+                    fontFamily="mono"
+                    fontSize="11px"
+                    color="ok"
+                    fontWeight="600"
+                  >
+                    <StatusDot kind="ok" />
+                    <Text>201 · 318ms</Text>
+                  </HStack>
+                </>
+              }
+              footer={
+                <HStack
+                  px={2.5}
+                  py={1.5}
+                  gap={1.5}
+                  bg="accent.subtle"
+                  borderTop="1px solid"
+                  borderColor="border.subtle"
+                  fontSize="10px"
+                  color="fg.muted"
+                >
+                  <LuLink size={11} color="var(--chakra-colors-accent)" />
+                  <Text>captured →</Text>
+                  <Text
+                    fontFamily="mono"
+                    color="accent.emphasized"
+                    fontWeight="600"
+                  >
+                    SESSION_ID
+                  </Text>
+                  <Text fontFamily="mono">= ses_01HZ4RTQ8VK7…</Text>
+                </HStack>
+              }
+            >
               <HStack gap={2}>
                 <MethodPill method="POST" />
-                <Text fontFamily="mono" fontSize="12px" color="fg" flex="1" truncate>
+                <Text
+                  fontFamily="mono"
+                  fontSize="12px"
+                  color="fg"
+                  flex="1"
+                  truncate
+                >
                   {"{{BASE_URL}}/v2/auth/admin"}
                 </Text>
               </HStack>
-              <Box mt={1.5} fontFamily="mono" fontSize="11px" lineHeight="1.6" color="fg.muted">
+              <Box
+                mt={1.5}
+                fontFamily="mono"
+                fontSize="11px"
+                lineHeight="1.6"
+                color="fg.muted"
+              >
                 <Text>
-                  <Text as="span" color="fg.subtle">Authorization</Text>
+                  <Text as="span" color="fg.subtle">
+                    Authorization
+                  </Text>
                   : Bearer{" "}
-                  <Text as="span" color="accent.emphasized">{"{{ADMIN_TOKEN}}"}</Text>
+                  <Text as="span" color="accent.emphasized">
+                    {"{{ADMIN_TOKEN}}"}
+                  </Text>
                 </Text>
                 <Text>
-                  <Text as="span" color="fg.subtle">X-Tenant</Text>
+                  <Text as="span" color="fg.subtle">
+                    X-Tenant
+                  </Text>
                   :{" "}
-                  <Text as="span" color="accent.emphasized">{"{{TENANT_ID}}"}</Text>
+                  <Text as="span" color="accent.emphasized">
+                    {"{{TENANT_ID}}"}
+                  </Text>
                 </Text>
               </Box>
             </BlockShell>
@@ -825,28 +1176,61 @@ export function WorkbenchPreview() {
               index="06"
               kindLabel="SQL"
               kindBg="oklch(0.42 0.10 290)"
-              pillRight={<>
-                <Text fontSize="11px" color="fg.disabled">pg · payments@staging</Text>
-                <HStack gap={1.5} fontFamily="mono" fontSize="11px" color="ok" fontWeight="600">
-                  <StatusDot kind="ok" />
-                  <Text>3 rows · 47ms</Text>
-                </HStack>
-              </>}
+              pillRight={
+                <>
+                  <Text fontSize="11px" color="fg.disabled">
+                    pg · payments@staging
+                  </Text>
+                  <HStack
+                    gap={1.5}
+                    fontFamily="mono"
+                    fontSize="11px"
+                    color="ok"
+                    fontWeight="600"
+                  >
+                    <StatusDot kind="ok" />
+                    <Text>3 rows · 47ms</Text>
+                  </HStack>
+                </>
+              }
             >
-              <Box fontFamily="mono" fontSize="11px" lineHeight="1.7" color="fg.muted">
+              <Box
+                fontFamily="mono"
+                fontSize="11px"
+                lineHeight="1.7"
+                color="fg.muted"
+              >
                 <Text>
-                  <Text as="span" color="info">SELECT</Text> r.id, r.tenant_id, r.provider_key
+                  <Text as="span" color="info">
+                    SELECT
+                  </Text>{" "}
+                  r.id, r.tenant_id, r.provider_key
                 </Text>
                 <Text>
-                  <Text as="span" color="info">FROM</Text> payments_route r
+                  <Text as="span" color="info">
+                    FROM
+                  </Text>{" "}
+                  payments_route r
                 </Text>
                 <Text>
-                  <Text as="span" color="info">LEFT JOIN</Text> payment_provider p{" "}
-                  <Text as="span" color="info">ON</Text> p.key = r.provider_key
+                  <Text as="span" color="info">
+                    LEFT JOIN
+                  </Text>{" "}
+                  payment_provider p{" "}
+                  <Text as="span" color="info">
+                    ON
+                  </Text>{" "}
+                  p.key = r.provider_key
                 </Text>
                 <Text>
-                  <Text as="span" color="info">WHERE</Text> p.key{" "}
-                  <Text as="span" color="info">IS NULL</Text>;
+                  <Text as="span" color="info">
+                    WHERE
+                  </Text>{" "}
+                  p.key{" "}
+                  <Text as="span" color="info">
+                    IS NULL
+                  </Text>
+                  ;
                 </Text>
               </Box>
             </BlockShell>
@@ -867,7 +1251,13 @@ export function WorkbenchPreview() {
         minH="0"
       >
         {/* Tabs */}
-        <HStack h="30px" gap={0} bg="bg" borderBottom="1px solid" borderColor="border">
+        <HStack
+          h="30px"
+          gap={0}
+          bg="bg"
+          borderBottom="1px solid"
+          borderColor="border"
+        >
           {(["Outline", "Schema", "History", "Comments"] as const).map((t) => {
             const active = t === "Schema";
             const last = t === "Comments";
@@ -908,7 +1298,13 @@ export function WorkbenchPreview() {
 
         {/* Schema panel */}
         <Box flex="1" overflow="hidden">
-          <PaneHead right={<Text fontSize="10px" color="fg.disabled">payments</Text>}>
+          <PaneHead
+            right={
+              <Text fontSize="10px" color="fg.disabled">
+                payments
+              </Text>
+            }
+          >
             Database
           </PaneHead>
           <HStack px={3} pb={1.5} gap={1.5} fontSize="11px" color="fg.subtle">
@@ -918,11 +1314,17 @@ export function WorkbenchPreview() {
 
           {/* public schema */}
           <HStack h="22px" px={3} gap={1.5} fontSize="12px" color="fg.muted">
-            <Box color="fg.disabled" display="flex" alignItems="center"><LuChevronDown size={11} /></Box>
-            <Box color="fg.subtle" display="flex" alignItems="center"><LuDatabase size={12} /></Box>
+            <Box color="fg.disabled" display="flex" alignItems="center">
+              <LuChevronDown size={11} />
+            </Box>
+            <Box color="fg.subtle" display="flex" alignItems="center">
+              <LuDatabase size={12} />
+            </Box>
             <Text>public</Text>
             <Box flex="1" />
-            <Text fontSize="10px" color="fg.disabled">5</Text>
+            <Text fontSize="10px" color="fg.disabled">
+              5
+            </Text>
           </HStack>
 
           {[
@@ -944,12 +1346,20 @@ export function WorkbenchPreview() {
                 fontWeight={t.open ? "600" : "400"}
               >
                 <Box color="fg.disabled" display="flex" alignItems="center">
-                  {t.open ? <LuChevronDown size={11} /> : <LuChevronRight size={11} />}
+                  {t.open ? (
+                    <LuChevronDown size={11} />
+                  ) : (
+                    <LuChevronRight size={11} />
+                  )}
                 </Box>
-                <Box color="fg.subtle" display="flex" alignItems="center"><LuTable size={11} /></Box>
+                <Box color="fg.subtle" display="flex" alignItems="center">
+                  <LuTable size={11} />
+                </Box>
                 <Text fontFamily="mono">{t.n}</Text>
                 <Box flex="1" />
-                <Text fontFamily="mono" fontSize="10px" color="fg.disabled">{t.rows}</Text>
+                <Text fontFamily="mono" fontSize="10px" color="fg.disabled">
+                  {t.rows}
+                </Text>
               </HStack>
               {t.open && (
                 <>
@@ -962,19 +1372,41 @@ export function WorkbenchPreview() {
                     { k: "created_at", t: "timestamptz" },
                     { k: "updated_at", t: "timestamptz" },
                   ].map((c) => (
-                    <HStack key={c.k} h="20px" pl="50px" pr={3} gap={2} fontSize="11px" color="fg.muted">
-                      <Box w="11px" display="flex" alignItems="center" color={c.pk ? "warn" : c.fk ? "info" : "fg.disabled"}>
+                    <HStack
+                      key={c.k}
+                      h="20px"
+                      pl="50px"
+                      pr={3}
+                      gap={2}
+                      fontSize="11px"
+                      color="fg.muted"
+                    >
+                      <Box
+                        w="11px"
+                        display="flex"
+                        alignItems="center"
+                        color={c.pk ? "warn" : c.fk ? "info" : "fg.disabled"}
+                      >
                         {c.pk ? (
                           <LuKeyRound size={10} />
                         ) : c.fk ? (
                           <LuLink size={10} />
                         ) : (
-                          <Box w="3px" h="3px" rounded="full" bg="fg.disabled" />
+                          <Box
+                            w="3px"
+                            h="3px"
+                            rounded="full"
+                            bg="fg.disabled"
+                          />
                         )}
                       </Box>
-                      <Text fontFamily="mono" color="fg">{c.k}</Text>
+                      <Text fontFamily="mono" color="fg">
+                        {c.k}
+                      </Text>
                       <Box flex="1" />
-                      <Text fontFamily="mono" color="fg.disabled">{c.t}</Text>
+                      <Text fontFamily="mono" color="fg.disabled">
+                        {c.t}
+                      </Text>
                     </HStack>
                   ))}
                 </>
@@ -983,26 +1415,71 @@ export function WorkbenchPreview() {
           ))}
 
           {/* billing schema */}
-          <HStack h="22px" px={3} gap={1.5} mt={1.5} fontSize="12px" color="fg.muted">
-            <Box color="fg.disabled" display="flex" alignItems="center"><LuChevronRight size={11} /></Box>
-            <Box color="fg.subtle" display="flex" alignItems="center"><LuDatabase size={12} /></Box>
+          <HStack
+            h="22px"
+            px={3}
+            gap={1.5}
+            mt={1.5}
+            fontSize="12px"
+            color="fg.muted"
+          >
+            <Box color="fg.disabled" display="flex" alignItems="center">
+              <LuChevronRight size={11} />
+            </Box>
+            <Box color="fg.subtle" display="flex" alignItems="center">
+              <LuDatabase size={12} />
+            </Box>
             <Text>billing</Text>
             <Box flex="1" />
-            <Text fontSize="10px" color="fg.disabled">3</Text>
+            <Text fontSize="10px" color="fg.disabled">
+              3
+            </Text>
           </HStack>
 
           {/* History (cropped) */}
           <Box h="1px" bg="border" my={3} />
-          <PaneHead right={<Text fontSize="10px" color="fg.disabled">6</Text>}>History</PaneHead>
+          <PaneHead
+            right={
+              <Text fontSize="10px" color="fg.disabled">
+                6
+              </Text>
+            }
+          >
+            History
+          </PaneHead>
           {[
-            { at: "14:24:07", label: "WS captures", info: "14 msgs", k: "info" as const },
-            { at: "14:23:01", label: "SELECT … rotas órfãs", info: "3 rows · 47ms", k: "ok" as const },
-            { at: "14:22:14", label: "POST /v2/auth/admin", info: "201 · 318ms", k: "ok" as const },
-            { at: "14:22:08", label: "GET /v2/health", info: "200 · 142ms", k: "ok" as const },
+            {
+              at: "14:24:07",
+              label: "WS captures",
+              info: "14 msgs",
+              k: "info" as const,
+            },
+            {
+              at: "14:23:01",
+              label: "SELECT … rotas órfãs",
+              info: "3 rows · 47ms",
+              k: "ok" as const,
+            },
+            {
+              at: "14:22:14",
+              label: "POST /v2/auth/admin",
+              info: "201 · 318ms",
+              k: "ok" as const,
+            },
+            {
+              at: "14:22:08",
+              label: "GET /v2/health",
+              info: "200 · 142ms",
+              k: "ok" as const,
+            },
           ].map((h, i) => (
             <HStack key={i} h="24px" px={3} gap={2} fontSize="11px">
-              <Text fontFamily="mono" color="fg.disabled" w="44px">{h.at}</Text>
-              <Text color="fg" flex="1" truncate>{h.label}</Text>
+              <Text fontFamily="mono" color="fg.disabled" w="44px">
+                {h.at}
+              </Text>
+              <Text color="fg" flex="1" truncate>
+                {h.label}
+              </Text>
               <Text
                 fontFamily="mono"
                 fontSize="10px"
@@ -1016,10 +1493,20 @@ export function WorkbenchPreview() {
         </Box>
 
         {/* AI bar */}
-        <Box borderTop="1px solid" borderColor="border" px={2.5} py={2} bg="bg.elevated">
+        <Box
+          borderTop="1px solid"
+          borderColor="border"
+          px={2.5}
+          py={2}
+          bg="bg.elevated"
+        >
           <HStack mb={1.5} fontSize="11px" color="fg.subtle" gap={1.5}>
-            <Box color="accent" display="flex" alignItems="center"><LuSparkles size={12} /></Box>
-            <Text color="fg" fontWeight="600">Ask httui</Text>
+            <Box color="accent" display="flex" alignItems="center">
+              <LuSparkles size={12} />
+            </Box>
+            <Text color="fg" fontWeight="600">
+              Ask httui
+            </Text>
             <Box flex="1" />
             <Kbd>⌘J</Kbd>
           </HStack>
@@ -1082,7 +1569,6 @@ export function WorkbenchPreview() {
   );
 }
 
-
 // ─────────────────────────────────────────────────────────
 // BlocksPreview — feature 1: markdown + HTTP + SQL chained
 // ─────────────────────────────────────────────────────────
@@ -1107,44 +1593,161 @@ export function BlocksPreview() {
       >
         1. Verify shadow traffic
       </Text>
-      <Text fontFamily="heading" fontSize="13px" lineHeight="1.55" color="fg.muted" mb={3}>
-        Confirm <Text as="code" fontFamily="mono" fontSize="12px" px={1} bg="bg.elevated" rounded="sm">payments-router</Text> is mirroring 5% of requests in staging.
+      <Text
+        fontFamily="heading"
+        fontSize="13px"
+        lineHeight="1.55"
+        color="fg.muted"
+        mb={3}
+      >
+        Confirm{" "}
+        <Text
+          as="code"
+          fontFamily="mono"
+          fontSize="12px"
+          px={1}
+          bg="bg.elevated"
+          rounded="sm"
+        >
+          payments-router
+        </Text>{" "}
+        is mirroring 5% of requests in staging.
       </Text>
 
       {/* HTTP block */}
-      <Box bg="bg.elevated" border="1px solid" borderColor="border" rounded="md" mb={2.5} overflow="hidden">
-        <HStack h="28px" px={2.5} bg="bg.subtle" borderBottom="1px solid" borderColor="border" gap={2}>
+      <Box
+        bg="bg.elevated"
+        border="1px solid"
+        borderColor="border"
+        rounded="md"
+        mb={2.5}
+        overflow="hidden"
+      >
+        <HStack
+          h="28px"
+          px={2.5}
+          bg="bg.subtle"
+          borderBottom="1px solid"
+          borderColor="border"
+          gap={2}
+        >
           <MethodPill method="POST" />
-          <Text fontSize="xs" color="fg">{"{{api}}/v2/payments"}</Text>
+          <Text fontSize="xs" color="fg">
+            {"{{api}}/v2/payments"}
+          </Text>
           <Box flex="1" />
-          <Text fontSize="11px" color="ok" fontWeight="600">● 201 · 218ms</Text>
+          <Text fontSize="11px" color="ok" fontWeight="600">
+            ● 201 · 218ms
+          </Text>
         </HStack>
         <Box px={2.5} py={2} fontSize="11px" lineHeight="1.6" color="fg.muted">
           <Text>{"{"}</Text>
-          <Text pl={3.5}><Text as="span" color="accent.emphasized">"id"</Text>: <Text as="span" color="ok">"pay_01H8XK..."</Text>,</Text>
-          <Text pl={3.5}><Text as="span" color="accent.emphasized">"provider"</Text>: <Text as="span" color="ok">"stripe_v2"</Text>,</Text>
-          <Text pl={3.5}><Text as="span" color="accent.emphasized">"shadow"</Text>: <Text as="span" color="info">true</Text></Text>
+          <Text pl={3.5}>
+            <Text as="span" color="accent.emphasized">
+              "id"
+            </Text>
+            :{" "}
+            <Text as="span" color="ok">
+              "pay_01H8XK..."
+            </Text>
+            ,
+          </Text>
+          <Text pl={3.5}>
+            <Text as="span" color="accent.emphasized">
+              "provider"
+            </Text>
+            :{" "}
+            <Text as="span" color="ok">
+              "stripe_v2"
+            </Text>
+            ,
+          </Text>
+          <Text pl={3.5}>
+            <Text as="span" color="accent.emphasized">
+              "shadow"
+            </Text>
+            :{" "}
+            <Text as="span" color="info">
+              true
+            </Text>
+          </Text>
           <Text>{"}"}</Text>
         </Box>
-        <HStack px={2.5} py={1.5} bg="accent.subtle" borderTop="1px solid" borderColor="border.subtle" fontSize="10px" color="fg.muted" gap={1.5}>
+        <HStack
+          px={2.5}
+          py={1.5}
+          bg="accent.subtle"
+          borderTop="1px solid"
+          borderColor="border.subtle"
+          fontSize="10px"
+          color="fg.muted"
+          gap={1.5}
+        >
           <LuLink size={11} color="var(--chakra-colors-accent)" />
           <Text>captured:</Text>
-          <Text fontWeight="600" color="accent.emphasized">payment_id</Text>
+          <Text fontWeight="600" color="accent.emphasized">
+            payment_id
+          </Text>
           <Text>= pay_01H8XK…</Text>
         </HStack>
       </Box>
 
       {/* SQL block */}
-      <Box bg="bg.elevated" border="1px solid" borderColor="border" rounded="md" overflow="hidden">
-        <HStack h="28px" px={2.5} bg="bg.subtle" borderBottom="1px solid" borderColor="border" gap={2}>
-          <Text fontFamily="mono" fontSize="9px" fontWeight="700" px={1.5} py={0.5} bg="moss" color="paper.100" rounded="sm">SQL</Text>
-          <Text fontSize="xs" color="fg">pg · payments@staging</Text>
+      <Box
+        bg="bg.elevated"
+        border="1px solid"
+        borderColor="border"
+        rounded="md"
+        overflow="hidden"
+      >
+        <HStack
+          h="28px"
+          px={2.5}
+          bg="bg.subtle"
+          borderBottom="1px solid"
+          borderColor="border"
+          gap={2}
+        >
+          <Text
+            fontFamily="mono"
+            fontSize="9px"
+            fontWeight="700"
+            px={1.5}
+            py={0.5}
+            bg="moss"
+            color="paper.100"
+            rounded="sm"
+          >
+            SQL
+          </Text>
+          <Text fontSize="xs" color="fg">
+            pg · payments@staging
+          </Text>
           <Box flex="1" />
-          <Text fontSize="11px" color="ok" fontWeight="600">● 1 row · 14ms</Text>
+          <Text fontSize="11px" color="ok" fontWeight="600">
+            ● 1 row · 14ms
+          </Text>
         </HStack>
         <Box px={2.5} py={2} fontSize="11px" lineHeight="1.7" color="fg.muted">
-          <Text><Text as="span" color="info">SELECT</Text> status, provider <Text as="span" color="info">FROM</Text> payments</Text>
-          <Text><Text as="span" color="info">WHERE</Text> id = <Text as="span" color="accent.emphasized">{"{{payment_id}}"}</Text></Text>
+          <Text>
+            <Text as="span" color="info">
+              SELECT
+            </Text>{" "}
+            status, provider{" "}
+            <Text as="span" color="info">
+              FROM
+            </Text>{" "}
+            payments
+          </Text>
+          <Text>
+            <Text as="span" color="info">
+              WHERE
+            </Text>{" "}
+            id ={" "}
+            <Text as="span" color="accent.emphasized">
+              {"{{payment_id}}"}
+            </Text>
+          </Text>
         </Box>
       </Box>
     </Box>
@@ -1198,8 +1801,20 @@ export function SchemaPreview() {
     >
       <Box display="grid" gridTemplateColumns="200px 1fr" h="380px">
         {/* Schema tree */}
-        <Box bg="bg.elevated" borderRight="1px solid" borderColor="border" py={2.5}>
-          <Text px={3} pb={1.5} fontSize="10px" fontWeight="700" letterSpacing="wide" color="fg.subtle">
+        <Box
+          bg="bg.elevated"
+          borderRight="1px solid"
+          borderColor="border"
+          py={2.5}
+        >
+          <Text
+            px={3}
+            pb={1.5}
+            fontSize="10px"
+            fontWeight="700"
+            letterSpacing="wide"
+            color="fg.subtle"
+          >
             SCHEMA · payments
           </Text>
           {tree.map((r, i) => (
@@ -1214,11 +1829,23 @@ export function SchemaPreview() {
               bg={r.active ? "bg.subtle" : "transparent"}
               fontSize="11px"
             >
-              {r.key && <Box color="warn" display="flex" alignItems="center"><LuKeyRound size={10} /></Box>}
-              {r.link && <Box color="info" display="flex" alignItems="center"><LuLink size={10} /></Box>}
-              <Text flex="1" truncate>{r.n}</Text>
+              {r.key && (
+                <Box color="warn" display="flex" alignItems="center">
+                  <LuKeyRound size={10} />
+                </Box>
+              )}
+              {r.link && (
+                <Box color="info" display="flex" alignItems="center">
+                  <LuLink size={10} />
+                </Box>
+              )}
+              <Text flex="1" truncate>
+                {r.n}
+              </Text>
               {r.count && (
-                <Text fontSize="10px" color="fg.subtle">{r.count}</Text>
+                <Text fontSize="10px" color="fg.subtle">
+                  {r.count}
+                </Text>
               )}
             </HStack>
           ))}
@@ -1226,8 +1853,18 @@ export function SchemaPreview() {
 
         {/* Result */}
         <Flex direction="column">
-          <HStack h="32px" px={3} bg="bg.elevated" borderBottom="1px solid" borderColor="border" fontSize="11px" gap={2}>
-            <Text color="fg" fontWeight="600">Result</Text>
+          <HStack
+            h="32px"
+            px={3}
+            bg="bg.elevated"
+            borderBottom="1px solid"
+            borderColor="border"
+            fontSize="11px"
+            gap={2}
+          >
+            <Text color="fg" fontWeight="600">
+              Result
+            </Text>
             <Text color="fg.subtle">·</Text>
             <Text color="ok">3 rows</Text>
             <Text color="fg.subtle">·</Text>
@@ -1238,7 +1875,14 @@ export function SchemaPreview() {
           <Box as="table" w="100%" style={{ borderCollapse: "collapse" }}>
             <Box as="thead">
               <Box as="tr" bg="bg.elevated" color="fg.muted">
-                {["#", "id", "provider_key", "tenant", "active", "created_at"].map((h) => (
+                {[
+                  "#",
+                  "id",
+                  "provider_key",
+                  "tenant",
+                  "active",
+                  "created_at",
+                ].map((h) => (
                   <Box
                     as="th"
                     key={h}
@@ -1257,9 +1901,22 @@ export function SchemaPreview() {
             </Box>
             <Box as="tbody">
               {rows.map((row, i) => (
-                <Box as="tr" key={i} borderBottom="1px solid" borderColor="border.subtle">
+                <Box
+                  as="tr"
+                  key={i}
+                  borderBottom="1px solid"
+                  borderColor="border.subtle"
+                >
                   {row.map((c, j) => (
-                    <Box as="td" key={j} px={2.5} py={1.5} color={j === 0 ? "fg.subtle" : "fg"} fontSize="11px" fontFamily="mono">
+                    <Box
+                      as="td"
+                      key={j}
+                      px={2.5}
+                      py={1.5}
+                      color={j === 0 ? "fg.subtle" : "fg"}
+                      fontSize="11px"
+                      fontFamily="mono"
+                    >
                       {c}
                     </Box>
                   ))}
@@ -1268,14 +1925,35 @@ export function SchemaPreview() {
             </Box>
           </Box>
           <Box flex="1" />
-          <Box px={3} py={2.5} borderTop="1px solid" borderColor="border" bg="bg.elevated" fontSize="10px">
-            <Text color="fg.subtle" fontWeight="700" letterSpacing="wide" mb={1}>
+          <Box
+            px={3}
+            py={2.5}
+            borderTop="1px solid"
+            borderColor="border"
+            bg="bg.elevated"
+            fontSize="10px"
+          >
+            <Text
+              color="fg.subtle"
+              fontWeight="700"
+              letterSpacing="wide"
+              mb={1}
+            >
               EXPLAIN ANALYZE
             </Text>
             <Text color="fg.muted" lineHeight="1.7">
-              ↳ <Text as="span" color="fg">Index Scan</Text> using{" "}
-              <Text as="span" color="accent.emphasized">idx_route_provider</Text>
-              {" "}· 0.42..18.7 · <Text as="span" color="ok">3 rows · 0.21ms</Text>
+              ↳{" "}
+              <Text as="span" color="fg">
+                Index Scan
+              </Text>{" "}
+              using{" "}
+              <Text as="span" color="accent.emphasized">
+                idx_route_provider
+              </Text>{" "}
+              · 0.42..18.7 ·{" "}
+              <Text as="span" color="ok">
+                3 rows · 0.21ms
+              </Text>
             </Text>
           </Box>
         </Flex>
@@ -1308,7 +1986,13 @@ export function GitDiffPreview() {
   ];
   type Kind = "ctx" | "del" | "add" | "hunk";
   const colorFor = (k: Kind) =>
-    k === "add" ? "ok" : k === "del" ? "err" : k === "hunk" ? "info" : "fg.subtle";
+    k === "add"
+      ? "ok"
+      : k === "del"
+        ? "err"
+        : k === "hunk"
+          ? "info"
+          : "fg.subtle";
   const bgFor = (k: Kind) =>
     k === "add"
       ? "color-mix(in oklch, var(--chakra-colors-ok) 14%, transparent)"
@@ -1344,7 +2028,9 @@ export function GitDiffPreview() {
         <Text color="fg.subtle">·</Text>
         <Text>3 changes · runbooks/payments/rollout-v2.3.md</Text>
         <Box flex="1" />
-        <Text color="accent.emphasized" fontWeight="600">+18 −4</Text>
+        <Text color="accent.emphasized" fontWeight="600">
+          +18 −4
+        </Text>
       </HStack>
       <Box fontFamily="mono" fontSize="11px" lineHeight="1.7">
         {lines.map(([sign, line, kind], i) => (
@@ -1358,7 +2044,9 @@ export function GitDiffPreview() {
               {sign}
             </Text>
             <Text
-              color={kind === "add" ? "fg" : kind === "hunk" ? "info" : "fg.muted"}
+              color={
+                kind === "add" ? "fg" : kind === "hunk" ? "info" : "fg.muted"
+              }
               fontStyle={kind === "hunk" ? "italic" : "normal"}
               bg={bgFor(kind)}
               px={1}

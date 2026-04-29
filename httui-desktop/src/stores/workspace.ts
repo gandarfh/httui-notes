@@ -84,8 +84,12 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
       openVault: async () => {
         try {
-          const { open: openDialog } = await import("@tauri-apps/plugin-dialog");
-          const selected = await openDialog({ directory: true, multiple: false });
+          const { open: openDialog } =
+            await import("@tauri-apps/plugin-dialog");
+          const selected = await openDialog({
+            directory: true,
+            multiple: false,
+          });
           if (selected) {
             await get().switchVault(selected as string);
           }
@@ -124,9 +128,8 @@ export function setupWorkspaceListeners() {
         status: status as "connected" | "disconnected",
       });
     }
-    const activeConnection = next.size > 0
-      ? Array.from(next.values()).pop() ?? null
-      : null;
+    const activeConnection =
+      next.size > 0 ? (Array.from(next.values()).pop() ?? null) : null;
     useWorkspaceStore.setState({ connections: next, activeConnection });
   });
 }

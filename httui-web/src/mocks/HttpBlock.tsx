@@ -1,7 +1,10 @@
 import { useState } from "react";
 import { Box, Flex, Badge, HStack, Text } from "@chakra-ui/react";
 import { ExecutableBlockShell } from "@/components/blocks/ExecutableBlockShell";
-import type { DisplayMode, ExecutionState } from "@/components/blocks/ExecutableBlock";
+import type {
+  DisplayMode,
+  ExecutionState,
+} from "@/components/blocks/ExecutableBlock";
 import { CodeBlock } from "./SyntaxHighlight";
 
 type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -36,8 +39,15 @@ interface MockHttpBlockProps {
   defaultMode?: DisplayMode;
 }
 
-
-function Tabs({ items, active, onSelect }: { items: string[]; active: string; onSelect: (t: string) => void }) {
+function Tabs({
+  items,
+  active,
+  onSelect,
+}: {
+  items: string[];
+  active: string;
+  onSelect: (t: string) => void;
+}) {
   return (
     <Flex borderBottom="1px solid" borderColor="border">
       {items.map((item) => (
@@ -72,7 +82,14 @@ function KeyValueRows({ items }: { items: KeyValue[] }) {
           fontSize="xs"
           fontFamily="mono"
         >
-          <Text px={3} py={1.5} color="fg.muted" w="40%" borderRight="1px solid" borderColor="border">
+          <Text
+            px={3}
+            py={1.5}
+            color="fg.muted"
+            w="40%"
+            borderRight="1px solid"
+            borderColor="border"
+          >
             {item.key}
           </Text>
           <Text px={3} py={1.5} color="fg">
@@ -102,40 +119,83 @@ export function MockHttpBlock({
 
   const inputSlot = (
     <Box>
-      <Flex align="center" gap={2} px={3} py={2} borderBottom="1px solid" borderColor="border">
-        <Badge size="sm" colorPalette={METHOD_COLORS[method]} variant="solid" fontFamily="mono" fontSize="xs">
+      <Flex
+        align="center"
+        gap={2}
+        px={3}
+        py={2}
+        borderBottom="1px solid"
+        borderColor="border"
+      >
+        <Badge
+          size="sm"
+          colorPalette={METHOD_COLORS[method]}
+          variant="solid"
+          fontFamily="mono"
+          fontSize="xs"
+        >
           {method}
         </Badge>
         <Text fontFamily="mono" fontSize="xs" color="fg.muted" flex={1}>
           {url}
         </Text>
       </Flex>
-      <Tabs items={["Params", "Headers", "Body", "Settings"]} active={activeTab} onSelect={setActiveTab} />
+      <Tabs
+        items={["Params", "Headers", "Body", "Settings"]}
+        active={activeTab}
+        onSelect={setActiveTab}
+      />
       {activeTab === "Headers" && headers && <KeyValueRows items={headers} />}
-      {activeTab === "Body" && body && <CodeBlock language="json">{body}</CodeBlock>}
+      {activeTab === "Body" && body && (
+        <CodeBlock language="json">{body}</CodeBlock>
+      )}
       {activeTab === "Params" && (
-        <Box px={3} py={3}><Text fontSize="xs" color="fg.muted">No query parameters</Text></Box>
+        <Box px={3} py={3}>
+          <Text fontSize="xs" color="fg.muted">
+            No query parameters
+          </Text>
+        </Box>
       )}
       {activeTab === "Settings" && (
-        <Box px={3} py={3}><Text fontSize="xs" color="fg.muted">Timeout: 30s (default)</Text></Box>
+        <Box px={3} py={3}>
+          <Text fontSize="xs" color="fg.muted">
+            Timeout: 30s (default)
+          </Text>
+        </Box>
       )}
     </Box>
   );
 
   const outputSlot = response ? (
     <Box>
-      <HStack gap={3} px={3} py={2} borderBottom="1px solid" borderColor="border">
+      <HStack
+        gap={3}
+        px={3}
+        py={2}
+        borderBottom="1px solid"
+        borderColor="border"
+      >
         <Badge
           size="sm"
           variant="subtle"
-          colorPalette={response.status < 300 ? "green" : response.status < 400 ? "yellow" : "red"}
+          colorPalette={
+            response.status < 300
+              ? "green"
+              : response.status < 400
+                ? "yellow"
+                : "red"
+          }
           fontFamily="mono"
           fontSize="xs"
         >
           {response.status} {response.statusText}
         </Badge>
-        <Text fontSize="xs" color="fg.muted">{response.elapsed}</Text>
-        <Text fontSize="xs" color="fg.muted">{response.size}</Text>
+        <Text fontSize="xs" color="fg.muted">
+          {response.elapsed}
+        </Text>
+        <Text fontSize="xs" color="fg.muted">
+          {response.size}
+        </Text>
       </HStack>
       <CodeBlock language="json">{response.body}</CodeBlock>
     </Box>

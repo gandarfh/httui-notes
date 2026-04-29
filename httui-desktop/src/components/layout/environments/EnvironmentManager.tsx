@@ -22,7 +22,9 @@ export function EnvironmentManager() {
   const switchEnvironment = useEnvironmentStore((s) => s.switchEnvironment);
   const createEnvironment = useEnvironmentStore((s) => s.createEnvironment);
   const deleteEnvironment = useEnvironmentStore((s) => s.deleteEnvironment);
-  const duplicateEnvironment = useEnvironmentStore((s) => s.duplicateEnvironment);
+  const duplicateEnvironment = useEnvironmentStore(
+    (s) => s.duplicateEnvironment,
+  );
   const loadVariables = useEnvironmentStore((s) => s.loadVariables);
   const setVariable = useEnvironmentStore((s) => s.setVariable);
   const deleteVariable = useEnvironmentStore((s) => s.deleteVariable);
@@ -36,7 +38,8 @@ export function EnvironmentManager() {
   // Select first environment on open or when list changes
   useEffect(() => {
     if (!managerOpen) return;
-    if (selectedEnvId && environments.some((e) => e.id === selectedEnvId)) return;
+    if (selectedEnvId && environments.some((e) => e.id === selectedEnvId))
+      return;
     setSelectedEnvId(environments[0]?.id ?? null);
   }, [managerOpen, environments, selectedEnvId]);
 
@@ -50,7 +53,9 @@ export function EnvironmentManager() {
     loadVariables(selectedEnvId).then((vars) => {
       if (!cancelled) setVariables(vars);
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [selectedEnvId, loadVariables]);
 
   const refreshVariables = useCallback(async () => {
@@ -241,7 +246,9 @@ export function EnvironmentManager() {
           <Box flex={1} overflow="auto" p={3}>
             {selectedEnvId ? (
               <VariablesEditor
-                envName={environments.find((e) => e.id === selectedEnvId)?.name ?? ""}
+                envName={
+                  environments.find((e) => e.id === selectedEnvId)?.name ?? ""
+                }
                 isActive={activeEnvironment?.id === selectedEnvId}
                 variables={variables}
                 revealedKeys={revealedKeys}
@@ -249,7 +256,8 @@ export function EnvironmentManager() {
                 onDuplicate={() =>
                   handleDuplicate(
                     selectedEnvId,
-                    environments.find((e) => e.id === selectedEnvId)?.name ?? "",
+                    environments.find((e) => e.id === selectedEnvId)?.name ??
+                      "",
                   )
                 }
                 onDelete={() => handleDelete(selectedEnvId)}
@@ -276,4 +284,3 @@ export function EnvironmentManager() {
     </Portal>
   );
 }
-

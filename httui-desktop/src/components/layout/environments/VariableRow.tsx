@@ -1,12 +1,6 @@
 import { useState } from "react";
 import { Box, Flex, IconButton, Input, Text } from "@chakra-ui/react";
-import {
-  LuEye,
-  LuEyeOff,
-  LuLock,
-  LuLockOpen,
-  LuX,
-} from "react-icons/lu";
+import { LuEye, LuEyeOff, LuLock, LuLockOpen, LuX } from "react-icons/lu";
 import type { EnvVariable } from "@/lib/tauri/commands";
 
 interface VariableRowProps {

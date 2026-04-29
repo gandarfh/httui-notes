@@ -1,4 +1,11 @@
-import { HStack, Text, Circle, IconButton, Menu, Portal } from "@chakra-ui/react";
+import {
+  HStack,
+  Text,
+  Circle,
+  IconButton,
+  Menu,
+  Portal,
+} from "@chakra-ui/react";
 import { LuX, LuGitCompareArrows } from "react-icons/lu";
 import type { TabState } from "@/types/pane";
 import { getTabId } from "@/types/pane";
@@ -37,7 +44,8 @@ export function TabBar({
     >
       {tabs.map((tab, index) => {
         const isActive = index === activeTab;
-        const rawName = tab.filePath.split("/").pop()?.replace(".md", "") ?? tab.filePath;
+        const rawName =
+          tab.filePath.split("/").pop()?.replace(".md", "") ?? tab.filePath;
         const isDiff = tab.kind === "diff";
         const fileName = isDiff ? `Diff: ${rawName}` : rawName;
 
@@ -64,11 +72,19 @@ export function TabBar({
                   }
                 }}
               >
-                {isDiff && <LuGitCompareArrows size={11} style={{ flexShrink: 0 }} />}
-                <Text fontSize="xs" color={isActive ? "fg" : "fg.subtle"} whiteSpace="nowrap">
+                {isDiff && (
+                  <LuGitCompareArrows size={11} style={{ flexShrink: 0 }} />
+                )}
+                <Text
+                  fontSize="xs"
+                  color={isActive ? "fg" : "fg.subtle"}
+                  whiteSpace="nowrap"
+                >
                   {fileName}
                 </Text>
-                {!isDiff && unsavedFiles.has(tab.filePath) && <Circle size="6px" bg="orange.400" />}
+                {!isDiff && unsavedFiles.has(tab.filePath) && (
+                  <Circle size="6px" bg="orange.400" />
+                )}
                 <IconButton
                   aria-label="Close tab"
                   variant="ghost"
@@ -92,7 +108,10 @@ export function TabBar({
                   <Menu.Item value="close" onSelect={() => onCloseTab(index)}>
                     Fechar
                   </Menu.Item>
-                  <Menu.Item value="close-others" onSelect={() => onCloseOthers(index)}>
+                  <Menu.Item
+                    value="close-others"
+                    onSelect={() => onCloseOthers(index)}
+                  >
                     Fechar outros
                   </Menu.Item>
                   <Menu.Item value="close-all" onSelect={onCloseAll}>

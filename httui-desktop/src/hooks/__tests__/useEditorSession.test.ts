@@ -83,10 +83,7 @@ describe("useEditorSession", () => {
     });
 
     it("uses cached content when available and not legacy HTML", async () => {
-      usePaneStore.getState().updateContent(
-        "cached.md",
-        "# already in memory",
-      );
+      usePaneStore.getState().updateContent("cached.md", "# already in memory");
       let readCalls = 0;
       mockTauriCommand("read_note", () => {
         readCalls++;

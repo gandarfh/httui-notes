@@ -1,4 +1,9 @@
-import { Annotation, RangeSetBuilder, StateField, Text as CMText } from "@codemirror/state";
+import {
+  Annotation,
+  RangeSetBuilder,
+  StateField,
+  Text as CMText,
+} from "@codemirror/state";
 import {
   Decoration,
   WidgetType,
@@ -170,7 +175,11 @@ class BlockWidget extends WidgetType {
   }
 }
 
-function buildDiffDecorations(doc: CMText, counterpartBlocks: FencedBlock[], side: "a" | "b"): DecorationSet {
+function buildDiffDecorations(
+  doc: CMText,
+  counterpartBlocks: FencedBlock[],
+  side: "a" | "b",
+): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   const blocks = findFencedBlocks(doc);
 
@@ -181,7 +190,10 @@ function buildDiffDecorations(doc: CMText, counterpartBlocks: FencedBlock[], sid
 
     const thisDisplay = extractDisplayContent(blockType, block.content);
     const counterpartDisplay = counterpart
-      ? extractDisplayContent(langToBlockType(counterpart.lang), counterpart.content)
+      ? extractDisplayContent(
+          langToBlockType(counterpart.lang),
+          counterpart.content,
+        )
       : null;
 
     builder.add(
@@ -189,7 +201,9 @@ function buildDiffDecorations(doc: CMText, counterpartBlocks: FencedBlock[], sid
       block.to,
       Decoration.replace({
         widget: new BlockWidget(
-          block.lang, block.info, block.content,
+          block.lang,
+          block.info,
+          block.content,
           counterpartDisplay !== thisDisplay ? counterpartDisplay : null,
           side,
         ),
@@ -205,7 +219,10 @@ function buildDiffDecorations(doc: CMText, counterpartBlocks: FencedBlock[], sid
  * Create a CodeMirror extension for the DiffViewer (read-only).
  * Uses Decoration.replace + createRoot (fine for read-only context).
  */
-export function createBlockWidgetPlugin(counterpartMarkdown: string | undefined, side: "a" | "b") {
+export function createBlockWidgetPlugin(
+  counterpartMarkdown: string | undefined,
+  side: "a" | "b",
+) {
   const counterpartBlocks = counterpartMarkdown
     ? findFencedBlocksFromString(counterpartMarkdown)
     : [];
@@ -231,7 +248,10 @@ export function createBlockWidgetPlugin(counterpartMarkdown: string | undefined,
  * React renders into these divs via createPortal (in WidgetPortals component).
  * CM6 owns the div and measures its height naturally — no height cache needed.
  */
-const widgetContainers = new Map<string, { element: HTMLElement; block: FencedBlock }>();
+const widgetContainers = new Map<
+  string,
+  { element: HTMLElement; block: FencedBlock }
+>();
 let portalVersion = 0;
 const portalListeners = new Set<() => void>();
 
@@ -242,10 +262,16 @@ function notifyPortals() {
 
 export function subscribeToPortals(cb: () => void) {
   portalListeners.add(cb);
-  return () => { portalListeners.delete(cb); };
+  return () => {
+    portalListeners.delete(cb);
+  };
 }
-export function getPortalVersion() { return portalVersion; }
-export function getWidgetContainers() { return widgetContainers; }
+export function getPortalVersion() {
+  return portalVersion;
+}
+export function getWidgetContainers() {
+  return widgetContainers;
+}
 
 /**
  * Portal widget — a div in CM6's document flow.
@@ -263,7 +289,10 @@ export function getWidgetContainers() { return widgetContainers; }
 const widgetHeights = new Map<string, number>();
 
 class PortalWidget extends WidgetType {
-  constructor(readonly blockId: string, readonly block: FencedBlock) {
+  constructor(
+    readonly blockId: string,
+    readonly block: FencedBlock,
+  ) {
     super();
   }
 
@@ -303,7 +332,10 @@ class PortalWidget extends WidgetType {
         shrinkRaf1 = requestAnimationFrame(() => {
           shrinkRaf2 = requestAnimationFrame(() => {
             const current = inner.offsetHeight;
-            if (current > 0 && current < (widgetHeights.get(this.blockId) ?? 0)) {
+            if (
+              current > 0 &&
+              current < (widgetHeights.get(this.blockId) ?? 0)
+            ) {
               widgetHeights.set(this.blockId, current);
               div.style.minHeight = `${current}px`;
             }
@@ -359,7 +391,9 @@ function getBlockId(_block: FencedBlock, index: number): string {
 
 const hiddenLineDecoration = Decoration.line({ class: "cm-hidden-block-line" });
 
-function buildEditorDecorations(state: import("@codemirror/state").EditorState): DecorationSet {
+function buildEditorDecorations(
+  state: import("@codemirror/state").EditorState,
+): DecorationSet {
   const decorations: { from: number; to: number; deco: Decoration }[] = [];
   // Filter to languages this adapter still handles. http blocks render via
   // `cm-http-block.tsx` and would clash if both extensions decorated them.

@@ -129,9 +129,7 @@ describe("useSessionPersistence", () => {
       const restoredLayout = {
         type: "leaf",
         id: "restored",
-        tabs: [
-          { filePath: "a.md", vaultPath: VAULT, kind: "file" as const },
-        ],
+        tabs: [{ filePath: "a.md", vaultPath: VAULT, kind: "file" as const }],
         activeTab: 0,
       };
       mockTauriCommand("restore_session", () =>

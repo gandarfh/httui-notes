@@ -117,17 +117,16 @@ function readCache(): GithubStats | null {
 function writeCache(data: GithubStats) {
   if (typeof localStorage === "undefined") return;
   try {
-    localStorage.setItem(
-      CACHE_KEY,
-      JSON.stringify({ ts: Date.now(), data }),
-    );
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data }));
   } catch {
     // ignore
   }
 }
 
 export function useGithubStats(): GithubStats {
-  const [stats, setStats] = useState<GithubStats>(() => readCache() ?? FALLBACK);
+  const [stats, setStats] = useState<GithubStats>(
+    () => readCache() ?? FALLBACK,
+  );
 
   useEffect(() => {
     let cancelled = false;

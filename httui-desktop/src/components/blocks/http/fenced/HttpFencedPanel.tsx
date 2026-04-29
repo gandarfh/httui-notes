@@ -13,14 +13,7 @@
  * are NEVER served from cache — they always re-execute.
  */
 
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Box,
@@ -470,7 +463,6 @@ function buildExecutorParams(
 // highlight + autocomplete, and avoid the per-keystroke re-emit pipeline
 // that would make the form feel laggy.)
 
-
 // ─────────────────────── Body tab dispatcher (Onda 2) ───────────────────────
 
 /**
@@ -626,7 +618,9 @@ function FormUrlEncodedTable({
   const deleteRow = useCallback(
     (displayIndex: number) => {
       if (displayIndex < rows.length) {
-        onCommit(stringifyUrlEncoded(rows.filter((_, idx) => idx !== displayIndex)));
+        onCommit(
+          stringifyUrlEncoded(rows.filter((_, idx) => idx !== displayIndex)),
+        );
         return;
       }
       const pIdx = displayIndex - rows.length;
@@ -800,9 +794,7 @@ function MultipartTable({
             type="checkbox"
             aria-label={`Toggle part ${i}`}
             checked={part.enabled}
-            onChange={(e) =>
-              updatePart(i, { enabled: e.target.checked })
-            }
+            onChange={(e) => updatePart(i, { enabled: e.target.checked })}
           />
           <Box flex={1}>
             <CommitOnBlurInput
@@ -1085,17 +1077,13 @@ function HttpBodyView({
         )}
       </HStack>
       {view === "pretty" && previewMeta.kind !== "none" && (
-        <HttpBodyPreview
-          meta={previewMeta}
-          sizeBytes={response.size_bytes}
-        />
+        <HttpBodyPreview meta={previewMeta} sizeBytes={response.size_bytes} />
       )}
       {view === "visualize" && visualizeData !== null && (
         <HttpJsonVisualizer data={visualizeData} />
       )}
-      {((view === "pretty" && previewMeta.kind === "none") ||
-        view === "raw") && (
-        text ? (
+      {((view === "pretty" && previewMeta.kind === "none") || view === "raw") &&
+        (text ? (
           <HttpBodyCM6Viewer
             text={text}
             // `pretty` view picks lang from the response Content-Type;
@@ -1103,9 +1091,9 @@ function HttpBodyView({
             // distorting non-pretty payloads like form-urlencoded).
             contentType={
               view === "pretty"
-                ? response.headers["content-type"] ??
+                ? (response.headers["content-type"] ??
                   response.headers["Content-Type"] ??
-                  null
+                  null)
                 : null
             }
           />
@@ -1113,8 +1101,7 @@ function HttpBodyView({
           <Box as="pre" fontFamily="mono" fontSize="xs" color="fg.muted">
             (empty body)
           </Box>
-        )
-      )}
+        ))}
     </>
   );
 }
@@ -1128,7 +1115,8 @@ type PreviewMeta =
   | { kind: "html"; html: string };
 
 function detectPreview(response: HttpResponseFull): PreviewMeta {
-  const ctRaw = response.headers["content-type"] ?? response.headers["Content-Type"] ?? "";
+  const ctRaw =
+    response.headers["content-type"] ?? response.headers["Content-Type"] ?? "";
   const ct = ctRaw.split(";")[0].trim().toLowerCase();
   const body = response.body;
 
@@ -1260,8 +1248,7 @@ function HttpBodyPreview({
 
   // PDF / HTML — richer placeholder card with icon + type + size + CTA.
   const Icon = meta.kind === "pdf" ? LuFileText : LuGlobe;
-  const typeLine =
-    meta.kind === "pdf" ? "PDF document" : "HTML page";
+  const typeLine = meta.kind === "pdf" ? "PDF document" : "HTML page";
 
   return (
     <>
@@ -1489,7 +1476,13 @@ function parseJsonForVisualize(prettyBody: string): unknown {
  * virtualizer can render a fixed number of rows regardless of payload size.
  */
 type JsonFlatNode =
-  | { kind: "leaf"; depth: number; path: string; label?: string; value: unknown }
+  | {
+      kind: "leaf";
+      depth: number;
+      path: string;
+      label?: string;
+      value: unknown;
+    }
   | {
       kind: "container-open";
       depth: number;
@@ -1665,11 +1658,7 @@ function HttpJsonVisualizer({ data }: { data: unknown }) {
       fontSize="xs"
       onClick={closeMenu}
     >
-      <Box
-        position="relative"
-        h={`${virtualizer.getTotalSize()}px`}
-        w="100%"
-      >
+      <Box position="relative" h={`${virtualizer.getTotalSize()}px`} w="100%">
         {virtualizer.getVirtualItems().map((vi) => {
           const node = flat[vi.index];
           if (!node) return null;
@@ -1758,11 +1747,7 @@ function JsonRow({
 }: {
   node: JsonFlatNode;
   onToggle: (path: string) => void;
-  onContextMenu: (
-    e: React.MouseEvent,
-    path: string,
-    value: unknown,
-  ) => void;
+  onContextMenu: (e: React.MouseEvent, path: string, value: unknown) => void;
 }) {
   // 12px per depth level + 8px gutter. Inline padding so virtualizer's
   // absolute positioning composes cleanly with the indent.
@@ -1862,9 +1847,7 @@ function detectLang(text: string, view: "pretty" | "raw"): string | null {
   return null;
 }
 
-
 // HttpStatusBar moved to ./HttpStatusBar.tsx
-
 
 // ─────────────────────── Main panel ───────────────────────
 
@@ -1888,7 +1871,10 @@ export const HttpFencedPanel = memo(function HttpFencedPanel({
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
   const [examples, setExamples] = useState<BlockExample[]>([]);
   const [examplesRefreshTick, setExamplesRefreshTick] = useState(0);
-  const [settings, setSettings] = useBlockSettings(filePath, block.metadata.alias);
+  const [settings, setSettings] = useBlockSettings(
+    filePath,
+    block.metadata.alias,
+  );
   // Tick incremented on every successful insert + on drawer-open so the
   // drawer's `useEffect` re-fetches without us coupling its dependency
   // array to a fast-changing array reference.
@@ -2051,9 +2037,7 @@ export const HttpFencedPanel = memo(function HttpFencedPanel({
         block.from,
         filePath,
       );
-      const envVars = await useEnvironmentStore
-        .getState()
-        .getActiveVariables();
+      const envVars = await useEnvironmentStore.getState().getActiveVariables();
 
       const resolveText = (text: string) =>
         resolveAllReferences(text, blocksAbove, block.from, envVars).resolved;
@@ -2305,9 +2289,7 @@ export const HttpFencedPanel = memo(function HttpFencedPanel({
             const defaultName = `${block.metadata.alias ?? "request"}.http`;
             const path = await saveDialog({
               defaultPath: defaultName,
-              filters: [
-                { name: "HTTP request", extensions: ["http", "rest"] },
-              ],
+              filters: [{ name: "HTTP request", extensions: ["http", "rest"] }],
             });
             if (!path) return;
             await writeFile(path, new TextEncoder().encode(snippet));
@@ -2430,14 +2412,7 @@ export const HttpFencedPanel = memo(function HttpFencedPanel({
         },
       });
     },
-    [
-      block.body,
-      block.metadata,
-      block.openLineFrom,
-      parsed,
-      replaceBody,
-      view,
-    ],
+    [block.body, block.metadata, block.openLineFrom, parsed, replaceBody, view],
   );
 
   const onPickBodyMode = useCallback(
@@ -2473,7 +2448,8 @@ export const HttpFencedPanel = memo(function HttpFencedPanel({
   const formNode = entry.form;
   const resultNode = entry.result;
   const statusbarNode = entry.statusbar;
-  const currentMode: "raw" | "form" = block.metadata.mode === "form" ? "form" : "raw";
+  const currentMode: "raw" | "form" =
+    block.metadata.mode === "form" ? "form" : "raw";
   const currentBodyMode = deriveBodyMode(parsed.headers);
 
   return (
@@ -2505,7 +2481,12 @@ export const HttpFencedPanel = memo(function HttpFencedPanel({
             onPickFile={pickFile}
             refsGetters={refsGetters}
             InlineCM={HttpInlineCM}
-            renderBodyTab={({ parsed: p, onCommit, onPickFile: pick, refsGetters: r }) => (
+            renderBodyTab={({
+              parsed: p,
+              onCommit,
+              onPickFile: pick,
+              refsGetters: r,
+            }) => (
               <HttpBodyByMode
                 bodyMode={currentBodyMode}
                 parsed={p}

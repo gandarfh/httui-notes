@@ -26,17 +26,14 @@ export function usePromptDialog() {
   const resolveRef = useRef<((val: string | null) => void) | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const prompt = useCallback(
-    (opts: PromptOptions): Promise<string | null> => {
-      return new Promise((resolve) => {
-        resolveRef.current = resolve;
-        setOptions(opts);
-        setValue(opts.defaultValue ?? "");
-        setOpen(true);
-      });
-    },
-    [],
-  );
+  const prompt = useCallback((opts: PromptOptions): Promise<string | null> => {
+    return new Promise((resolve) => {
+      resolveRef.current = resolve;
+      setOptions(opts);
+      setValue(opts.defaultValue ?? "");
+      setOpen(true);
+    });
+  }, []);
 
   const handleConfirm = useCallback(() => {
     const trimmed = value.trim();
@@ -73,9 +70,7 @@ export function usePromptDialog() {
             <Dialog.Body>
               <Stack gap={4}>
                 <Field.Root>
-                  {options.label && (
-                    <Field.Label>{options.label}</Field.Label>
-                  )}
+                  {options.label && <Field.Label>{options.label}</Field.Label>}
                   <Input
                     ref={inputRef}
                     value={value}

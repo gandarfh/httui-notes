@@ -14,7 +14,13 @@ import { normalizeDbResponse } from "@/components/blocks/db/types";
 
 /** Backend-emitted chunk on the execution channel. */
 export type DbChunk =
-  | { kind: "complete"; results: unknown[]; messages: unknown[]; stats: { elapsed_ms: number; rows_streamed?: number | null }; plan?: unknown }
+  | {
+      kind: "complete";
+      results: unknown[];
+      messages: unknown[];
+      stats: { elapsed_ms: number; rows_streamed?: number | null };
+      plan?: unknown;
+    }
   | { kind: "error"; message: string }
   | { kind: "cancelled" };
 
@@ -88,7 +94,10 @@ export async function executeDbStreamed(
     // The backend command itself failed (validation, pool unavailable). Return
     // an error outcome rather than rejecting — streamed API resolves with a
     // tagged outcome for a single consumer path.
-    return { status: "error", message: e instanceof Error ? e.message : String(e) };
+    return {
+      status: "error",
+      message: e instanceof Error ? e.message : String(e),
+    };
   }
 
   const result = await outcome;
@@ -262,7 +271,10 @@ export async function executeHttpStreamed(
     });
   } catch (e) {
     signal?.removeEventListener("abort", onAbort);
-    return { status: "error", message: e instanceof Error ? e.message : String(e) };
+    return {
+      status: "error",
+      message: e instanceof Error ? e.message : String(e),
+    };
   }
 
   const result = await outcome;
@@ -277,7 +289,10 @@ export async function executeHttpStreamed(
  * so cached results from older app versions keep working.
  */
 export function normalizeHttpResponse(raw: unknown): HttpResponseFull {
-  const obj = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const obj = (raw && typeof raw === "object" ? raw : {}) as Record<
+    string,
+    unknown
+  >;
 
   const status_code = typeof obj.status_code === "number" ? obj.status_code : 0;
   const status_text =
@@ -287,8 +302,7 @@ export function normalizeHttpResponse(raw: unknown): HttpResponseFull {
       ? (obj.headers as Record<string, string>)
       : {};
   const body = obj.body;
-  const size_bytes =
-    typeof obj.size_bytes === "number" ? obj.size_bytes : 0;
+  const size_bytes = typeof obj.size_bytes === "number" ? obj.size_bytes : 0;
   const elapsed_ms =
     typeof obj.elapsed_ms === "number"
       ? obj.elapsed_ms
@@ -304,9 +318,7 @@ export function normalizeHttpResponse(raw: unknown): HttpResponseFull {
       : null;
   const timing: HttpTimingBreakdown = {
     total_ms:
-      typeof rawTiming?.total_ms === "number"
-        ? rawTiming.total_ms
-        : elapsed_ms,
+      typeof rawTiming?.total_ms === "number" ? rawTiming.total_ms : elapsed_ms,
     dns_ms: rawTiming?.dns_ms ?? null,
     connect_ms: rawTiming?.connect_ms ?? null,
     tls_ms: rawTiming?.tls_ms ?? null,

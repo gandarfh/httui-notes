@@ -69,18 +69,13 @@ describe("VariablesEditor", () => {
   it("Delete button triggers onDelete", async () => {
     const user = userEvent.setup();
     const onDelete = vi.fn();
-    renderWithProviders(
-      <VariablesEditor {...baseProps} onDelete={onDelete} />,
-    );
+    renderWithProviders(<VariablesEditor {...baseProps} onDelete={onDelete} />);
 
     // Two delete-ish buttons may exist (env-level + per-variable). Filter env one
     // by aria-label "Delete" (without "variable").
     const deleteBtns = screen
       .getAllByRole("button")
-      .filter(
-        (b) =>
-          b.getAttribute("aria-label")?.toLowerCase() === "delete",
-      );
+      .filter((b) => b.getAttribute("aria-label")?.toLowerCase() === "delete");
     expect(deleteBtns).toHaveLength(1);
     await user.click(deleteBtns[0]);
     expect(onDelete).toHaveBeenCalledTimes(1);

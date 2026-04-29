@@ -73,7 +73,12 @@ export function DbSettingsDrawer({
           <Text fontWeight="bold" fontSize="sm">
             Block settings
           </Text>
-          <IconButton size="xs" variant="ghost" aria-label="Close" onClick={onClose}>
+          <IconButton
+            size="xs"
+            variant="ghost"
+            aria-label="Close"
+            onClick={onClose}
+          >
             <LuX />
           </IconButton>
         </Flex>
@@ -87,9 +92,7 @@ export function DbSettingsDrawer({
               size="sm"
               fontFamily="mono"
               value={metadata.alias ?? ""}
-              onChange={(e) =>
-                onUpdate({ alias: e.target.value || undefined })
-              }
+              onChange={(e) => onUpdate({ alias: e.target.value || undefined })}
             />
           </Box>
 
@@ -131,9 +134,12 @@ export function DbSettingsDrawer({
                 onClick={async () => {
                   const next = !activeConnection.is_readonly;
                   try {
-                    const updated = await updateConnection(activeConnection.id, {
-                      is_readonly: next,
-                    });
+                    const updated = await updateConnection(
+                      activeConnection.id,
+                      {
+                        is_readonly: next,
+                      },
+                    );
                     onConnectionsChanged(
                       connections.map((c) =>
                         c.id === updated.id ? updated : c,

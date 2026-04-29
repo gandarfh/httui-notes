@@ -62,7 +62,9 @@ describe("findHttpBlocks", () => {
 
   it("captures body text between fences", () => {
     const blocks = findHttpBlocks(Text.of(HTTP_DOC.split("\n")));
-    expect(blocks[0].body).toContain("GET https://api.example.com/users?page=1");
+    expect(blocks[0].body).toContain(
+      "GET https://api.example.com/users?page=1",
+    );
     expect(blocks[0].body).toContain("Authorization: Bearer xyz");
     expect(blocks[1].body).toContain("POST https://api.example.com/users");
     expect(blocks[1].body).toContain('{"name":"alice"}');

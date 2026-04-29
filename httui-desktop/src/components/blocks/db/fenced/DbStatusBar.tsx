@@ -159,12 +159,7 @@ export function DbStatusBar({
     >
       {/* Left cluster: connection state */}
       <HStack gap={2} align="center" flexShrink={0}>
-        <Box
-          boxSize="2"
-          borderRadius="full"
-          bg={dotColor}
-          flexShrink={0}
-        />
+        <Box boxSize="2" borderRadius="full" bg={dotColor} flexShrink={0} />
         {stateLabel && (
           <Text color="fg" fontWeight="500">
             {stateLabel}
@@ -172,12 +167,7 @@ export function DbStatusBar({
         )}
         {connection && (
           <>
-            <Box
-              as="span"
-              color="fg.muted"
-              opacity={0.5}
-              fontWeight="300"
-            >
+            <Box as="span" color="fg.muted" opacity={0.5} fontWeight="300">
               ·
             </Box>
             <Text color={connectionColor} fontWeight="500">
@@ -359,7 +349,12 @@ function ExportMenu({ response, query, alias }: ExportMenuProps) {
             {formatLabel[format]}
           </Text>
           {action === "save" && (
-            <Text fontSize="2xs" color="fg.muted" opacity={0.7} fontFamily="mono">
+            <Text
+              fontSize="2xs"
+              color="fg.muted"
+              opacity={0.7}
+              fontFamily="mono"
+            >
               {formatExtension[format]}
             </Text>
           )}

@@ -97,9 +97,7 @@ describe("computeHttpCacheHash", () => {
   it("includes only env vars actually referenced in the request", async () => {
     const withRef = {
       ...baseInput,
-      headers: [
-        { key: "Authorization", value: "Bearer {{TOKEN}}" },
-      ],
+      headers: [{ key: "Authorization", value: "Bearer {{TOKEN}}" }],
     };
     const env = { TOKEN: "abc", UNRELATED: "xyz" };
     const text = await computeHttpCacheHash(withRef, env);

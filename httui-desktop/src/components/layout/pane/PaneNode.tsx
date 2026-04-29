@@ -13,11 +13,21 @@ import { readNote } from "@/lib/tauri/commands";
 interface PaneNodeProps {
   layout: PaneLayout;
   path: number[];
-  handleEditorChange: (paneId: string, filePath: string, content: string, vaultPath: string) => void;
+  handleEditorChange: (
+    paneId: string,
+    filePath: string,
+    content: string,
+    vaultPath: string,
+  ) => void;
   onNavigateFile?: (filePath: string) => void;
 }
 
-export function PaneNode({ layout, path, handleEditorChange, onNavigateFile }: PaneNodeProps) {
+export function PaneNode({
+  layout,
+  path,
+  handleEditorChange,
+  onNavigateFile,
+}: PaneNodeProps) {
   const activePaneId = usePaneStore((s) => s.activePaneId);
   const editorContents = usePaneStore((s) => s.editorContents);
   const unsavedFiles = usePaneStore((s) => s.unsavedFiles);
@@ -86,24 +96,44 @@ export function PaneNode({ layout, path, handleEditorChange, onNavigateFile }: P
               <DiffViewer tab={activeTab} />
             </Box>
           ) : (
-          <Box flex={1} overflow="hidden" display="flex" flexDirection="column">
-            {hasConflict(activeTab.filePath) && (
-              <ConflictBanner
-                filePath={activeTab.filePath}
-                onReload={() => resolveConflict(activeTab.filePath, "reload", activeTab.vaultPath)}
-                onKeep={() => resolveConflict(activeTab.filePath, "keep", null)}
-              />
-            )}
-            <Box flex={1} overflow="hidden">
-              <MarkdownEditor
-                content={content}
-                onChange={(c) => handleEditorChange(layout.id, activeTab.filePath, c, activeTab.vaultPath)}
-                filePath={activeTab.filePath}
-                vimEnabled={vimEnabled}
-                onNavigateFile={onNavigateFile}
-              />
+            <Box
+              flex={1}
+              overflow="hidden"
+              display="flex"
+              flexDirection="column"
+            >
+              {hasConflict(activeTab.filePath) && (
+                <ConflictBanner
+                  filePath={activeTab.filePath}
+                  onReload={() =>
+                    resolveConflict(
+                      activeTab.filePath,
+                      "reload",
+                      activeTab.vaultPath,
+                    )
+                  }
+                  onKeep={() =>
+                    resolveConflict(activeTab.filePath, "keep", null)
+                  }
+                />
+              )}
+              <Box flex={1} overflow="hidden">
+                <MarkdownEditor
+                  content={content}
+                  onChange={(c) =>
+                    handleEditorChange(
+                      layout.id,
+                      activeTab.filePath,
+                      c,
+                      activeTab.vaultPath,
+                    )
+                  }
+                  filePath={activeTab.filePath}
+                  vimEnabled={vimEnabled}
+                  onNavigateFile={onNavigateFile}
+                />
+              </Box>
             </Box>
-          </Box>
           )
         ) : (
           <Flex flex={1} align="center" justify="center">
@@ -116,5 +146,12 @@ export function PaneNode({ layout, path, handleEditorChange, onNavigateFile }: P
     );
   }
 
-  return <SplitView layout={layout} path={path} handleEditorChange={handleEditorChange} onNavigateFile={onNavigateFile} />;
+  return (
+    <SplitView
+      layout={layout}
+      path={path}
+      handleEditorChange={handleEditorChange}
+      onNavigateFile={onNavigateFile}
+    />
+  );
 }

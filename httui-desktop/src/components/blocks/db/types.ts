@@ -134,7 +134,9 @@ export interface LegacyDbMutationResponse {
   rows_affected: number;
 }
 
-export type LegacyDbResponse = LegacyDbSelectResponse | LegacyDbMutationResponse;
+export type LegacyDbResponse =
+  | LegacyDbSelectResponse
+  | LegacyDbMutationResponse;
 
 function isLegacySelect(value: unknown): value is LegacyDbSelectResponse {
   if (!value || typeof value !== "object") return false;

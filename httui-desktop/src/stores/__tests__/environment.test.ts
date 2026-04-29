@@ -3,11 +3,7 @@ import { useEnvironmentStore } from "@/stores/environment";
 import { mockTauriCommand, clearTauriMocks } from "@/test/mocks/tauri";
 import type { Environment, EnvVariable } from "@/lib/tauri/commands";
 
-const mkEnv = (
-  id: string,
-  name: string,
-  isActive = false,
-): Environment => ({
+const mkEnv = (id: string, name: string, isActive = false): Environment => ({
   id,
   name,
   is_active: isActive,
@@ -175,9 +171,7 @@ describe("environmentStore", () => {
       const vars = [mkVar("v1", "a", "TOKEN", "abc")];
       mockTauriCommand("list_env_variables", () => vars);
 
-      const result = await useEnvironmentStore
-        .getState()
-        .loadVariables("a");
+      const result = await useEnvironmentStore.getState().loadVariables("a");
 
       expect(result).toEqual(vars);
     });
@@ -214,9 +208,7 @@ describe("environmentStore", () => {
         return mkVar("v1", "a", "S", "shh", true);
       });
 
-      await useEnvironmentStore
-        .getState()
-        .setVariable("a", "S", "shh", true);
+      await useEnvironmentStore.getState().setVariable("a", "S", "shh", true);
 
       expect((received as { isSecret: boolean }).isSecret).toBe(true);
     });

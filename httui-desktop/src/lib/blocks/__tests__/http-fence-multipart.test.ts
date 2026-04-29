@@ -46,9 +46,7 @@ describe("isBinaryFileBody", () => {
   });
 
   it("rejects multi-line bodies (mixed content)", () => {
-    expect(
-      isBinaryFileBody("< /tmp/x\nsome other text"),
-    ).toBeNull();
+    expect(isBinaryFileBody("< /tmp/x\nsome other text")).toBeNull();
   });
 
   it("tolerates trailing newlines on a single-line body", () => {

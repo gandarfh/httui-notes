@@ -76,7 +76,9 @@ export function navigateJson(data: unknown, path: string[]): unknown {
         throw new Error(`Expected numeric index for array, got "${key}"`);
       }
       if (index < 0 || index >= current.length) {
-        throw new Error(`Index ${index} out of bounds (length: ${current.length})`);
+        throw new Error(
+          `Index ${index} out of bounds (length: ${current.length})`,
+        );
       }
       current = current[index];
     } else if (typeof current === "object") {
@@ -85,7 +87,9 @@ export function navigateJson(data: unknown, path: string[]): unknown {
       }
       const obj = current as Record<string, unknown>;
       if (!(key in obj)) {
-        throw new Error(`Key "${key}" not found. Available: ${Object.keys(obj).join(", ")}`);
+        throw new Error(
+          `Key "${key}" not found. Available: ${Object.keys(obj).join(", ")}`,
+        );
       }
       current = obj[key];
     } else {
@@ -111,7 +115,9 @@ export function resolveReference(
   }
 
   if (block.pos >= currentPos) {
-    throw new Error(`Alias "${ref.alias}" is below current block (blocks can only reference blocks above)`);
+    throw new Error(
+      `Alias "${ref.alias}" is below current block (blocks can only reference blocks above)`,
+    );
   }
 
   if (!block.cachedResult) {
@@ -210,7 +216,8 @@ function makeDbResponseView(dbResponse: { results: unknown[] }): object {
         for (const k of DB_RESPONSE_PASSTHROUGH_KEYS) {
           if (k in raw) keys.push(k);
         }
-        for (let i = 0; i < dbResponse.results.length; i++) keys.push(String(i));
+        for (let i = 0; i < dbResponse.results.length; i++)
+          keys.push(String(i));
         const row = firstRow();
         if (row) keys.push(...Object.keys(row));
         return keys;
@@ -235,7 +242,11 @@ export function resolveAllReferences(
   blocks: BlockContext[],
   currentPos: number,
   envVariables?: Record<string, string>,
-): { resolved: string; errors: ReferenceError[]; warnings: ReferenceWarning[] } {
+): {
+  resolved: string;
+  errors: ReferenceError[];
+  warnings: ReferenceWarning[];
+} {
   const refs = parseReferences(text);
   if (refs.length === 0) {
     return { resolved: text, errors: [], warnings: [] };
@@ -252,7 +263,9 @@ export function resolveAllReferences(
       let value: string;
 
       // Try block reference first (block ref > env var when alias collides)
-      const matchingBlock = blocks.find((b) => b.alias === ref.alias && b.pos < currentPos);
+      const matchingBlock = blocks.find(
+        (b) => b.alias === ref.alias && b.pos < currentPos,
+      );
       if (matchingBlock) {
         // T37: Warn when block alias shadows an env var
         if (envVariables && ref.alias in envVariables) {
@@ -262,7 +275,11 @@ export function resolveAllReferences(
           });
         }
         value = resolveReference(ref, blocks, currentPos);
-      } else if (ref.path.length === 0 && envVariables && ref.alias in envVariables) {
+      } else if (
+        ref.path.length === 0 &&
+        envVariables &&
+        ref.alias in envVariables
+      ) {
         // Fallback to environment variable: {{KEY}} (no dots, no matching block)
         value = envVariables[ref.alias];
       } else {
@@ -301,7 +318,12 @@ export function resolveRefsToBindParams(
   blocks: BlockContext[],
   currentPos: number,
   envVariables?: Record<string, string>,
-): { sql: string; bindValues: unknown[]; errors: string[]; warnings: string[] } {
+): {
+  sql: string;
+  bindValues: unknown[];
+  errors: string[];
+  warnings: string[];
+} {
   const refs = parseReferences(query);
   const bindValues: unknown[] = [];
   const errors: string[] = [];
@@ -312,8 +334,16 @@ export function resolveRefsToBindParams(
   // Collect substitutions from end to start so positions stay valid.
   for (let i = refs.length - 1; i >= 0; i--) {
     const ref = refs[i];
-    const { resolved, errors: resolveErrors, warnings: resolveWarnings } =
-      resolveAllReferences(`{{${ref.raw.slice(2, -2).trim()}}}`, blocks, currentPos, envVariables);
+    const {
+      resolved,
+      errors: resolveErrors,
+      warnings: resolveWarnings,
+    } = resolveAllReferences(
+      `{{${ref.raw.slice(2, -2).trim()}}}`,
+      blocks,
+      currentPos,
+      envVariables,
+    );
 
     for (const e of resolveErrors) errors.push(e.message);
     for (const w of resolveWarnings) warnings.push(w.message);

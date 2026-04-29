@@ -1,4 +1,8 @@
-import { query, type Query, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import {
+  query,
+  type Query,
+  type SDKMessage,
+} from "@anthropic-ai/claude-agent-sdk";
 import type { ChatCommand, PermissionResponseCommand } from "../protocol.js";
 import { send, log } from "../protocol.js";
 
@@ -37,7 +41,9 @@ export async function handleChat(cmd: ChatCommand): Promise<void> {
 
     // When images are present, use SDKUserMessage format via async iterable
     // so the API receives the image content blocks
-    let prompt: string | AsyncIterable<import("@anthropic-ai/claude-agent-sdk").SDKUserMessage>;
+    let prompt:
+      | string
+      | AsyncIterable<import("@anthropic-ai/claude-agent-sdk").SDKUserMessage>;
     if (hasImages) {
       const messageContent = content.map((block) => {
         if (block.type === "text") {
@@ -75,7 +81,10 @@ export async function handleChat(cmd: ChatCommand): Promise<void> {
       const candidates = [
         path.resolve(process.cwd(), "target/debug/httui-mcp"),
         path.resolve(process.cwd(), "../target/debug/httui-mcp"),
-        path.resolve(import.meta.dirname ?? ".", "../../target/debug/httui-mcp"),
+        path.resolve(
+          import.meta.dirname ?? ".",
+          "../../target/debug/httui-mcp",
+        ),
       ];
       const fs = await import("fs");
       const mcpBinary = candidates.find((p) => fs.existsSync(p));
@@ -83,7 +92,10 @@ export async function handleChat(cmd: ChatCommand): Promise<void> {
         // Resolve the app database path (matches Tauri's app_data_dir for identifier "com.notes.app")
         const os = await import("os");
         const home = os.homedir();
-        const dbDir = path.join(home, "Library/Application Support/com.notes.app");
+        const dbDir = path.join(
+          home,
+          "Library/Application Support/com.notes.app",
+        );
         log("Using MCP binary:", mcpBinary, "db:", dbDir);
         mcpServers["httui_notes"] = {
           command: mcpBinary,
@@ -97,7 +109,9 @@ export async function handleChat(cmd: ChatCommand): Promise<void> {
     const q = query({
       prompt,
       options: {
-        ...(process.env.CLAUDE_CLI_PATH ? { pathToClaudeCodeExecutable: process.env.CLAUDE_CLI_PATH } : {}),
+        ...(process.env.CLAUDE_CLI_PATH
+          ? { pathToClaudeCodeExecutable: process.env.CLAUDE_CLI_PATH }
+          : {}),
         ...(claude_session_id ? { resume: claude_session_id } : {}),
         ...(cwd ? { cwd } : {}),
         allowedTools: allowed_tools,
@@ -269,7 +283,12 @@ Only fall back to file system tools if the MCP tools cannot accomplish the task.
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
 
-    let category: "auth" | "rate_limit" | "network" | "resume_failed" | "internal" = "internal";
+    let category:
+      | "auth"
+      | "rate_limit"
+      | "network"
+      | "resume_failed"
+      | "internal" = "internal";
     if (message.includes("auth") || message.includes("login")) {
       category = "auth";
     } else if (message.includes("rate") || message.includes("429")) {
@@ -281,7 +300,9 @@ Only fall back to file system tools if the MCP tools cannot accomplish the task.
       category = "network";
     } else if (
       message.includes("session") &&
-      (message.includes("not found") || message.includes("expired") || message.includes("invalid"))
+      (message.includes("not found") ||
+        message.includes("expired") ||
+        message.includes("invalid"))
     ) {
       category = "resume_failed";
     }
@@ -301,10 +322,10 @@ export function handleAbort(requestId: string): void {
   }
 }
 
-export function handlePermissionResponse(
-  cmd: PermissionResponseCommand
-): void {
-  log(`handlePermissionResponse id=${cmd.permission_id} behavior=${cmd.decision?.behavior} pending=${pendingPermissions.has(cmd.permission_id)}`);
+export function handlePermissionResponse(cmd: PermissionResponseCommand): void {
+  log(
+    `handlePermissionResponse id=${cmd.permission_id} behavior=${cmd.decision?.behavior} pending=${pendingPermissions.has(cmd.permission_id)}`,
+  );
   const pending = pendingPermissions.get(cmd.permission_id);
   if (pending) {
     pending.resolve(cmd.decision);

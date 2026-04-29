@@ -35,7 +35,12 @@ export function FileTreeNode({
   const [expanded, setExpanded] = useState(depth === 0);
   const [renaming, setRenaming] = useState(false);
 
-  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setDragRef,
+    isDragging,
+  } = useDraggable({
     id: `drag-${entry.path}`,
     data: { path: entry.path, name: entry.name },
   });
@@ -49,14 +54,12 @@ export function FileTreeNode({
   const activeLeaf = getActiveLeaf();
   const activeFile =
     activeLeaf && activeLeaf.tabs.length > 0
-      ? activeLeaf.tabs[activeLeaf.activeTab]?.filePath ?? null
+      ? (activeLeaf.tabs[activeLeaf.activeTab]?.filePath ?? null)
       : null;
   const isActive = !entry.is_dir && entry.path === activeFile;
 
   const showChildInline =
-    inlineCreate &&
-    entry.is_dir &&
-    inlineCreate.dirPath === entry.path;
+    inlineCreate && entry.is_dir && inlineCreate.dirPath === entry.path;
 
   const isExpanded = expanded || !!showChildInline;
 
@@ -128,8 +131,20 @@ export function FileTreeNode({
             gap={1.5}
             rounded="md"
             cursor={isDragging ? "grabbing" : "pointer"}
-            bg={isOver ? "brand.subtle" : isActive ? "bg.emphasized" : "transparent"}
-            _hover={{ bg: isOver ? "brand.subtle" : isActive ? "bg.emphasized" : "bg.subtle" }}
+            bg={
+              isOver
+                ? "brand.subtle"
+                : isActive
+                  ? "bg.emphasized"
+                  : "transparent"
+            }
+            _hover={{
+              bg: isOver
+                ? "brand.subtle"
+                : isActive
+                  ? "bg.emphasized"
+                  : "bg.subtle",
+            }}
             borderWidth={isOver ? "1px" : undefined}
             borderColor={isOver ? "brand.500" : undefined}
             borderStyle={isOver ? "dashed" : undefined}
@@ -205,11 +220,7 @@ export function FileTreeNode({
             />
           )}
           {entry.children?.map((child) => (
-            <FileTreeNode
-              key={child.path}
-              entry={child}
-              depth={depth + 1}
-            />
+            <FileTreeNode key={child.path} entry={child} depth={depth + 1} />
           ))}
         </VStack>
       )}

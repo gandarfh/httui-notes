@@ -2,7 +2,10 @@ import { describe, it, expect, vi } from "vitest";
 import { renderWithProviders, screen } from "@/test/render";
 import userEvent from "@testing-library/user-event";
 import { ExecutableBlockShell } from "@/components/blocks/ExecutableBlockShell";
-import type { DisplayMode, ExecutionState } from "@/components/blocks/ExecutableBlock";
+import type {
+  DisplayMode,
+  ExecutionState,
+} from "@/components/blocks/ExecutableBlock";
 
 const baseProps = {
   blockType: "http",
@@ -100,10 +103,7 @@ describe("ExecutableBlockShell", () => {
 
     it("renders the actual outputSlot when not idle", () => {
       renderWithProviders(
-        <ExecutableBlockShell
-          {...baseProps}
-          executionState="success"
-        />,
+        <ExecutableBlockShell {...baseProps} executionState="success" />,
       );
       expect(screen.getByTestId("output-slot")).toBeInTheDocument();
       expect(screen.queryByText("Run to see results")).not.toBeInTheDocument();
@@ -187,9 +187,7 @@ describe("ExecutableBlockShell", () => {
         <ExecutableBlockShell {...baseProps} onDelete={onDelete} />,
       );
 
-      await user.click(
-        screen.getByRole("button", { name: /delete block/i }),
-      );
+      await user.click(screen.getByRole("button", { name: /delete block/i }));
       expect(onDelete).toHaveBeenCalledTimes(1);
     });
   });

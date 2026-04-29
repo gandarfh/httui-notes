@@ -1,5 +1,10 @@
 import { useEffect, useRef } from "react";
-import { restoreSession, setConfig, startWatching, rebuildSearchIndex } from "@/lib/tauri/commands";
+import {
+  restoreSession,
+  setConfig,
+  startWatching,
+  rebuildSearchIndex,
+} from "@/lib/tauri/commands";
 import { usePaneStore } from "@/stores/pane";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useSettingsStore } from "@/stores/settings";
@@ -11,7 +16,9 @@ function filterDeletedTabs(
   existingFiles: Set<string>,
 ): PaneLayout {
   if (node.type === "leaf") {
-    const validTabs = node.tabs.filter((t) => t.kind !== "diff" && existingFiles.has(t.filePath));
+    const validTabs = node.tabs.filter(
+      (t) => t.kind !== "diff" && existingFiles.has(t.filePath),
+    );
     return {
       ...node,
       tabs: validTabs,
@@ -37,7 +44,8 @@ export function useSessionPersistence(): void {
         const session = await restoreSession();
 
         useWorkspaceStore.getState().setVaults(session.vaults);
-        if (session.vim_enabled) useSettingsStore.getState().setVimEnabled(true);
+        if (session.vim_enabled)
+          useSettingsStore.getState().setVimEnabled(true);
         useSettingsStore.getState().setSidebarOpen(session.sidebar_open);
 
         if (session.active_vault) {
@@ -61,19 +69,26 @@ export function useSessionPersistence(): void {
                 }
               }
 
-              const cleanedLayout = filterDeletedTabs(parsed, new Set(contents.keys()));
+              const cleanedLayout = filterDeletedTabs(
+                parsed,
+                new Set(contents.keys()),
+              );
               restoreLayout(cleanedLayout, session.active_pane_id, contents);
 
               // Restore scroll positions
               if (session.scroll_positions) {
                 try {
-                  const positions = JSON.parse(session.scroll_positions) as Record<string, number>;
+                  const positions = JSON.parse(
+                    session.scroll_positions,
+                  ) as Record<string, number>;
                   const newPositions = new Map(scrollPositions);
                   for (const [fp, pos] of Object.entries(positions)) {
                     newPositions.set(fp, pos);
                   }
                   usePaneStore.setState({ scrollPositions: newPositions });
-                } catch { /* invalid JSON, ignore */ }
+                } catch {
+                  /* invalid JSON, ignore */
+                }
               }
             } catch {
               // Invalid layout JSON, use default
@@ -98,10 +113,16 @@ export function useSessionPersistence(): void {
   useEffect(() => {
     return usePaneStore.subscribe((state, prevState) => {
       if (!sessionRestored.current) return;
-      if (state.layout !== prevState.layout || state.activePaneId !== prevState.activePaneId) {
+      if (
+        state.layout !== prevState.layout ||
+        state.activePaneId !== prevState.activePaneId
+      ) {
         setConfig("pane_layout", JSON.stringify(state.layout)).catch(() => {});
         setConfig("active_pane_id", state.activePaneId).catch(() => {});
-        setConfig("scroll_positions", JSON.stringify(Object.fromEntries(state.scrollPositions))).catch(() => {});
+        setConfig(
+          "scroll_positions",
+          JSON.stringify(Object.fromEntries(state.scrollPositions)),
+        ).catch(() => {});
       }
     });
   }, []);
@@ -111,10 +132,14 @@ export function useSessionPersistence(): void {
     return useSettingsStore.subscribe((state, prevState) => {
       if (!sessionRestored.current) return;
       if (state.vimEnabled !== prevState.vimEnabled) {
-        setConfig("vim_enabled", state.vimEnabled ? "true" : "false").catch(() => {});
+        setConfig("vim_enabled", state.vimEnabled ? "true" : "false").catch(
+          () => {},
+        );
       }
       if (state.sidebarOpen !== prevState.sidebarOpen) {
-        setConfig("sidebar_open", state.sidebarOpen ? "true" : "false").catch(() => {});
+        setConfig("sidebar_open", state.sidebarOpen ? "true" : "false").catch(
+          () => {},
+        );
       }
     });
   }, []);

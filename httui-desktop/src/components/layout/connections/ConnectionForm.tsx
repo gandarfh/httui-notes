@@ -11,10 +11,21 @@ import {
   Portal,
 } from "@chakra-ui/react";
 import { NativeSelectRoot, NativeSelectField } from "@chakra-ui/react";
-import { LuX, LuPlugZap, LuChevronDown, LuChevronRight, LuFolderOpen, LuDatabase, LuLock } from "react-icons/lu";
+import {
+  LuX,
+  LuPlugZap,
+  LuChevronDown,
+  LuChevronRight,
+  LuFolderOpen,
+  LuDatabase,
+  LuLock,
+} from "react-icons/lu";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Connection, CreateConnectionInput } from "@/lib/tauri/connections";
+import type {
+  Connection,
+  CreateConnectionInput,
+} from "@/lib/tauri/connections";
 import {
   createConnection,
   updateConnection,
@@ -28,7 +39,10 @@ interface ConnectionFormProps {
 
 type Driver = "postgres" | "mysql" | "sqlite";
 
-const DRIVER_CONFIG: Record<Driver, { label: string; color: string; defaultPort: string }> = {
+const DRIVER_CONFIG: Record<
+  Driver,
+  { label: string; color: string; defaultPort: string }
+> = {
   postgres: { label: "PostgreSQL", color: "blue", defaultPort: "5432" },
   mysql: { label: "MySQL", color: "orange", defaultPort: "3306" },
   sqlite: { label: "SQLite", color: "green", defaultPort: "" },
@@ -36,7 +50,13 @@ const DRIVER_CONFIG: Record<Driver, { label: string; color: string; defaultPort:
 
 const SSL_MODES = ["disable", "require", "verify-ca", "verify-full"];
 
-function buildConnectionPreview(driver: Driver, host: string, port: string, dbName: string, username: string): string {
+function buildConnectionPreview(
+  driver: Driver,
+  host: string,
+  port: string,
+  dbName: string,
+  username: string,
+): string {
   if (driver === "sqlite") return dbName || "path/to/database.db";
   const user = username || "user";
   const h = host || "localhost";
@@ -54,9 +74,7 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
     (connection?.driver as Driver) ?? "postgres",
   );
   const [host, setHost] = useState(connection?.host ?? "localhost");
-  const [port, setPort] = useState(
-    connection?.port?.toString() ?? "5432",
-  );
+  const [port, setPort] = useState(connection?.port?.toString() ?? "5432");
   const [dbName, setDbName] = useState(connection?.database_name ?? "");
   const [username, setUsername] = useState(connection?.username ?? "");
   const [password, setPassword] = useState("");
@@ -79,7 +97,9 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
 
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<"success" | "error" | null>(null);
+  const [testResult, setTestResult] = useState<"success" | "error" | null>(
+    null,
+  );
   const [testError, setTestError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -122,9 +142,21 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
       setSaving(false);
     }
   }, [
-    name, driver, host, port, dbName, username, password, sslMode,
-    timeoutMs, queryTimeoutMs, ttlSeconds, maxPoolSize,
-    isEdit, connection, onClose,
+    name,
+    driver,
+    host,
+    port,
+    dbName,
+    username,
+    password,
+    sslMode,
+    timeoutMs,
+    queryTimeoutMs,
+    ttlSeconds,
+    maxPoolSize,
+    isEdit,
+    connection,
+    onClose,
   ]);
 
   const handleTest = useCallback(async () => {
@@ -191,7 +223,13 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <Flex align="center" px={5} py={3} borderBottom="1px solid" borderColor="border">
+          <Flex
+            align="center"
+            px={5}
+            py={3}
+            borderBottom="1px solid"
+            borderColor="border"
+          >
             <HStack gap={2} flex={1}>
               <Box color={`${driverColor}.400`}>
                 <LuDatabase size={16} />
@@ -224,28 +262,31 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
 
               {/* Driver selector */}
               <HStack gap={1} p={0.5} bg="bg.subtle" rounded="md">
-                {(Object.entries(DRIVER_CONFIG) as [Driver, typeof DRIVER_CONFIG.postgres][]).map(
-                  ([key, cfg]) => (
-                    <Box
-                      key={key}
-                      as="button"
-                      flex={1}
-                      py={1.5}
-                      rounded="sm"
-                      fontSize="xs"
-                      fontWeight="medium"
-                      textAlign="center"
-                      bg={driver === key ? "bg" : "transparent"}
-                      color={driver === key ? `${cfg.color}.400` : "fg.muted"}
-                      shadow={driver === key ? "xs" : "none"}
-                      cursor="pointer"
-                      _hover={{ color: driver === key ? undefined : "fg" }}
-                      onClick={() => setDriver(key)}
-                    >
-                      {cfg.label}
-                    </Box>
-                  ),
-                )}
+                {(
+                  Object.entries(DRIVER_CONFIG) as [
+                    Driver,
+                    typeof DRIVER_CONFIG.postgres,
+                  ][]
+                ).map(([key, cfg]) => (
+                  <Box
+                    key={key}
+                    as="button"
+                    flex={1}
+                    py={1.5}
+                    rounded="sm"
+                    fontSize="xs"
+                    fontWeight="medium"
+                    textAlign="center"
+                    bg={driver === key ? "bg" : "transparent"}
+                    color={driver === key ? `${cfg.color}.400` : "fg.muted"}
+                    shadow={driver === key ? "xs" : "none"}
+                    cursor="pointer"
+                    _hover={{ color: driver === key ? undefined : "fg" }}
+                    onClick={() => setDriver(key)}
+                  >
+                    {cfg.label}
+                  </Box>
+                ))}
               </HStack>
             </VStack>
 
@@ -255,7 +296,9 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
                 {isSqlite ? (
                   /* SQLite: file path */
                   <Box>
-                    <Text fontSize="2xs" color="fg.muted" mb={1}>FILE PATH</Text>
+                    <Text fontSize="2xs" color="fg.muted" mb={1}>
+                      FILE PATH
+                    </Text>
                     <Flex gap={1}>
                       <Input
                         size="sm"
@@ -274,7 +317,10 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
                           const selected = await open({
                             multiple: false,
                             filters: [
-                              { name: "SQLite", extensions: ["db", "sqlite", "sqlite3"] },
+                              {
+                                name: "SQLite",
+                                extensions: ["db", "sqlite", "sqlite3"],
+                              },
                               { name: "All", extensions: ["*"] },
                             ],
                           });
@@ -290,7 +336,9 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
                     {/* Host + Port */}
                     <HStack gap={2}>
                       <Box flex={1}>
-                        <Text fontSize="2xs" color="fg.muted" mb={1}>HOST</Text>
+                        <Text fontSize="2xs" color="fg.muted" mb={1}>
+                          HOST
+                        </Text>
                         <Input
                           size="sm"
                           value={host}
@@ -299,7 +347,9 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
                         />
                       </Box>
                       <Box w="80px">
-                        <Text fontSize="2xs" color="fg.muted" mb={1}>PORT</Text>
+                        <Text fontSize="2xs" color="fg.muted" mb={1}>
+                          PORT
+                        </Text>
                         <Input
                           size="sm"
                           value={port}
@@ -311,7 +361,9 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
 
                     {/* Database */}
                     <Box>
-                      <Text fontSize="2xs" color="fg.muted" mb={1}>DATABASE</Text>
+                      <Text fontSize="2xs" color="fg.muted" mb={1}>
+                        DATABASE
+                      </Text>
                       <Input
                         size="sm"
                         value={dbName}
@@ -323,7 +375,9 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
                     {/* Username + Password */}
                     <HStack gap={2}>
                       <Box flex={1}>
-                        <Text fontSize="2xs" color="fg.muted" mb={1}>USERNAME</Text>
+                        <Text fontSize="2xs" color="fg.muted" mb={1}>
+                          USERNAME
+                        </Text>
                         <Input
                           size="sm"
                           value={username}
@@ -332,7 +386,9 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
                         />
                       </Box>
                       <Box flex={1}>
-                        <Text fontSize="2xs" color="fg.muted" mb={1}>PASSWORD</Text>
+                        <Text fontSize="2xs" color="fg.muted" mb={1}>
+                          PASSWORD
+                        </Text>
                         <HStack gap={0}>
                           <Input
                             size="sm"
@@ -361,14 +417,18 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
 
                     {/* SSL Mode */}
                     <Box>
-                      <Text fontSize="2xs" color="fg.muted" mb={1}>SSL</Text>
+                      <Text fontSize="2xs" color="fg.muted" mb={1}>
+                        SSL
+                      </Text>
                       <NativeSelectRoot size="sm">
                         <NativeSelectField
                           value={sslMode}
                           onChange={(e) => setSslMode(e.target.value)}
                         >
                           {SSL_MODES.map((m) => (
-                            <option key={m} value={m}>{m}</option>
+                            <option key={m} value={m}>
+                              {m}
+                            </option>
                           ))}
                         </NativeSelectField>
                       </NativeSelectRoot>
@@ -405,7 +465,11 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
                 onClick={() => setShowAdvanced(!showAdvanced)}
                 _hover={{ color: "fg" }}
               >
-                {showAdvanced ? <LuChevronDown size={12} /> : <LuChevronRight size={12} />}
+                {showAdvanced ? (
+                  <LuChevronDown size={12} />
+                ) : (
+                  <LuChevronRight size={12} />
+                )}
                 <Text fontSize="2xs">Advanced</Text>
               </Flex>
 
@@ -414,7 +478,9 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
                   <VStack gap={2} align="stretch">
                     <HStack gap={2}>
                       <Box flex={1}>
-                        <Text fontSize="2xs" color="fg.muted" mb={1}>CONNECT TIMEOUT</Text>
+                        <Text fontSize="2xs" color="fg.muted" mb={1}>
+                          CONNECT TIMEOUT
+                        </Text>
                         <Input
                           size="sm"
                           value={timeoutMs}
@@ -423,7 +489,9 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
                         />
                       </Box>
                       <Box flex={1}>
-                        <Text fontSize="2xs" color="fg.muted" mb={1}>QUERY TIMEOUT</Text>
+                        <Text fontSize="2xs" color="fg.muted" mb={1}>
+                          QUERY TIMEOUT
+                        </Text>
                         <Input
                           size="sm"
                           value={queryTimeoutMs}
@@ -434,7 +502,9 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
                     </HStack>
                     <HStack gap={2}>
                       <Box flex={1}>
-                        <Text fontSize="2xs" color="fg.muted" mb={1}>TTL (SECONDS)</Text>
+                        <Text fontSize="2xs" color="fg.muted" mb={1}>
+                          TTL (SECONDS)
+                        </Text>
                         <Input
                           size="sm"
                           value={ttlSeconds}
@@ -443,7 +513,9 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
                         />
                       </Box>
                       <Box flex={1}>
-                        <Text fontSize="2xs" color="fg.muted" mb={1}>MAX POOL SIZE</Text>
+                        <Text fontSize="2xs" color="fg.muted" mb={1}>
+                          MAX POOL SIZE
+                        </Text>
                         <Input
                           size="sm"
                           value={maxPoolSize}
@@ -478,7 +550,14 @@ export function ConnectionForm({ connection, onClose }: ConnectionFormProps) {
             {/* Error */}
             {error && (
               <Box mx={4} mb={3}>
-                <Badge colorPalette="red" variant="subtle" px={2} py={1} fontSize="xs" w="100%">
+                <Badge
+                  colorPalette="red"
+                  variant="subtle"
+                  px={2}
+                  py={1}
+                  fontSize="xs"
+                  w="100%"
+                >
                   {error}
                 </Badge>
               </Box>

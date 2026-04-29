@@ -23,7 +23,10 @@ interface ParsedContent {
   fullText: string;
 }
 
-function parseMessageContent(contentJson: string, toolCalls: ChatToolCall[]): ParsedContent {
+function parseMessageContent(
+  contentJson: string,
+  toolCalls: ChatToolCall[],
+): ParsedContent {
   try {
     const blocks: ContentBlock[] = JSON.parse(contentJson);
     if (Array.isArray(blocks)) {
@@ -44,17 +47,31 @@ function parseMessageContent(contentJson: string, toolCalls: ChatToolCall[]): Pa
 
       // Backward compat: old messages have single text block + separate tool_calls
       // If there are tool_calls but no tool_group segments, append one at the end
-      if (toolCalls.length > 0 && !segments.some((s) => s.type === "tool_group")) {
-        segments.push({ type: "tool_group", toolUseIds: toolCalls.map((tc) => tc.tool_use_id) });
+      if (
+        toolCalls.length > 0 &&
+        !segments.some((s) => s.type === "tool_group")
+      ) {
+        segments.push({
+          type: "tool_group",
+          toolUseIds: toolCalls.map((tc) => tc.tool_use_id),
+        });
       }
 
       return { segments, images, fullText: textParts.join("\n") };
     }
     if (typeof blocks === "string") {
-      return { segments: [{ type: "text", text: blocks }], images: [], fullText: blocks };
+      return {
+        segments: [{ type: "text", text: blocks }],
+        images: [],
+        fullText: blocks,
+      };
     }
   } catch {
-    return { segments: [{ type: "text", text: contentJson }], images: [], fullText: contentJson };
+    return {
+      segments: [{ type: "text", text: contentJson }],
+      images: [],
+      fullText: contentJson,
+    };
   }
   return { segments: [], images: [], fullText: "" };
 }
@@ -62,7 +79,10 @@ function parseMessageContent(contentJson: string, toolCalls: ChatToolCall[]): Pa
 function formatTimestamp(unixSeconds: number): string {
   const date = new Date(unixSeconds * 1000);
   const now = new Date();
-  const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const time = date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const msgDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -150,18 +170,32 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
               }}
             />
             <HStack justify="flex-end" mt={1} gap={1}>
-              <Text fontSize="2xs" color="fg.muted">Esc cancel · Cmd+Enter send</Text>
+              <Text fontSize="2xs" color="fg.muted">
+                Esc cancel · Cmd+Enter send
+              </Text>
               <Box
                 as="button"
-                px={2} py={0.5} rounded="sm" fontSize="xs" bg="bg.subtle"
-                border="1px solid" borderColor="border" cursor="pointer"
+                px={2}
+                py={0.5}
+                rounded="sm"
+                fontSize="xs"
+                bg="bg.subtle"
+                border="1px solid"
+                borderColor="border"
+                cursor="pointer"
                 onClick={() => setEditing(false)}
               >
                 Cancel
               </Box>
               <Box
                 as="button"
-                px={2} py={0.5} rounded="sm" fontSize="xs" bg="brand.500" color="white" cursor="pointer"
+                px={2}
+                py={0.5}
+                rounded="sm"
+                fontSize="xs"
+                bg="brand.500"
+                color="white"
+                cursor="pointer"
                 onClick={confirmEdit}
               >
                 Send
@@ -173,7 +207,13 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
     }
 
     return (
-      <Box display="flex" justifyContent="flex-end" px={3} py={1.5} role="group">
+      <Box
+        display="flex"
+        justifyContent="flex-end"
+        px={3}
+        py={1.5}
+        role="group"
+      >
         {onEdit && message.id > 0 && (
           <IconButton
             aria-label="Edit message"
@@ -227,12 +267,15 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
   }
 
   // Assistant message — render segments in order
-  const segments = streamingSegments && streamingSegments.length > 0
-    ? streamingSegments
-    : parsed.segments;
+  const segments =
+    streamingSegments && streamingSegments.length > 0
+      ? streamingSegments
+      : parsed.segments;
 
   // Build a map of tool_use_id -> ChatToolCall for quick lookup
-  const toolCallMap = new Map(message.tool_calls.map((tc) => [tc.tool_use_id, tc]));
+  const toolCallMap = new Map(
+    message.tool_calls.map((tc) => [tc.tool_use_id, tc]),
+  );
 
   return (
     <Box px={3} py={1.5}>
@@ -264,7 +307,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
               ? new Map(
                   seg.toolUseIds
                     .filter((id) => toolActivity.has(id))
-                    .map((id) => [id, toolActivity.get(id)!])
+                    .map((id) => [id, toolActivity.get(id)!]),
                 )
               : undefined;
             return (

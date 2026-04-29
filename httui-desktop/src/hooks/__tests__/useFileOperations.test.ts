@@ -12,8 +12,7 @@ function setup(opts?: {
   const refreshFileTree = vi.fn(async () => {});
   const onFileCreated = opts?.onFileCreated ?? vi.fn();
   // Use `in` so null is preserved (?? would coerce null → default)
-  const vaultPath =
-    opts && "vaultPath" in opts ? opts.vaultPath : VAULT;
+  const vaultPath = opts && "vaultPath" in opts ? opts.vaultPath : VAULT;
   const hook = renderHook(() =>
     useFileOperations({
       vaultPath: vaultPath ?? null,

@@ -32,7 +32,14 @@ function shortName(name: string): string {
 function toolIcon(name: string) {
   const n = name.toLowerCase();
   if (n.includes("read") || n.includes("cat")) return LuFileText;
-  if (n.includes("write") || n.includes("edit") || n.includes("create") || n.includes("update") || n.includes("delete")) return LuPencil;
+  if (
+    n.includes("write") ||
+    n.includes("edit") ||
+    n.includes("create") ||
+    n.includes("update") ||
+    n.includes("delete")
+  )
+    return LuPencil;
   if (n.includes("grep") || n.includes("search")) return LuSearch;
   if (n.includes("glob") || n.includes("list")) return LuFolderSearch;
   if (n.includes("bash") || n.includes("exec")) return LuTerminal;
@@ -88,12 +95,7 @@ export const ToolUseBlock = memo(function ToolUseBlock({
   const summary = inlineSummary(input);
 
   return (
-    <Box
-      rounded="md"
-      overflow="hidden"
-      my={0.5}
-      fontSize="xs"
-    >
+    <Box rounded="md" overflow="hidden" my={0.5} fontSize="xs">
       {/* Header */}
       <HStack
         px={1.5}
@@ -105,7 +107,10 @@ export const ToolUseBlock = memo(function ToolUseBlock({
         _hover={{ bg: "bg.subtle" }}
       >
         <Box color={statusColor} flexShrink={0}>
-          <StatusIcon size={11} className={isPending ? "animate-spin" : undefined} />
+          <StatusIcon
+            size={11}
+            className={isPending ? "animate-spin" : undefined}
+          />
         </Box>
         <Box color="fg.muted" flexShrink={0}>
           <ToolIcon size={11} />
@@ -119,7 +124,11 @@ export const ToolUseBlock = memo(function ToolUseBlock({
           </Text>
         )}
         <Box color="fg.muted" flexShrink={0}>
-          {expanded ? <LuChevronDown size={10} /> : <LuChevronRight size={10} />}
+          {expanded ? (
+            <LuChevronDown size={10} />
+          ) : (
+            <LuChevronRight size={10} />
+          )}
         </Box>
       </HStack>
 
@@ -150,7 +159,12 @@ export const ToolUseBlock = memo(function ToolUseBlock({
           {/* Result */}
           {result && (
             <>
-              <Text fontSize="2xs" color="fg.muted" fontWeight="semibold" mb={0.5}>
+              <Text
+                fontSize="2xs"
+                color="fg.muted"
+                fontWeight="semibold"
+                mb={0.5}
+              >
                 Result
               </Text>
               <Box
@@ -169,7 +183,9 @@ export const ToolUseBlock = memo(function ToolUseBlock({
                 overflowY="auto"
                 color={isError ? "red.400" : undefined}
               >
-                {result.length > 2000 ? result.slice(0, 2000) + "\n... (truncated)" : result}
+                {result.length > 2000
+                  ? result.slice(0, 2000) + "\n... (truncated)"
+                  : result}
               </Box>
             </>
           )}

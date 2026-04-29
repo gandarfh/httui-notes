@@ -38,7 +38,10 @@ const autocompleteTheme = EditorView.baseTheme({
  * Find the start of the current `{{...` expression before the cursor.
  * Returns null if the cursor is not inside a `{{` expression.
  */
-function findRefStart(text: string, pos: number): { from: number; inner: string } | null {
+function findRefStart(
+  text: string,
+  pos: number,
+): { from: number; inner: string } | null {
   // Look backwards for `{{`
   const before = text.slice(0, pos);
   const openIdx = before.lastIndexOf("{{");
@@ -109,7 +112,8 @@ function getKeysAtPath(data: unknown, pathParts: string[]): Completion[] {
 
 function summarizeValue(val: unknown): string {
   if (val == null) return "null";
-  if (typeof val === "string") return val.length > 30 ? `"${val.slice(0, 30)}..."` : `"${val}"`;
+  if (typeof val === "string")
+    return val.length > 30 ? `"${val.slice(0, 30)}..."` : `"${val}"`;
   if (typeof val === "number" || typeof val === "boolean") return String(val);
   if (Array.isArray(val)) return `Array(${val.length})`;
   if (typeof val === "object") return `{${Object.keys(val).length} keys}`;

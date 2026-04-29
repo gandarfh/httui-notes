@@ -105,7 +105,8 @@ export function parseDbFenceInfo(info: string): DbBlockMetadata | null {
 export function stringifyDbFenceInfo(meta: DbBlockMetadata): string {
   const parts: string[] = [DIALECT_TO_TOKEN[meta.dialect]];
   if (meta.alias !== undefined) parts.push(`alias=${meta.alias}`);
-  if (meta.connection !== undefined) parts.push(`connection=${meta.connection}`);
+  if (meta.connection !== undefined)
+    parts.push(`connection=${meta.connection}`);
   if (meta.limit !== undefined) parts.push(`limit=${meta.limit}`);
   if (meta.timeoutMs !== undefined) parts.push(`timeout=${meta.timeoutMs}`);
   if (meta.displayMode !== undefined) parts.push(`display=${meta.displayMode}`);

@@ -98,11 +98,7 @@ describe("HttpResultTabs — early returns", () => {
 
   it("idle → 'No response yet'", () => {
     renderWithProviders(
-      <HttpResultTabs
-        {...baseProps}
-        executionState="idle"
-        response={null}
-      />,
+      <HttpResultTabs {...baseProps} executionState="idle" response={null} />,
     );
     expect(screen.getByText(/No response yet/)).toBeInTheDocument();
   });
@@ -142,9 +138,7 @@ describe("HttpResultTabs — tabs", () => {
       ),
     );
 
-    renderWithProviders(
-      <HttpResultTabs {...baseProps} bodyView={bodyView} />,
-    );
+    renderWithProviders(<HttpResultTabs {...baseProps} bodyView={bodyView} />);
 
     // Default tab is Body — bodyView should have been invoked
     expect(bodyView).toHaveBeenCalled();
@@ -165,10 +159,7 @@ describe("HttpResultTabs — tabs", () => {
   it("Headers tab empty state", async () => {
     const user = userEvent.setup();
     renderWithProviders(
-      <HttpResultTabs
-        {...baseProps}
-        response={mkResponse({ headers: {} })}
-      />,
+      <HttpResultTabs {...baseProps} response={mkResponse({ headers: {} })} />,
     );
 
     await user.click(screen.getByRole("tab", { name: "Headers (0)" }));
@@ -180,9 +171,7 @@ describe("HttpResultTabs — tabs", () => {
     renderWithProviders(<HttpResultTabs {...baseProps} />);
 
     await user.click(screen.getByRole("tab", { name: "Cookies (0)" }));
-    expect(
-      screen.getByText(/no Set-Cookie headers/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/no Set-Cookie headers/i)).toBeInTheDocument();
   });
 
   it("Cookies tab renders cookie rows when present", async () => {

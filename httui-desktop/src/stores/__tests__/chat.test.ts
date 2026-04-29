@@ -96,7 +96,9 @@ describe("chatStore", () => {
       await useChatStore.getState().initSessions();
 
       expect(useChatStore.getState().activeSessionId).toBe(1);
-      expect(useChatStore.getState().activeSession?.title).toBe("Nova conversa");
+      expect(useChatStore.getState().activeSession?.title).toBe(
+        "Nova conversa",
+      );
     });
 
     it("creates a new session when first is not 'Nova conversa'", async () => {
@@ -336,9 +338,9 @@ describe("chatStore", () => {
       });
       useChatStore.setState({ activeSessionId: 1 });
 
-      await useChatStore.getState().sendMessage("", [
-        { media_type: "image/png", path: "/tmp/x.png" },
-      ]);
+      await useChatStore
+        .getState()
+        .sendMessage("", [{ media_type: "image/png", path: "/tmp/x.png" }]);
       expect(sent).toBe(true);
     });
 
@@ -651,9 +653,7 @@ describe("chatStore", () => {
     });
 
     it("chat:session-updated triggers refreshSessions", async () => {
-      mockTauriCommand("list_chat_sessions", () => [
-        mkSession(1, "Updated"),
-      ]);
+      mockTauriCommand("list_chat_sessions", () => [mkSession(1, "Updated")]);
       useChatStore.setState({ activeSessionId: 1 });
 
       setupChatListeners();

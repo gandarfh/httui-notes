@@ -4,4 +4,9 @@
 // the node itself is unused, but the types are still the single source of
 // truth for the block UI vocabulary.
 export type DisplayMode = "input" | "output" | "split";
-export type ExecutionState = "idle" | "running" | "success" | "error" | "cached";
+export type ExecutionState =
+  | "idle"
+  | "running"
+  | "success"
+  | "error"
+  | "cached";

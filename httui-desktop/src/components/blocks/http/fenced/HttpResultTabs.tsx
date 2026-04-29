@@ -71,9 +71,7 @@ export function HttpResultTabs({
 
   const prettyBody = bodyAsText(response.body);
   const rawBody =
-    typeof response.body === "string"
-      ? response.body
-      : prettyBody; // For parsed JSON we don't have the original raw text, so reuse pretty.
+    typeof response.body === "string" ? response.body : prettyBody; // For parsed JSON we don't have the original raw text, so reuse pretty.
   const headerEntries = Object.entries(response.headers);
 
   return (

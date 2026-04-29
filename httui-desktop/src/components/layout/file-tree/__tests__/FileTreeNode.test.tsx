@@ -1,8 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import {
-  ChakraProvider,
-  defaultSystem,
-} from "@chakra-ui/react";
+import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 import { render, screen } from "@testing-library/react";
 import { DndContext } from "@dnd-kit/core";
 import {
@@ -106,11 +103,9 @@ describe("FileTreeNode", () => {
   });
 
   it("renders inline child input (textbox) when inlineCreate matches the folder", () => {
-    renderTree(
-      folderEntry,
-      0,
-      { inlineCreate: { type: "note", dirPath: "folder" } },
-    );
+    renderTree(folderEntry, 0, {
+      inlineCreate: { type: "note", dirPath: "folder" },
+    });
 
     // InlineInput renders a Chakra Input; query by role
     expect(screen.getByRole("textbox")).toBeInTheDocument();

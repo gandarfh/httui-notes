@@ -10,7 +10,14 @@ import { common, createLowlight } from "lowlight";
 const lowlight = createLowlight(common);
 
 function hastToHtml(nodes: unknown[]): string {
-  return (nodes as Array<{ type: string; value?: string; properties?: { className?: string[] }; children?: unknown[] }>)
+  return (
+    nodes as Array<{
+      type: string;
+      value?: string;
+      properties?: { className?: string[] };
+      children?: unknown[];
+    }>
+  )
     .map((node) => {
       if (node.type === "text") return node.value ?? "";
       if (node.type === "element") {
@@ -62,7 +69,9 @@ function CodeBlock({
   let highlighted = code;
   try {
     if (lang && lowlight.registered(lang)) {
-      highlighted = hastToHtml(lowlight.highlight(lang, code).children as unknown[]);
+      highlighted = hastToHtml(
+        lowlight.highlight(lang, code).children as unknown[],
+      );
     }
   } catch {
     // Fallback to plain text
@@ -109,7 +118,9 @@ interface ChatMarkdownProps {
   content: string;
 }
 
-export const ChatMarkdown = memo(function ChatMarkdown({ content }: ChatMarkdownProps) {
+export const ChatMarkdown = memo(function ChatMarkdown({
+  content,
+}: ChatMarkdownProps) {
   return (
     <Box
       fontSize="sm"
@@ -141,17 +152,27 @@ export const ChatMarkdown = memo(function ChatMarkdown({ content }: ChatMarkdown
           py: "4px",
           textAlign: "left",
         },
-        "& th": { bg: "var(--chakra-colors-bg-subtle)", fontWeight: "semibold" },
+        "& th": {
+          bg: "var(--chakra-colors-bg-subtle)",
+          fontWeight: "semibold",
+        },
         "& a": { color: "blue.400", textDecoration: "underline" },
         "& hr": { borderColor: "var(--chakra-colors-border)", my: "12px" },
         "& input[type='checkbox']": { mr: "6px" },
         // highlight.js classes
         "& .hljs-keyword": { color: "var(--chakra-colors-purple-400)" },
         "& .hljs-string": { color: "var(--chakra-colors-green-400)" },
-        "& .hljs-comment": { color: "var(--chakra-colors-fg-muted)", fontStyle: "italic" },
+        "& .hljs-comment": {
+          color: "var(--chakra-colors-fg-muted)",
+          fontStyle: "italic",
+        },
         "& .hljs-number": { color: "var(--chakra-colors-orange-400)" },
-        "& .hljs-type, & .hljs-built_in": { color: "var(--chakra-colors-cyan-400)" },
-        "& .hljs-attr, & .hljs-attribute": { color: "var(--chakra-colors-blue-400)" },
+        "& .hljs-type, & .hljs-built_in": {
+          color: "var(--chakra-colors-cyan-400)",
+        },
+        "& .hljs-attr, & .hljs-attribute": {
+          color: "var(--chakra-colors-blue-400)",
+        },
         "& .hljs-literal": { color: "var(--chakra-colors-red-400)" },
         "& .hljs-title": { color: "var(--chakra-colors-yellow-400)" },
       }}
@@ -175,7 +196,9 @@ export const ChatMarkdown = memo(function ChatMarkdown({ content }: ChatMarkdown
               onClick={(e) => {
                 e.preventDefault();
                 if (href) {
-                  import("@tauri-apps/plugin-shell").then((mod) => mod.open(href));
+                  import("@tauri-apps/plugin-shell").then((mod) =>
+                    mod.open(href),
+                  );
                 }
               }}
             >

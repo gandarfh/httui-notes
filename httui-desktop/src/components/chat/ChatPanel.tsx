@@ -1,6 +1,12 @@
 import { useCallback, useState } from "react";
 import { Box, Flex, HStack, Text, IconButton } from "@chakra-ui/react";
-import { LuMessageSquare, LuHistory, LuSettings, LuFolderOpen, LuChartColumn } from "react-icons/lu";
+import {
+  LuMessageSquare,
+  LuHistory,
+  LuSettings,
+  LuFolderOpen,
+  LuChartColumn,
+} from "react-icons/lu";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useChatStore } from "@/stores/chat";
 import { ChatSessionList } from "./ChatSessionList";
@@ -47,7 +53,12 @@ export function ChatPanel({ width }: ChatPanelProps) {
       overflow="hidden"
     >
       {/* Tab bar */}
-      <HStack gap={0} borderBottom="1px solid" borderColor="border" flexShrink={0}>
+      <HStack
+        gap={0}
+        borderBottom="1px solid"
+        borderColor="border"
+        flexShrink={0}
+      >
         <TabButton
           active={activeTab === "chat"}
           onClick={() => setActiveTab("chat")}
@@ -101,7 +112,9 @@ export function ChatPanel({ width }: ChatPanelProps) {
             onClick={handleChangeCwd}
             title={activeSession.cwd ?? "Click to set working directory"}
           >
-            {activeSession.cwd ? truncatePath(activeSession.cwd) : "No working directory"}
+            {activeSession.cwd
+              ? truncatePath(activeSession.cwd)
+              : "No working directory"}
           </Text>
         </HStack>
       )}
@@ -119,7 +132,10 @@ export function ChatPanel({ width }: ChatPanelProps) {
         <UsagePanel />
       )}
 
-      <PermissionManager open={permManagerOpen} onClose={() => setPermManagerOpen(false)} />
+      <PermissionManager
+        open={permManagerOpen}
+        onClose={() => setPermManagerOpen(false)}
+      />
     </Flex>
   );
 }

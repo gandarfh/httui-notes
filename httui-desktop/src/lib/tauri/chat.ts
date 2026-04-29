@@ -147,9 +147,6 @@ export interface DailyUsage {
   cache_read_tokens: number;
 }
 
-export function getUsageStats(
-  from: string,
-  to: string,
-): Promise<DailyUsage[]> {
+export function getUsageStats(from: string, to: string): Promise<DailyUsage[]> {
   return invoke("get_usage_stats", { from, to });
 }

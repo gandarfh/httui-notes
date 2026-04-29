@@ -1,10 +1,4 @@
-import {
-  Box,
-  Flex,
-  HStack,
-  IconButton,
-  Table,
-} from "@chakra-ui/react";
+import { Box, Flex, HStack, IconButton, Table } from "@chakra-ui/react";
 import { Fragment, useCallback, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { LuCopy, LuX } from "react-icons/lu";
@@ -133,7 +127,8 @@ const tableCss = {
     textOverflow: "ellipsis",
     padding: "6px 16px",
     lineHeight: "18px",
-    borderBottom: "1px solid color-mix(in srgb, var(--chakra-colors-border) 35%, transparent)",
+    borderBottom:
+      "1px solid color-mix(in srgb, var(--chakra-colors-border) 35%, transparent)",
     borderRight: "none",
   },
   "& thead th": {
@@ -145,11 +140,11 @@ const tableCss = {
     fontWeight: 600,
     paddingTop: "8px",
     paddingBottom: "8px",
-    borderBottom: "1px solid color-mix(in srgb, var(--chakra-colors-border) 70%, transparent)",
+    borderBottom:
+      "1px solid color-mix(in srgb, var(--chakra-colors-border) 70%, transparent)",
   },
   "& tbody tr:hover:not([data-selected='true']) td": {
-    background:
-      "color-mix(in srgb, var(--chakra-colors-fg) 4%, transparent)",
+    background: "color-mix(in srgb, var(--chakra-colors-fg) 4%, transparent)",
   },
   "& tbody tr[data-selected='true'] td": {
     background:
@@ -232,7 +227,10 @@ export function ResultTable({
         .writeText(text)
         .then(() => {
           setCopiedRow(rowIdx);
-          window.setTimeout(() => setCopiedRow((v) => (v === rowIdx ? null : v)), 1200);
+          window.setTimeout(
+            () => setCopiedRow((v) => (v === rowIdx ? null : v)),
+            1200,
+          );
         })
         .catch(() => {});
     },
@@ -280,7 +278,11 @@ export function ResultTable({
                     title={`${col.name} (${col.type})`}
                     className={numeric ? "cell-numeric" : undefined}
                   >
-                    <HStack gap={0} align="baseline" justify={numeric ? "flex-end" : undefined}>
+                    <HStack
+                      gap={0}
+                      align="baseline"
+                      justify={numeric ? "flex-end" : undefined}
+                    >
                       <Box as="span">{col.name}</Box>
                       <Box as="span" className="type-label">
                         {col.type}
@@ -453,10 +455,7 @@ export function ResultTable({
                                         >
                                           {col.name}
                                         </Box>
-                                        <Box
-                                          as="span"
-                                          className="type-label"
-                                        >
+                                        <Box as="span" className="type-label">
                                           {col.type}
                                         </Box>
                                       </Box>
@@ -516,7 +515,9 @@ export function ResultTable({
             <Box as="span" opacity={0.6}>
               row{rows.length === 1 ? "" : "s"}
             </Box>
-            <Box as="span" opacity={0.3}>·</Box>
+            <Box as="span" opacity={0.3}>
+              ·
+            </Box>
             <Box as="span" opacity={0.6}>
               {formatElapsed(durationMs)}
             </Box>

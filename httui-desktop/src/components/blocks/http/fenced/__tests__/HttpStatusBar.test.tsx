@@ -159,9 +159,7 @@ describe("HttpStatusBar", () => {
     it("opens menu and calls onSendAs('curl') when 'Copy as cURL' selected", async () => {
       const user = userEvent.setup();
       const onSendAs = vi.fn();
-      renderWithProviders(
-        <HttpStatusBar {...baseProps} onSendAs={onSendAs} />,
-      );
+      renderWithProviders(<HttpStatusBar {...baseProps} onSendAs={onSendAs} />);
 
       await user.click(
         screen.getByRole("button", { name: /send as.*copy snippet/i }),
@@ -177,9 +175,7 @@ describe("HttpStatusBar", () => {
     it("calls onSendAs('python') for the Python option", async () => {
       const user = userEvent.setup();
       const onSendAs = vi.fn();
-      renderWithProviders(
-        <HttpStatusBar {...baseProps} onSendAs={onSendAs} />,
-      );
+      renderWithProviders(<HttpStatusBar {...baseProps} onSendAs={onSendAs} />);
 
       await user.click(
         screen.getByRole("button", { name: /send as.*copy snippet/i }),
@@ -193,9 +189,7 @@ describe("HttpStatusBar", () => {
     it("calls onSendAs('http-file') for the .http file option", async () => {
       const user = userEvent.setup();
       const onSendAs = vi.fn();
-      renderWithProviders(
-        <HttpStatusBar {...baseProps} onSendAs={onSendAs} />,
-      );
+      renderWithProviders(<HttpStatusBar {...baseProps} onSendAs={onSendAs} />);
 
       await user.click(
         screen.getByRole("button", { name: /send as.*copy snippet/i }),

@@ -9,7 +9,17 @@ import {
 } from "./config";
 
 const SHADE_KEYS = [
-  "50", "100", "200", "300", "400", "500", "600", "700", "800", "900", "950",
+  "50",
+  "100",
+  "200",
+  "300",
+  "400",
+  "500",
+  "600",
+  "700",
+  "800",
+  "900",
+  "950",
 ] as const;
 
 const STYLE_ID = "httui-theme-overrides";
@@ -54,7 +64,9 @@ function buildSemanticStyleSheet(config: ThemeConfig): string {
       --chakra-colors-fg-subtle: ${g[400]};
       --chakra-colors-border: ${lightBorder};
       --chakra-colors-border-muted: ${g[100]};
-      ${a ? `
+      ${
+        a
+          ? `
       --chakra-colors-brand-fg: ${a[600]};
       --chakra-colors-brand-subtle: ${a[50]};
       --chakra-colors-brand-muted: ${a[200]};
@@ -62,7 +74,9 @@ function buildSemanticStyleSheet(config: ThemeConfig): string {
       --chakra-colors-brand-solid: ${a[600]};
       --chakra-colors-brand-contrast: #ffffff;
       --chakra-colors-brand-focusRing: ${a[500]};
-      ` : ""}
+      `
+          : ""
+      }
     }
     .dark {
       --chakra-colors-bg: ${darkBg};
@@ -74,7 +88,9 @@ function buildSemanticStyleSheet(config: ThemeConfig): string {
       --chakra-colors-fg-subtle: ${g[600]};
       --chakra-colors-border: ${darkBorder};
       --chakra-colors-border-muted: ${g[900]};
-      ${a ? `
+      ${
+        a
+          ? `
       --chakra-colors-brand-fg: ${a[400]};
       --chakra-colors-brand-subtle: color-mix(in srgb, ${a[950]} 80%, transparent);
       --chakra-colors-brand-muted: color-mix(in srgb, ${a[800]} 60%, transparent);
@@ -82,7 +98,9 @@ function buildSemanticStyleSheet(config: ThemeConfig): string {
       --chakra-colors-brand-solid: ${a[500]};
       --chakra-colors-brand-contrast: #ffffff;
       --chakra-colors-brand-focusRing: ${a[500]};
-      ` : ""}
+      `
+          : ""
+      }
     }
   `;
 }

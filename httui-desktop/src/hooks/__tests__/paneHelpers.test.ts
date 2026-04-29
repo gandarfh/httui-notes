@@ -13,7 +13,11 @@ function leaf(id: string, tabs: string[] = []): LeafPane {
   return {
     type: "leaf",
     id,
-    tabs: tabs.map((fp) => ({ filePath: fp, vaultPath: "/vault", unsaved: false })),
+    tabs: tabs.map((fp) => ({
+      filePath: fp,
+      vaultPath: "/vault",
+      unsaved: false,
+    })),
     activeTab: 0,
   };
 }

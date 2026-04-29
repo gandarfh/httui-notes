@@ -88,9 +88,7 @@ export interface SchemaEntry {
   data_type: string | null;
 }
 
-export function introspectSchema(
-  connectionId: string,
-): Promise<SchemaEntry[]> {
+export function introspectSchema(connectionId: string): Promise<SchemaEntry[]> {
   return invoke("introspect_schema", { connectionId });
 }
 

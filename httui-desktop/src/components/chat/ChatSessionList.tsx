@@ -92,7 +92,9 @@ export function ChatSessionList({ onSelectSession }: ChatSessionListProps) {
             bg={s.id === activeSessionId ? "brand.500/10" : "transparent"}
             borderLeft="2px solid"
             borderColor={s.id === activeSessionId ? "brand.500" : "transparent"}
-            _hover={{ bg: s.id === activeSessionId ? "brand.500/10" : "bg.subtle" }}
+            _hover={{
+              bg: s.id === activeSessionId ? "brand.500/10" : "bg.subtle",
+            }}
             onClick={() => {
               selectSession(s.id);
               onSelectSession();
@@ -129,7 +131,9 @@ export function ChatSessionList({ onSelectSession }: ChatSessionListProps) {
 
         {searchQuery && filtered.length === 0 && (
           <Box px={2} py={4} textAlign="center">
-            <Text fontSize="2xs" color="fg.muted">No sessions found</Text>
+            <Text fontSize="2xs" color="fg.muted">
+              No sessions found
+            </Text>
           </Box>
         )}
       </Box>

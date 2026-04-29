@@ -4,7 +4,10 @@ import { getBlockResult } from "@/lib/tauri/commands";
 import { hashBlockContent, computeDbCacheHash } from "./hash";
 import { findFencedBlocks } from "@/lib/codemirror/cm-block-widgets";
 import { findDbBlocks } from "@/lib/codemirror/cm-db-block";
-import { extractAlias, langToBlockType } from "@/lib/codemirror/block-widget-context";
+import {
+  extractAlias,
+  langToBlockType,
+} from "@/lib/codemirror/block-widget-context";
 import { resolveConnectionIdentifier } from "./connection-resolve";
 import { listConnections, type Connection } from "@/lib/tauri/connections";
 import { useEnvironmentStore } from "@/stores/environment";

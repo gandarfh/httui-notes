@@ -56,17 +56,20 @@ describe("HttpToolbar", () => {
       const { rerender } = renderWithProviders(
         <HttpToolbar {...baseProps} mode="raw" />,
       );
-      expect(
-        screen.getByRole("button", { name: "raw" }),
-      ).toHaveAttribute("aria-pressed", "true");
-      expect(
-        screen.getByRole("button", { name: "form" }),
-      ).toHaveAttribute("aria-pressed", "false");
+      expect(screen.getByRole("button", { name: "raw" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      expect(screen.getByRole("button", { name: "form" })).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
 
       rerender(<HttpToolbar {...baseProps} mode="form" />);
-      expect(
-        screen.getByRole("button", { name: "form" }),
-      ).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByRole("button", { name: "form" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
     });
 
     it("clicking 'form' calls onToggleMode('form')", async () => {
@@ -92,9 +95,7 @@ describe("HttpToolbar", () => {
 
   describe("body-mode menu", () => {
     it("renders current bodyMode as the trigger label", () => {
-      renderWithProviders(
-        <HttpToolbar {...baseProps} bodyMode="multipart" />,
-      );
+      renderWithProviders(<HttpToolbar {...baseProps} bodyMode="multipart" />);
       expect(
         screen.getByRole("button", { name: "Body mode: multipart" }),
       ).toHaveTextContent("multipart");
@@ -103,9 +104,7 @@ describe("HttpToolbar", () => {
 
   describe("run / cancel", () => {
     it("idle state renders Run button (not Cancel)", () => {
-      renderWithProviders(
-        <HttpToolbar {...baseProps} executionState="idle" />,
-      );
+      renderWithProviders(<HttpToolbar {...baseProps} executionState="idle" />);
       expect(
         screen.getByRole("button", { name: /run request/i }),
       ).toBeInTheDocument();
@@ -155,9 +154,7 @@ describe("HttpToolbar", () => {
           executionState="running"
         />,
       );
-      await user.click(
-        screen.getByRole("button", { name: /cancel request/i }),
-      );
+      await user.click(screen.getByRole("button", { name: /cancel request/i }));
       expect(onCancel).toHaveBeenCalledTimes(1);
       expect(onRun).not.toHaveBeenCalled();
     });
@@ -170,9 +167,7 @@ describe("HttpToolbar", () => {
       renderWithProviders(
         <HttpToolbar {...baseProps} onOpenSettings={onOpenSettings} />,
       );
-      await user.click(
-        screen.getByRole("button", { name: /block settings/i }),
-      );
+      await user.click(screen.getByRole("button", { name: /block settings/i }));
       expect(onOpenSettings).toHaveBeenCalledTimes(1);
     });
   });

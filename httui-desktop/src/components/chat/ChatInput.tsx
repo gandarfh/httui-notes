@@ -68,7 +68,7 @@ export function ChatInput() {
       const buffer = new Uint8Array(await blob.arrayBuffer());
       const path = await saveAttachmentTmp(
         Array.from(buffer),
-        blob.type || "image/png"
+        blob.type || "image/png",
       );
       setAttachments((prev) => {
         if (prev.length >= MAX_ATTACHMENTS) return prev;
@@ -83,7 +83,7 @@ export function ChatInput() {
         ];
       });
     },
-    []
+    [],
   );
 
   const removeAttachment = useCallback((index: number) => {
@@ -93,9 +93,7 @@ export function ChatInput() {
   const handleFilePicker = useCallback(async () => {
     const paths = await open({
       multiple: true,
-      filters: [
-        { name: "Images", extensions: IMAGE_EXTENSIONS },
-      ],
+      filters: [{ name: "Images", extensions: IMAGE_EXTENSIONS }],
     });
     if (!paths) return;
     const selected = Array.isArray(paths) ? paths : [paths];
@@ -117,7 +115,7 @@ export function ChatInput() {
         }
       }
     },
-    [addAttachmentFromBlob]
+    [addAttachmentFromBlob],
   );
 
   // Tauri native drag-drop for image files
@@ -131,7 +129,10 @@ export function ChatInput() {
           }
         }
         setIsDragOver(false);
-      } else if (event.payload.type === "enter" || event.payload.type === "over") {
+      } else if (
+        event.payload.type === "enter" ||
+        event.payload.type === "over"
+      ) {
         setIsDragOver(true);
       } else if (event.payload.type === "leave") {
         setIsDragOver(false);
@@ -168,7 +169,7 @@ export function ChatInput() {
         handleSend();
       }
     },
-    [handleSend]
+    [handleSend],
   );
 
   return (
@@ -228,7 +229,9 @@ export function ChatInput() {
           aria-label="Attach image"
           size="sm"
           variant="ghost"
-          disabled={activeSessionId === null || attachments.length >= MAX_ATTACHMENTS}
+          disabled={
+            activeSessionId === null || attachments.length >= MAX_ATTACHMENTS
+          }
           onClick={handleFilePicker}
         >
           <LuPaperclip />
@@ -241,10 +244,14 @@ export function ChatInput() {
             setText(e.target.value);
             adjustHeight();
           }}
-          onKeyDown={handleKeyDown as unknown as React.KeyboardEventHandler<HTMLTextAreaElement>}
+          onKeyDown={
+            handleKeyDown as unknown as React.KeyboardEventHandler<HTMLTextAreaElement>
+          }
           onMouseDown={(e) => e.stopPropagation()}
           onFocus={(e) => e.stopPropagation()}
-          onPaste={handlePaste as unknown as React.ClipboardEventHandler<HTMLTextAreaElement>}
+          onPaste={
+            handlePaste as unknown as React.ClipboardEventHandler<HTMLTextAreaElement>
+          }
           placeholder="Message... (Cmd+Enter to send)"
           disabled={activeSessionId === null}
           rows={1}

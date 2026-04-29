@@ -43,9 +43,7 @@ describe("ResultTable", () => {
   });
 
   it("renders 'No columns returned' when columns array is empty", () => {
-    renderWithProviders(
-      <ResultTable columns={[]} rows={[]} hasMore={false} />,
-    );
+    renderWithProviders(<ResultTable columns={[]} rows={[]} hasMore={false} />);
     expect(screen.getByText("No columns returned")).toBeInTheDocument();
   });
 
@@ -171,9 +169,7 @@ describe("ResultTable", () => {
     const aliceCell = screen.getAllByText("alice")[0];
     await user.click(aliceCell.closest("tr")!);
 
-    await user.click(
-      screen.getByRole("button", { name: /copy row as json/i }),
-    );
+    await user.click(screen.getByRole("button", { name: /copy row as json/i }));
 
     expect(writeText).toHaveBeenCalledTimes(1);
     const payload = JSON.parse(writeText.mock.calls[0][0]);

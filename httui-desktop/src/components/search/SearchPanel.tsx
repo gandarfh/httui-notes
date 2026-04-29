@@ -67,7 +67,14 @@ function SearchPanelInner({ onClose }: { onClose: () => void }) {
         zIndex={9999}
         overflow="hidden"
       >
-        <Flex align="center" gap={2} px={3} py={2} borderBottomWidth="1px" borderColor="border">
+        <Flex
+          align="center"
+          gap={2}
+          px={3}
+          py={2}
+          borderBottomWidth="1px"
+          borderColor="border"
+        >
           <LuSearch size={16} />
           <Input
             ref={inputRef}

@@ -9,16 +9,9 @@ import {
   Tabs,
   Text,
 } from "@chakra-ui/react";
-import {
-  type CellValue,
-  type DbResponse,
-} from "@/components/blocks/db/types";
+import { type CellValue, type DbResponse } from "@/components/blocks/db/types";
 import { ResultTable } from "@/components/blocks/db/ResultTable";
-import {
-  formatElapsed,
-  isPlainObject,
-  type ExecutionState,
-} from "./shared";
+import { formatElapsed, isPlainObject, type ExecutionState } from "./shared";
 
 interface DbResultProps {
   executionState: ExecutionState;
@@ -100,12 +93,7 @@ export function DbResult({
         align="center"
         justify="center"
       >
-        <Text
-          fontSize="sm"
-          fontFamily="mono"
-          color="fg.muted"
-          opacity={0.75}
-        >
+        <Text fontSize="sm" fontFamily="mono" color="fg.muted" opacity={0.75}>
           {connection ? (
             <>
               Hit{" "}
@@ -136,11 +124,7 @@ export function DbResult({
   }
 
   return (
-    <DbResultTabs
-      response={response}
-      cached={cached}
-      onLoadMore={onLoadMore}
-    />
+    <DbResultTabs response={response} cached={cached} onLoadMore={onLoadMore} />
   );
 }
 
@@ -177,7 +161,8 @@ function DbResultTabs({
     >
       <Tabs.List px={3} pt={1} borderBottom="1px solid" borderColor="border">
         <Tabs.Trigger value="results" fontSize="xs">
-          Result{response.results.length > 1 ? `s (${response.results.length})` : ""}
+          Result
+          {response.results.length > 1 ? `s (${response.results.length})` : ""}
         </Tabs.Trigger>
         <Tabs.Trigger value="messages" fontSize="xs">
           Messages{messages.length > 0 ? ` (${messages.length})` : ""}

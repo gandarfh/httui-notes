@@ -25,28 +25,36 @@ export function Sidebar({ width }: SidebarProps) {
       {/* Files section */}
       <Box flex={1} overflowY="auto">
         <HStack px={3} py={2} justify="space-between">
-          <Text fontSize="xs" fontWeight="semibold" color="fg.subtle" textTransform="uppercase" letterSpacing="wider">
+          <Text
+            fontSize="xs"
+            fontWeight="semibold"
+            color="fg.subtle"
+            textTransform="uppercase"
+            letterSpacing="wider"
+          >
             Files
           </Text>
           {vaultPath && (
             <Menu.Root positioning={{ placement: "bottom-end" }}>
               <Menu.Trigger asChild>
-                <IconButton
-                  aria-label="New..."
-                  variant="ghost"
-                  size="xs"
-                >
+                <IconButton aria-label="New..." variant="ghost" size="xs">
                   <LuPlus />
                 </IconButton>
               </Menu.Trigger>
               <Portal>
                 <Menu.Positioner>
                   <Menu.Content>
-                    <Menu.Item value="note" onSelect={() => handleStartCreate("note", "")}>
+                    <Menu.Item
+                      value="note"
+                      onSelect={() => handleStartCreate("note", "")}
+                    >
                       <LuFileText />
                       Nova nota
                     </Menu.Item>
-                    <Menu.Item value="folder" onSelect={() => handleStartCreate("folder", "")}>
+                    <Menu.Item
+                      value="folder"
+                      onSelect={() => handleStartCreate("folder", "")}
+                    >
                       <LuFolder />
                       Nova pasta
                     </Menu.Item>
@@ -60,7 +68,9 @@ export function Sidebar({ width }: SidebarProps) {
           <FileTree />
         ) : (
           <Box px={3} py={8} textAlign="center">
-            <Text fontSize="sm" color="fg.muted">No vault selected</Text>
+            <Text fontSize="sm" color="fg.muted">
+              No vault selected
+            </Text>
           </Box>
         )}
       </Box>

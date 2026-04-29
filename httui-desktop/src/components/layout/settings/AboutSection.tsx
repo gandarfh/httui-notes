@@ -43,10 +43,10 @@ export function AboutSection() {
           About
         </Text>
         <Text fontSize="xs" color="fg.muted" lineHeight="tall">
-          Notes is a desktop markdown editor that lets you embed executable blocks
-          (HTTP requests, database queries, E2E tests) directly in your documents.
-          Results are cached, environments are switchable, and credentials are stored
-          in your OS keychain.
+          Notes is a desktop markdown editor that lets you embed executable
+          blocks (HTTP requests, database queries, E2E tests) directly in your
+          documents. Results are cached, environments are switchable, and
+          credentials are stored in your OS keychain.
         </Text>
       </Box>
 
@@ -115,14 +115,16 @@ export function AboutSection() {
             <Text as="span" fontFamily="mono" fontWeight="medium" color="fg">
               notes.db
             </Text>{" "}
-            in the OS app data directory. File permissions set to owner-only (0600).
+            in the OS app data directory. File permissions set to owner-only
+            (0600).
           </Text>
           <Text>
             Notes stored as{" "}
             <Text as="span" fontFamily="mono" fontWeight="medium" color="fg">
               .md
             </Text>{" "}
-            files in your vault directory. Executable blocks serialized as YAML in fenced code blocks.
+            files in your vault directory. Executable blocks serialized as YAML
+            in fenced code blocks.
           </Text>
         </VStack>
       </Box>

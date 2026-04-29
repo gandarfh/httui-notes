@@ -17,7 +17,7 @@ import {
 
 interface WikilinkMatch {
   from: number; // start of [[
-  to: number;   // end of ]]
+  to: number; // end of ]]
   target: string;
   label: string;
 }
@@ -164,7 +164,12 @@ function createWikilinkCompletion(
       const label = f.name.replace(/\.md$/, "");
       return {
         label,
-        apply: (view: EditorView, _completion: Completion, from: number, to: number) => {
+        apply: (
+          view: EditorView,
+          _completion: Completion,
+          from: number,
+          to: number,
+        ) => {
           // Replace the text after [[ with target]] (keep the opening [[)
           const insert = `${f.path}|${label}]]`;
           view.dispatch({
@@ -200,8 +205,5 @@ export { createWikilinkCompletion };
 
 /** Wikilink extension for CM6 — decorations + click navigation (autocomplete handled externally) */
 export function wikilinks(options: WikilinkOptions): Extension {
-  return [
-    createWikilinkPlugin(options.onNavigate),
-    wikilinkTheme,
-  ];
+  return [createWikilinkPlugin(options.onNavigate), wikilinkTheme];
 }

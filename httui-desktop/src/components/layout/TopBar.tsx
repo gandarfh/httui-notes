@@ -1,4 +1,12 @@
-import { HStack, Text, IconButton, Box, Badge, Menu, Portal } from "@chakra-ui/react";
+import {
+  HStack,
+  Text,
+  IconButton,
+  Box,
+  Badge,
+  Menu,
+  Portal,
+} from "@chakra-ui/react";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { useEnvironmentStore } from "@/stores/environment";
 import { useSettingsStore } from "@/stores/settings";
@@ -21,7 +29,14 @@ interface TopBarProps {
   onToggleSchemaPanel: () => void;
 }
 
-export function TopBar({ sidebarOpen, onToggleSidebar, chatOpen, onToggleChat, schemaPanelOpen, onToggleSchemaPanel }: TopBarProps) {
+export function TopBar({
+  sidebarOpen,
+  onToggleSidebar,
+  chatOpen,
+  onToggleChat,
+  schemaPanelOpen,
+  onToggleSchemaPanel,
+}: TopBarProps) {
   const { vaultPath, vaults, switchVault, openVault } = useWorkspace();
   const environments = useEnvironmentStore((s) => s.environments);
   const activeEnvironment = useEnvironmentStore((s) => s.activeEnvironment);
@@ -171,7 +186,9 @@ export function TopBar({ sidebarOpen, onToggleSidebar, chatOpen, onToggleChat, s
         <Box w="1px" h="16px" bg="border" mx={1} />
 
         <IconButton
-          aria-label={schemaPanelOpen ? "Close schema panel" : "Open schema panel"}
+          aria-label={
+            schemaPanelOpen ? "Close schema panel" : "Open schema panel"
+          }
           variant="ghost"
           size="sm"
           onClick={onToggleSchemaPanel}

@@ -19,17 +19,24 @@ const ICON_SVGS: Record<string, string> = {
   h1: '<path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="m17 12 3-2v8"/>',
   h2: '<path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="M21 18h-4c0-4 4-3 4-6 0-1.5-2-2.5-4-1"/>',
   h3: '<path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="M17.5 10.5c1.7-1 3.5 0 3.5 1.5a2 2 0 0 1-2 2"/><path d="M17 17.5c2 1.5 4 .3 4-1.5a2 2 0 0 0-2-2"/>',
-  "bullet-list": '<line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/>',
-  "ordered-list": '<line x1="10" x2="21" y1="6" y2="6"/><line x1="10" x2="21" y1="12" y2="12"/><line x1="10" x2="21" y1="18" y2="18"/><path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/>',
-  "task-list": '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="m9 12 2 2 4-4"/>',
-  quote: '<path d="M17 6H3"/><path d="M21 12H8"/><path d="M21 18H8"/><path d="M3 12v6"/>',
+  "bullet-list":
+    '<line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/>',
+  "ordered-list":
+    '<line x1="10" x2="21" y1="6" y2="6"/><line x1="10" x2="21" y1="12" y2="12"/><line x1="10" x2="21" y1="18" y2="18"/><path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/>',
+  "task-list":
+    '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="m9 12 2 2 4-4"/>',
+  quote:
+    '<path d="M17 6H3"/><path d="M21 12H8"/><path d="M21 18H8"/><path d="M3 12v6"/>',
   divider: '<line x1="2" x2="22" y1="12" y2="12"/>',
   code: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
-  table: '<path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/>',
+  table:
+    '<path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/>',
   math: '<path d="M18 7V4H6l6 8-6 8h12v-3"/>',
   "math-block": '<path d="M18 7V4H6l6 8-6 8h12v-3"/>',
-  diagram: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
-  database: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/>',
+  diagram:
+    '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  database:
+    '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/>',
   http: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
 };
 
@@ -64,43 +71,175 @@ interface SlashCommand {
 
 const COMMANDS: SlashCommand[] = [
   // Basic blocks
-  { label: "Heading 1", type: "h1", shortcut: "#", insert: "# ", section: BASIC },
-  { label: "Heading 2", type: "h2", shortcut: "##", insert: "## ", section: BASIC },
-  { label: "Heading 3", type: "h3", shortcut: "###", insert: "### ", section: BASIC },
-  { label: "Bulleted list", type: "bullet-list", shortcut: "-", insert: "- ", section: BASIC },
-  { label: "Numbered list", type: "ordered-list", shortcut: "1.", insert: "1. ", section: BASIC },
-  { label: "To-do list", type: "task-list", shortcut: "[]", insert: "- [ ] ", section: BASIC },
-  { label: "Quote", type: "quote", shortcut: ">", insert: "> ", section: BASIC },
+  {
+    label: "Heading 1",
+    type: "h1",
+    shortcut: "#",
+    insert: "# ",
+    section: BASIC,
+  },
+  {
+    label: "Heading 2",
+    type: "h2",
+    shortcut: "##",
+    insert: "## ",
+    section: BASIC,
+  },
+  {
+    label: "Heading 3",
+    type: "h3",
+    shortcut: "###",
+    insert: "### ",
+    section: BASIC,
+  },
+  {
+    label: "Bulleted list",
+    type: "bullet-list",
+    shortcut: "-",
+    insert: "- ",
+    section: BASIC,
+  },
+  {
+    label: "Numbered list",
+    type: "ordered-list",
+    shortcut: "1.",
+    insert: "1. ",
+    section: BASIC,
+  },
+  {
+    label: "To-do list",
+    type: "task-list",
+    shortcut: "[]",
+    insert: "- [ ] ",
+    section: BASIC,
+  },
+  {
+    label: "Quote",
+    type: "quote",
+    shortcut: ">",
+    insert: "> ",
+    section: BASIC,
+  },
 
   // Formatting
-  { label: "Divider", type: "divider", shortcut: "---", insert: "---\n", section: FORMAT },
-  { label: "Code block", type: "code", shortcut: "```", insert: "```\n\n```", cursorOffset: -4, section: FORMAT },
-  { label: "Table", type: "table", insert: "| Col 1 | Col 2 | Col 3 |\n| ----- | ----- | ----- |\n|       |       |       |\n", section: FORMAT },
-  { label: "Inline formula", type: "math", shortcut: "$", insert: "$x^2$", cursorOffset: -1, section: FORMAT },
-  { label: "Block formula", type: "math-block", shortcut: "$$", insert: "$$\nE = mc^2\n$$", cursorOffset: -3, section: FORMAT },
-  { label: "Mermaid diagram", type: "diagram", insert: "```mermaid\ngraph TD\n  A --> B\n```\n", section: FORMAT },
+  {
+    label: "Divider",
+    type: "divider",
+    shortcut: "---",
+    insert: "---\n",
+    section: FORMAT,
+  },
+  {
+    label: "Code block",
+    type: "code",
+    shortcut: "```",
+    insert: "```\n\n```",
+    cursorOffset: -4,
+    section: FORMAT,
+  },
+  {
+    label: "Table",
+    type: "table",
+    insert:
+      "| Col 1 | Col 2 | Col 3 |\n| ----- | ----- | ----- |\n|       |       |       |\n",
+    section: FORMAT,
+  },
+  {
+    label: "Inline formula",
+    type: "math",
+    shortcut: "$",
+    insert: "$x^2$",
+    cursorOffset: -1,
+    section: FORMAT,
+  },
+  {
+    label: "Block formula",
+    type: "math-block",
+    shortcut: "$$",
+    insert: "$$\nE = mc^2\n$$",
+    cursorOffset: -3,
+    section: FORMAT,
+  },
+  {
+    label: "Mermaid diagram",
+    type: "diagram",
+    insert: "```mermaid\ngraph TD\n  A --> B\n```\n",
+    section: FORMAT,
+  },
 
   // Executable
   // DB blocks use the post-redesign fenced-SQL format (see docs/db-block-redesign.md §2.1).
   // cursorOffset lands the caret on the empty body line so the user can start typing SQL
   // immediately; the drawer (⚙) is the preferred way to pick a connection, so we leave
   // `connection=` off the canonical info string when no default is known.
-  { label: "PostgreSQL Query", type: "database", insert: "```db-postgres alias=db1\n\n```\n", cursorOffset: -5, section: EXEC },
-  { label: "MySQL Query", type: "database", insert: "```db-mysql alias=db1\n\n```\n", cursorOffset: -5, section: EXEC },
-  { label: "SQLite Query", type: "database", insert: "```db-sqlite alias=db1\n\n```\n", cursorOffset: -5, section: EXEC },
+  {
+    label: "PostgreSQL Query",
+    type: "database",
+    insert: "```db-postgres alias=db1\n\n```\n",
+    cursorOffset: -5,
+    section: EXEC,
+  },
+  {
+    label: "MySQL Query",
+    type: "database",
+    insert: "```db-mysql alias=db1\n\n```\n",
+    cursorOffset: -5,
+    section: EXEC,
+  },
+  {
+    label: "SQLite Query",
+    type: "database",
+    insert: "```db-sqlite alias=db1\n\n```\n",
+    cursorOffset: -5,
+    section: EXEC,
+  },
   // HTTP blocks use the post-redesign HTTP-message body format
   // (see docs/http-block-redesign.md §2.1). cursorOffset lands the caret on
   // the request line so the user can start typing immediately.
-  { label: "HTTP Request", type: "http", insert: "```http alias=req1\nGET \n```\n", cursorOffset: -5, section: EXEC },
-  { label: "HTTP GET", type: "http", insert: "```http alias=req1\nGET \n```\n", cursorOffset: -5, section: EXEC },
-  { label: "HTTP POST", type: "http", insert: "```http alias=req1\nPOST \nContent-Type: application/json\n\n{}\n```\n", cursorOffset: -23, section: EXEC },
-  { label: "HTTP PUT", type: "http", insert: "```http alias=req1\nPUT \nContent-Type: application/json\n\n{}\n```\n", cursorOffset: -23, section: EXEC },
-  { label: "HTTP DELETE", type: "http", insert: "```http alias=req1\nDELETE \n```\n", cursorOffset: -5, section: EXEC },
+  {
+    label: "HTTP Request",
+    type: "http",
+    insert: "```http alias=req1\nGET \n```\n",
+    cursorOffset: -5,
+    section: EXEC,
+  },
+  {
+    label: "HTTP GET",
+    type: "http",
+    insert: "```http alias=req1\nGET \n```\n",
+    cursorOffset: -5,
+    section: EXEC,
+  },
+  {
+    label: "HTTP POST",
+    type: "http",
+    insert:
+      "```http alias=req1\nPOST \nContent-Type: application/json\n\n{}\n```\n",
+    cursorOffset: -23,
+    section: EXEC,
+  },
+  {
+    label: "HTTP PUT",
+    type: "http",
+    insert:
+      "```http alias=req1\nPUT \nContent-Type: application/json\n\n{}\n```\n",
+    cursorOffset: -23,
+    section: EXEC,
+  },
+  {
+    label: "HTTP DELETE",
+    type: "http",
+    insert: "```http alias=req1\nDELETE \n```\n",
+    cursorOffset: -5,
+    section: EXEC,
+  },
 ];
 
 // ── Completion source ───────────────────────────────────────────────────────
 
-function slashCompletionSource(context: CompletionContext): CompletionResult | null {
+function slashCompletionSource(
+  context: CompletionContext,
+): CompletionResult | null {
   const line = context.state.doc.lineAt(context.pos);
   const lineTextBefore = context.state.doc.sliceString(line.from, context.pos);
 
@@ -123,7 +262,12 @@ function slashCompletionSource(context: CompletionContext): CompletionResult | n
     type: cmd.type,
     detail: cmd.shortcut,
     section: cmd.section,
-    apply: (view: EditorView, _completion: Completion, from: number, to: number) => {
+    apply: (
+      view: EditorView,
+      _completion: Completion,
+      from: number,
+      to: number,
+    ) => {
       const insert = cmd.insert;
       view.dispatch({
         changes: { from, to, insert },
@@ -240,8 +384,13 @@ const slashMenuTheme = EditorView.theme({
   },
   // Scrollbar
   ".cm-tooltip-autocomplete::-webkit-scrollbar": { width: "4px" },
-  ".cm-tooltip-autocomplete::-webkit-scrollbar-track": { background: "transparent" },
-  ".cm-tooltip-autocomplete::-webkit-scrollbar-thumb": { background: "var(--chakra-colors-border)", borderRadius: "2px" },
+  ".cm-tooltip-autocomplete::-webkit-scrollbar-track": {
+    background: "transparent",
+  },
+  ".cm-tooltip-autocomplete::-webkit-scrollbar-thumb": {
+    background: "var(--chakra-colors-border)",
+    borderRadius: "2px",
+  },
 });
 
 /** Export the completion source for combining with other sources */

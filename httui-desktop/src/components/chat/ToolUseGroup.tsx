@@ -34,7 +34,14 @@ function shortName(name: string): string {
 function toolIcon(name: string) {
   const n = name.toLowerCase();
   if (n.includes("read") || n.includes("cat")) return LuFileText;
-  if (n.includes("write") || n.includes("edit") || n.includes("create") || n.includes("update") || n.includes("delete")) return LuPencil;
+  if (
+    n.includes("write") ||
+    n.includes("edit") ||
+    n.includes("create") ||
+    n.includes("update") ||
+    n.includes("delete")
+  )
+    return LuPencil;
   if (n.includes("grep") || n.includes("search")) return LuSearch;
   if (n.includes("glob") || n.includes("list")) return LuFolderSearch;
   if (n.includes("bash") || n.includes("exec")) return LuTerminal;
@@ -44,7 +51,13 @@ function toolIcon(name: string) {
 
 function isWriteTool(name: string): boolean {
   const n = name.toLowerCase();
-  return n.includes("write") || n.includes("update") || n.includes("create") || n.includes("edit") || n.includes("delete");
+  return (
+    n.includes("write") ||
+    n.includes("update") ||
+    n.includes("create") ||
+    n.includes("edit") ||
+    n.includes("delete")
+  );
 }
 
 function inlineSummary(input: unknown): string | null {
@@ -59,23 +72,34 @@ function inlineSummary(input: unknown): string | null {
   return null;
 }
 
-function parseDiffStats(result: string | null | undefined): { added: number; removed: number } | null {
+function parseDiffStats(
+  result: string | null | undefined,
+): { added: number; removed: number } | null {
   if (!result) return null;
   try {
     const parsed = JSON.parse(result);
     if (parsed && typeof parsed.lines_added === "number") {
       return { added: parsed.lines_added, removed: parsed.lines_removed ?? 0 };
     }
-  } catch { /* not JSON */ }
+  } catch {
+    /* not JSON */
+  }
   return null;
 }
 
 function getItemInfo(item: ToolItem) {
   if (item.kind === "persisted") {
     const tc = item.data;
-    const input = typeof tc.input_json === "string"
-      ? (() => { try { return JSON.parse(tc.input_json); } catch { return tc.input_json; } })()
-      : tc.input_json;
+    const input =
+      typeof tc.input_json === "string"
+        ? (() => {
+            try {
+              return JSON.parse(tc.input_json);
+            } catch {
+              return tc.input_json;
+            }
+          })()
+        : tc.input_json;
     return {
       rawName: tc.tool_name,
       name: shortName(tc.tool_name),
@@ -98,7 +122,11 @@ function getItemInfo(item: ToolItem) {
 
 function formatInput(input: unknown): string {
   if (typeof input === "string") {
-    try { return JSON.stringify(JSON.parse(input), null, 2); } catch { return input; }
+    try {
+      return JSON.stringify(JSON.parse(input), null, 2);
+    } catch {
+      return input;
+    }
   }
   return JSON.stringify(input, null, 2);
 }
@@ -149,12 +177,19 @@ export const ToolUseGroup = memo(function ToolUseGroup({
   const summaryParts: string[] = [];
   if (pendingCount > 0) summaryParts.push(`${pendingCount} running`);
   if (errorCount > 0) summaryParts.push(`${errorCount} failed`);
-  const summaryText = pendingCount > 0
-    ? `${items.length} tools · ${summaryParts.join(", ")}`
-    : `${items.length} tool${items.length !== 1 ? "s" : ""} used${errorCount > 0 ? ` · ${errorCount} failed` : ""}`;
+  const summaryText =
+    pendingCount > 0
+      ? `${items.length} tools · ${summaryParts.join(", ")}`
+      : `${items.length} tool${items.length !== 1 ? "s" : ""} used${errorCount > 0 ? ` · ${errorCount} failed` : ""}`;
 
   return (
-    <Box my={1} rounded="md" border="1px solid" borderColor="border" overflow="hidden">
+    <Box
+      my={1}
+      rounded="md"
+      border="1px solid"
+      borderColor="border"
+      overflow="hidden"
+    >
       {/* Group header */}
       <HStack
         px={2}
@@ -166,7 +201,11 @@ export const ToolUseGroup = memo(function ToolUseGroup({
         userSelect="none"
       >
         <Box color="fg.muted" flexShrink={0}>
-          {expanded ? <LuChevronDown size={12} /> : <LuChevronRight size={12} />}
+          {expanded ? (
+            <LuChevronDown size={12} />
+          ) : (
+            <LuChevronRight size={12} />
+          )}
         </Box>
         {pendingCount > 0 ? (
           <Box color="blue.400" flexShrink={0}>
@@ -203,7 +242,11 @@ export const ToolUseGroup = memo(function ToolUseGroup({
               : info.isError
                 ? "red.400"
                 : "green.400";
-            const StatusIcon = info.isPending ? LuLoader : info.isError ? LuX : LuCheck;
+            const StatusIcon = info.isPending
+              ? LuLoader
+              : info.isError
+                ? LuX
+                : LuCheck;
 
             return (
               <Box key={key}>
@@ -218,23 +261,41 @@ export const ToolUseGroup = memo(function ToolUseGroup({
                   borderColor="border"
                 >
                   <Box color={statusColor} flexShrink={0}>
-                    <StatusIcon size={11} className={info.isPending ? "animate-spin" : undefined} />
+                    <StatusIcon
+                      size={11}
+                      className={info.isPending ? "animate-spin" : undefined}
+                    />
                   </Box>
                   <Box color="fg.muted" flexShrink={0}>
                     <Icon size={11} />
                   </Box>
-                  <Text fontWeight="medium" fontSize="2xs" flexShrink={0} fontFamily="mono">
+                  <Text
+                    fontWeight="medium"
+                    fontSize="2xs"
+                    flexShrink={0}
+                    fontFamily="mono"
+                  >
                     {info.name}
                   </Text>
                   {summary && (
-                    <Text fontSize="2xs" color="fg.muted" truncate flex={1} fontFamily="mono">
+                    <Text
+                      fontSize="2xs"
+                      color="fg.muted"
+                      truncate
+                      flex={1}
+                      fontFamily="mono"
+                    >
                       {summary}
                     </Text>
                   )}
                   {isWrite && diffStats && (
                     <HStack gap={1} flexShrink={0}>
                       {diffStats.added > 0 && (
-                        <Text fontSize="2xs" color="green.400" fontFamily="mono">
+                        <Text
+                          fontSize="2xs"
+                          color="green.400"
+                          fontFamily="mono"
+                        >
                           +{diffStats.added}
                         </Text>
                       )}
@@ -246,14 +307,29 @@ export const ToolUseGroup = memo(function ToolUseGroup({
                     </HStack>
                   )}
                   <Box color="fg.muted" flexShrink={0} ml="auto">
-                    {isItemExpanded ? <LuChevronDown size={10} /> : <LuChevronRight size={10} />}
+                    {isItemExpanded ? (
+                      <LuChevronDown size={10} />
+                    ) : (
+                      <LuChevronRight size={10} />
+                    )}
                   </Box>
                 </HStack>
 
                 {/* Item detail */}
                 {isItemExpanded && (
-                  <Box px={3} py={1.5} bg="bg.subtle/50" borderTop="1px solid" borderColor="border">
-                    <Text fontSize="2xs" color="fg.muted" fontWeight="semibold" mb={0.5}>
+                  <Box
+                    px={3}
+                    py={1.5}
+                    bg="bg.subtle/50"
+                    borderTop="1px solid"
+                    borderColor="border"
+                  >
+                    <Text
+                      fontSize="2xs"
+                      color="fg.muted"
+                      fontWeight="semibold"
+                      mb={0.5}
+                    >
                       Input
                     </Text>
                     <Box
@@ -274,7 +350,12 @@ export const ToolUseGroup = memo(function ToolUseGroup({
                     </Box>
                     {info.result && (
                       <>
-                        <Text fontSize="2xs" color="fg.muted" fontWeight="semibold" mb={0.5}>
+                        <Text
+                          fontSize="2xs"
+                          color="fg.muted"
+                          fontWeight="semibold"
+                          mb={0.5}
+                        >
                           Result
                         </Text>
                         <Box

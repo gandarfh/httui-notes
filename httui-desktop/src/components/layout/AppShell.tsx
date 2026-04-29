@@ -33,15 +33,24 @@ export function AppShell() {
   const [schemaPanelWidth] = useState(300);
 
   const toggleChat = useCallback(() => setChatOpen((prev) => !prev), []);
-  const toggleSchemaPanel = useCallback(() => setSchemaPanelOpen((prev) => !prev), []);
+  const toggleSchemaPanel = useCallback(
+    () => setSchemaPanelOpen((prev) => !prev),
+    [],
+  );
 
   // Initialize all Tauri listeners and stores once
-  useEffect(() => { initTauriBridge(); }, []);
+  useEffect(() => {
+    initTauriBridge();
+  }, []);
 
   // Hooks
   useAutoUpdate();
   useSessionPersistence();
-  const { sidebarWidth, isResizing: isSidebarResizing, startResize } = useSidebarResize();
+  const {
+    sidebarWidth,
+    isResizing: isSidebarResizing,
+    startResize,
+  } = useSidebarResize();
 
   // Workspace store
   const vaultPath = useWorkspaceStore((s) => s.vaultPath);
@@ -84,7 +93,17 @@ export function AppShell() {
       toggleChat,
       toggleSchemaPanel,
     }),
-    [toggleSidebar, toggleChat, toggleSchemaPanel, splitVertical, splitHorizontal, closeTab, nextTab, getActiveLeaf, editorSession.forceSave],
+    [
+      toggleSidebar,
+      toggleChat,
+      toggleSchemaPanel,
+      splitVertical,
+      splitHorizontal,
+      closeTab,
+      nextTab,
+      getActiveLeaf,
+      editorSession.forceSave,
+    ],
   );
   useKeyboardShortcuts(shortcutActions);
 
@@ -106,12 +125,30 @@ export function AppShell() {
       cancelInlineCreate: fileOps.cancelInlineCreate,
       handleFileSelect: editorSession.handleFileSelect,
     }),
-    [vaultPath, vaults, entries, switchVault, openVault, fileOps, editorSession.handleFileSelect],
+    [
+      vaultPath,
+      vaults,
+      entries,
+      switchVault,
+      openVault,
+      fileOps,
+      editorSession.handleFileSelect,
+    ],
   );
 
   return (
     <WorkspaceContext.Provider value={workspaceValue}>
-      <Flex h="100vh" direction="column" bg="bg.subtle" overflow="hidden" css={isSidebarResizing ? { cursor: "col-resize", userSelect: "none" } : undefined}>
+      <Flex
+        h="100vh"
+        direction="column"
+        bg="bg.subtle"
+        overflow="hidden"
+        css={
+          isSidebarResizing
+            ? { cursor: "col-resize", userSelect: "none" }
+            : undefined
+        }
+      >
         <TopBar
           sidebarOpen={sidebarOpen}
           onToggleSidebar={toggleSidebar}
@@ -135,7 +172,10 @@ export function AppShell() {
               />
             </>
           )}
-          <PaneContainer handleEditorChange={editorSession.handleEditorChange} onNavigateFile={editorSession.handleFileSelect} />
+          <PaneContainer
+            handleEditorChange={editorSession.handleEditorChange}
+            onNavigateFile={editorSession.handleFileSelect}
+          />
           {schemaPanelOpen && (
             <SchemaPanel width={schemaPanelWidth} onClose={toggleSchemaPanel} />
           )}

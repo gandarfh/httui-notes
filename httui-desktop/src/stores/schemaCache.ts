@@ -40,14 +40,21 @@ function groupEntries(entries: SchemaEntry[]): SchemaTable[] {
   // different schemas don't collide (e.g. `public.users` vs `auth.users`).
   const byKey = new Map<
     string,
-    { schema: string | null; name: string; columns: { name: string; dataType: string | null }[] }
+    {
+      schema: string | null;
+      name: string;
+      columns: { name: string; dataType: string | null }[];
+    }
   >();
   for (const entry of entries) {
     const schema = entry.schema_name ?? null;
     const key = `${schema ?? ""}\0${entry.table_name}`;
     const existing = byKey.get(key);
     if (existing) {
-      existing.columns.push({ name: entry.column_name, dataType: entry.data_type });
+      existing.columns.push({
+        name: entry.column_name,
+        dataType: entry.data_type,
+      });
     } else {
       byKey.set(key, {
         schema,

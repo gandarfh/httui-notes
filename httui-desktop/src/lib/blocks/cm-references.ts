@@ -74,7 +74,10 @@ const referenceHighlightTheme = EditorView.baseTheme({
 /**
  * CodeMirror extension that highlights {{...}} reference patterns.
  */
-export const referenceHighlight = [referenceHighlightPlugin, referenceHighlightTheme];
+export const referenceHighlight = [
+  referenceHighlightPlugin,
+  referenceHighlightTheme,
+];
 
 function truncateValue(val: string, maxLen = 200): string {
   return val.length > maxLen ? val.slice(0, maxLen) + "..." : val;
@@ -118,7 +121,9 @@ export function createReferenceTooltip(
         let isError = false;
 
         // Same priority as resolveAllReferences: block ref > env var
-        const matchingBlock = blocks.find((b) => b.alias === ref.alias && b.pos < currentPos);
+        const matchingBlock = blocks.find(
+          (b) => b.alias === ref.alias && b.pos < currentPos,
+        );
         if (matchingBlock) {
           try {
             resolvedText = resolveReference(ref, blocks, currentPos);
@@ -144,7 +149,9 @@ export function createReferenceTooltip(
           create() {
             const dom = document.createElement("div");
             dom.className = `cm-ref-tooltip ${isError ? "cm-ref-tooltip-error" : "cm-ref-tooltip-value"}`;
-            dom.textContent = isError ? `⚠ ${resolvedText}` : truncateValue(resolvedText);
+            dom.textContent = isError
+              ? `⚠ ${resolvedText}`
+              : truncateValue(resolvedText);
             return { dom };
           },
         };
@@ -178,7 +185,8 @@ export function createMarkdownReferenceTooltip(
     // small tolerance window around each match.
     const regex = /\{\{([^}]+)\}\}/g;
     let chosen: { raw: string; from: number; to: number } | null = null;
-    let best: { raw: string; from: number; to: number; dist: number } | null = null;
+    let best: { raw: string; from: number; to: number; dist: number } | null =
+      null;
     for (let m: RegExpExecArray | null; (m = regex.exec(lineText)) !== null; ) {
       const from = line.from + m.index;
       const to = line.from + m.index + m[0].length;

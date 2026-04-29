@@ -30,9 +30,7 @@ const MUTATION_PREFIXES = [
  * works even when the query is heavily commented.
  */
 function stripComments(sql: string): string {
-  return sql
-    .replace(/--[^\n]*/g, "")
-    .replace(/\/\*[\s\S]*?\*\//g, "");
+  return sql.replace(/--[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
 }
 
 /** Return the first keyword at the start of the query, uppercased. */

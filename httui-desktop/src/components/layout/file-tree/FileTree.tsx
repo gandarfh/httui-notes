@@ -1,6 +1,12 @@
 import { useCallback } from "react";
 import { Box, Text, VStack } from "@chakra-ui/react";
-import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import {
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { FileTreeNode } from "./FileTreeNode";
 import { InlineInput } from "./InlineInput";
@@ -29,7 +35,8 @@ export function FileTree() {
       if (!sourcePath || targetDir === undefined) return;
 
       // Prevent dropping into self or descendant
-      if (sourcePath === targetDir || targetDir.startsWith(sourcePath + "/")) return;
+      if (sourcePath === targetDir || targetDir.startsWith(sourcePath + "/"))
+        return;
 
       handleMoveFile(sourcePath, targetDir);
     },

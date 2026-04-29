@@ -16,7 +16,10 @@ describe("StandaloneBlock", () => {
   describe("render", () => {
     it("shows the block badge from blockType (HTTP)", () => {
       renderWithProviders(
-        <StandaloneBlock blockType="http" content='{"method":"GET","url":"/x"}' />,
+        <StandaloneBlock
+          blockType="http"
+          content='{"method":"GET","url":"/x"}'
+        />,
       );
       expect(screen.getByText("HTTP")).toBeInTheDocument();
     });
@@ -45,9 +48,7 @@ describe("StandaloneBlock", () => {
       );
       // idle state shouldn't render the output content; placeholder is hidden in input mode
       // The action button labelled 'Run' should be visible
-      expect(
-        screen.getByRole("button", { name: "Run" }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Run" })).toBeInTheDocument();
     });
   });
 
@@ -163,7 +164,9 @@ describe("StandaloneBlock", () => {
 
       await user.click(screen.getByRole("button", { name: "Run" }));
 
-      await waitFor(() => expect(screen.getByText(/hello/)).toBeInTheDocument());
+      await waitFor(() =>
+        expect(screen.getByText(/hello/)).toBeInTheDocument(),
+      );
     });
   });
 
@@ -175,7 +178,10 @@ describe("StandaloneBlock", () => {
       });
 
       renderWithProviders(
-        <StandaloneBlock blockType="http" content='{"method":"GET","url":"/x"}' />,
+        <StandaloneBlock
+          blockType="http"
+          content='{"method":"GET","url":"/x"}'
+        />,
       );
 
       await user.click(screen.getByRole("button", { name: "Run" }));
@@ -191,7 +197,10 @@ describe("StandaloneBlock", () => {
     it("switches to output mode when clicking Output", async () => {
       const user = userEvent.setup();
       renderWithProviders(
-        <StandaloneBlock blockType="http" content='{"method":"GET","url":"/x"}' />,
+        <StandaloneBlock
+          blockType="http"
+          content='{"method":"GET","url":"/x"}'
+        />,
       );
 
       await user.click(screen.getByRole("button", { name: "Output" }));

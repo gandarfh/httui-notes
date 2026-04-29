@@ -12,7 +12,12 @@ export function SplitView({
 }: {
   layout: PaneLayout & { type: "split" };
   path: number[];
-  handleEditorChange: (paneId: string, filePath: string, content: string, vaultPath: string) => void;
+  handleEditorChange: (
+    paneId: string,
+    filePath: string,
+    content: string,
+    vaultPath: string,
+  ) => void;
   onNavigateFile?: (filePath: string) => void;
 }) {
   const resizeSplit = usePaneStore((s) => s.resizeSplit);
@@ -20,13 +25,10 @@ export function SplitView({
   const containerRef = useRef<HTMLDivElement>(null);
   const isHorizontal = layout.direction === "horizontal";
 
-  const startResize = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      setIsResizing(true);
-    },
-    [],
-  );
+  const startResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+  }, []);
 
   useEffect(() => {
     if (!isResizing) return;
@@ -61,14 +63,26 @@ export function SplitView({
       direction={isHorizontal ? "column" : "row"}
       flex={1}
       overflow="hidden"
-      css={isResizing ? { cursor: isHorizontal ? "row-resize" : "col-resize", userSelect: "none" } : undefined}
+      css={
+        isResizing
+          ? {
+              cursor: isHorizontal ? "row-resize" : "col-resize",
+              userSelect: "none",
+            }
+          : undefined
+      }
     >
       <Box
         overflow="hidden"
         display="flex"
         style={isHorizontal ? { height: firstSize } : { width: firstSize }}
       >
-        <PaneNode layout={layout.children[0]} path={[...path, 0]} handleEditorChange={handleEditorChange} onNavigateFile={onNavigateFile} />
+        <PaneNode
+          layout={layout.children[0]}
+          path={[...path, 0]}
+          handleEditorChange={handleEditorChange}
+          onNavigateFile={onNavigateFile}
+        />
       </Box>
       <Box
         w={isHorizontal ? "100%" : "4px"}
@@ -84,7 +98,12 @@ export function SplitView({
         display="flex"
         style={isHorizontal ? { height: secondSize } : { width: secondSize }}
       >
-        <PaneNode layout={layout.children[1]} path={[...path, 1]} handleEditorChange={handleEditorChange} onNavigateFile={onNavigateFile} />
+        <PaneNode
+          layout={layout.children[1]}
+          path={[...path, 1]}
+          handleEditorChange={handleEditorChange}
+          onNavigateFile={onNavigateFile}
+        />
       </Box>
     </Flex>
   );

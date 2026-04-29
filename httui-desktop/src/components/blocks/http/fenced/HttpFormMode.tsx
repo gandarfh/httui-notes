@@ -1,11 +1,4 @@
-import {
-  Box,
-  Button,
-  Flex,
-  IconButton,
-  Tabs,
-  Text,
-} from "@chakra-ui/react";
+import { Box, Button, Flex, IconButton, Tabs, Text } from "@chakra-ui/react";
 import { LuX } from "react-icons/lu";
 import {
   memo,
@@ -190,11 +183,7 @@ export function HttpFormMode({
           />
         ))}
         <Box px={2} py={1}>
-          <Button
-            size="2xs"
-            variant="ghost"
-            onClick={() => addRow(kind)}
-          >
+          <Button size="2xs" variant="ghost" onClick={() => addRow(kind)}>
             + add {kind === "params" ? "param" : "header"}
           </Button>
         </Box>

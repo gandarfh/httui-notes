@@ -38,7 +38,8 @@ export function UsagePanel() {
   const totalInput = data.reduce((s, d) => s + d.input_tokens, 0);
   const totalOutput = data.reduce((s, d) => s + d.output_tokens, 0);
   const totalCache = data.reduce((s, d) => s + d.cache_read_tokens, 0);
-  const cacheEfficiency = totalInput > 0 ? Math.round((totalCache / totalInput) * 100) : 0;
+  const cacheEfficiency =
+    totalInput > 0 ? Math.round((totalCache / totalInput) * 100) : 0;
 
   const maxTokens = Math.max(
     1,
@@ -49,9 +50,21 @@ export function UsagePanel() {
     <Flex direction="column" flex={1} overflow="auto" p={3} gap={3}>
       {/* Summary cards */}
       <HStack gap={2}>
-        <StatCard label="Input" value={formatTokens(totalInput)} color="blue.400" />
-        <StatCard label="Output" value={formatTokens(totalOutput)} color="green.400" />
-        <StatCard label="Cached" value={formatTokens(totalCache)} color="yellow.400" />
+        <StatCard
+          label="Input"
+          value={formatTokens(totalInput)}
+          color="blue.400"
+        />
+        <StatCard
+          label="Output"
+          value={formatTokens(totalOutput)}
+          color="green.400"
+        />
+        <StatCard
+          label="Cached"
+          value={formatTokens(totalCache)}
+          color="yellow.400"
+        />
       </HStack>
 
       <HStack gap={2}>
@@ -104,26 +117,53 @@ export function UsagePanel() {
         ) : (
           <VStack gap={0.5} align="stretch">
             {data.map((day) => {
-              const total = day.input_tokens + day.output_tokens + day.cache_read_tokens;
+              const total =
+                day.input_tokens + day.output_tokens + day.cache_read_tokens;
               const pct = (total / maxTokens) * 100;
               const inputPct = total > 0 ? (day.input_tokens / total) * pct : 0;
-              const outputPct = total > 0 ? (day.output_tokens / total) * pct : 0;
-              const cachePct = total > 0 ? (day.cache_read_tokens / total) * pct : 0;
+              const outputPct =
+                total > 0 ? (day.output_tokens / total) * pct : 0;
+              const cachePct =
+                total > 0 ? (day.cache_read_tokens / total) * pct : 0;
 
               return (
                 <HStack key={day.date} gap={1.5} h="18px">
-                  <Text fontSize="2xs" color="fg.muted" w="45px" flexShrink={0} textAlign="right">
+                  <Text
+                    fontSize="2xs"
+                    color="fg.muted"
+                    w="45px"
+                    flexShrink={0}
+                    textAlign="right"
+                  >
                     {day.date.slice(5)}
                   </Text>
-                  <Flex flex={1} h="12px" rounded="sm" overflow="hidden" bg="bg.subtle">
+                  <Flex
+                    flex={1}
+                    h="12px"
+                    rounded="sm"
+                    overflow="hidden"
+                    bg="bg.subtle"
+                  >
                     {inputPct > 0 && (
-                      <Box w={`${inputPct}%`} bg="blue.400" transition="width 0.2s" />
+                      <Box
+                        w={`${inputPct}%`}
+                        bg="blue.400"
+                        transition="width 0.2s"
+                      />
                     )}
                     {outputPct > 0 && (
-                      <Box w={`${outputPct}%`} bg="green.400" transition="width 0.2s" />
+                      <Box
+                        w={`${outputPct}%`}
+                        bg="green.400"
+                        transition="width 0.2s"
+                      />
                     )}
                     {cachePct > 0 && (
-                      <Box w={`${cachePct}%`} bg="yellow.400" transition="width 0.2s" />
+                      <Box
+                        w={`${cachePct}%`}
+                        bg="yellow.400"
+                        transition="width 0.2s"
+                      />
                     )}
                   </Flex>
                   <Text fontSize="2xs" color="fg.muted" w="35px" flexShrink={0}>
@@ -140,15 +180,21 @@ export function UsagePanel() {
       <HStack gap={3} justifyContent="center">
         <HStack gap={1}>
           <Box w="8px" h="8px" rounded="sm" bg="blue.400" />
-          <Text fontSize="2xs" color="fg.muted">Input</Text>
+          <Text fontSize="2xs" color="fg.muted">
+            Input
+          </Text>
         </HStack>
         <HStack gap={1}>
           <Box w="8px" h="8px" rounded="sm" bg="green.400" />
-          <Text fontSize="2xs" color="fg.muted">Output</Text>
+          <Text fontSize="2xs" color="fg.muted">
+            Output
+          </Text>
         </HStack>
         <HStack gap={1}>
           <Box w="8px" h="8px" rounded="sm" bg="yellow.400" />
-          <Text fontSize="2xs" color="fg.muted">Cached</Text>
+          <Text fontSize="2xs" color="fg.muted">
+            Cached
+          </Text>
         </HStack>
       </HStack>
     </Flex>

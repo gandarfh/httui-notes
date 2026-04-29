@@ -1,5 +1,14 @@
 import { useState, useEffect, useCallback } from "react";
-import { Box, Flex, HStack, VStack, Text, IconButton, Badge, Portal } from "@chakra-ui/react";
+import {
+  Box,
+  Flex,
+  HStack,
+  VStack,
+  Text,
+  IconButton,
+  Badge,
+  Portal,
+} from "@chakra-ui/react";
 import { LuTrash2, LuX, LuShield } from "react-icons/lu";
 import {
   listToolPermissions,
@@ -74,7 +83,13 @@ export function PermissionManager({ open, onClose }: PermissionManagerProps) {
         flexDirection="column"
       >
         {/* Header */}
-        <HStack px={3} py={2} borderBottom="1px solid" borderColor="border" flexShrink={0}>
+        <HStack
+          px={3}
+          py={2}
+          borderBottom="1px solid"
+          borderColor="border"
+          flexShrink={0}
+        >
           <LuShield size={14} />
           <Text fontWeight="semibold" fontSize="sm" flex={1}>
             Permission Rules
@@ -97,13 +112,20 @@ export function PermissionManager({ open, onClose }: PermissionManagerProps) {
                 No saved permission rules
               </Text>
               <Text fontSize="xs" color="fg.muted">
-                Rules are created when you allow tools with "Session" or "Always" scope
+                Rules are created when you allow tools with "Session" or
+                "Always" scope
               </Text>
             </VStack>
           ) : (
             Array.from(grouped.entries()).map(([workspace, groupRules]) => (
               <Box key={workspace}>
-                <Text fontSize="2xs" fontWeight="semibold" color="fg.muted" mb={1.5} textTransform="uppercase">
+                <Text
+                  fontSize="2xs"
+                  fontWeight="semibold"
+                  color="fg.muted"
+                  mb={1.5}
+                  textTransform="uppercase"
+                >
                   {workspace}
                 </Text>
                 <VStack gap={1} align="stretch">
@@ -121,7 +143,9 @@ export function PermissionManager({ open, onClose }: PermissionManagerProps) {
                     >
                       <Badge
                         size="sm"
-                        colorPalette={rule.behavior === "allow" ? "green" : "red"}
+                        colorPalette={
+                          rule.behavior === "allow" ? "green" : "red"
+                        }
                         variant="subtle"
                       >
                         {rule.behavior}

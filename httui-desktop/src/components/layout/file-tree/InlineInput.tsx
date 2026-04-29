@@ -28,12 +28,7 @@ export function InlineInput({
   }, []);
 
   return (
-    <HStack
-      px={2}
-      py={0.5}
-      pl={`${depth * 16 + 8}px`}
-      gap={1.5}
-    >
+    <HStack px={2} py={0.5} pl={`${depth * 16 + 8}px`} gap={1.5}>
       <Box color="fg.subtle" flexShrink={0}>
         {type === "folder" ? <LuFolder size={14} /> : <LuFileText size={14} />}
       </Box>

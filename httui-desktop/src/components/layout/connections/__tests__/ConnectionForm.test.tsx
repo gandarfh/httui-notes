@@ -37,7 +37,9 @@ describe("ConnectionForm", () => {
 
   describe("create mode", () => {
     it("renders 'New Connection' title when no connection prop", () => {
-      renderWithProviders(<ConnectionForm connection={null} onClose={vi.fn()} />);
+      renderWithProviders(
+        <ConnectionForm connection={null} onClose={vi.fn()} />,
+      );
       expect(screen.getByText("New Connection")).toBeInTheDocument();
     });
 
@@ -72,7 +74,9 @@ describe("ConnectionForm", () => {
 
     it("switches driver to sqlite hides host/port fields", async () => {
       const user = userEvent.setup();
-      renderWithProviders(<ConnectionForm connection={null} onClose={vi.fn()} />);
+      renderWithProviders(
+        <ConnectionForm connection={null} onClose={vi.fn()} />,
+      );
 
       // Default = postgres → no FILE PATH label
       expect(screen.queryByText(/FILE PATH/i)).not.toBeInTheDocument();
@@ -88,12 +92,11 @@ describe("ConnectionForm", () => {
         throw new Error("port in use");
       });
 
-      renderWithProviders(<ConnectionForm connection={null} onClose={vi.fn()} />);
-
-      await user.type(
-        screen.getByPlaceholderText("Connection name"),
-        "x",
+      renderWithProviders(
+        <ConnectionForm connection={null} onClose={vi.fn()} />,
       );
+
+      await user.type(screen.getByPlaceholderText("Connection name"), "x");
       await user.click(screen.getByText(/create/i));
 
       await waitFor(() =>
@@ -146,9 +149,7 @@ describe("ConnectionForm", () => {
 
       // Test button only renders in edit mode
       const buttons = screen.getAllByRole("button");
-      const testBtn = buttons.find((b) =>
-        /test/i.test(b.textContent ?? ""),
-      );
+      const testBtn = buttons.find((b) => /test/i.test(b.textContent ?? ""));
       if (testBtn) {
         await user.click(testBtn);
         await waitFor(() => expect(tested).toBe(true));
@@ -183,7 +184,9 @@ describe("ConnectionForm", () => {
     it("Close button calls onClose", async () => {
       const user = userEvent.setup();
       const onClose = vi.fn();
-      renderWithProviders(<ConnectionForm connection={null} onClose={onClose} />);
+      renderWithProviders(
+        <ConnectionForm connection={null} onClose={onClose} />,
+      );
 
       await user.click(screen.getByRole("button", { name: /close/i }));
       expect(onClose).toHaveBeenCalledTimes(1);
@@ -192,7 +195,9 @@ describe("ConnectionForm", () => {
     it("Escape key closes the form", async () => {
       const user = userEvent.setup();
       const onClose = vi.fn();
-      renderWithProviders(<ConnectionForm connection={null} onClose={onClose} />);
+      renderWithProviders(
+        <ConnectionForm connection={null} onClose={onClose} />,
+      );
 
       await user.keyboard("{Escape}");
       expect(onClose).toHaveBeenCalledTimes(1);

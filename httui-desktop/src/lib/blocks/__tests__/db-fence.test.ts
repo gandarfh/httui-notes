@@ -216,17 +216,22 @@ describe("isLegacyDbBody / parseLegacyDbBody", () => {
   });
 
   it("accepts both snake_case and camelCase connection id", () => {
-    expect(parseLegacyDbBody('{"connectionId":"x","query":"SELECT 1"}'))
-      .toEqual({ query: "SELECT 1", connectionId: "x" });
-    expect(parseLegacyDbBody('{"connection_id":"y","query":"SELECT 1"}'))
-      .toEqual({ query: "SELECT 1", connectionId: "y" });
+    expect(
+      parseLegacyDbBody('{"connectionId":"x","query":"SELECT 1"}'),
+    ).toEqual({ query: "SELECT 1", connectionId: "x" });
+    expect(
+      parseLegacyDbBody('{"connection_id":"y","query":"SELECT 1"}'),
+    ).toEqual({ query: "SELECT 1", connectionId: "y" });
   });
 
   it("accepts both snake_case and camelCase timeout", () => {
-    expect(parseLegacyDbBody('{"query":"SELECT 1","timeout_ms":5000}'))
-      .toEqual({ query: "SELECT 1", timeoutMs: 5000 });
-    expect(parseLegacyDbBody('{"query":"SELECT 1","timeoutMs":5000}'))
-      .toEqual({ query: "SELECT 1", timeoutMs: 5000 });
+    expect(parseLegacyDbBody('{"query":"SELECT 1","timeout_ms":5000}')).toEqual(
+      { query: "SELECT 1", timeoutMs: 5000 },
+    );
+    expect(parseLegacyDbBody('{"query":"SELECT 1","timeoutMs":5000}')).toEqual({
+      query: "SELECT 1",
+      timeoutMs: 5000,
+    });
   });
 
   it("tolerates leading whitespace in body", () => {

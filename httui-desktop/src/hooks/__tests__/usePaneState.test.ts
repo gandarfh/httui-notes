@@ -133,8 +133,12 @@ describe("paneStore", () => {
 
   it("editorContents stores content in Zustand state", () => {
     usePaneStore.getState().openFile("test.md", "<p>content</p>", V);
-    expect(usePaneStore.getState().editorContents.get("test.md")).toBe("<p>content</p>");
+    expect(usePaneStore.getState().editorContents.get("test.md")).toBe(
+      "<p>content</p>",
+    );
     usePaneStore.getState().updateContent("test.md", "<p>updated</p>");
-    expect(usePaneStore.getState().editorContents.get("test.md")).toBe("<p>updated</p>");
+    expect(usePaneStore.getState().editorContents.get("test.md")).toBe(
+      "<p>updated</p>",
+    );
   });
 });

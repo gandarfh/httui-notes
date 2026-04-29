@@ -11,7 +11,7 @@ export function useAutoUpdate() {
 
         const yes = await ask(
           `A new version ${update.version} is available. Would you like to update now?`,
-          { title: "Update Available", kind: "info" }
+          { title: "Update Available", kind: "info" },
         );
 
         if (yes) {

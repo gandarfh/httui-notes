@@ -24,7 +24,11 @@ import {
 } from "react-icons/lu";
 import { useColorMode } from "@/components/ui/color-mode";
 import CodeMirror from "@uiw/react-codemirror";
-import { sql, SQLite as SQLiteDialect, keywordCompletionSource } from "@codemirror/lang-sql";
+import {
+  sql,
+  SQLite as SQLiteDialect,
+  keywordCompletionSource,
+} from "@codemirror/lang-sql";
 import { autocompletion } from "@codemirror/autocomplete";
 import { EditorView } from "@codemirror/view";
 import { ResultTable } from "@/components/blocks/db/ResultTable";
@@ -158,7 +162,8 @@ const CATEGORIES: AuditCategory[] = [
       {
         id: "tokens",
         label: "Token usage (30 days)",
-        description: "Daily token consumption aggregated over the last 30 days.",
+        description:
+          "Daily token consumption aggregated over the last 30 days.",
         insight:
           "Input tokens are what you send, output tokens are Claude's responses. Cache tokens reduce costs by reusing prior context. High cache ratios are good.",
         query:
@@ -250,12 +255,32 @@ const SCHEMA_DOCS: TableDoc[] = [
     description:
       "Records every SQL query executed via DB blocks. Automatically pruned: max 50,000 entries, 30-day retention.",
     columns: [
-      { name: "id", type: "INTEGER", description: "Auto-incrementing primary key" },
-      { name: "connection_id", type: "TEXT", description: "Which database connection was used" },
-      { name: "query", type: "TEXT", description: "The SQL query (truncated to 500 characters for storage)" },
+      {
+        name: "id",
+        type: "INTEGER",
+        description: "Auto-incrementing primary key",
+      },
+      {
+        name: "connection_id",
+        type: "TEXT",
+        description: "Which database connection was used",
+      },
+      {
+        name: "query",
+        type: "TEXT",
+        description: "The SQL query (truncated to 500 characters for storage)",
+      },
       { name: "status", type: "TEXT", description: "'success' or 'error'" },
-      { name: "duration_ms", type: "INTEGER", description: "Execution time in milliseconds" },
-      { name: "created_at", type: "TEXT", description: "ISO timestamp of when the query ran" },
+      {
+        name: "duration_ms",
+        type: "INTEGER",
+        description: "Execution time in milliseconds",
+      },
+      {
+        name: "created_at",
+        type: "TEXT",
+        description: "ISO timestamp of when the query ran",
+      },
     ],
   },
   {
@@ -263,18 +288,59 @@ const SCHEMA_DOCS: TableDoc[] = [
     description:
       "Database connection configurations. Passwords are stored in the OS keychain, not here.",
     columns: [
-      { name: "id", type: "TEXT", description: "Unique connection identifier (UUID)" },
-      { name: "name", type: "TEXT", description: "User-assigned name (unique)" },
-      { name: "driver", type: "TEXT", description: "Database type: postgres, mysql, or sqlite" },
+      {
+        name: "id",
+        type: "TEXT",
+        description: "Unique connection identifier (UUID)",
+      },
+      {
+        name: "name",
+        type: "TEXT",
+        description: "User-assigned name (unique)",
+      },
+      {
+        name: "driver",
+        type: "TEXT",
+        description: "Database type: postgres, mysql, or sqlite",
+      },
       { name: "host", type: "TEXT", description: "Server hostname or IP" },
       { name: "port", type: "INTEGER", description: "Server port number" },
-      { name: "database_name", type: "TEXT", description: "Database or file path (SQLite)" },
-      { name: "username", type: "TEXT", description: "Authentication username" },
-      { name: "password", type: "TEXT", description: "Always '__KEYCHAIN__' sentinel — real value in OS keychain" },
-      { name: "ssl_mode", type: "TEXT", description: "SSL mode: prefer, require, or disable" },
-      { name: "timeout_ms", type: "INTEGER", description: "Connection timeout in milliseconds" },
-      { name: "query_timeout_ms", type: "INTEGER", description: "Default query timeout in milliseconds" },
-      { name: "max_pool_size", type: "INTEGER", description: "Maximum concurrent connections in the pool" },
+      {
+        name: "database_name",
+        type: "TEXT",
+        description: "Database or file path (SQLite)",
+      },
+      {
+        name: "username",
+        type: "TEXT",
+        description: "Authentication username",
+      },
+      {
+        name: "password",
+        type: "TEXT",
+        description:
+          "Always '__KEYCHAIN__' sentinel — real value in OS keychain",
+      },
+      {
+        name: "ssl_mode",
+        type: "TEXT",
+        description: "SSL mode: prefer, require, or disable",
+      },
+      {
+        name: "timeout_ms",
+        type: "INTEGER",
+        description: "Connection timeout in milliseconds",
+      },
+      {
+        name: "query_timeout_ms",
+        type: "INTEGER",
+        description: "Default query timeout in milliseconds",
+      },
+      {
+        name: "max_pool_size",
+        type: "INTEGER",
+        description: "Maximum concurrent connections in the pool",
+      },
     ],
   },
   {
@@ -282,9 +348,17 @@ const SCHEMA_DOCS: TableDoc[] = [
     description:
       "Environment groupings for organizing variables (e.g., Development, Staging, Production).",
     columns: [
-      { name: "id", type: "TEXT", description: "Unique environment identifier" },
+      {
+        name: "id",
+        type: "TEXT",
+        description: "Unique environment identifier",
+      },
       { name: "name", type: "TEXT", description: "Environment name (unique)" },
-      { name: "is_active", type: "INTEGER", description: "1 if this is the currently active environment" },
+      {
+        name: "is_active",
+        type: "INTEGER",
+        description: "1 if this is the currently active environment",
+      },
     ],
   },
   {
@@ -293,23 +367,60 @@ const SCHEMA_DOCS: TableDoc[] = [
       "Key-value pairs within environments. Secret values are stored in the OS keychain.",
     columns: [
       { name: "id", type: "TEXT", description: "Unique variable identifier" },
-      { name: "environment_id", type: "TEXT", description: "Which environment this belongs to" },
-      { name: "key", type: "TEXT", description: "Variable name (used as {{KEY}} in blocks)" },
-      { name: "value", type: "TEXT", description: "Variable value (or '__KEYCHAIN__' for secrets)" },
-      { name: "is_secret", type: "INTEGER", description: "1 if encrypted via OS keychain" },
+      {
+        name: "environment_id",
+        type: "TEXT",
+        description: "Which environment this belongs to",
+      },
+      {
+        name: "key",
+        type: "TEXT",
+        description: "Variable name (used as {{KEY}} in blocks)",
+      },
+      {
+        name: "value",
+        type: "TEXT",
+        description: "Variable value (or '__KEYCHAIN__' for secrets)",
+      },
+      {
+        name: "is_secret",
+        type: "INTEGER",
+        description: "1 if encrypted via OS keychain",
+      },
     ],
   },
   {
     name: "sessions",
-    description: "AI chat sessions. Each session is a conversation with Claude.",
+    description:
+      "AI chat sessions. Each session is a conversation with Claude.",
     columns: [
       { name: "id", type: "TEXT", description: "Unique session identifier" },
-      { name: "claude_session_id", type: "TEXT", description: "Claude API session ID (for resume)" },
+      {
+        name: "claude_session_id",
+        type: "TEXT",
+        description: "Claude API session ID (for resume)",
+      },
       { name: "title", type: "TEXT", description: "Session title" },
-      { name: "cwd", type: "TEXT", description: "Working directory during the session" },
-      { name: "created_at", type: "INTEGER", description: "Unix timestamp of creation" },
-      { name: "updated_at", type: "INTEGER", description: "Unix timestamp of last activity" },
-      { name: "archived_at", type: "INTEGER", description: "Unix timestamp when archived (NULL if active)" },
+      {
+        name: "cwd",
+        type: "TEXT",
+        description: "Working directory during the session",
+      },
+      {
+        name: "created_at",
+        type: "INTEGER",
+        description: "Unix timestamp of creation",
+      },
+      {
+        name: "updated_at",
+        type: "INTEGER",
+        description: "Unix timestamp of last activity",
+      },
+      {
+        name: "archived_at",
+        type: "INTEGER",
+        description: "Unix timestamp when archived (NULL if active)",
+      },
     ],
   },
   {
@@ -317,12 +428,32 @@ const SCHEMA_DOCS: TableDoc[] = [
     description: "Individual messages within chat sessions.",
     columns: [
       { name: "id", type: "TEXT", description: "Unique message identifier" },
-      { name: "session_id", type: "TEXT", description: "Which session this belongs to" },
+      {
+        name: "session_id",
+        type: "TEXT",
+        description: "Which session this belongs to",
+      },
       { name: "role", type: "TEXT", description: "'user' or 'assistant'" },
-      { name: "turn_index", type: "INTEGER", description: "Order within the session" },
-      { name: "content_json", type: "TEXT", description: "Message content as JSON" },
-      { name: "tokens_in", type: "INTEGER", description: "Input tokens for this message" },
-      { name: "tokens_out", type: "INTEGER", description: "Output tokens for this message" },
+      {
+        name: "turn_index",
+        type: "INTEGER",
+        description: "Order within the session",
+      },
+      {
+        name: "content_json",
+        type: "TEXT",
+        description: "Message content as JSON",
+      },
+      {
+        name: "tokens_in",
+        type: "INTEGER",
+        description: "Input tokens for this message",
+      },
+      {
+        name: "tokens_out",
+        type: "INTEGER",
+        description: "Output tokens for this message",
+      },
     ],
   },
   {
@@ -330,11 +461,31 @@ const SCHEMA_DOCS: TableDoc[] = [
     description: "Records of every tool invocation during chat sessions.",
     columns: [
       { name: "id", type: "TEXT", description: "Unique call identifier" },
-      { name: "message_id", type: "TEXT", description: "Which message triggered this tool call" },
-      { name: "tool_name", type: "TEXT", description: "Name of the tool (e.g., read_note, update_note)" },
-      { name: "input_json", type: "TEXT", description: "Arguments passed to the tool" },
-      { name: "result_json", type: "TEXT", description: "Tool execution result" },
-      { name: "is_error", type: "INTEGER", description: "1 if the tool returned an error" },
+      {
+        name: "message_id",
+        type: "TEXT",
+        description: "Which message triggered this tool call",
+      },
+      {
+        name: "tool_name",
+        type: "TEXT",
+        description: "Name of the tool (e.g., read_note, update_note)",
+      },
+      {
+        name: "input_json",
+        type: "TEXT",
+        description: "Arguments passed to the tool",
+      },
+      {
+        name: "result_json",
+        type: "TEXT",
+        description: "Tool execution result",
+      },
+      {
+        name: "is_error",
+        type: "INTEGER",
+        description: "1 if the tool returned an error",
+      },
     ],
   },
   {
@@ -343,10 +494,26 @@ const SCHEMA_DOCS: TableDoc[] = [
       "Aggregated token usage by day and session. Used for the usage panel chart.",
     columns: [
       { name: "date", type: "TEXT", description: "Day (YYYY-MM-DD)" },
-      { name: "session_id", type: "TEXT", description: "Session (NULL for daily aggregate)" },
-      { name: "input_tokens", type: "INTEGER", description: "Total input tokens consumed" },
-      { name: "output_tokens", type: "INTEGER", description: "Total output tokens generated" },
-      { name: "cache_read_tokens", type: "INTEGER", description: "Tokens served from prompt cache" },
+      {
+        name: "session_id",
+        type: "TEXT",
+        description: "Session (NULL for daily aggregate)",
+      },
+      {
+        name: "input_tokens",
+        type: "INTEGER",
+        description: "Total input tokens consumed",
+      },
+      {
+        name: "output_tokens",
+        type: "INTEGER",
+        description: "Total output tokens generated",
+      },
+      {
+        name: "cache_read_tokens",
+        type: "INTEGER",
+        description: "Tokens served from prompt cache",
+      },
     ],
   },
   {
@@ -355,23 +522,60 @@ const SCHEMA_DOCS: TableDoc[] = [
       "Persisted permission rules from chat interactions. Controls which tools Claude can use without prompting.",
     columns: [
       { name: "id", type: "TEXT", description: "Unique rule identifier" },
-      { name: "tool_name", type: "TEXT", description: "Tool this rule applies to" },
-      { name: "path_pattern", type: "TEXT", description: "File path pattern (glob)" },
-      { name: "scope", type: "TEXT", description: "'always' persists forever, 'session' expires" },
+      {
+        name: "tool_name",
+        type: "TEXT",
+        description: "Tool this rule applies to",
+      },
+      {
+        name: "path_pattern",
+        type: "TEXT",
+        description: "File path pattern (glob)",
+      },
+      {
+        name: "scope",
+        type: "TEXT",
+        description: "'always' persists forever, 'session' expires",
+      },
       { name: "behavior", type: "TEXT", description: "'allow' or 'deny'" },
     ],
   },
   {
     name: "block_results",
-    description: "Cached execution results for blocks. Keyed by file path + content hash.",
+    description:
+      "Cached execution results for blocks. Keyed by file path + content hash.",
     columns: [
-      { name: "file_path", type: "TEXT", description: "Note file containing the block" },
-      { name: "block_hash", type: "TEXT", description: "SHA-256 of content + env + connection" },
+      {
+        name: "file_path",
+        type: "TEXT",
+        description: "Note file containing the block",
+      },
+      {
+        name: "block_hash",
+        type: "TEXT",
+        description: "SHA-256 of content + env + connection",
+      },
       { name: "status", type: "TEXT", description: "'success' or 'error'" },
-      { name: "response", type: "TEXT", description: "Serialized block result (JSON)" },
-      { name: "total_rows", type: "INTEGER", description: "Row count for SELECT results" },
-      { name: "executed_at", type: "TEXT", description: "When this result was cached" },
-      { name: "elapsed_ms", type: "INTEGER", description: "Execution time in milliseconds" },
+      {
+        name: "response",
+        type: "TEXT",
+        description: "Serialized block result (JSON)",
+      },
+      {
+        name: "total_rows",
+        type: "INTEGER",
+        description: "Row count for SELECT results",
+      },
+      {
+        name: "executed_at",
+        type: "TEXT",
+        description: "When this result was cached",
+      },
+      {
+        name: "elapsed_ms",
+        type: "INTEGER",
+        description: "Execution time in milliseconds",
+      },
     ],
   },
 ];
@@ -456,34 +660,31 @@ function ViewRunner({ view }: { view: AuditView }) {
     setCustomOpen(false);
   }, [view.id, view.query]);
 
-  const runQuery = useCallback(
-    async (queryStr: string) => {
-      const trimmed = queryStr.trim();
-      if (!trimmed) return;
+  const runQuery = useCallback(async (queryStr: string) => {
+    const trimmed = queryStr.trim();
+    if (!trimmed) return;
 
-      setLoading(true);
-      setError(null);
-      setResult(null);
-      setAccumulatedRows([]);
-      setHasMore(false);
+    setLoading(true);
+    setError(null);
+    setResult(null);
+    setAccumulatedRows([]);
+    setHasMore(false);
 
-      const start = performance.now();
-      try {
-        const res = await queryInternalDb(trimmed, 0, FETCH_SIZE);
-        const elapsed = Math.round(performance.now() - start);
-        setDurationMs(elapsed);
-        setResult(res);
-        setAccumulatedRows(rowsToRecords(res.columns, res.rows));
-        setHasMore(res.has_more);
-      } catch (err) {
-        setError(String(err));
-        setDurationMs(null);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [],
-  );
+    const start = performance.now();
+    try {
+      const res = await queryInternalDb(trimmed, 0, FETCH_SIZE);
+      const elapsed = Math.round(performance.now() - start);
+      setDurationMs(elapsed);
+      setResult(res);
+      setAccumulatedRows(rowsToRecords(res.columns, res.rows));
+      setHasMore(res.has_more);
+    } catch (err) {
+      setError(String(err));
+      setDurationMs(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   const loadMore = useCallback(async () => {
     if (!result || loadingMore || !hasMore) return;
@@ -491,15 +692,30 @@ function ViewRunner({ view }: { view: AuditView }) {
 
     setLoadingMore(true);
     try {
-      const res = await queryInternalDb(queryStr, accumulatedRows.length, FETCH_SIZE);
-      setAccumulatedRows((prev) => [...prev, ...rowsToRecords(res.columns, res.rows)]);
+      const res = await queryInternalDb(
+        queryStr,
+        accumulatedRows.length,
+        FETCH_SIZE,
+      );
+      setAccumulatedRows((prev) => [
+        ...prev,
+        ...rowsToRecords(res.columns, res.rows),
+      ]);
       setHasMore(res.has_more);
     } catch (err) {
       setError(String(err));
     } finally {
       setLoadingMore(false);
     }
-  }, [result, loadingMore, hasMore, customOpen, editorValue, view.query, accumulatedRows.length]);
+  }, [
+    result,
+    loadingMore,
+    hasMore,
+    customOpen,
+    editorValue,
+    view.query,
+    accumulatedRows.length,
+  ]);
 
   return (
     <Flex direction="column" gap={3}>
@@ -542,7 +758,8 @@ function ViewRunner({ view }: { view: AuditView }) {
         )}
         {result && !loading && (
           <Text color="fg.muted">
-            {accumulatedRows.length} row{accumulatedRows.length !== 1 ? "s" : ""}
+            {accumulatedRows.length} row
+            {accumulatedRows.length !== 1 ? "s" : ""}
             {hasMore ? "+" : ""}
           </Text>
         )}
@@ -550,7 +767,14 @@ function ViewRunner({ view }: { view: AuditView }) {
 
       {/* Error */}
       {error && (
-        <Box px={3} py={2} borderRadius="md" bg="red.subtle" borderWidth="1px" borderColor="red.muted">
+        <Box
+          px={3}
+          py={2}
+          borderRadius="md"
+          bg="red.subtle"
+          borderWidth="1px"
+          borderColor="red.muted"
+        >
           <Text fontSize="xs" color="red.fg">
             {error}
           </Text>
@@ -572,14 +796,25 @@ function ViewRunner({ view }: { view: AuditView }) {
 
       {/* Column legend */}
       {result && result.columns.length > 0 && !loading && (
-        <Box borderWidth="1px" borderColor="border" borderRadius="md" px={3} py={2}>
+        <Box
+          borderWidth="1px"
+          borderColor="border"
+          borderRadius="md"
+          px={3}
+          py={2}
+        >
           <Text fontSize="xs" fontWeight="medium" mb={1.5}>
             Column reference
           </Text>
           <VStack gap={1} align="stretch">
             {result.columns.map((col) => (
               <Flex key={col.name} gap={2} fontSize="xs">
-                <Text fontFamily="mono" fontWeight="medium" color="purple.fg" flexShrink={0}>
+                <Text
+                  fontFamily="mono"
+                  fontWeight="medium"
+                  color="purple.fg"
+                  flexShrink={0}
+                >
                   {col.name}
                 </Text>
                 <Text color="fg.muted">
@@ -593,7 +828,13 @@ function ViewRunner({ view }: { view: AuditView }) {
 
       {/* Empty state */}
       {result && result.columns.length === 0 && !error && !loading && (
-        <Flex justify="center" align="center" py={6} color="fg.muted" fontSize="xs">
+        <Flex
+          justify="center"
+          align="center"
+          py={6}
+          color="fg.muted"
+          fontSize="xs"
+        >
           No results
         </Flex>
       )}
@@ -610,7 +851,11 @@ function ViewRunner({ view }: { view: AuditView }) {
           color="fg.muted"
           _hover={{ color: "fg" }}
         >
-          {customOpen ? <LuChevronDown size={12} /> : <LuChevronRight size={12} />}
+          {customOpen ? (
+            <LuChevronDown size={12} />
+          ) : (
+            <LuChevronRight size={12} />
+          )}
           <LuTerminal size={12} />
           <Text>Custom query</Text>
         </Flex>
@@ -656,7 +901,8 @@ function SchemaExplorer() {
   return (
     <Flex direction="column" gap={3}>
       <Text fontSize="xs" color="fg.muted">
-        Complete reference of all internal tables. Click a table to see its columns and what each one stores.
+        Complete reference of all internal tables. Click a table to see its
+        columns and what each one stores.
       </Text>
 
       <VStack gap={1} align="stretch">
@@ -679,7 +925,11 @@ function SchemaExplorer() {
                 _hover={{ bg: "bg.subtle" }}
                 onClick={() => setExpandedTable(isOpen ? null : table.name)}
               >
-                {isOpen ? <LuChevronDown size={12} /> : <LuChevronRight size={12} />}
+                {isOpen ? (
+                  <LuChevronDown size={12} />
+                ) : (
+                  <LuChevronRight size={12} />
+                )}
                 <Text fontSize="xs" fontFamily="mono" fontWeight="medium">
                   {table.name}
                 </Text>
@@ -706,7 +956,13 @@ function SchemaExplorer() {
                         borderTopWidth="1px"
                         borderColor="border"
                       >
-                        <Text fontFamily="mono" fontWeight="medium" color="purple.fg" w="140px" flexShrink={0}>
+                        <Text
+                          fontFamily="mono"
+                          fontWeight="medium"
+                          color="purple.fg"
+                          w="140px"
+                          flexShrink={0}
+                        >
                           {col.name}
                         </Text>
                         <Badge size="xs" variant="outline" flexShrink={0}>
@@ -735,7 +991,8 @@ export function AuditSection() {
   const [activeViewIndex, setActiveViewIndex] = useState(0);
   const [showSchema, setShowSchema] = useState(false);
 
-  const activeCategory = CATEGORIES.find((c) => c.id === activeCategoryId) ?? CATEGORIES[0];
+  const activeCategory =
+    CATEGORIES.find((c) => c.id === activeCategoryId) ?? CATEGORIES[0];
   const activeView = activeCategory.views[activeViewIndex];
 
   const handleCategoryChange = useCallback((catId: string) => {
@@ -752,7 +1009,9 @@ export function AuditSection() {
           <Button
             key={cat.id}
             size="xs"
-            variant={activeCategoryId === cat.id && !showSchema ? "subtle" : "ghost"}
+            variant={
+              activeCategoryId === cat.id && !showSchema ? "subtle" : "ghost"
+            }
             onClick={() => handleCategoryChange(cat.id)}
           >
             {cat.icon}

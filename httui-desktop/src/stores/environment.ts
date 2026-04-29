@@ -29,7 +29,12 @@ interface EnvironmentState {
   deleteEnvironment: (id: string) => Promise<void>;
   duplicateEnvironment: (sourceId: string, newName: string) => Promise<void>;
   loadVariables: (environmentId: string) => Promise<EnvVariable[]>;
-  setVariable: (environmentId: string, key: string, value: string, isSecret?: boolean) => Promise<EnvVariable>;
+  setVariable: (
+    environmentId: string,
+    key: string,
+    value: string,
+    isSecret?: boolean,
+  ) => Promise<EnvVariable>;
   deleteVariable: (id: string) => Promise<void>;
   getActiveVariables: () => Promise<Record<string, string>>;
 }
@@ -54,7 +59,9 @@ export const useEnvironmentStore = create<EnvironmentState>()(
             environments: envs,
             activeEnvironment: envs.find((e) => e.is_active) ?? null,
           });
-        } catch { /* silently fail */ }
+        } catch {
+          /* silently fail */
+        }
       },
 
       switchEnvironment: async (id) => {

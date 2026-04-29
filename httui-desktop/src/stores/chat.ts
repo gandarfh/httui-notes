@@ -28,7 +28,11 @@ interface ChatDeltaPayload {
 
 interface ChatDonePayload {
   session_id: number;
-  usage: { input_tokens: number; output_tokens: number; cache_read_tokens: number } | null;
+  usage: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_tokens: number;
+  } | null;
   stop_reason: string | null;
 }
 
@@ -111,7 +115,11 @@ interface ChatState {
   // Chat actions
   sendMessage: (text: string, attachments?: AttachmentInput[]) => Promise<void>;
   abort: () => void;
-  respondPermission: (permissionId: string, behavior: "allow" | "deny", scope?: "once" | "session" | "always") => Promise<void>;
+  respondPermission: (
+    permissionId: string,
+    behavior: "allow" | "deny",
+    scope?: "once" | "session" | "always",
+  ) => Promise<void>;
   editAndResend: (turnIndex: number, newText: string) => Promise<void>;
   regenerate: () => Promise<void>;
   resetAndContinue: () => Promise<void>;
@@ -128,9 +136,11 @@ const pendingFileUpdates: PendingFileUpdate[] = [];
 function getVaultPathForFile(filePath: string): string | null {
   // Look through open tabs to find the vault path for a file
   const { layout } = usePaneStore.getState();
-  function searchLayout(node: import("@/types/pane").PaneLayout): string | null {
+  function searchLayout(
+    node: import("@/types/pane").PaneLayout,
+  ): string | null {
     if (node.type === "leaf") {
-      const tab = node.tabs.find(t => t.filePath === filePath);
+      const tab = node.tabs.find((t) => t.filePath === filePath);
       return tab?.vaultPath ?? null;
     }
     return searchLayout(node.children[0]) ?? searchLayout(node.children[1]);
@@ -180,7 +190,7 @@ export const useChatStore = create<ChatState>()(
             set({
               sessions: refreshed,
               activeSessionId: session.id,
-              activeSession: refreshed.find(s => s.id === session.id) ?? null,
+              activeSession: refreshed.find((s) => s.id === session.id) ?? null,
             });
           }
         } catch (e) {
@@ -194,7 +204,7 @@ export const useChatStore = create<ChatState>()(
           const { activeSessionId } = get();
           set({
             sessions: list,
-            activeSession: list.find(s => s.id === activeSessionId) ?? null,
+            activeSession: list.find((s) => s.id === activeSessionId) ?? null,
           });
         } catch (e) {
           console.error("Failed to list chat sessions:", e);
@@ -205,7 +215,7 @@ export const useChatStore = create<ChatState>()(
         const { sessions } = get();
         set({
           activeSessionId: id,
-          activeSession: sessions.find(s => s.id === id) ?? null,
+          activeSession: sessions.find((s) => s.id === id) ?? null,
         });
       },
 
@@ -215,7 +225,7 @@ export const useChatStore = create<ChatState>()(
         set({
           sessions: list,
           activeSessionId: session.id,
-          activeSession: list.find(s => s.id === session.id) ?? null,
+          activeSession: list.find((s) => s.id === session.id) ?? null,
         });
         return session;
       },
@@ -233,11 +243,13 @@ export const useChatStore = create<ChatState>()(
             });
           } else {
             const { activeSessionId } = get();
-            const newActiveId = activeSessionId === id ? remaining[0].id : activeSessionId;
+            const newActiveId =
+              activeSessionId === id ? remaining[0].id : activeSessionId;
             set({
               sessions: remaining,
               activeSessionId: newActiveId,
-              activeSession: remaining.find(s => s.id === newActiveId) ?? null,
+              activeSession:
+                remaining.find((s) => s.id === newActiveId) ?? null,
             });
           }
         } catch (e) {
@@ -257,7 +269,8 @@ export const useChatStore = create<ChatState>()(
       sendMessage: async (text, attachments) => {
         const { activeSessionId, messages } = get();
         if (activeSessionId === null) return;
-        const hasContent = text.trim() || (attachments && attachments.length > 0);
+        const hasContent =
+          text.trim() || (attachments && attachments.length > 0);
         if (!hasContent) return;
 
         const optimisticMsg: ChatMessage = {
@@ -284,7 +297,11 @@ export const useChatStore = create<ChatState>()(
         });
 
         try {
-          const requestId = await sendChatMessage(activeSessionId, text, attachments ?? []);
+          const requestId = await sendChatMessage(
+            activeSessionId,
+            text,
+            attachments ?? [],
+          );
           activeRequestId = requestId;
         } catch (e) {
           set({
@@ -322,7 +339,9 @@ export const useChatStore = create<ChatState>()(
       regenerate: async () => {
         const { activeSessionId, messages, sendMessage } = get();
         if (activeSessionId === null || messages.length < 2) return;
-        const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
+        const lastUserMsg = [...messages]
+          .reverse()
+          .find((m) => m.role === "user");
         if (!lastUserMsg) return;
         await deleteMessagesAfter(activeSessionId, lastUserMsg.turn_index + 1);
         const msgs = await listChatMessages(activeSessionId);
@@ -330,7 +349,10 @@ export const useChatStore = create<ChatState>()(
         try {
           const blocks = JSON.parse(lastUserMsg.content_json);
           const text = Array.isArray(blocks)
-            ? blocks.filter((b: { type: string }) => b.type === "text").map((b: { text: string }) => b.text).join("\n")
+            ? blocks
+                .filter((b: { type: string }) => b.type === "text")
+                .map((b: { text: string }) => b.text)
+                .join("\n")
             : String(blocks);
           await sendMessage(text);
         } catch {
@@ -343,15 +365,22 @@ export const useChatStore = create<ChatState>()(
         if (activeSessionId === null) return;
         await clearSessionClaudeId(activeSessionId);
         set({ resumeFailed: false, error: null });
-        const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
+        const lastUserMsg = [...messages]
+          .reverse()
+          .find((m) => m.role === "user");
         if (lastUserMsg) {
           try {
             const blocks = JSON.parse(lastUserMsg.content_json);
             const text = Array.isArray(blocks)
-              ? blocks.filter((b: { type: string }) => b.type === "text").map((b: { text: string }) => b.text).join("\n")
+              ? blocks
+                  .filter((b: { type: string }) => b.type === "text")
+                  .map((b: { text: string }) => b.text)
+                  .join("\n")
               : String(blocks);
             await sendMessage(text);
-          } catch { /* fallback */ }
+          } catch {
+            /* fallback */
+          }
         }
       },
     }),
@@ -433,12 +462,19 @@ export function setupChatListeners() {
     const next = new Map(toolActivity);
     const existing = next.get(tool_use_id);
     if (existing) {
-      next.set(tool_use_id, { ...existing, result: resultText, isError: is_error, pending: false });
+      next.set(tool_use_id, {
+        ...existing,
+        result: resultText,
+        isError: is_error,
+        pending: false,
+      });
     }
     useChatStore.setState({ toolActivity: next });
 
     // Check if this is a completed update_note — force reload
-    const idx = pendingFileUpdates.findIndex(p => p.toolUseId === tool_use_id);
+    const idx = pendingFileUpdates.findIndex(
+      (p) => p.toolUseId === tool_use_id,
+    );
     if (idx >= 0) {
       const { filePath } = pendingFileUpdates[idx];
       pendingFileUpdates.splice(idx, 1);
@@ -496,7 +532,8 @@ export function setupChatListeners() {
     let errorMsg: string;
     let resumeFailed = false;
     if (category === "auth") {
-      errorMsg = "Authentication required. Run `claude login` in your terminal.";
+      errorMsg =
+        "Authentication required. Run `claude login` in your terminal.";
     } else if (category === "rate_limit") {
       errorMsg = "Rate limit reached. Please wait a moment.";
     } else if (category === "resume_failed") {
@@ -551,7 +588,7 @@ export function setupSessionWatcher() {
         });
       } else {
         listChatMessages(state.activeSessionId)
-          .then(msgs => useChatStore.setState({ messages: msgs }))
+          .then((msgs) => useChatStore.setState({ messages: msgs }))
           .catch(console.error);
       }
     }

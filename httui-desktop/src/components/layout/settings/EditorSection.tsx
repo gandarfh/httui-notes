@@ -56,20 +56,31 @@ export function EditorSection() {
               Enable Vim keybindings in the text editor
             </Text>
           </Flex>
-          <Switch
-            checked={vimEnabled}
-            onCheckedChange={toggleVim}
-            size="sm"
-          />
+          <Switch checked={vimEnabled} onCheckedChange={toggleVim} size="sm" />
         </Flex>
         {vimEnabled && (
-          <Box mt={2} px={3} py={2} borderRadius="md" bg="bg.subtle" fontSize="xs" color="fg.muted">
+          <Box
+            mt={2}
+            px={3}
+            py={2}
+            borderRadius="md"
+            bg="bg.subtle"
+            fontSize="xs"
+            color="fg.muted"
+          >
             <Text lineHeight="tall">
               Vim mode adds Normal, Insert, and Visual modes to the editor.
               Motions (j/k/h/l, w/b, gg/G) navigate by ProseMirror textblocks.
-              Press <Text as="span" fontFamily="mono" fontWeight="medium" color="fg">i</Text> to enter
-              Insert mode, <Text as="span" fontFamily="mono" fontWeight="medium" color="fg">Esc</Text> to
-              return to Normal mode. The current mode is shown in the status bar.
+              Press{" "}
+              <Text as="span" fontFamily="mono" fontWeight="medium" color="fg">
+                i
+              </Text>{" "}
+              to enter Insert mode,{" "}
+              <Text as="span" fontFamily="mono" fontWeight="medium" color="fg">
+                Esc
+              </Text>{" "}
+              to return to Normal mode. The current mode is shown in the status
+              bar.
             </Text>
           </Box>
         )}
@@ -136,19 +147,27 @@ export function EditorSection() {
         <VStack gap={1} align="stretch" fontSize="xs" color="fg.muted">
           <Flex justify="space-between">
             <Text>Max fetch size (hard limit)</Text>
-            <Text fontWeight="medium" color="fg">1,000 rows</Text>
+            <Text fontWeight="medium" color="fg">
+              1,000 rows
+            </Text>
           </Flex>
           <Flex justify="space-between">
             <Text>Default query timeout</Text>
-            <Text fontWeight="medium" color="fg">30s (from connection config)</Text>
+            <Text fontWeight="medium" color="fg">
+              30s (from connection config)
+            </Text>
           </Flex>
           <Flex justify="space-between">
             <Text>HTTP timeout</Text>
-            <Text fontWeight="medium" color="fg">30s (per-request override)</Text>
+            <Text fontWeight="medium" color="fg">
+              30s (per-request override)
+            </Text>
           </Flex>
           <Flex justify="space-between">
             <Text>Max dependency depth</Text>
-            <Text fontWeight="medium" color="fg">50 levels</Text>
+            <Text fontWeight="medium" color="fg">
+              50 levels
+            </Text>
           </Flex>
         </VStack>
       </Box>
@@ -161,15 +180,22 @@ export function EditorSection() {
           Block references
         </Text>
         <Text fontSize="xs" color="fg.muted" lineHeight="tall">
-          Use <Text as="span" fontFamily="mono" fontWeight="medium" color="fg">{"{{alias.response.path}}"}</Text> to
-          reference another block's output. References are resolved top-down — a block can
-          only reference blocks above it in the document. In DB blocks, references are
-          converted to bind parameters (never string-interpolated) for SQL safety.
+          Use{" "}
+          <Text as="span" fontFamily="mono" fontWeight="medium" color="fg">
+            {"{{alias.response.path}}"}
+          </Text>{" "}
+          to reference another block's output. References are resolved top-down
+          — a block can only reference blocks above it in the document. In DB
+          blocks, references are converted to bind parameters (never
+          string-interpolated) for SQL safety.
         </Text>
         <Text fontSize="xs" color="fg.muted" lineHeight="tall" mt={1}>
-          Environment variables use the same syntax without
-          dots: <Text as="span" fontFamily="mono" fontWeight="medium" color="fg">{"{{ENV_KEY}}"}</Text>.
-          If a block alias collides with an env variable name, the block reference takes priority.
+          Environment variables use the same syntax without dots:{" "}
+          <Text as="span" fontFamily="mono" fontWeight="medium" color="fg">
+            {"{{ENV_KEY}}"}
+          </Text>
+          . If a block alias collides with an env variable name, the block
+          reference takes priority.
         </Text>
       </Box>
     </Flex>

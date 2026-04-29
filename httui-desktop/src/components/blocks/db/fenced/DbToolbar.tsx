@@ -1,11 +1,4 @@
-import {
-  Badge,
-  Box,
-  Flex,
-  HStack,
-  IconButton,
-  Text,
-} from "@chakra-ui/react";
+import { Badge, Box, Flex, HStack, IconButton, Text } from "@chakra-ui/react";
 import { LuListTree, LuPlay, LuSettings, LuSquare } from "react-icons/lu";
 import type { DbBlockMetadata } from "@/lib/blocks/db-fence";
 import type { Connection } from "@/lib/tauri/connections";
@@ -32,8 +25,7 @@ export function DbToolbar({
 }: DbToolbarProps) {
   const running = executionState === "running";
   const dialectLabel = metadata.dialect.toLowerCase();
-  const connLabel =
-    activeConnection?.name ?? metadata.connection ?? undefined;
+  const connLabel = activeConnection?.name ?? metadata.connection ?? undefined;
   const isReadonly = activeConnection?.is_readonly ?? false;
 
   return (

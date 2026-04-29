@@ -1,6 +1,22 @@
 import { useState } from "react";
-import { Box, Flex, Text, IconButton, VStack, Portal, Separator } from "@chakra-ui/react";
-import { LuX, LuSettings, LuCode, LuShieldCheck, LuKeyboard, LuInfo, LuPalette } from "react-icons/lu";
+import {
+  Box,
+  Flex,
+  Text,
+  IconButton,
+  VStack,
+  Portal,
+  Separator,
+} from "@chakra-ui/react";
+import {
+  LuX,
+  LuSettings,
+  LuCode,
+  LuShieldCheck,
+  LuKeyboard,
+  LuInfo,
+  LuPalette,
+} from "react-icons/lu";
 import { useSettingsStore } from "@/stores/settings";
 import { AuditSection } from "./AuditSection";
 import { GeneralSection } from "./GeneralSection";
@@ -9,7 +25,13 @@ import { ShortcutsSection } from "./ShortcutsSection";
 import { ThemeSection } from "./ThemeSection";
 import { AboutSection } from "./AboutSection";
 
-type SettingsTab = "general" | "theme" | "editor" | "shortcuts" | "audit" | "about";
+type SettingsTab =
+  | "general"
+  | "theme"
+  | "editor"
+  | "shortcuts"
+  | "audit"
+  | "about";
 
 interface TabDef {
   id: SettingsTab;
@@ -19,11 +41,36 @@ interface TabDef {
 }
 
 const TABS: TabDef[] = [
-  { id: "general", label: "General", icon: <LuSettings size={14} />, group: "settings" },
-  { id: "theme", label: "Theme", icon: <LuPalette size={14} />, group: "settings" },
-  { id: "editor", label: "Editor", icon: <LuCode size={14} />, group: "settings" },
-  { id: "shortcuts", label: "Shortcuts", icon: <LuKeyboard size={14} />, group: "settings" },
-  { id: "audit", label: "Audit", icon: <LuShieldCheck size={14} />, group: "advanced" },
+  {
+    id: "general",
+    label: "General",
+    icon: <LuSettings size={14} />,
+    group: "settings",
+  },
+  {
+    id: "theme",
+    label: "Theme",
+    icon: <LuPalette size={14} />,
+    group: "settings",
+  },
+  {
+    id: "editor",
+    label: "Editor",
+    icon: <LuCode size={14} />,
+    group: "settings",
+  },
+  {
+    id: "shortcuts",
+    label: "Shortcuts",
+    icon: <LuKeyboard size={14} />,
+    group: "settings",
+  },
+  {
+    id: "audit",
+    label: "Audit",
+    icon: <LuShieldCheck size={14} />,
+    group: "advanced",
+  },
   { id: "about", label: "About", icon: <LuInfo size={14} />, group: "info" },
 ];
 

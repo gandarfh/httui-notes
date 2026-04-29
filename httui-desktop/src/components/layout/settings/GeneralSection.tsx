@@ -77,9 +77,18 @@ export function GeneralSection() {
           </NativeSelectRoot>
         </Flex>
         {settings.autoSaveMs === 0 && (
-          <Box mt={2} px={3} py={2} borderRadius="md" bg="orange.subtle" borderWidth="1px" borderColor="orange.muted">
+          <Box
+            mt={2}
+            px={3}
+            py={2}
+            borderRadius="md"
+            bg="orange.subtle"
+            borderWidth="1px"
+            borderColor="orange.muted"
+          >
             <Text fontSize="xs" color="orange.fg">
-              Auto-save is disabled. Use Cmd+S to save manually. Unsaved changes will be lost if you close the app.
+              Auto-save is disabled. Use Cmd+S to save manually. Unsaved changes
+              will be lost if you close the app.
             </Text>
           </Box>
         )}
@@ -128,7 +137,13 @@ export function GeneralSection() {
         <VStack gap={2} align="stretch">
           <Flex justify="space-between" fontSize="xs">
             <Text color="fg.muted">Active vault</Text>
-            <Text fontFamily="mono" fontWeight="medium" maxW="300px" truncate textAlign="right">
+            <Text
+              fontFamily="mono"
+              fontWeight="medium"
+              maxW="300px"
+              truncate
+              textAlign="right"
+            >
               {vaultPath ?? "None"}
             </Text>
           </Flex>
@@ -148,8 +163,8 @@ export function GeneralSection() {
         </Text>
         <Text fontSize="xs" color="fg.muted" lineHeight="tall">
           Your pane layout, open tabs, scroll positions, and editor preferences
-          are automatically saved and restored when you reopen the app.
-          Diff tabs and temporary views are not persisted.
+          are automatically saved and restored when you reopen the app. Diff
+          tabs and temporary views are not persisted.
         </Text>
       </Box>
     </Flex>

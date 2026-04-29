@@ -22,9 +22,9 @@ describe("isDbResponse", () => {
   });
 
   it("rejects legacy select shape", () => {
-    expect(
-      isDbResponse({ columns: [], rows: [], has_more: false }),
-    ).toBe(false);
+    expect(isDbResponse({ columns: [], rows: [], has_more: false })).toBe(
+      false,
+    );
   });
 
   it("rejects null / non-object", () => {

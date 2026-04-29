@@ -232,7 +232,12 @@ describe("parseHttpMessageBody — comments", () => {
       ].join("\n"),
     );
     expect(parsed.params).toEqual([
-      { key: "page", value: "1", enabled: true, description: "pagination index" },
+      {
+        key: "page",
+        value: "1",
+        enabled: true,
+        description: "pagination index",
+      },
       { key: "limit", value: "10", enabled: true, description: "max rows" },
     ]);
   });
@@ -331,7 +336,15 @@ describe("parseHttpMessageBody — edge cases", () => {
   });
 
   it("supports all known methods", () => {
-    for (const m of ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]) {
+    for (const m of [
+      "GET",
+      "POST",
+      "PUT",
+      "PATCH",
+      "DELETE",
+      "HEAD",
+      "OPTIONS",
+    ]) {
       const parsed = parseHttpMessageBody(`${m} https://example.com`);
       expect(parsed.method).toBe(m);
     }
@@ -533,9 +546,9 @@ describe("isLegacyHttpBody / parseLegacyHttpBody", () => {
   });
 
   it("rejects bodies that don't start with `{` after trim", () => {
-    expect(
-      isLegacyHttpBody('// comment\n{"method":"GET","url":"x"}'),
-    ).toBe(false);
+    expect(isLegacyHttpBody('// comment\n{"method":"GET","url":"x"}')).toBe(
+      false,
+    );
   });
 
   it("rejects unknown methods", () => {
@@ -566,9 +579,8 @@ describe("isLegacyHttpBody / parseLegacyHttpBody", () => {
 
   it("accepts both snake_case and camelCase timeout", () => {
     expect(
-      parseLegacyHttpBody(
-        '{"method":"GET","url":"x","timeout_ms":5000}',
-      )?.timeoutMs,
+      parseLegacyHttpBody('{"method":"GET","url":"x","timeout_ms":5000}')
+        ?.timeoutMs,
     ).toBe(5000);
     expect(
       parseLegacyHttpBody('{"method":"GET","url":"x","timeoutMs":5000}')
@@ -620,16 +632,24 @@ describe("deriveBodyMode", () => {
 
   it("recognises canonical mime types", () => {
     expect(
-      deriveBodyMode([{ key: "Content-Type", value: "application/json", enabled: true }]),
+      deriveBodyMode([
+        { key: "Content-Type", value: "application/json", enabled: true },
+      ]),
     ).toBe("json");
     expect(
-      deriveBodyMode([{ key: "Content-Type", value: "application/xml", enabled: true }]),
+      deriveBodyMode([
+        { key: "Content-Type", value: "application/xml", enabled: true },
+      ]),
     ).toBe("xml");
     expect(
-      deriveBodyMode([{ key: "Content-Type", value: "text/xml", enabled: true }]),
+      deriveBodyMode([
+        { key: "Content-Type", value: "text/xml", enabled: true },
+      ]),
     ).toBe("xml");
     expect(
-      deriveBodyMode([{ key: "Content-Type", value: "text/plain", enabled: true }]),
+      deriveBodyMode([
+        { key: "Content-Type", value: "text/plain", enabled: true },
+      ]),
     ).toBe("text");
     expect(
       deriveBodyMode([
@@ -647,7 +667,11 @@ describe("deriveBodyMode", () => {
     ).toBe("multipart");
     expect(
       deriveBodyMode([
-        { key: "Content-Type", value: "application/octet-stream", enabled: true },
+        {
+          key: "Content-Type",
+          value: "application/octet-stream",
+          enabled: true,
+        },
       ]),
     ).toBe("binary");
   });
@@ -655,7 +679,11 @@ describe("deriveBodyMode", () => {
   it("recognises media-type suffixes (+json / +xml)", () => {
     expect(
       deriveBodyMode([
-        { key: "Content-Type", value: "application/vnd.api+json", enabled: true },
+        {
+          key: "Content-Type",
+          value: "application/vnd.api+json",
+          enabled: true,
+        },
       ]),
     ).toBe("json");
     expect(
@@ -688,31 +716,45 @@ describe("deriveBodyMode", () => {
 
   it("uses case-insensitive header lookup", () => {
     expect(
-      deriveBodyMode([{ key: "content-type", value: "application/json", enabled: true }]),
+      deriveBodyMode([
+        { key: "content-type", value: "application/json", enabled: true },
+      ]),
     ).toBe("json");
     expect(
-      deriveBodyMode([{ key: "CONTENT-TYPE", value: "application/json", enabled: true }]),
+      deriveBodyMode([
+        { key: "CONTENT-TYPE", value: "application/json", enabled: true },
+      ]),
     ).toBe("json");
   });
 
   it("classifies image/audio/video and pdf as binary", () => {
     expect(
-      deriveBodyMode([{ key: "Content-Type", value: "image/png", enabled: true }]),
+      deriveBodyMode([
+        { key: "Content-Type", value: "image/png", enabled: true },
+      ]),
     ).toBe("binary");
     expect(
-      deriveBodyMode([{ key: "Content-Type", value: "audio/mpeg", enabled: true }]),
+      deriveBodyMode([
+        { key: "Content-Type", value: "audio/mpeg", enabled: true },
+      ]),
     ).toBe("binary");
     expect(
-      deriveBodyMode([{ key: "Content-Type", value: "video/mp4", enabled: true }]),
+      deriveBodyMode([
+        { key: "Content-Type", value: "video/mp4", enabled: true },
+      ]),
     ).toBe("binary");
     expect(
-      deriveBodyMode([{ key: "Content-Type", value: "application/pdf", enabled: true }]),
+      deriveBodyMode([
+        { key: "Content-Type", value: "application/pdf", enabled: true },
+      ]),
     ).toBe("binary");
   });
 
   it("falls back to text for unknown text/* types", () => {
     expect(
-      deriveBodyMode([{ key: "Content-Type", value: "text/csv", enabled: true }]),
+      deriveBodyMode([
+        { key: "Content-Type", value: "text/csv", enabled: true },
+      ]),
     ).toBe("text");
   });
 });
@@ -744,7 +786,11 @@ describe("setContentTypeForMode", () => {
       ],
     };
     const out = setContentTypeForMode(input, "json");
-    expect(out.headers[0]).toEqual({ key: "Accept", value: "*/*", enabled: true });
+    expect(out.headers[0]).toEqual({
+      key: "Accept",
+      value: "*/*",
+      enabled: true,
+    });
     expect(out.headers[1].key).toBe("content-type");
     expect(out.headers[1].value).toBe("application/json");
     expect(out.headers[1].enabled).toBe(true);
@@ -770,9 +816,7 @@ describe("setContentTypeForMode", () => {
   it("re-enables a disabled Content-Type when switching to a real mode", () => {
     const input: HttpMessageParsed = {
       ...base,
-      headers: [
-        { key: "Content-Type", value: "text/plain", enabled: false },
-      ],
+      headers: [{ key: "Content-Type", value: "text/plain", enabled: false }],
     };
     const out = setContentTypeForMode(input, "json");
     expect(out.headers[0].enabled).toBe(true);
@@ -853,7 +897,9 @@ describe("isCompatibleSwitch", () => {
   });
 
   it("is INCOMPATIBLE when going from textual to structured with non-empty body", () => {
-    expect(isCompatibleSwitch("json", "form-urlencoded", '{"a":1}')).toBe(false);
+    expect(isCompatibleSwitch("json", "form-urlencoded", '{"a":1}')).toBe(
+      false,
+    );
     expect(isCompatibleSwitch("text", "multipart", "hello")).toBe(false);
     expect(isCompatibleSwitch("xml", "binary", "<a/>")).toBe(false);
   });

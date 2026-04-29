@@ -46,10 +46,7 @@ import {
   type SQLDialect,
 } from "@codemirror/lang-sql";
 
-import {
-  parseDbFenceInfo,
-  type DbBlockMetadata,
-} from "@/lib/blocks/db-fence";
+import { parseDbFenceInfo, type DbBlockMetadata } from "@/lib/blocks/db-fence";
 import { createReferenceCompletionSource } from "@/lib/blocks/cm-autocomplete";
 import { collectBlocksAboveCM } from "@/lib/blocks/document";
 import { useEnvironmentStore } from "@/stores/environment";
@@ -106,10 +103,9 @@ export function findDbBlocks(doc: CMText): DbFencedBlock[] {
       }
     } else {
       if (FENCE_CLOSE_RE.test(text)) {
-        const metadata =
-          parseDbFenceInfo(`${lang} ${info}`.trim()) ?? {
-            dialect: "generic",
-          };
+        const metadata = parseDbFenceInfo(`${lang} ${info}`.trim()) ?? {
+          dialect: "generic",
+        };
         blocks.push({
           from: openFrom,
           to: line.to,
@@ -320,7 +316,10 @@ function syncRegistryBlocks(blocks: DbFencedBlock[]): void {
 // ───── Widgets (register-only — React mounts from DbWidgetPortals) ─────
 
 class DbToolbarPortalWidget extends WidgetType {
-  constructor(readonly blockId: string, readonly block: DbFencedBlock) {
+  constructor(
+    readonly blockId: string,
+    readonly block: DbFencedBlock,
+  ) {
     super();
   }
 
@@ -417,7 +416,9 @@ function disconnectWidgetObserver(
   slot: DbWidgetSlot,
 ): void {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ro = (dom as any)?.__cmWidgetResizeObserver as ResizeObserver | undefined;
+  const ro = (dom as any)?.__cmWidgetResizeObserver as
+    | ResizeObserver
+    | undefined;
   ro?.disconnect();
   widgetHeightCache.delete(cacheKey(blockId, slot));
 }
@@ -440,7 +441,10 @@ function disconnectWidgetObserver(
  * math was designed for, so keeping the trio together behaves cleanly.
  */
 class DbClosePanelWidget extends WidgetType {
-  constructor(readonly blockId: string, readonly block: DbFencedBlock) {
+  constructor(
+    readonly blockId: string,
+    readonly block: DbFencedBlock,
+  ) {
     super();
   }
 
@@ -507,10 +511,7 @@ class DbClosePanelWidget extends WidgetType {
  * Editing mode reveals the raw fence text; reading mode hides it and
  * shows the card-frame UI.
  */
-function cursorInsideBlock(
-  state: EditorState,
-  block: DbFencedBlock,
-): boolean {
+function cursorInsideBlock(state: EditorState, block: DbFencedBlock): boolean {
   const pos = state.selection.main.head;
   return pos >= block.from && pos <= block.to;
 }
@@ -537,13 +538,17 @@ function buildDbDecorations(
       items.push({
         from: block.openLineFrom,
         to: block.openLineFrom,
-        deco: Decoration.line({ class: "cm-db-fence-line cm-db-fence-line-open" }),
+        deco: Decoration.line({
+          class: "cm-db-fence-line cm-db-fence-line-open",
+        }),
         order: 0,
       });
       items.push({
         from: block.closeLineFrom,
         to: block.closeLineFrom,
-        deco: Decoration.line({ class: "cm-db-fence-line cm-db-fence-line-close" }),
+        deco: Decoration.line({
+          class: "cm-db-fence-line cm-db-fence-line-close",
+        }),
         order: 0,
       });
       // Result panel still visible while the user edits — inserted as a
@@ -816,9 +821,7 @@ export function setDbBlockErrors(
 ): void {
   const effects: StateEffect<unknown>[] = [clearDbErrorsEffect.of(blockId)];
   if (marks.length > 0) {
-    effects.push(
-      setDbErrorsEffect.of(marks.map((m) => ({ ...m, blockId }))),
-    );
+    effects.push(setDbErrorsEffect.of(marks.map((m) => ({ ...m, blockId }))));
   }
   view.dispatch({ effects });
 }
@@ -876,9 +879,8 @@ export function createDbBlockExtension(): Extension {
 
   // Error-mark decorations live in their own field so changes to the marks
   // map don't force a rebuild of the full fenced-block decorations.
-  const errorDecos = EditorView.decorations.compute(
-    [dbErrorsField],
-    (state) => buildErrorDecorations(state, cachedBlocks, state.field(dbErrorsField)),
+  const errorDecos = EditorView.decorations.compute([dbErrorsField], (state) =>
+    buildErrorDecorations(state, cachedBlocks, state.field(dbErrorsField)),
   );
 
   return [field, dbKeymap, dbErrorsField, errorDecos];
@@ -914,9 +916,7 @@ export function createDbBlockCompletionSource(
       inside.from,
       filePath,
     );
-    const envVars = await useEnvironmentStore
-      .getState()
-      .getActiveVariables();
+    const envVars = await useEnvironmentStore.getState().getActiveVariables();
     const envKeys = Object.keys(envVars);
 
     const source = createReferenceCompletionSource(
@@ -965,7 +965,8 @@ function effectiveDialect(
   fenceDialect: string | undefined,
   connectionDriver: string | undefined,
 ): string {
-  const explicit = fenceDialect && fenceDialect !== "generic" ? fenceDialect : undefined;
+  const explicit =
+    fenceDialect && fenceDialect !== "generic" ? fenceDialect : undefined;
   const driver = connectionDriver;
   return explicit ?? driver ?? "postgres";
 }
@@ -1066,7 +1067,10 @@ export function createDbSchemaCompletionSource(): CompletionSource {
     // Dialect choice: fence wins when explicit (`db-postgres`), else the
     // connection driver (`db` + sqlite connection → SQLite keywords), else
     // PostgreSQL as a rich ANSI-ish fallback (avoids the empty StandardSQL).
-    const dialect = effectiveDialect(block.metadata.dialect, connection?.driver);
+    const dialect = effectiveDialect(
+      block.metadata.dialect,
+      connection?.driver,
+    );
 
     const store = useSchemaCacheStore.getState();
     const schema = connection ? store.get(connection.id) : null;
@@ -1128,14 +1132,18 @@ export function createDbSchemaCompletionSource(): CompletionSource {
       return {
         from: word.from,
         to: word.to,
-        options: [...tableOptions, ...statusHint(connection, identifier, schemaLoaded, ctx.explicit)],
+        options: [
+          ...tableOptions,
+          ...statusHint(connection, identifier, schemaLoaded, ctx.explicit),
+        ],
         filter: true,
       };
     }
 
     // ── Default: keywords + tables + columns of tables referenced in body ──
     const referenced = new Set<string>();
-    const refRe = /\b(?:FROM|JOIN|UPDATE|INTO)\s+([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)?)/gi;
+    const refRe =
+      /\b(?:FROM|JOIN|UPDATE|INTO)\s+([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)?)/gi;
     let m: RegExpExecArray | null;
     while ((m = refRe.exec(bodyText)) !== null) {
       if (tableMap[m[1]]) referenced.add(m[1]);

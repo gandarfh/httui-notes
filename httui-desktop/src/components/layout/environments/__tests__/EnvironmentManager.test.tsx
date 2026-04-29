@@ -6,11 +6,7 @@ import { useEnvironmentStore } from "@/stores/environment";
 import { mockTauriCommand, clearTauriMocks } from "@/test/mocks/tauri";
 import type { Environment, EnvVariable } from "@/lib/tauri/commands";
 
-const mkEnv = (
-  id: string,
-  name: string,
-  isActive = false,
-): Environment => ({
+const mkEnv = (id: string, name: string, isActive = false): Environment => ({
   id,
   name,
   is_active: isActive,

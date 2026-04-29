@@ -1,6 +1,11 @@
 import { useState, useCallback, useMemo, useEffect, useRef, memo } from "react";
 import { Box, Text, Badge, HStack } from "@chakra-ui/react";
-import { EditorState, RangeSetBuilder, StateField, type Extension } from "@codemirror/state";
+import {
+  EditorState,
+  RangeSetBuilder,
+  StateField,
+  type Extension,
+} from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView } from "@codemirror/view";
 import { syntaxHighlighting } from "@codemirror/language";
 import { oneDarkHighlightStyle } from "@codemirror/theme-one-dark";
@@ -36,11 +41,18 @@ function parseBlockContent(blockType: string, raw: string): ParsedBlock {
   try {
     const data = JSON.parse(raw);
     if (blockType === "db") {
-      return { displayContent: data.query ?? raw, connectionId: data.connectionId };
+      return {
+        displayContent: data.query ?? raw,
+        connectionId: data.connectionId,
+      };
     }
     if (blockType === "http") {
       if (typeof data === "string") return { displayContent: data };
-      return { displayContent: data.body ?? raw, method: data.method, url: data.url };
+      return {
+        displayContent: data.body ?? raw,
+        method: data.method,
+        url: data.url,
+      };
     }
     return { displayContent: JSON.stringify(data, null, 2) };
   } catch {
@@ -71,16 +83,21 @@ function computeChangedLines(thisText: string, otherText: string): Set<number> {
 
 /** Create a StateField that applies line decorations for changed lines */
 function createDiffHighlightField(changedLines: Set<number>, side: "a" | "b") {
-  const lineClass = side === "a"
-    ? Decoration.line({ class: "cm-diff-deleted" })
-    : Decoration.line({ class: "cm-diff-added" });
+  const lineClass =
+    side === "a"
+      ? Decoration.line({ class: "cm-diff-deleted" })
+      : Decoration.line({ class: "cm-diff-added" });
 
   return StateField.define<DecorationSet>({
     create(state) {
       const builder = new RangeSetBuilder<Decoration>();
       for (let i = 1; i <= state.doc.lines; i++) {
         if (changedLines.has(i)) {
-          builder.add(state.doc.line(i).from, state.doc.line(i).from, lineClass);
+          builder.add(
+            state.doc.line(i).from,
+            state.doc.line(i).from,
+            lineClass,
+          );
         }
       }
       return builder.finish();
@@ -121,7 +138,12 @@ function BlockCodeEditor({
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const extensions: Extension[] = [readOnlyExt, cmTheme, syntaxHighlighting(oneDarkHighlightStyle), ...langExtension(blockType)];
+    const extensions: Extension[] = [
+      readOnlyExt,
+      cmTheme,
+      syntaxHighlighting(oneDarkHighlightStyle),
+      ...langExtension(blockType),
+    ];
 
     if (counterpartContent !== undefined && counterpartContent !== content) {
       const changedLines = computeChangedLines(content, counterpartContent);
@@ -168,7 +190,10 @@ export const StandaloneBlock = memo(function StandaloneBlock({
   const [rawResponse, setRawResponse] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const parsed = useMemo(() => parseBlockContent(blockType, content), [blockType, content]);
+  const parsed = useMemo(
+    () => parseBlockContent(blockType, content),
+    [blockType, content],
+  );
 
   const handleRun = useCallback(async () => {
     setExecutionState("running");
@@ -210,8 +235,12 @@ export const StandaloneBlock = memo(function StandaloneBlock({
           <Box>
             {parsed.method && (
               <HStack gap={2} px={3} pt={2}>
-                <Badge size="sm" colorPalette="blue">{parsed.method}</Badge>
-                <Text fontSize="xs" fontFamily="mono" color="fg.muted" truncate>{parsed.url}</Text>
+                <Badge size="sm" colorPalette="blue">
+                  {parsed.method}
+                </Badge>
+                <Text fontSize="xs" fontFamily="mono" color="fg.muted" truncate>
+                  {parsed.url}
+                </Text>
               </HStack>
             )}
             <BlockCodeEditor
@@ -303,11 +332,19 @@ export const StandaloneBlock = memo(function StandaloneBlock({
   );
 });
 
-function buildParams(blockType: string, content: string): Record<string, unknown> {
+function buildParams(
+  blockType: string,
+  content: string,
+): Record<string, unknown> {
   try {
     const data = JSON.parse(content);
     if (blockType === "db") {
-      return { query: data.query ?? content, connection_id: data.connectionId ?? "", page: 1, page_size: 100 };
+      return {
+        query: data.query ?? content,
+        connection_id: data.connectionId ?? "",
+        page: 1,
+        page_size: 100,
+      };
     }
     if (blockType === "http") return data;
     return data;

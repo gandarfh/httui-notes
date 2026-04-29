@@ -13,20 +13,20 @@ describe("ConflictBanner", () => {
       />,
     );
 
-    expect(screen.getByText(/notes\.md was modified externally/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/notes\.md was modified externally/),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/folder\/sub/)).not.toBeInTheDocument();
   });
 
   it("renders the full name when path has no slashes", () => {
     renderWithProviders(
-      <ConflictBanner
-        filePath="root.md"
-        onReload={vi.fn()}
-        onKeep={vi.fn()}
-      />,
+      <ConflictBanner filePath="root.md" onReload={vi.fn()} onKeep={vi.fn()} />,
     );
 
-    expect(screen.getByText(/root\.md was modified externally/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/root\.md was modified externally/),
+    ).toBeInTheDocument();
   });
 
   it("calls onReload when 'Reload' is clicked", async () => {
@@ -35,11 +35,7 @@ describe("ConflictBanner", () => {
     const onKeep = vi.fn();
 
     renderWithProviders(
-      <ConflictBanner
-        filePath="x.md"
-        onReload={onReload}
-        onKeep={onKeep}
-      />,
+      <ConflictBanner filePath="x.md" onReload={onReload} onKeep={onKeep} />,
     );
 
     await user.click(screen.getByRole("button", { name: /reload/i }));
@@ -53,11 +49,7 @@ describe("ConflictBanner", () => {
     const onKeep = vi.fn();
 
     renderWithProviders(
-      <ConflictBanner
-        filePath="x.md"
-        onReload={onReload}
-        onKeep={onKeep}
-      />,
+      <ConflictBanner filePath="x.md" onReload={onReload} onKeep={onKeep} />,
     );
 
     await user.click(screen.getByRole("button", { name: /keep mine/i }));

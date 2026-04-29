@@ -1,5 +1,13 @@
 import { useState } from "react";
-import { Box, Flex, Badge, Text, HStack, Input, IconButton } from "@chakra-ui/react";
+import {
+  Box,
+  Flex,
+  Badge,
+  Text,
+  HStack,
+  Input,
+  IconButton,
+} from "@chakra-ui/react";
 import {
   LuCheck,
   LuCircleX,
@@ -11,7 +19,10 @@ import {
   LuPlus,
 } from "react-icons/lu";
 import { ExecutableBlockShell } from "@/components/blocks/ExecutableBlockShell";
-import type { DisplayMode, ExecutionState } from "@/components/blocks/ExecutableBlock";
+import type {
+  DisplayMode,
+  ExecutionState,
+} from "@/components/blocks/ExecutableBlock";
 
 type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
 
@@ -62,7 +73,13 @@ function MockStepCard({
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <Box border="1px solid" borderColor="border" rounded="md" overflow="hidden" mb={2}>
+    <Box
+      border="1px solid"
+      borderColor="border"
+      rounded="md"
+      overflow="hidden"
+      mb={2}
+    >
       {/* Step header */}
       <Flex
         align="center"
@@ -88,13 +105,28 @@ function MockStepCard({
           onClick={(e) => e.stopPropagation()}
         />
         <HStack gap={0} flexShrink={0}>
-          <IconButton aria-label="Move up" size="2xs" variant="ghost" disabled={index === 0}>
+          <IconButton
+            aria-label="Move up"
+            size="2xs"
+            variant="ghost"
+            disabled={index === 0}
+          >
             <LuArrowUp />
           </IconButton>
-          <IconButton aria-label="Move down" size="2xs" variant="ghost" disabled={index === totalSteps - 1}>
+          <IconButton
+            aria-label="Move down"
+            size="2xs"
+            variant="ghost"
+            disabled={index === totalSteps - 1}
+          >
             <LuArrowDown />
           </IconButton>
-          <IconButton aria-label="Remove" size="2xs" variant="ghost" colorPalette="red">
+          <IconButton
+            aria-label="Remove"
+            size="2xs"
+            variant="ghost"
+            colorPalette="red"
+          >
             <LuX />
           </IconButton>
         </HStack>
@@ -132,21 +164,47 @@ function MockStepCard({
               alignItems="center"
               px={2}
             >
-              <Text fontFamily="mono" fontSize="xs" color="fg.muted">{step.url}</Text>
+              <Text fontFamily="mono" fontSize="xs" color="fg.muted">
+                {step.url}
+              </Text>
             </Box>
           </Flex>
 
           {/* Request tabs placeholder */}
           <Flex borderBottom="1px solid" borderColor="border">
-            <Text px={2} py={1} fontSize="xs" color="brand.400" borderBottom="2px solid" borderColor="brand.400">Params</Text>
-            <Text px={2} py={1} fontSize="xs" color="fg.muted">Headers</Text>
-            <Text px={2} py={1} fontSize="xs" color="fg.muted">Body</Text>
+            <Text
+              px={2}
+              py={1}
+              fontSize="xs"
+              color="brand.400"
+              borderBottom="2px solid"
+              borderColor="brand.400"
+            >
+              Params
+            </Text>
+            <Text px={2} py={1} fontSize="xs" color="fg.muted">
+              Headers
+            </Text>
+            <Text px={2} py={1} fontSize="xs" color="fg.muted">
+              Body
+            </Text>
           </Flex>
 
           {/* Assertions tabs placeholder */}
           <Flex borderBottom="1px solid" borderColor="border">
-            <Text px={2} py={1} fontSize="xs" color="brand.400" borderBottom="2px solid" borderColor="brand.400">Expect</Text>
-            <Text px={2} py={1} fontSize="xs" color="fg.muted">Extract</Text>
+            <Text
+              px={2}
+              py={1}
+              fontSize="xs"
+              color="brand.400"
+              borderBottom="2px solid"
+              borderColor="brand.400"
+            >
+              Expect
+            </Text>
+            <Text px={2} py={1} fontSize="xs" color="fg.muted">
+              Extract
+            </Text>
           </Flex>
         </Box>
       )}
@@ -185,11 +243,17 @@ function MockStepResultCard({ result }: { result: E2eStepResult }) {
           {result.name || "Unnamed step"}
         </Text>
         {result.status_code > 0 && (
-          <Badge size="sm" colorPalette={result.status_code < 400 ? "green" : "red"} variant="subtle">
+          <Badge
+            size="sm"
+            colorPalette={result.status_code < 400 ? "green" : "red"}
+            variant="subtle"
+          >
             {result.status_code}
           </Badge>
         )}
-        <Text fontSize="2xs" color="fg.muted">{result.elapsed_ms}ms</Text>
+        <Text fontSize="2xs" color="fg.muted">
+          {result.elapsed_ms}ms
+        </Text>
         {expanded ? <LuChevronDown size={12} /> : <LuChevronRight size={12} />}
       </Flex>
 
@@ -198,9 +262,20 @@ function MockStepResultCard({ result }: { result: E2eStepResult }) {
           {/* Errors */}
           {result.errors.length > 0 && (
             <Box mb={2}>
-              <Text fontWeight="medium" color="red.fg" mb={1}>Assertion Failures</Text>
+              <Text fontWeight="medium" color="red.fg" mb={1}>
+                Assertion Failures
+              </Text>
               {result.errors.map((err, i) => (
-                <Box key={i} bg="red.subtle" px={2} py={1} rounded="sm" mb={1} fontFamily="mono" fontSize="2xs">
+                <Box
+                  key={i}
+                  bg="red.subtle"
+                  px={2}
+                  py={1}
+                  rounded="sm"
+                  mb={1}
+                  fontFamily="mono"
+                  fontSize="2xs"
+                >
                   {err}
                 </Box>
               ))}
@@ -210,12 +285,24 @@ function MockStepResultCard({ result }: { result: E2eStepResult }) {
           {/* Extractions */}
           {Object.keys(result.extractions).length > 0 && (
             <Box mb={2}>
-              <Text fontWeight="medium" color="purple.fg" mb={1}>Extracted Variables</Text>
+              <Text fontWeight="medium" color="purple.fg" mb={1}>
+                Extracted Variables
+              </Text>
               {Object.entries(result.extractions).map(([key, value]) => (
-                <Flex key={key} gap={2} fontFamily="mono" fontSize="2xs" mb={0.5}>
+                <Flex
+                  key={key}
+                  gap={2}
+                  fontFamily="mono"
+                  fontSize="2xs"
+                  mb={0.5}
+                >
                   <Text color="purple.fg">{key}</Text>
                   <Text color="fg.muted">=</Text>
-                  <Text>{typeof value === "string" ? value : String(JSON.stringify(value))}</Text>
+                  <Text>
+                    {typeof value === "string"
+                      ? value
+                      : String(JSON.stringify(value))}
+                  </Text>
                 </Flex>
               ))}
             </Box>
@@ -224,9 +311,23 @@ function MockStepResultCard({ result }: { result: E2eStepResult }) {
           {/* Response body */}
           {result.response_body && (
             <Box>
-              <Text fontWeight="medium" color="fg.muted" mb={1}>Response Body</Text>
-              <Box maxH="200px" overflow="auto" fontFamily="mono" fontSize="2xs" bg="bg.subtle" p={2} rounded="sm">
-                <pre>{typeof result.response_body === "string" ? result.response_body : JSON.stringify(result.response_body, null, 2)}</pre>
+              <Text fontWeight="medium" color="fg.muted" mb={1}>
+                Response Body
+              </Text>
+              <Box
+                maxH="200px"
+                overflow="auto"
+                fontFamily="mono"
+                fontSize="2xs"
+                bg="bg.subtle"
+                p={2}
+                rounded="sm"
+              >
+                <pre>
+                  {typeof result.response_body === "string"
+                    ? result.response_body
+                    : JSON.stringify(result.response_body, null, 2)}
+                </pre>
               </Box>
             </Box>
           )}
@@ -256,9 +357,13 @@ export function MockE2eBlock({
     <Box p={3}>
       {/* Base URL */}
       <Box mb={3}>
-        <Text fontSize="xs" fontWeight="medium" color="fg.muted" mb={1}>Base URL</Text>
+        <Text fontSize="xs" fontWeight="medium" color="fg.muted" mb={1}>
+          Base URL
+        </Text>
         <Box border="1px solid" borderColor="border" rounded="sm" px={2} py={1}>
-          <Text fontFamily="mono" fontSize="xs" color="fg.muted">{baseUrl}</Text>
+          <Text fontFamily="mono" fontSize="xs" color="fg.muted">
+            {baseUrl}
+          </Text>
         </Box>
       </Box>
 
@@ -268,11 +373,25 @@ export function MockE2eBlock({
           Steps ({steps.length})
         </Text>
         {steps.map((step, idx) => (
-          <MockStepCard key={idx} step={step} index={idx} totalSteps={steps.length} />
+          <MockStepCard
+            key={idx}
+            step={step}
+            index={idx}
+            totalSteps={steps.length}
+          />
         ))}
-        <IconButton aria-label="Add step" size="sm" variant="outline" colorPalette="gray" width="100%" cursor="default">
+        <IconButton
+          aria-label="Add step"
+          size="sm"
+          variant="outline"
+          colorPalette="gray"
+          width="100%"
+          cursor="default"
+        >
           <LuPlus />
-          <Text fontSize="xs" ml={1}>Add Step</Text>
+          <Text fontSize="xs" ml={1}>
+            Add Step
+          </Text>
         </IconButton>
       </Box>
     </Box>
@@ -285,7 +404,13 @@ export function MockE2eBlock({
         <Text fontSize="sm" fontWeight="bold">
           {passed}/{total} passed
         </Text>
-        <Box flex={1} bg="bg.emphasized" rounded="full" h="6px" overflow="hidden">
+        <Box
+          flex={1}
+          bg="bg.emphasized"
+          rounded="full"
+          h="6px"
+          overflow="hidden"
+        >
           <Box
             h="100%"
             bg={passed === total ? "green.solid" : "red.solid"}

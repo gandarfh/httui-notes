@@ -190,7 +190,10 @@ export function getHttpPortalVersion(): number {
   return portalVersion;
 }
 
-export function getHttpWidgetContainers(): ReadonlyMap<string, HttpPortalEntry> {
+export function getHttpWidgetContainers(): ReadonlyMap<
+  string,
+  HttpPortalEntry
+> {
   return entries;
 }
 
@@ -329,7 +332,9 @@ function disconnectWidgetObserver(
   slot: HttpWidgetSlot,
 ): void {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ro = (dom as any)?.__cmWidgetResizeObserver as ResizeObserver | undefined;
+  const ro = (dom as any)?.__cmWidgetResizeObserver as
+    | ResizeObserver
+    | undefined;
   ro?.disconnect();
   widgetHeightCache.delete(cacheKey(blockId, slot));
 }
@@ -337,7 +342,10 @@ function disconnectWidgetObserver(
 // ───── Widgets ─────
 
 class HttpToolbarPortalWidget extends WidgetType {
-  constructor(readonly blockId: string, readonly block: HttpFencedBlock) {
+  constructor(
+    readonly blockId: string,
+    readonly block: HttpFencedBlock,
+  ) {
     super();
   }
 
@@ -375,7 +383,10 @@ class HttpToolbarPortalWidget extends WidgetType {
 }
 
 class HttpClosePanelWidget extends WidgetType {
-  constructor(readonly blockId: string, readonly block: HttpFencedBlock) {
+  constructor(
+    readonly blockId: string,
+    readonly block: HttpFencedBlock,
+  ) {
     super();
   }
 
@@ -440,7 +451,10 @@ class HttpClosePanelWidget extends WidgetType {
  * React panel mount a tabular Params/Headers editor inside it.
  */
 class HttpFormPortalWidget extends WidgetType {
-  constructor(readonly blockId: string, readonly block: HttpFencedBlock) {
+  constructor(
+    readonly blockId: string,
+    readonly block: HttpFencedBlock,
+  ) {
     super();
   }
 
@@ -813,9 +827,7 @@ export function createHttpBlockCompletionSource(
       inside.from,
       filePath,
     );
-    const envVars = await useEnvironmentStore
-      .getState()
-      .getActiveVariables();
+    const envVars = await useEnvironmentStore.getState().getActiveVariables();
     const envKeys = Object.keys(envVars);
 
     const source = createReferenceCompletionSource(

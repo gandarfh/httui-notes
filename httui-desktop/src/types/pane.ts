@@ -31,11 +31,16 @@ export interface SplitPane {
 export type PaneLayout = LeafPane | SplitPane;
 
 let nextPaneId = 1;
-export function createLeafPane(filePath?: string, vaultPath?: string): LeafPane {
+export function createLeafPane(
+  filePath?: string,
+  vaultPath?: string,
+): LeafPane {
   return {
     type: "leaf",
     id: `pane-${nextPaneId++}`,
-    tabs: filePath ? [{ filePath, vaultPath: vaultPath ?? "", unsaved: false }] : [],
+    tabs: filePath
+      ? [{ filePath, vaultPath: vaultPath ?? "", unsaved: false }]
+      : [],
     activeTab: 0,
   };
 }

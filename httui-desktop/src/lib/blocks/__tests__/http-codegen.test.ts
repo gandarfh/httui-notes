@@ -145,7 +145,7 @@ describe("toHTTPie", () => {
 
   it("uses --raw for non-trivial body", () => {
     const out = toHTTPie(POST_JSON);
-    expect(out).toContain("--raw='{\"name\":\"alice\"}'");
+    expect(out).toContain('--raw=\'{"name":"alice"}\'');
   });
 });
 

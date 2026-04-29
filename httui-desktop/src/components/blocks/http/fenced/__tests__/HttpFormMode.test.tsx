@@ -35,11 +35,11 @@ const mkParsed = (
   ...over,
 });
 
-const mkRow = (
-  key: string,
-  value: string,
-  enabled = true,
-): HttpKVRow => ({ key, value, enabled });
+const mkRow = (key: string, value: string, enabled = true): HttpKVRow => ({
+  key,
+  value,
+  enabled,
+});
 
 describe("HttpFormMode", () => {
   describe("tabs + counts", () => {
@@ -95,7 +95,9 @@ describe("HttpFormMode", () => {
 
       const keyInput = screen.getByLabelText("key") as HTMLInputElement;
       const valueInput = screen.getByLabelText("value") as HTMLInputElement;
-      const descInput = screen.getByLabelText("description") as HTMLInputElement;
+      const descInput = screen.getByLabelText(
+        "description",
+      ) as HTMLInputElement;
       expect(keyInput.value).toBe("page");
       expect(valueInput.value).toBe("1");
       expect(descInput.value).toBe("pg");
@@ -190,9 +192,7 @@ describe("HttpFormMode", () => {
       await user.tab(); // blur
 
       const last = onChange.mock.calls.at(-1)?.[0] as HttpMessageParsed;
-      expect(last.params).toEqual([
-        { key: "TOKEN", value: "", enabled: true },
-      ]);
+      expect(last.params).toEqual([{ key: "TOKEN", value: "", enabled: true }]);
     });
 
     it("deleting a pending row drops it without onChange", async () => {

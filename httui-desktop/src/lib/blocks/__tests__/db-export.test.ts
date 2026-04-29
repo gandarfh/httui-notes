@@ -110,7 +110,9 @@ describe("toInserts", () => {
 describe("inferTableName", () => {
   it("returns the first FROM identifier", () => {
     expect(inferTableName("SELECT * FROM users")).toBe("users");
-    expect(inferTableName("SELECT * FROM vendas.pedidos WHERE 1=1")).toBe("vendas.pedidos");
+    expect(inferTableName("SELECT * FROM vendas.pedidos WHERE 1=1")).toBe(
+      "vendas.pedidos",
+    );
   });
 
   it("is not fooled by comments", () => {
@@ -125,11 +127,7 @@ describe("inferTableName", () => {
 
 describe("hasExportableRows", () => {
   it("false for empty result", () => {
-    expect(
-      hasExportableRows(
-        mkResult({ rows: [], columns: [] }),
-      ),
-    ).toBe(false);
+    expect(hasExportableRows(mkResult({ rows: [], columns: [] }))).toBe(false);
   });
 
   it("true for non-empty result", () => {

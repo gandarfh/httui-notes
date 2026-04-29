@@ -1,7 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { useWorkspaceStore, setupWorkspaceListeners } from "@/stores/workspace";
 import { mockTauriCommand, clearTauriMocks } from "@/test/mocks/tauri";
-import { emitTauriEvent, clearTauriListeners, listen } from "@/test/mocks/tauri-event";
+import {
+  emitTauriEvent,
+  clearTauriListeners,
+  listen,
+} from "@/test/mocks/tauri-event";
 import type { FileEntry } from "@/lib/tauri/commands";
 
 const VAULT = "/test/vault";

@@ -11,17 +11,45 @@ const MOD = IS_MAC ? "Cmd" : "Ctrl";
 
 const SHORTCUTS: Shortcut[] = [
   // Navigation
-  { keys: [MOD, "P"], description: "Quick open — search files by name", category: "Navigation" },
-  { keys: [MOD, "Shift", "F"], description: "Full-text search across all notes", category: "Navigation" },
-  { keys: [MOD, "Tab"], description: "Switch to next tab in active pane", category: "Navigation" },
+  {
+    keys: [MOD, "P"],
+    description: "Quick open — search files by name",
+    category: "Navigation",
+  },
+  {
+    keys: [MOD, "Shift", "F"],
+    description: "Full-text search across all notes",
+    category: "Navigation",
+  },
+  {
+    keys: [MOD, "Tab"],
+    description: "Switch to next tab in active pane",
+    category: "Navigation",
+  },
   // Layout
-  { keys: [MOD, "B"], description: "Toggle sidebar visibility", category: "Layout" },
-  { keys: [MOD, "\\"], description: "Split pane vertically", category: "Layout" },
-  { keys: [MOD, "Shift", "\\"], description: "Split pane horizontally", category: "Layout" },
+  {
+    keys: [MOD, "B"],
+    description: "Toggle sidebar visibility",
+    category: "Layout",
+  },
+  {
+    keys: [MOD, "\\"],
+    description: "Split pane vertically",
+    category: "Layout",
+  },
+  {
+    keys: [MOD, "Shift", "\\"],
+    description: "Split pane horizontally",
+    category: "Layout",
+  },
   { keys: [MOD, "W"], description: "Close active tab", category: "Layout" },
   { keys: [MOD, "L"], description: "Toggle chat panel", category: "Layout" },
   // Editing
-  { keys: [MOD, "S"], description: "Force save current file", category: "Editing" },
+  {
+    keys: [MOD, "S"],
+    description: "Force save current file",
+    category: "Editing",
+  },
 ];
 
 const CATEGORIES = ["Navigation", "Layout", "Editing"];

@@ -36,9 +36,7 @@ export async function computeDbCacheHash(
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([k, v]) => `${k}=${v}`)
     .join("\n");
-  const keyed = usedEnvEntries
-    ? `${body}\n__ENV__\n${usedEnvEntries}`
-    : body;
+  const keyed = usedEnvEntries ? `${body}\n__ENV__\n${usedEnvEntries}` : body;
   return hashBlockContent(keyed, connectionId);
 }
 
@@ -74,7 +72,9 @@ export async function computeHttpCacheHash(
     .sort((a, b) => a.key.localeCompare(b.key))
     .map((p) => `${encodeURIComponent(p.key)}=${encodeURIComponent(p.value)}`)
     .join("&");
-  const canonicalUrl = sortedParams ? `${parts.url}?${sortedParams}` : parts.url;
+  const canonicalUrl = sortedParams
+    ? `${parts.url}?${sortedParams}`
+    : parts.url;
   const sortedHeaders = [...parts.headers]
     .sort((a, b) => a.key.toLowerCase().localeCompare(b.key.toLowerCase()))
     .map((h) => `${h.key.toLowerCase()}: ${h.value}`)

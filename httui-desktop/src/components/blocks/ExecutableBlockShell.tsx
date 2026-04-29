@@ -1,6 +1,21 @@
 import type { ReactNode } from "react";
-import { Box, Flex, HStack, Input, Badge, Spinner, IconButton } from "@chakra-ui/react";
-import { LuPenLine, LuColumns2, LuMonitorCheck, LuPlay, LuSquare, LuX } from "react-icons/lu";
+import {
+  Box,
+  Flex,
+  HStack,
+  Input,
+  Badge,
+  Spinner,
+  IconButton,
+} from "@chakra-ui/react";
+import {
+  LuPenLine,
+  LuColumns2,
+  LuMonitorCheck,
+  LuPlay,
+  LuSquare,
+  LuX,
+} from "react-icons/lu";
 import type { DisplayMode, ExecutionState } from "./ExecutableBlock";
 
 interface ExecutableBlockShellProps {
@@ -133,7 +148,11 @@ export function ExecutableBlockShell({
           ))}
         </HStack>
 
-        <Badge size="sm" colorPalette={STATE_COLORS[executionState]} variant="subtle">
+        <Badge
+          size="sm"
+          colorPalette={STATE_COLORS[executionState]}
+          variant="subtle"
+        >
           {isRunning && <Spinner size="xs" mr={1} />}
           {isRunning && statusText ? statusText : STATE_LABELS[executionState]}
         </Badge>
@@ -145,7 +164,11 @@ export function ExecutableBlockShell({
           colorPalette={isRunning ? "red" : "green"}
           onClick={(e) => {
             e.stopPropagation();
-            if (isRunning) { onCancel(); } else { onRun(); }
+            if (isRunning) {
+              onCancel();
+            } else {
+              onRun();
+            }
           }}
         >
           {isRunning ? <LuSquare /> : <LuPlay />}
@@ -171,14 +194,30 @@ export function ExecutableBlockShell({
 
       {/* Content area */}
       <Flex
-        direction={displayMode === "split" ? (splitDirection === "column" ? "column" : { base: "column", md: "row" }) : "column"}
+        direction={
+          displayMode === "split"
+            ? splitDirection === "column"
+              ? "column"
+              : { base: "column", md: "row" }
+            : "column"
+        }
         minH="40px"
       >
         <Box
           flex={showInput ? 1 : undefined}
           minW={displayMode === "split" ? "0" : undefined}
-          borderRightWidth={displayMode === "split" && splitDirection !== "column" ? { base: "0", md: "1px" } : undefined}
-          borderBottomWidth={displayMode === "split" ? (splitDirection === "column" ? "1px" : { base: "1px", md: "0" }) : undefined}
+          borderRightWidth={
+            displayMode === "split" && splitDirection !== "column"
+              ? { base: "0", md: "1px" }
+              : undefined
+          }
+          borderBottomWidth={
+            displayMode === "split"
+              ? splitDirection === "column"
+                ? "1px"
+                : { base: "1px", md: "0" }
+              : undefined
+          }
           borderStyle="solid"
           borderColor="border"
           overflow="hidden"
