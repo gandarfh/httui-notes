@@ -176,6 +176,36 @@ describe("TopBar", () => {
       expect(onRunAll).toHaveBeenCalledTimes(1);
     });
 
+    it("defaultSearchTrigger fires a synthetic Cmd+P when onSearch is not supplied", async () => {
+      const user = userEvent.setup();
+      const dispatch = vi.spyOn(window, "dispatchEvent");
+      renderWithWorkspace(<TopBar {...baseProps} />);
+
+      await user.click(
+        screen.getByLabelText("Search blocks, vars, schema"),
+      );
+
+      const calls = dispatch.mock.calls.filter(
+        (c) => (c[0] as KeyboardEvent).key === "p",
+      );
+      expect(calls.length).toBeGreaterThanOrEqual(1);
+      const ev = calls[0][0] as KeyboardEvent;
+      expect(ev.metaKey).toBe(true);
+      dispatch.mockRestore();
+    });
+
+    it("clicking the workspace breadcrumb cycles to the next vault when multi-vault", async () => {
+      const user = userEvent.setup();
+      const switchVault = vi.fn(async () => {});
+      renderWithWorkspace(<TopBar {...baseProps} />, {
+        vaultPath: "/v1",
+        vaults: ["/v1", "/v2"],
+        switchVault,
+      });
+      await user.click(screen.getByText("v1"));
+      expect(switchVault).toHaveBeenCalledWith("/v2");
+    });
+
     it("breadcrumb shows the active tab path with dirty dot when unsaved", () => {
       usePaneStore.setState({
         layout: {
