@@ -127,8 +127,7 @@ fn compute_popup_rect(area: Rect, anchor: Option<BlockAnchor>) -> Rect {
             let x = (area.x + 2).min(max_x);
             let above_y = a.screen_top.checked_sub(height);
             let below_y = a.screen_top.saturating_add(a.height);
-            let fits_below = below_y.saturating_add(height)
-                <= area.y.saturating_add(area.height);
+            let fits_below = below_y.saturating_add(height) <= area.y.saturating_add(area.height);
             let y = match (above_y, fits_below) {
                 (Some(top), _) if top >= area.y => top,
                 (_, true) => below_y,

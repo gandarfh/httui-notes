@@ -38,13 +38,12 @@ pub fn raw_section_at(raw: &Rope, offset: usize) -> RawSection {
     // `len_lines` overcounts by 1 when the rope ends with `\n` — strip
     // that virtual trailing line so the closer is the LAST line with
     // content, not the synthetic empty one.
-    let visible_lines = if raw.len_chars() > 0
-        && raw.char(raw.len_chars().saturating_sub(1)) == '\n'
-    {
-        raw_lines.saturating_sub(1)
-    } else {
-        raw_lines
-    };
+    let visible_lines =
+        if raw.len_chars() > 0 && raw.char(raw.len_chars().saturating_sub(1)) == '\n' {
+            raw_lines.saturating_sub(1)
+        } else {
+            raw_lines
+        };
     if line == 0 {
         RawSection::Header
     } else if visible_lines >= 2 && line + 1 >= visible_lines {
@@ -72,9 +71,7 @@ pub fn body_line_to_raw_offset(raw: &Rope, body_line: usize) -> usize {
 /// (header only or header + closer with no body).
 pub fn body_line_count(raw: &Rope) -> usize {
     let raw_lines = raw.len_lines();
-    let visible = if raw.len_chars() > 0
-        && raw.char(raw.len_chars().saturating_sub(1)) == '\n'
-    {
+    let visible = if raw.len_chars() > 0 && raw.char(raw.len_chars().saturating_sub(1)) == '\n' {
         raw_lines.saturating_sub(1)
     } else {
         raw_lines
@@ -86,9 +83,7 @@ pub fn body_line_count(raw: &Rope) -> usize {
 /// closer is conceptually absent — returns the rope's length.
 pub fn closer_raw_offset(raw: &Rope) -> usize {
     let raw_lines = raw.len_lines();
-    let visible = if raw.len_chars() > 0
-        && raw.char(raw.len_chars().saturating_sub(1)) == '\n'
-    {
+    let visible = if raw.len_chars() > 0 && raw.char(raw.len_chars().saturating_sub(1)) == '\n' {
         raw_lines.saturating_sub(1)
     } else {
         raw_lines
@@ -113,13 +108,12 @@ pub fn body_line_col_to_raw_offset(raw: &Rope, body_line: usize, col: usize) -> 
     };
     // Stop just before the trailing newline so we never hand a caller
     // an offset that lands on `\n` itself.
-    let line_end = if next_start > line_start
-        && raw.get_char(next_start.saturating_sub(1)) == Some('\n')
-    {
-        next_start.saturating_sub(1)
-    } else {
-        next_start
-    };
+    let line_end =
+        if next_start > line_start && raw.get_char(next_start.saturating_sub(1)) == Some('\n') {
+            next_start.saturating_sub(1)
+        } else {
+            next_start
+        };
     line_start.saturating_add(col).min(line_end)
 }
 
@@ -256,11 +250,7 @@ impl BlockNode {
     /// desktop's behavior so the same vault opens the same way in
     /// both apps.
     pub fn effective_display_mode(&self) -> DisplayMode {
-        if let Some(m) = self
-            .display_mode
-            .as_deref()
-            .and_then(DisplayMode::parse)
-        {
+        if let Some(m) = self.display_mode.as_deref().and_then(DisplayMode::parse) {
             return m;
         }
         if self.cached_result.is_some() {
@@ -542,8 +532,11 @@ mod tests {
         // fields stay frozen until the user restores a single-block
         // shape.
         let mut b = block_with_raw("```db-postgres alias=q\nSELECT 1\n```\n");
-        let original_query =
-            b.params.get("query").and_then(|v| v.as_str()).map(String::from);
+        let original_query = b
+            .params
+            .get("query")
+            .and_then(|v| v.as_str())
+            .map(String::from);
         // Insert a stray closer and a new opener — now `parse_blocks`
         // sees two blocks.
         b.raw = Rope::from_str(
@@ -556,7 +549,10 @@ mod tests {
         // last-good values stay put.
         assert_eq!(b.alias.as_deref(), Some("q"));
         assert_eq!(
-            b.params.get("query").and_then(|v| v.as_str()).map(String::from),
+            b.params
+                .get("query")
+                .and_then(|v| v.as_str())
+                .map(String::from),
             original_query
         );
     }

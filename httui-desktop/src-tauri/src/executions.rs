@@ -68,12 +68,18 @@ impl ExecutionRegistry {
 
     #[cfg(test)]
     pub fn len(&self) -> usize {
-        self.inner.lock().expect("execution registry poisoned").len()
+        self.inner
+            .lock()
+            .expect("execution registry poisoned")
+            .len()
     }
 
     #[cfg(test)]
     pub fn is_empty(&self) -> bool {
-        self.inner.lock().expect("execution registry poisoned").is_empty()
+        self.inner
+            .lock()
+            .expect("execution registry poisoned")
+            .is_empty()
     }
 }
 

@@ -176,11 +176,7 @@ fn split_at_byte_offset_by_chars(s: &str, n_chars: usize) -> (&str, &str) {
     s.split_at(byte)
 }
 
-fn compute_popup_rect(
-    area: Rect,
-    state: &DbSettingsState,
-    anchor: Option<BlockAnchor>,
-) -> Rect {
+fn compute_popup_rect(area: Rect, state: &DbSettingsState, anchor: Option<BlockAnchor>) -> Rect {
     let width = POPUP_MIN_WIDTH.min(area.width.saturating_sub(2));
     // Height = N fields × 2 rows + chrome (top border, footer,
     // bottom border). Saturating clamp so a 0-field modal still

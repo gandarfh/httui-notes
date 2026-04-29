@@ -1,6 +1,6 @@
-use std::sync::Arc;
 use serde::Deserialize;
 use sqlx::sqlite::SqlitePool;
+use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -84,12 +84,10 @@ pub async fn send_chat_message(
 ) -> Result<String, String> {
     // 1. Persist user message
     // 2. Build content blocks for DB (paths) and sidecar (base64) separately
-    let mut db_blocks: Vec<serde_json::Value> = vec![
-        serde_json::json!({"type": "text", "text": text}),
-    ];
-    let mut sidecar_blocks: Vec<serde_json::Value> = vec![
-        serde_json::json!({"type": "text", "text": text}),
-    ];
+    let mut db_blocks: Vec<serde_json::Value> =
+        vec![serde_json::json!({"type": "text", "text": text})];
+    let mut sidecar_blocks: Vec<serde_json::Value> =
+        vec![serde_json::json!({"type": "text", "text": text})];
 
     for att in &attachments {
         let bytes = tokio::fs::read(&att.path)
@@ -122,14 +120,18 @@ pub async fn send_chat_message(
     let content_json = serde_json::to_string(&db_blocks)
         .map_err(|e| format!("Failed to serialize content: {e}"))?;
 
-    chat::insert_message(&pool, session_id, "user", &content_json, None, None, false)
-        .await?;
+    chat::insert_message(&pool, session_id, "user", &content_json, None, None, false).await?;
 
     // Auto-title: if session still has default title, set it from the first user message
     let session_for_title = chat::get_session(&pool, session_id).await?;
     if session_for_title.title == "Nova conversa" {
         let title: String = text.chars().take(50).collect();
-        let title = title.split('\n').next().unwrap_or(&title).trim().to_string();
+        let title = title
+            .split('\n')
+            .next()
+            .unwrap_or(&title)
+            .trim()
+            .to_string();
         if !title.is_empty() {
             let _ = chat::update_session_title(&pool, session_id, &title).await;
             let _ = app.emit("chat:session-updated", session_id);
@@ -144,20 +146,19 @@ pub async fn send_chat_message(
         session.cwd.clone()
     } else {
         // Read active vault from app_config
-        let row: Option<(String,)> = sqlx::query_as(
-            "SELECT value FROM app_config WHERE key = 'active_vault'"
-        )
-        .fetch_optional(pool.inner())
-        .await
-        .ok()
-        .flatten();
+        let row: Option<(String,)> =
+            sqlx::query_as("SELECT value FROM app_config WHERE key = 'active_vault'")
+                .fetch_optional(pool.inner())
+                .await
+                .ok()
+                .flatten();
         row.map(|r| r.0)
     };
 
     // Resolve [[wikilinks]] in the user text and inject note content for the sidecar
     if let Some(ref cwd) = effective_cwd {
-        let wikilink_re = regex::Regex::new(r"\[\[([^\]]+)\]\]")
-            .expect("static wikilink regex compiles");
+        let wikilink_re =
+            regex::Regex::new(r"\[\[([^\]]+)\]\]").expect("static wikilink regex compiles");
         for cap in wikilink_re.captures_iter(&text) {
             let target = &cap[1];
             if let Ok(content) = resolve_wikilink(cwd, target) {
@@ -175,7 +176,8 @@ pub async fn send_chat_message(
     {
         let mut guard = sidecar.lock().await;
         if guard.is_none() {
-            let mgr = SidecarManager::spawn(&app).await
+            let mgr = SidecarManager::spawn(&app)
+                .await
                 .map_err(|e| format!("Failed to spawn sidecar: {e}"))?;
             *guard = Some(mgr);
         }
@@ -223,12 +225,9 @@ pub async fn send_chat_message(
                 IncomingMessage::Session {
                     claude_session_id, ..
                 } => {
-                    let _ = chat::update_session_claude_id(
-                        &pool_clone,
-                        session_id,
-                        &claude_session_id,
-                    )
-                    .await;
+                    let _ =
+                        chat::update_session_claude_id(&pool_clone, session_id, &claude_session_id)
+                            .await;
                 }
                 IncomingMessage::TextDelta { text, .. } => {
                     // If we were accumulating tools, flush the tool group first
@@ -237,13 +236,7 @@ pub async fn send_chat_message(
                         current_tool_ids = Vec::new();
                     }
                     current_text.push_str(&text);
-                    let _ = app.emit(
-                        "chat:delta",
-                        ChatDeltaEvent {
-                            session_id,
-                            text,
-                        },
-                    );
+                    let _ = app.emit("chat:delta", ChatDeltaEvent { session_id, text });
                 }
                 IncomingMessage::ToolUse {
                     tool_use_id,
@@ -262,9 +255,16 @@ pub async fn send_chat_message(
                     if assistant_msg_id.is_none() {
                         let content = serde_json::json!(&segments);
                         if let Ok(msg) = chat::insert_message(
-                            &pool_clone, session_id, "assistant",
-                            &content.to_string(), None, None, true,
-                        ).await {
+                            &pool_clone,
+                            session_id,
+                            "assistant",
+                            &content.to_string(),
+                            None,
+                            None,
+                            true,
+                        )
+                        .await
+                        {
                             assistant_msg_id = Some(msg.id);
                         }
                     }
@@ -272,8 +272,13 @@ pub async fn send_chat_message(
                     if let Some(msg_id) = assistant_msg_id {
                         let input_str = serde_json::to_string(&input).unwrap_or_default();
                         let _ = chat::insert_tool_call(
-                            &pool_clone, msg_id, &tool_use_id, &name, &input_str,
-                        ).await;
+                            &pool_clone,
+                            msg_id,
+                            &tool_use_id,
+                            &name,
+                            &input_str,
+                        )
+                        .await;
                     }
                     let _ = app.emit(
                         "chat:tool_use",
@@ -294,8 +299,12 @@ pub async fn send_chat_message(
                     // Persist tool result
                     let result_str = serde_json::to_string(&content).unwrap_or_default();
                     let _ = chat::update_tool_call_result(
-                        &pool_clone, &tool_use_id, &result_str, is_error,
-                    ).await;
+                        &pool_clone,
+                        &tool_use_id,
+                        &result_str,
+                        is_error,
+                    )
+                    .await;
                     let _ = app.emit(
                         "chat:tool_result",
                         ChatToolResultEvent {
@@ -313,36 +322,42 @@ pub async fn send_chat_message(
                     ..
                 } => {
                     // Check broker before prompting the user
-                    let verdict = broker_clone.check(
-                        &tool_name,
-                        &tool_input,
-                        session_id,
-                        effective_cwd_clone.as_deref(),
-                    ).await;
+                    let verdict = broker_clone
+                        .check(
+                            &tool_name,
+                            &tool_input,
+                            session_id,
+                            effective_cwd_clone.as_deref(),
+                        )
+                        .await;
 
                     match verdict {
                         PermissionVerdict::Allow => {
                             // Auto-respond allow to sidecar
                             if let Some(mgr) = sidecar_clone.lock().await.as_ref() {
-                                let _ = mgr.send(OutgoingMessage::PermissionResponse {
-                                    permission_id,
-                                    decision: PermissionDecision {
-                                        behavior: PermissionBehavior::Allow,
-                                        message: None,
-                                    },
-                                }).await;
+                                let _ = mgr
+                                    .send(OutgoingMessage::PermissionResponse {
+                                        permission_id,
+                                        decision: PermissionDecision {
+                                            behavior: PermissionBehavior::Allow,
+                                            message: None,
+                                        },
+                                    })
+                                    .await;
                             }
                         }
                         PermissionVerdict::Deny(reason) => {
                             // Auto-respond deny to sidecar
                             if let Some(mgr) = sidecar_clone.lock().await.as_ref() {
-                                let _ = mgr.send(OutgoingMessage::PermissionResponse {
-                                    permission_id,
-                                    decision: PermissionDecision {
-                                        behavior: PermissionBehavior::Deny,
-                                        message: Some(reason),
-                                    },
-                                }).await;
+                                let _ = mgr
+                                    .send(OutgoingMessage::PermissionResponse {
+                                        permission_id,
+                                        decision: PermissionDecision {
+                                            behavior: PermissionBehavior::Deny,
+                                            message: Some(reason),
+                                        },
+                                    })
+                                    .await;
                             }
                         }
                         PermissionVerdict::AskUser => {
@@ -359,7 +374,9 @@ pub async fn send_chat_message(
                         }
                     }
                 }
-                IncomingMessage::Done { usage, stop_reason, .. } => {
+                IncomingMessage::Done {
+                    usage, stop_reason, ..
+                } => {
                     // Flush remaining segments
                     if !current_tool_ids.is_empty() {
                         segments.push(serde_json::json!({"type": "tool_group", "tool_use_ids": current_tool_ids}));
@@ -406,7 +423,8 @@ pub async fn send_chat_message(
                             u.input_tokens as i64,
                             u.output_tokens as i64,
                             u.cache_read_tokens as i64,
-                        ).await;
+                        )
+                        .await;
                     }
 
                     let _ = app.emit(
@@ -506,14 +524,12 @@ pub async fn respond_chat_permission(
         tool_name.as_deref(),
     ) {
         let _ = chat::insert_permission(
-            &pool,
-            tn,
-            None, // path_pattern — generic rule
+            &pool, tn, None, // path_pattern — generic rule
             None, // workspace — global
-            scope_str,
-            &behavior,
+            scope_str, &behavior,
             None, // session_id — not needed for 'always', and for 'session' we match by tool_name
-        ).await;
+        )
+        .await;
     }
 
     let guard = sidecar.lock().await;
@@ -551,10 +567,7 @@ pub async fn delete_tool_permission(
 /// return the absolute path. Used to keep the in-flight chat IPC
 /// payload light — the frontend only needs to send the path.
 #[tauri::command]
-pub async fn save_attachment_tmp(
-    bytes: Vec<u8>,
-    media_type: String,
-) -> Result<String, String> {
+pub async fn save_attachment_tmp(bytes: Vec<u8>, media_type: String) -> Result<String, String> {
     let ext = match media_type.as_str() {
         "image/png" => "png",
         "image/jpeg" => "jpg",
@@ -606,11 +619,13 @@ pub async fn clear_session_claude_id(
     pool: tauri::State<'_, SqlitePool>,
     session_id: i64,
 ) -> Result<(), String> {
-    sqlx::query("UPDATE sessions SET claude_session_id = NULL, updated_at = unixepoch() WHERE id = ?")
-        .bind(session_id)
-        .execute(pool.inner())
-        .await
-        .map_err(|e| format!("Failed to clear claude_session_id: {e}"))?;
+    sqlx::query(
+        "UPDATE sessions SET claude_session_id = NULL, updated_at = unixepoch() WHERE id = ?",
+    )
+    .bind(session_id)
+    .execute(pool.inner())
+    .await
+    .map_err(|e| format!("Failed to clear claude_session_id: {e}"))?;
     Ok(())
 }
 
@@ -680,8 +695,8 @@ fn resolve_wikilink(vault_path: &str, target: &str) -> Result<String, String> {
         None
     }
 
-    let note_path = find_note(vault, &target_lower)
-        .ok_or_else(|| format!("Note not found: {target}"))?;
+    let note_path =
+        find_note(vault, &target_lower).ok_or_else(|| format!("Note not found: {target}"))?;
 
     std::fs::read_to_string(&note_path)
         .map_err(|e| format!("Failed to read note {}: {e}", note_path.display()))
@@ -692,8 +707,7 @@ const MAX_IMAGE_DIMENSION: u32 = 2048;
 /// Normalize an image: resize if either side > 2048px, re-encode as JPEG Q85.
 /// Returns (normalized_bytes, media_type). Passes through unchanged if already small enough and JPEG.
 fn normalize_image(bytes: &[u8], media_type: &str) -> Result<(Vec<u8>, String), String> {
-    let img = image::load_from_memory(bytes)
-        .map_err(|e| format!("Failed to decode image: {e}"))?;
+    let img = image::load_from_memory(bytes).map_err(|e| format!("Failed to decode image: {e}"))?;
 
     let (w, h) = (img.width(), img.height());
     let needs_resize = w > MAX_IMAGE_DIMENSION || h > MAX_IMAGE_DIMENSION;

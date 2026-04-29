@@ -35,8 +35,7 @@ pub async fn get_db_schema(
         Err(e) => return json!({"error": e}).to_string(),
     }
 
-    match httui_core::db::schema_cache::introspect_schema(conn_manager, pool, connection_id).await
-    {
+    match httui_core::db::schema_cache::introspect_schema(conn_manager, pool, connection_id).await {
         Ok(entries) => json!({"schema": entries}).to_string(),
         Err(e) => json!({"error": e}).to_string(),
     }
@@ -44,7 +43,9 @@ pub async fn get_db_schema(
 
 pub async fn test_connection(conn_manager: &Arc<PoolManager>, connection_id: &str) -> String {
     match conn_manager.test_connection(connection_id).await {
-        Ok(()) => json!({"success": format!("Connection {} is reachable", connection_id)}).to_string(),
+        Ok(()) => {
+            json!({"success": format!("Connection {} is reachable", connection_id)}).to_string()
+        }
         Err(e) => json!({"error": e}).to_string(),
     }
 }

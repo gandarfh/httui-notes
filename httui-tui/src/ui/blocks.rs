@@ -133,7 +133,14 @@ pub fn render_block_with_selection(
 
     if b.is_db() {
         render_db_inner(
-            frame, middle, b, selected_row, viewport_top, names, result_tab, selected,
+            frame,
+            middle,
+            b,
+            selected_row,
+            viewport_top,
+            names,
+            result_tab,
+            selected,
         );
         return;
     }
@@ -191,12 +198,7 @@ fn chrome_bg() -> Color {
 /// bg row. DB blocks get `[DB] alias · vault [RW] subtype`; HTTP
 /// gets `[HTTP] alias · METHOD host`; E2E and unknown kinds get a
 /// minimal `[BLK] alias`. Right-aligned keymap hint applies to all.
-fn render_db_header_bar(
-    frame: &mut Frame,
-    area: Rect,
-    b: &BlockNode,
-    names: &ConnectionNames,
-) {
+fn render_db_header_bar(frame: &mut Frame, area: Rect, b: &BlockNode, names: &ConnectionNames) {
     if area.width == 0 || area.height == 0 {
         return;
     }
@@ -270,11 +272,7 @@ fn state_dot(state: &crate::buffer::block::ExecutionState, bg: Style) -> Span<'s
     Span::styled("●", bg.fg(color).add_modifier(Modifier::BOLD))
 }
 
-fn db_header_left_spans(
-    b: &BlockNode,
-    names: &ConnectionNames,
-    bg: Style,
-) -> Vec<Span<'static>> {
+fn db_header_left_spans(b: &BlockNode, names: &ConnectionNames, bg: Style) -> Vec<Span<'static>> {
     let alias = b.alias.clone().unwrap_or_else(|| "—".into());
     let conn_raw = b
         .params
@@ -380,10 +378,7 @@ fn generic_header_left_spans(
 /// api.x.com:443/v1/foo?q=1` → `api.x.com:443`. Returns the original
 /// string when it doesn't parse as a URL (incomplete fences, refs).
 fn http_host_of(url: &str) -> String {
-    let after_scheme = url
-        .find("://")
-        .map(|i| &url[i + 3..])
-        .unwrap_or(url);
+    let after_scheme = url.find("://").map(|i| &url[i + 3..]).unwrap_or(url);
     let host_end = after_scheme
         .find(['/', '?', '#'])
         .unwrap_or(after_scheme.len());
@@ -400,12 +395,7 @@ fn http_host_of(url: &str) -> String {
 /// · cached · press \`r\` to run`; HTTP shows `● connected ·
 /// METHOD url │ status · elapsed · size · cached · press \`r\` to
 /// run`; other kinds show the run hint only.
-fn render_db_footer_bar(
-    frame: &mut Frame,
-    area: Rect,
-    b: &BlockNode,
-    names: &ConnectionNames,
-) {
+fn render_db_footer_bar(frame: &mut Frame, area: Rect, b: &BlockNode, names: &ConnectionNames) {
     if area.width == 0 || area.height == 0 {
         return;
     }
@@ -659,7 +649,11 @@ fn highlight_http_header_line(line: &str) -> Vec<Span<'static>> {
 fn highlight_http_query_continuation(line: &str) -> Vec<Span<'static>> {
     let prefix_len = line.len() - line.trim_start().len();
     let prefix = &line[..prefix_len];
-    let rest = line[prefix_len..].chars().next().map(|c| c.to_string()).unwrap_or_default();
+    let rest = line[prefix_len..]
+        .chars()
+        .next()
+        .map(|c| c.to_string())
+        .unwrap_or_default();
     let body = &line[prefix_len + rest.len()..];
     let mut spans: Vec<Span<'static>> = Vec::new();
     if !prefix.is_empty() {
@@ -723,10 +717,7 @@ fn highlight_refs_in_text(text: &str) -> Vec<Span<'static>> {
 /// Pull the path + query out of an HTTP URL. Returns `/` when the
 /// URL has no path (just a host) or empty.
 fn http_path_of(url: &str) -> String {
-    let after_scheme = url
-        .find("://")
-        .map(|i| &url[i + 3..])
-        .unwrap_or(url);
+    let after_scheme = url.find("://").map(|i| &url[i + 3..]).unwrap_or(url);
     let path_start = after_scheme.find('/').unwrap_or(after_scheme.len());
     let path = &after_scheme[path_start..];
     if path.is_empty() {
@@ -1002,14 +993,16 @@ fn paint_panel_focus_hint(frame: &mut Frame, area: Rect) {
         .bg(Color::LightBlue)
         .fg(Color::Black)
         .add_modifier(Modifier::BOLD);
-    let chip_label = Style::default()
-        .fg(Color::Gray)
-        .bg(Color::Rgb(30, 35, 50));
+    let chip_label = Style::default().fg(Color::Gray).bg(Color::Rgb(30, 35, 50));
     let hint = Line::from(vec![
         Span::styled(" <CR> ", chip_key),
         Span::styled(" detail ", chip_label),
     ]);
-    let hint_width: u16 = hint.spans.iter().map(|s| s.content.chars().count() as u16).sum();
+    let hint_width: u16 = hint
+        .spans
+        .iter()
+        .map(|s| s.content.chars().count() as u16)
+        .sum();
     let x = area
         .x
         .saturating_add(area.width.saturating_sub(hint_width.saturating_add(1)));
@@ -1072,9 +1065,7 @@ fn http_response_body_lines(b: &BlockNode) -> Vec<Line<'static>> {
             .map(|l| Line::from(highlight_json_line(l)))
             .collect()
     } else {
-        text.lines()
-            .map(|l| Line::from(l.to_string()))
-            .collect()
+        text.lines().map(|l| Line::from(l.to_string())).collect()
     }
 }
 
@@ -1128,7 +1119,9 @@ fn highlight_json_line(line: &str) -> Vec<Span<'static>> {
                 if is_key { key_style } else { str_style },
             ));
             last_string = Some(chunk.to_string());
-        } else if c.is_ascii_digit() || (c == '-' && i + 1 < bytes.len() && (bytes[i + 1] as char).is_ascii_digit()) {
+        } else if c.is_ascii_digit()
+            || (c == '-' && i + 1 < bytes.len() && (bytes[i + 1] as char).is_ascii_digit())
+        {
             let start = i;
             if c == '-' {
                 i += 1;
@@ -1207,10 +1200,7 @@ fn http_response_headers_lines(b: &BlockNode) -> Vec<Line<'static>> {
             let key = h.get("key").and_then(|v| v.as_str()).unwrap_or("");
             let value = h.get("value").and_then(|v| v.as_str()).unwrap_or("");
             Line::from(vec![
-                Span::styled(
-                    format!(" {key}"),
-                    Style::default().fg(Color::Cyan),
-                ),
+                Span::styled(format!(" {key}"), Style::default().fg(Color::Cyan)),
                 Span::styled(": ", Style::default().fg(Color::DarkGray)),
                 Span::raw(value.to_string()),
             ])
@@ -1239,10 +1229,7 @@ fn http_response_cookies_lines(b: &BlockNode) -> Vec<Line<'static>> {
             let value = c.get("value").and_then(|v| v.as_str()).unwrap_or("");
             let domain = c.get("domain").and_then(|v| v.as_str()).unwrap_or("");
             let mut spans = vec![
-                Span::styled(
-                    format!(" {name}"),
-                    Style::default().fg(Color::Cyan),
-                ),
+                Span::styled(format!(" {name}"), Style::default().fg(Color::Cyan)),
                 Span::styled("=", Style::default().fg(Color::DarkGray)),
                 Span::raw(value.to_string()),
             ];
@@ -1343,10 +1330,7 @@ fn http_body(b: &BlockNode) -> Vec<Line<'static>> {
             let prefix = if i == 0 { "  ? " } else { "  & " };
             lines.push(Line::from(vec![
                 Span::styled(prefix, Style::default().fg(Color::DarkGray)),
-                Span::styled(
-                    key.to_string(),
-                    Style::default().fg(Color::Cyan),
-                ),
+                Span::styled(key.to_string(), Style::default().fg(Color::Cyan)),
                 Span::styled("=", Style::default().fg(Color::DarkGray)),
                 Span::raw(value.to_string()),
             ]));
@@ -1359,10 +1343,7 @@ fn http_body(b: &BlockNode) -> Vec<Line<'static>> {
             let key = h.get("key").and_then(|v| v.as_str()).unwrap_or("");
             let value = h.get("value").and_then(|v| v.as_str()).unwrap_or("");
             lines.push(Line::from(vec![
-                Span::styled(
-                    format!("  {key}"),
-                    Style::default().fg(Color::Cyan),
-                ),
+                Span::styled(format!("  {key}"), Style::default().fg(Color::Cyan)),
                 Span::styled(": ", Style::default().fg(Color::DarkGray)),
                 Span::raw(value.to_string()),
             ]));
@@ -1431,13 +1412,14 @@ fn render_db_inner(
         query_string = raw_body_text(b);
         &query_string
     } else {
-        b.params
-            .get("query")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
+        b.params.get("query").and_then(|v| v.as_str()).unwrap_or("")
     };
     let sql_lines = query.lines().count().max(1) as u16;
-    let table_height = if show_output { db_result_table_height(b) } else { 0 };
+    let table_height = if show_output {
+        db_result_table_height(b)
+    } else {
+        0
+    };
 
     let mut constraints: Vec<Constraint> = Vec::new();
     if show_input {
@@ -1576,7 +1558,8 @@ fn db_summary(b: &BlockNode) -> Option<String> {
     match kind {
         "select" => {
             let rows = first.get("rows")?.as_array()?.len();
-            let has_more = first.get("has_more")
+            let has_more = first
+                .get("has_more")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
             let suffix = if has_more { "+" } else { "" };
@@ -1591,10 +1574,7 @@ fn db_summary(b: &BlockNode) -> Option<String> {
                 .get("line")
                 .and_then(|l| l.as_u64())
                 .map(|line| {
-                    let col = first
-                        .get("column")
-                        .and_then(|c| c.as_u64())
-                        .unwrap_or(1);
+                    let col = first.get("column").and_then(|c| c.as_u64()).unwrap_or(1);
                     format!(" at {line}:{col}")
                 })
                 .unwrap_or_default();
@@ -1724,12 +1704,7 @@ fn build_result_table(
     // frame picks up where this one left off.
     let offset = match (viewport_top, selected_row) {
         (Some(slot), Some(sel)) => {
-            let next = clamp_result_viewport(
-                *slot as usize,
-                MAX_VISIBLE_ROWS,
-                sel,
-                total,
-            );
+            let next = clamp_result_viewport(*slot as usize, MAX_VISIBLE_ROWS, sel, total);
             *slot = next as u16;
             next
         }
@@ -1817,8 +1792,7 @@ fn build_result_table(
                         // width with spaces. Cell width is fixed by
                         // the Constraint::Length below, so this keeps
                         // the digits flush against the column edge.
-                        let pad = (widths[i] as usize)
-                            .saturating_sub(truncated.chars().count());
+                        let pad = (widths[i] as usize).saturating_sub(truncated.chars().count());
                         Cell::from(format!("{}{}", " ".repeat(pad), truncated))
                     } else {
                         Cell::from(truncated)
@@ -1854,9 +1828,23 @@ fn is_numeric_type(ty: &str) -> bool {
     let lower = ty.to_lowercase();
     matches!(
         lower.as_str(),
-        "int" | "integer" | "bigint" | "smallint" | "tinyint" | "int2" | "int4" | "int8"
-            | "float" | "float4" | "float8" | "real" | "double" | "double precision"
-            | "decimal" | "numeric" | "money"
+        "int"
+            | "integer"
+            | "bigint"
+            | "smallint"
+            | "tinyint"
+            | "int2"
+            | "int4"
+            | "int8"
+            | "float"
+            | "float4"
+            | "float8"
+            | "real"
+            | "double"
+            | "double precision"
+            | "decimal"
+            | "numeric"
+            | "money"
     ) || lower.starts_with("int")
         || lower.starts_with("float")
         || lower.starts_with("decimal")
@@ -2002,22 +1990,14 @@ fn render_result_separator(frame: &mut Frame, area: Rect) {
     }
     let line: String = "─".repeat(area.width as usize);
     let style = Style::default().fg(Color::DarkGray);
-    frame.render_widget(
-        Paragraph::new(Line::from(Span::styled(line, style))),
-        area,
-    );
+    frame.render_widget(Paragraph::new(Line::from(Span::styled(line, style))), area);
 }
 
 /// Strip of chip-styled tabs for multi-statement results. Mirrors
 /// the desktop's per-result-set selector. Active chip fills with a
 /// soft bg + bold; inactive chips stay flat dim. Width-padded with
 /// 1 space on each side so chips don't crowd the separator.
-fn render_result_subtabs(
-    frame: &mut Frame,
-    area: Rect,
-    b: &BlockNode,
-    selected: usize,
-) {
+fn render_result_subtabs(frame: &mut Frame, area: Rect, b: &BlockNode, selected: usize) {
     let Some(results) = b
         .cached_result
         .as_ref()
@@ -2075,7 +2055,11 @@ fn render_result_tab_bar_for(
         ResultPanelTab::Plan,
         ResultPanelTab::Stats,
     ] {
-        let style = if tab == selected { active_style } else { inactive_style };
+        let style = if tab == selected {
+            active_style
+        } else {
+            inactive_style
+        };
         let label = match (tab, result_count) {
             // Pluralize Result(s) when multi-statement returned >1
             // (DB only — HTTP never has multi).
@@ -2097,7 +2081,9 @@ fn build_messages_lines(b: &BlockNode) -> Vec<Line<'static>> {
         " (no messages)",
         Style::default().fg(Color::DarkGray),
     ));
-    let Some(value) = b.cached_result.as_ref() else { return vec![placeholder] };
+    let Some(value) = b.cached_result.as_ref() else {
+        return vec![placeholder];
+    };
     let Some(messages) = value.get("messages").and_then(|v| v.as_array()) else {
         return vec![placeholder];
     };
@@ -2107,7 +2093,10 @@ fn build_messages_lines(b: &BlockNode) -> Vec<Line<'static>> {
     messages
         .iter()
         .map(|m| {
-            let sev = m.get("severity").and_then(|v| v.as_str()).unwrap_or("notice");
+            let sev = m
+                .get("severity")
+                .and_then(|v| v.as_str())
+                .unwrap_or("notice");
             let text = m.get("text").and_then(|v| v.as_str()).unwrap_or("");
             Line::from(vec![
                 Span::styled(
@@ -2135,7 +2124,9 @@ fn build_plan_lines(b: &BlockNode) -> Vec<Line<'static>> {
         " (no plan — run <C-x> on this block to populate)",
         Style::default().fg(Color::DarkGray),
     ));
-    let Some(value) = b.cached_result.as_ref() else { return vec![placeholder] };
+    let Some(value) = b.cached_result.as_ref() else {
+        return vec![placeholder];
+    };
     let plan = match value.get("plan") {
         Some(p) if !p.is_null() => p,
         _ => return vec![placeholder],
@@ -2214,7 +2205,9 @@ fn build_stats_lines(b: &BlockNode) -> Vec<Line<'static>> {
             arr.iter()
                 .filter_map(|r| {
                     if r.get("kind").and_then(|k| k.as_str()) == Some("select") {
-                        r.get("rows").and_then(|rs| rs.as_array()).map(|rs| rs.len() as u64)
+                        r.get("rows")
+                            .and_then(|rs| rs.as_array())
+                            .map(|rs| rs.len() as u64)
                     } else {
                         None
                     }
@@ -2227,10 +2220,7 @@ fn build_stats_lines(b: &BlockNode) -> Vec<Line<'static>> {
     lines.push(row("elapsed", format!("{elapsed}ms")));
     lines.push(row("results", results.to_string()));
     lines.push(row("rows", total_rows.to_string()));
-    lines.push(row(
-        "cached",
-        if cached { "yes" } else { "no" }.to_string(),
-    ));
+    lines.push(row("cached", if cached { "yes" } else { "no" }.to_string()));
     lines
 }
 
@@ -2371,7 +2361,7 @@ mod tests {
     #[test]
     fn clamp_result_viewport_holds_until_cursor_leaves() {
         let v = MAX_VISIBLE_ROWS; // 10
-        // total ≤ viewport: no scroll, ever.
+                                  // total ≤ viewport: no scroll, ever.
         assert_eq!(clamp_result_viewport(0, v, 0, 5), 0);
         assert_eq!(clamp_result_viewport(0, v, 4, 5), 0);
         // Cursor inside the comfort band [scrolloff, viewport - scrolloff - 1]
@@ -2400,8 +2390,9 @@ mod tests {
 
     #[test]
     fn build_result_table_uses_persistent_viewport_top() {
-        let rows: Vec<serde_json::Value> =
-            (0..30).map(|i| json!({"id": i, "name": format!("r{i}")})).collect();
+        let rows: Vec<serde_json::Value> = (0..30)
+            .map(|i| json!({"id": i, "name": format!("r{i}")}))
+            .collect();
         let b = BlockNode {
             id: BlockId(0),
             raw: ropey::Rope::new(),

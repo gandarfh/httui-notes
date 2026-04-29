@@ -195,10 +195,7 @@ impl TabState {
     /// Split the focused leaf along `direction`, inserting `new_pane`
     /// as the second child and moving focus there.
     pub fn split(&mut self, direction: SplitDir, new_pane: Pane) {
-        let target = self
-            .root
-            .walk_mut(&self.focused)
-            .expect("focus path stale");
+        let target = self.root.walk_mut(&self.focused).expect("focus path stale");
         let PaneNode::Leaf(_) = target else {
             panic!("focused path does not point to a leaf");
         };
@@ -227,10 +224,7 @@ impl TabState {
         let mut path = self.focused.clone();
         let last = path.pop().expect("focused.is_empty() checked above");
         // Walk to the parent split.
-        let parent = self
-            .root
-            .walk_mut(&path)
-            .expect("focus parent path stale");
+        let parent = self.root.walk_mut(&path).expect("focus parent path stale");
         // Replace the parent Split with its surviving sibling subtree.
         let placeholder = PaneNode::Leaf(Pane::empty());
         let split = std::mem::replace(parent, placeholder);
@@ -293,10 +287,7 @@ impl TabState {
             let sibling = 1 - last_step;
             let mut new_focused = parent_path.to_vec();
             new_focused.push(sibling);
-            let target = self
-                .root
-                .walk(&new_focused)
-                .expect("sibling path stale");
+            let target = self.root.walk(&new_focused).expect("sibling path stale");
             target.descend_first(&mut new_focused);
             self.focused = new_focused;
             return true;
@@ -366,10 +357,7 @@ mod tests {
         let tab = TabState::new(pane_with_path("a.md"));
         assert_eq!(tab.leaf_count(), 1);
         assert_eq!(tab.focused, Vec::<u8>::new());
-        assert_eq!(
-            tab.active_leaf().document_path,
-            Some(PathBuf::from("a.md"))
-        );
+        assert_eq!(tab.active_leaf().document_path, Some(PathBuf::from("a.md")));
     }
 
     #[test]
@@ -378,10 +366,7 @@ mod tests {
         tab.split(SplitDir::Vertical, pane_with_path("b.md"));
         assert_eq!(tab.leaf_count(), 2);
         assert_eq!(tab.focused, vec![1u8]);
-        assert_eq!(
-            tab.active_leaf().document_path,
-            Some(PathBuf::from("b.md"))
-        );
+        assert_eq!(tab.active_leaf().document_path, Some(PathBuf::from("b.md")));
     }
 
     #[test]
@@ -390,10 +375,7 @@ mod tests {
         tab.split(SplitDir::Vertical, pane_with_path("b.md"));
         // We're on b (right). Press Left → land on a.
         assert!(tab.focus_dir(FocusDir::Left));
-        assert_eq!(
-            tab.active_leaf().document_path,
-            Some(PathBuf::from("a.md"))
-        );
+        assert_eq!(tab.active_leaf().document_path, Some(PathBuf::from("a.md")));
         // Already on the leftmost — Left is no-op.
         assert!(!tab.focus_dir(FocusDir::Left));
     }
@@ -404,16 +386,10 @@ mod tests {
         tab.split(SplitDir::Horizontal, pane_with_path("b.md"));
         // We're on b (bottom). Up → a.
         assert!(tab.focus_dir(FocusDir::Up));
-        assert_eq!(
-            tab.active_leaf().document_path,
-            Some(PathBuf::from("a.md"))
-        );
+        assert_eq!(tab.active_leaf().document_path, Some(PathBuf::from("a.md")));
         // Down → b again.
         assert!(tab.focus_dir(FocusDir::Down));
-        assert_eq!(
-            tab.active_leaf().document_path,
-            Some(PathBuf::from("b.md"))
-        );
+        assert_eq!(tab.active_leaf().document_path, Some(PathBuf::from("b.md")));
     }
 
     #[test]
@@ -425,18 +401,12 @@ mod tests {
         //   |       | c.md   |
         //   +-------+--------+
         let mut tab = TabState::new(pane_with_path("a.md"));
-        tab.split(SplitDir::Vertical, pane_with_path("b.md"));   // focus on b
+        tab.split(SplitDir::Vertical, pane_with_path("b.md")); // focus on b
         tab.split(SplitDir::Horizontal, pane_with_path("c.md")); // focus on c (below b)
-        assert_eq!(
-            tab.active_leaf().document_path,
-            Some(PathBuf::from("c.md"))
-        );
+        assert_eq!(tab.active_leaf().document_path, Some(PathBuf::from("c.md")));
         // From c, Left should walk past the H split and into a.
         assert!(tab.focus_dir(FocusDir::Left));
-        assert_eq!(
-            tab.active_leaf().document_path,
-            Some(PathBuf::from("a.md"))
-        );
+        assert_eq!(tab.active_leaf().document_path, Some(PathBuf::from("a.md")));
     }
 
     #[test]
@@ -446,10 +416,7 @@ mod tests {
         // Close b → only a remains, focus on a.
         assert_eq!(tab.close_focused(), CloseResult::Closed);
         assert_eq!(tab.leaf_count(), 1);
-        assert_eq!(
-            tab.active_leaf().document_path,
-            Some(PathBuf::from("a.md"))
-        );
+        assert_eq!(tab.active_leaf().document_path, Some(PathBuf::from("a.md")));
     }
 
     #[test]

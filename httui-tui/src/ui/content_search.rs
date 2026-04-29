@@ -45,7 +45,11 @@ pub fn render(frame: &mut Frame, editor_area: Rect, state: &ContentSearchState) 
     let title = format!(
         " Find content · {} {} ",
         state.results.len(),
-        if state.results.len() == 1 { "match" } else { "matches" }
+        if state.results.len() == 1 {
+            "match"
+        } else {
+            "matches"
+        }
     );
     let outer = Block::default()
         .borders(Borders::ALL)
@@ -205,10 +209,7 @@ fn highlight_snippet(snippet: &str, bg_style: Style) -> Vec<Span<'static>> {
                 }
             }
             None => {
-                spans.push(Span::styled(
-                    rest.to_string(),
-                    bg_style.fg(Color::DarkGray),
-                ));
+                spans.push(Span::styled(rest.to_string(), bg_style.fg(Color::DarkGray)));
                 break;
             }
         }

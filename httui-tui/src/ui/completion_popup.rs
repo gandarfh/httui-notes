@@ -115,8 +115,7 @@ fn compute_popup_rect(
     state: &CompletionPopupState,
     anchor: Option<BlockAnchor>,
 ) -> Rect {
-    let body_rows =
-        state.items.len().clamp(1, MAX_VISIBLE_ROWS) as u16;
+    let body_rows = state.items.len().clamp(1, MAX_VISIBLE_ROWS) as u16;
     let popup_height = body_rows.saturating_add(2);
     let width = POPUP_WIDTH.min(editor_area.width.saturating_sub(2)).max(20);
     let editor_right = editor_area.x.saturating_add(editor_area.width);

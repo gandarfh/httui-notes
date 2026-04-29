@@ -175,7 +175,6 @@ impl VimState {
         self.cmdline.clear();
     }
 
-
     /// Enter search mode (`/` for forward, `?` for backward).
     pub fn enter_search(&mut self, forward: bool) {
         self.mode = Mode::Search;

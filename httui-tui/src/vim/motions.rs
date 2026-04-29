@@ -1,8 +1,8 @@
 use ropey::Rope;
 
 use crate::buffer::block::{
-    body_line_col_to_raw_offset, closer_raw_offset, header_raw_offset, raw_section_at,
-    BlockNode, RawSection,
+    body_line_col_to_raw_offset, closer_raw_offset, header_raw_offset, raw_section_at, BlockNode,
+    RawSection,
 };
 use crate::buffer::layout::layout_document;
 use crate::buffer::{Cursor, Document, Segment};
@@ -379,9 +379,7 @@ fn apply_down(doc: &Document) -> Cursor {
                     // the block. DB / other blocks paint the closer
                     // at the very bottom of the card, so j there
                     // exits the block directly.
-                    if block.is_http()
-                        && block_result_row_count(doc, segment_idx) > 0
-                    {
+                    if block.is_http() && block_result_row_count(doc, segment_idx) > 0 {
                         return Cursor::InBlockResult {
                             segment_idx,
                             row: 0,
@@ -1039,7 +1037,8 @@ mod tests {
         // Multi-line HTTP body (request line + header). The cursor
         // must walk every body line, then drop into the response
         // panel — mirrors what the user sees in the real app.
-        let md = "```http alias=req1\nGET https://example.com/users\nAuthorization: Bearer abc\n```\n";
+        let md =
+            "```http alias=req1\nGET https://example.com/users\nAuthorization: Bearer abc\n```\n";
         let mut d = doc(md);
         let block_idx = d
             .segments()
@@ -1115,7 +1114,11 @@ mod tests {
         // (the fixture has a trailing prose run after the block).
         match d.cursor() {
             Cursor::InProse { segment_idx, .. } => {
-                assert!(segment_idx > block_idx, "j should exit the block, got {:?}", d.cursor());
+                assert!(
+                    segment_idx > block_idx,
+                    "j should exit the block, got {:?}",
+                    d.cursor()
+                );
             }
             other => panic!("expected to exit the block, got {other:?}"),
         }
@@ -1364,9 +1367,7 @@ mod tests {
         // closer, then out the other side. Mirror with `k`. Now that
         // the cursor is unified on `Cursor::InBlock { offset }`, we
         // discriminate header / body / closer via `raw_section_at`.
-        let mut d = doc(
-            "head\n\n```db-postgres alias=q\nSELECT 1\n```\n\ntail\n",
-        );
+        let mut d = doc("head\n\n```db-postgres alias=q\nSELECT 1\n```\n\ntail\n");
         d.set_cursor(Cursor::InProse {
             segment_idx: 0,
             offset: 0,
@@ -1410,7 +1411,11 @@ mod tests {
     }
 
     fn cursor_section(d: &Document) -> Option<RawSection> {
-        let Cursor::InBlock { segment_idx, offset } = d.cursor() else {
+        let Cursor::InBlock {
+            segment_idx,
+            offset,
+        } = d.cursor()
+        else {
             return None;
         };
         let Segment::Block(b) = d.segments().get(segment_idx)? else {

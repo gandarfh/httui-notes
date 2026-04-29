@@ -63,28 +63,26 @@ impl FileWatcher {
         let sender = self.sender.clone();
         let watch_path = path.to_path_buf();
         let watch_path_for_event = watch_path.clone();
-        let mut watcher = notify::recommended_watcher(
-            move |res: notify::Result<notify::Event>| {
-                if let Ok(event) = res {
-                    // Only modify/create are interesting. Access /
-                    // metadata noise (e.g. `cat` over the file)
-                    // shouldn't trigger a reload.
-                    if !matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_)) {
-                        return;
-                    }
-                    // notify watches the parent directory, so
-                    // events for siblings flow through too — drop
-                    // anything that doesn't touch our specific
-                    // path.
-                    if !event.paths.iter().any(|p| p == &watch_path_for_event) {
-                        return;
-                    }
-                    let _ = sender.send(AppEvent::FileChangedExternally {
-                        path: watch_path_for_event.clone(),
-                    });
+        let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+            if let Ok(event) = res {
+                // Only modify/create are interesting. Access /
+                // metadata noise (e.g. `cat` over the file)
+                // shouldn't trigger a reload.
+                if !matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_)) {
+                    return;
                 }
-            },
-        )
+                // notify watches the parent directory, so
+                // events for siblings flow through too — drop
+                // anything that doesn't touch our specific
+                // path.
+                if !event.paths.iter().any(|p| p == &watch_path_for_event) {
+                    return;
+                }
+                let _ = sender.send(AppEvent::FileChangedExternally {
+                    path: watch_path_for_event.clone(),
+                });
+            }
+        })
         .map_err(|e| format!("notify init failed: {e}"))?;
 
         // Watch the parent dir non-recursively. Watching the file

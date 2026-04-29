@@ -54,8 +54,7 @@ pub fn strip_leading_sql_comments(query: &str) -> &str {
 /// re-executes — matching desktop semantics.
 pub fn is_cacheable_query(query: &str) -> bool {
     let s = strip_leading_sql_comments(query);
-    let first_word: String =
-        s.chars().take_while(|c| c.is_ascii_alphabetic()).collect();
+    let first_word: String = s.chars().take_while(|c| c.is_ascii_alphabetic()).collect();
     matches!(
         first_word.to_ascii_uppercase().as_str(),
         "SELECT" | "WITH" | "EXPLAIN" | "SHOW" | "PRAGMA" | "DESC" | "DESCRIBE"
@@ -69,8 +68,7 @@ pub fn is_cacheable_query(query: &str) -> bool {
 /// gate: we'd rather let a weird read through than block one).
 pub fn is_writing_query(query: &str) -> bool {
     let s = strip_leading_sql_comments(query);
-    let first_word: String =
-        s.chars().take_while(|c| c.is_ascii_alphabetic()).collect();
+    let first_word: String = s.chars().take_while(|c| c.is_ascii_alphabetic()).collect();
     matches!(
         first_word.to_ascii_uppercase().as_str(),
         "UPDATE"
@@ -93,8 +91,7 @@ pub fn is_writing_query(query: &str) -> bool {
 /// the confirm gate.
 pub fn is_unscoped_destructive(query: &str) -> bool {
     let s = strip_leading_sql_comments(query);
-    let first_word: String =
-        s.chars().take_while(|c| c.is_ascii_alphabetic()).collect();
+    let first_word: String = s.chars().take_while(|c| c.is_ascii_alphabetic()).collect();
     let kind = first_word.to_ascii_uppercase();
     if kind != "UPDATE" && kind != "DELETE" {
         return false;
@@ -155,11 +152,10 @@ pub fn compute_db_cache_hash(
 /// row) rather than a `BlockNode`. Used to paint the `⛁ cached · …`
 /// status when a cache hit short-circuits the run. Errors with
 /// position get an ` at L:C` suffix matching `summarize_db_response`.
-pub fn db_summary_from_value(
-    value: Option<&serde_json::Value>,
-    elapsed: u64,
-) -> String {
-    let Some(v) = value else { return format!("ok · {elapsed}ms") };
+pub fn db_summary_from_value(value: Option<&serde_json::Value>, elapsed: u64) -> String {
+    let Some(v) = value else {
+        return format!("ok · {elapsed}ms");
+    };
     let results = v.get("results").and_then(|r| r.as_array());
     let extras = match results.map(|r| r.len()).unwrap_or(0) {
         0 | 1 => String::new(),
@@ -282,15 +278,14 @@ pub fn cycle_display_mode(app: &mut App) {
         Some(Cursor::InBlock { segment_idx, .. })
         | Some(Cursor::InBlockResult { segment_idx, .. }) => segment_idx,
         _ => {
-            app.set_status(
-                StatusKind::Info,
-                "place the cursor on a block first",
-            );
+            app.set_status(StatusKind::Info, "place the cursor on a block first");
             return;
         }
     };
     let next = {
-        let Some(doc) = app.tabs.active_document_mut() else { return };
+        let Some(doc) = app.tabs.active_document_mut() else {
+            return;
+        };
         // Snapshot before mutating so undo can roll the mode back.
         // The mode lives on `BlockNode.display_mode`, which the
         // snapshot already captures along with the rest of the
@@ -303,10 +298,7 @@ pub fn cycle_display_mode(app: &mut App) {
         block.display_mode = Some(next.as_str().to_string());
         next
     };
-    app.set_status(
-        StatusKind::Info,
-        format!("display: {}", next.as_str()),
-    );
+    app.set_status(StatusKind::Info, format!("display: {}", next.as_str()));
 }
 
 /// `<C-a>` — open the inline alias-edit prompt for the block at the
@@ -320,17 +312,11 @@ pub fn open_fence_edit_alias(app: &mut App) {
         Some(Cursor::InBlock { segment_idx, .. })
         | Some(Cursor::InBlockResult { segment_idx, .. }) => segment_idx,
         _ => {
-            app.set_status(
-                StatusKind::Info,
-                "place the cursor on a block first",
-            );
+            app.set_status(StatusKind::Info, "place the cursor on a block first");
             return;
         }
     };
-    let prefill = match app
-        .document()
-        .and_then(|d| d.segments().get(segment_idx))
-    {
+    let prefill = match app.document().and_then(|d| d.segments().get(segment_idx)) {
         Some(Segment::Block(b)) => b.alias.clone().unwrap_or_default(),
         _ => {
             app.set_status(StatusKind::Info, "no block at cursor");
@@ -378,7 +364,9 @@ pub fn confirm_fence_edit(app: &mut App) {
                 }
                 Some(raw)
             };
-            let Some(doc) = app.tabs.active_document_mut() else { return };
+            let Some(doc) = app.tabs.active_document_mut() else {
+                return;
+            };
             doc.snapshot();
             if let Some(block) = doc.block_at_mut(segment_idx) {
                 // Mirror `block.alias` into `params.alias` so the
@@ -389,10 +377,7 @@ pub fn confirm_fence_edit(app: &mut App) {
                 if let Some(obj) = block.params.as_object_mut() {
                     match &new_alias {
                         Some(a) => {
-                            obj.insert(
-                                "alias".into(),
-                                serde_json::Value::String(a.clone()),
-                            );
+                            obj.insert("alias".into(), serde_json::Value::String(a.clone()));
                         }
                         None => {
                             obj.remove("alias");
@@ -405,10 +390,7 @@ pub fn confirm_fence_edit(app: &mut App) {
 
     app.fence_edit = None;
     app.vim.enter_normal();
-    app.set_status(
-        StatusKind::Info,
-        format!("{} updated", kind.label()),
-    );
+    app.set_status(StatusKind::Info, format!("{} updated", kind.label()));
 }
 
 /// Reject duplicate aliases inside the same document. `{{alias.path}}`
@@ -449,10 +431,7 @@ pub fn run_explain(app: &mut App) {
         Cursor::InBlock { segment_idx, .. } => segment_idx,
         Cursor::InBlockResult { segment_idx, .. } => segment_idx,
         _ => {
-            app.set_status(
-                StatusKind::Info,
-                "place the cursor on a DB block first",
-            );
+            app.set_status(StatusKind::Info, "place the cursor on a DB block first");
             return;
         }
     };
@@ -579,9 +558,7 @@ pub(crate) fn resolve_one_ref(
         // the `response.*` namespace exposes three access patterns
         // (passthrough / numeric / legacy column). Non-DB blocks keep
         // the simple "strip `response` and dot-navigate" behavior.
-        if block.is_db()
-            && nav.first().copied() == Some("response")
-            && is_db_response_shape(cached)
+        if block.is_db() && nav.first().copied() == Some("response") && is_db_response_shape(cached)
         {
             return resolve_db_response_path(cached, &nav[1..]);
         }
@@ -616,9 +593,7 @@ pub(crate) fn resolve_one_ref(
 /// `DbResponse` (top-level `results` array)? Used to gate the DB-only
 /// ref shim so older / non-DB cached blobs keep navigating raw.
 fn is_db_response_shape(v: &serde_json::Value) -> bool {
-    v.get("results")
-        .map(|r| r.is_array())
-        .unwrap_or(false)
+    v.get("results").map(|r| r.is_array()).unwrap_or(false)
 }
 
 /// Navigate the part of a `{{alias.response.…}}` ref that comes
@@ -647,8 +622,7 @@ fn resolve_db_response_path(
             .get(*first)
             .ok_or_else(|| format!("response has no `{first}`"))?;
         for part in rest {
-            value = navigate_json(value, part)
-                .ok_or_else(|| format!("path `{part}` not found"))?;
+            value = navigate_json(value, part).ok_or_else(|| format!("path `{part}` not found"))?;
         }
         return value_for_bind(value);
     }
@@ -667,8 +641,7 @@ fn resolve_db_response_path(
             )
         })?;
         for part in rest {
-            value = navigate_json(value, part)
-                .ok_or_else(|| format!("path `{part}` not found"))?;
+            value = navigate_json(value, part).ok_or_else(|| format!("path `{part}` not found"))?;
         }
         return value_for_bind(value);
     }
@@ -682,17 +655,14 @@ fn resolve_db_response_path(
     let rows = first_result
         .get("rows")
         .and_then(|v| v.as_array())
-        .ok_or_else(|| {
-            "first result has no rows (was it a mutation or error?)".to_string()
-        })?;
+        .ok_or_else(|| "first result has no rows (was it a mutation or error?)".to_string())?;
     let first_row = rows
         .first()
         .ok_or_else(|| "first result has no rows yet".to_string())?;
     let mut value = navigate_json(first_row, first)
         .ok_or_else(|| format!("column `{first}` not found in first row"))?;
     for part in rest {
-        value = navigate_json(value, part)
-            .ok_or_else(|| format!("path `{part}` not found"))?;
+        value = navigate_json(value, part).ok_or_else(|| format!("path `{part}` not found"))?;
     }
     value_for_bind(value)
 }
@@ -812,7 +782,11 @@ pub fn summarize_db_response(resp: &httui_core::executor::db::types::DbResponse)
             DbResult::Mutation { rows_affected } => {
                 format!("{} affected · {}ms{}", rows_affected, elapsed, extras)
             }
-            DbResult::Error { message, line, column } => {
+            DbResult::Error {
+                message,
+                line,
+                column,
+            } => {
                 // Append `at L:C` when the executor enriched the
                 // error with positional info (Postgres always; MySQL
                 // when the parser produced one). Same suffix the
@@ -848,7 +822,10 @@ pub fn apply_run_block(app: &mut App) {
 
     let Some(doc) = app.document() else { return };
     let Cursor::InBlock { segment_idx, .. } = doc.cursor() else {
-        app.set_status(StatusKind::Info, "no block at cursor (place cursor on a block first)");
+        app.set_status(
+            StatusKind::Info,
+            "no block at cursor (place cursor on a block first)",
+        );
         return;
     };
     let block_type = match doc.segments().get(segment_idx) {
@@ -953,12 +930,11 @@ pub(crate) fn run_db_block_inner(
     // keep them on the dispatch thread; only the actual query goes
     // async. If any pre-flight step fails the run never spawns —
     // surface the error and bail.
-    let env_vars: std::collections::HashMap<String, String> =
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current()
-                .block_on(load_active_env_vars(app.pool_manager.app_pool()))
-        })
-        .unwrap_or_default();
+    let env_vars: std::collections::HashMap<String, String> = tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current()
+            .block_on(load_active_env_vars(app.pool_manager.app_pool()))
+    })
+    .unwrap_or_default();
     let resolved = match app.document() {
         Some(d) => resolve_block_refs(d.segments(), segment_idx, &raw_query, &env_vars),
         None => Ok((raw_query.clone(), Vec::new())),
@@ -985,15 +961,14 @@ pub(crate) fn run_db_block_inner(
     // (parser writes `timeout_ms`). `None` → executor falls back to
     // the connection's default timeout, then to 30s if the
     // connection has no override either.
-    let timeout_ms = block
-        .params
-        .get("timeout_ms")
-        .and_then(|v| v.as_u64());
+    let timeout_ms = block.params.get("timeout_ms").and_then(|v| v.as_u64());
 
     let pool_mgr = app.pool_manager.clone();
     let resolved = tokio::task::block_in_place(|| {
-        tokio::runtime::Handle::current()
-            .block_on(resolve_connection_id(pool_mgr.app_pool(), &connection_id_raw))
+        tokio::runtime::Handle::current().block_on(resolve_connection_id(
+            pool_mgr.app_pool(),
+            &connection_id_raw,
+        ))
     });
     let connection_id = match resolved {
         Ok(id) => id,
@@ -1018,19 +993,18 @@ pub(crate) fn run_db_block_inner(
     // the wrapped query is a read by definition.
     if !as_explain {
         let conn_meta = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(
-                httui_core::db::connections::get_connection(
-                    app.pool_manager.app_pool(),
-                    &connection_id,
-                ),
-            )
+            tokio::runtime::Handle::current().block_on(httui_core::db::connections::get_connection(
+                app.pool_manager.app_pool(),
+                &connection_id,
+            ))
         });
         let is_readonly_conn = matches!(
             &conn_meta,
             Ok(Some(c)) if c.is_readonly
         );
         if is_readonly_conn && is_writing_query(&raw_query) {
-            let msg = "connection is read-only — flip the flag or pick a writable connection".to_string();
+            let msg =
+                "connection is read-only — flip the flag or pick a writable connection".to_string();
             if let Some(doc) = app.tabs.active_document_mut() {
                 if let Some(b) = doc.block_at_mut(segment_idx) {
                     b.state = ExecutionState::Error(msg.clone());
@@ -1086,11 +1060,7 @@ pub(crate) fn run_db_block_inner(
             .map(|p| p.to_string_lossy().to_string());
         if is_cacheable_query(&raw_query) {
             file_path.as_deref().map(|fp| {
-                let hash = compute_db_cache_hash(
-                    &raw_query,
-                    Some(&connection_id),
-                    &env_vars,
-                );
+                let hash = compute_db_cache_hash(&raw_query, Some(&connection_id), &env_vars);
                 (fp.to_string(), hash)
             })
         } else {
@@ -1101,36 +1071,25 @@ pub(crate) fn run_db_block_inner(
         let app_pool = app.pool_manager.app_pool().clone();
         let fp_owned = fp.clone();
         let hash_owned = hash.clone();
-        let cached = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(
-                httui_core::block_results::get_block_result(
-                    &app_pool,
-                    &fp_owned,
-                    &hash_owned,
-                ),
-            )
-        })
-        .ok()
-        .flatten();
+        let cached =
+            tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(
+                    httui_core::block_results::get_block_result(&app_pool, &fp_owned, &hash_owned),
+                )
+            })
+            .ok()
+            .flatten();
         if let Some(row) = cached {
             if row.status == "success" {
-                if let Ok(value) =
-                    serde_json::from_str::<serde_json::Value>(&row.response)
-                {
-                    let summary = db_summary_from_value(
-                        Some(&value),
-                        row.elapsed_ms as u64,
-                    );
+                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&row.response) {
+                    let summary = db_summary_from_value(Some(&value), row.elapsed_ms as u64);
                     if let Some(doc) = app.tabs.active_document_mut() {
                         if let Some(b) = doc.block_at_mut(segment_idx) {
                             b.state = ExecutionState::Cached;
                             b.cached_result = Some(value);
                         }
                     }
-                    app.set_status(
-                        StatusKind::Info,
-                        format!("⛁ cached · {summary}"),
-                    );
+                    app.set_status(StatusKind::Info, format!("⛁ cached · {summary}"));
                     return;
                 }
             }
@@ -1258,10 +1217,7 @@ pub fn handle_db_block_result(
     // `apply_run_block` decided this was a cacheable read. Take it
     // *before* clearing the slot so the success branch below can
     // write back without re-deriving the hash.
-    let cache_key = app
-        .running_query
-        .take()
-        .and_then(|q| q.cache_key);
+    let cache_key = app.running_query.take().and_then(|q| q.cache_key);
 
     // Snapshot history-relevant metadata once, before we descend into
     // the per-kind match. Block fields (alias, query, connection)
@@ -1279,10 +1235,8 @@ pub fn handle_db_block_result(
     match kind {
         DbBlockResultKind::Run => match outcome {
             Ok(response) => {
-                let first_was_error = matches!(
-                    response.results.first(),
-                    Some(DbResult::Error { .. })
-                );
+                let first_was_error =
+                    matches!(response.results.first(), Some(DbResult::Error { .. }));
                 let summary = summarize_db_response(&response);
                 let value = serde_json::to_value(&response).ok();
                 if let Some(doc) = app.tabs.active_document_mut() {
@@ -1300,9 +1254,7 @@ pub fn handle_db_block_result(
                 // query and re-runs; we don't want to serve the old
                 // error). Mirrors desktop behavior.
                 if !first_was_error {
-                    if let (Some((file_path, hash)), Some(value)) =
-                        (cache_key, value)
-                    {
+                    if let (Some((file_path, hash)), Some(value)) = (cache_key, value) {
                         save_db_cache_async(
                             app.pool_manager.app_pool().clone(),
                             file_path,
@@ -1318,13 +1270,8 @@ pub fn handle_db_block_result(
                 // mutation success from a per-statement error.
                 if let Some(meta) = history_meta.as_ref() {
                     let elapsed = response.stats.elapsed_ms;
-                    let (status, response_size) =
-                        derive_db_history_stats(&response);
-                    let outcome_str = if first_was_error {
-                        "error"
-                    } else {
-                        "success"
-                    };
+                    let (status, response_size) = derive_db_history_stats(&response);
+                    let outcome_str = if first_was_error { "error" } else { "success" };
                     record_db_history_async(
                         app.pool_manager.app_pool().clone(),
                         meta.clone(),
@@ -1369,21 +1316,13 @@ pub fn handle_db_block_result(
         DbBlockResultKind::LoadMore => match outcome {
             Ok(response) => {
                 let (new_rows, new_has_more) = match response.results.first() {
-                    Some(DbResult::Select {
-                        rows, has_more, ..
-                    }) => (rows.clone(), *has_more),
+                    Some(DbResult::Select { rows, has_more, .. }) => (rows.clone(), *has_more),
                     Some(DbResult::Error { message, .. }) => {
-                        app.set_status(
-                            StatusKind::Error,
-                            format!("load more: {message}"),
-                        );
+                        app.set_status(StatusKind::Error, format!("load more: {message}"));
                         return;
                     }
                     _ => {
-                        app.set_status(
-                            StatusKind::Error,
-                            "load more: unexpected response shape",
-                        );
+                        app.set_status(StatusKind::Error, "load more: unexpected response shape");
                         return;
                     }
                 };
@@ -1420,10 +1359,7 @@ pub fn handle_db_block_result(
                     0
                 };
                 let suffix = if new_has_more { "+" } else { "" };
-                app.set_status(
-                    StatusKind::Info,
-                    format!("loaded {new_total}{suffix} rows"),
-                );
+                app.set_status(StatusKind::Info, format!("loaded {new_total}{suffix} rows"));
             }
             Err(msg) => {
                 app.set_status(StatusKind::Error, format!("load more: {msg}"));
@@ -1438,10 +1374,8 @@ pub fn handle_db_block_result(
                 // minimal envelope so the Plan tab has somewhere to
                 // hang.
                 let plan_value = serde_json::to_value(&response).ok();
-                let first_was_error = matches!(
-                    response.results.first(),
-                    Some(DbResult::Error { .. })
-                );
+                let first_was_error =
+                    matches!(response.results.first(), Some(DbResult::Error { .. }));
                 if let Some(doc) = app.tabs.active_document_mut() {
                     if let Some(b) = doc.block_at_mut(segment_idx) {
                         let target = b.cached_result.get_or_insert_with(|| {
@@ -1566,25 +1500,23 @@ pub(crate) fn load_more_db_block(app: &mut App, segment_idx: usize) -> Result<()
         .get("limit")
         .and_then(|v| v.as_u64())
         .unwrap_or(100);
-    let timeout_ms = block
-        .params
-        .get("timeout_ms")
-        .and_then(|v| v.as_u64());
+    let timeout_ms = block.params.get("timeout_ms").and_then(|v| v.as_u64());
 
-    let env_vars: std::collections::HashMap<String, String> =
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current()
-                .block_on(load_active_env_vars(app.pool_manager.app_pool()))
-        })
-        .unwrap_or_default();
+    let env_vars: std::collections::HashMap<String, String> = tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current()
+            .block_on(load_active_env_vars(app.pool_manager.app_pool()))
+    })
+    .unwrap_or_default();
     let (query, bind_values) = match app.document() {
         Some(d) => resolve_block_refs(d.segments(), segment_idx, &raw_query, &env_vars)?,
         None => (raw_query.clone(), Vec::new()),
     };
     let pool_mgr = app.pool_manager.clone();
     let connection_id = tokio::task::block_in_place(|| {
-        tokio::runtime::Handle::current()
-            .block_on(resolve_connection_id(pool_mgr.app_pool(), &connection_id_raw))
+        tokio::runtime::Handle::current().block_on(resolve_connection_id(
+            pool_mgr.app_pool(),
+            &connection_id_raw,
+        ))
     })?;
 
     let token = CancellationToken::new();
@@ -1629,7 +1561,10 @@ pub fn open_export_picker(app: &mut App) -> Result<(), String> {
         _ => return Err("place the cursor on a block first".into()),
     };
 
-    let block = match app.document().and_then(|d| d.segments().get(segment_idx).cloned()) {
+    let block = match app
+        .document()
+        .and_then(|d| d.segments().get(segment_idx).cloned())
+    {
         Some(Segment::Block(b)) => b,
         _ => return Err("place the cursor on a block first".into()),
     };
@@ -1827,10 +1762,7 @@ pub fn confirm_export_picker(app: &mut App) {
                 state.segment_idx,
                 &env_vars,
             ) {
-                app.set_status(
-                    StatusKind::Error,
-                    format!("ref resolution failed: {msg}"),
-                );
+                app.set_status(StatusKind::Error, format!("ref resolution failed: {msg}"));
                 return;
             }
             let payload = match format {
@@ -1904,7 +1836,11 @@ pub fn snapshot_db_history_meta(app: &App, segment_idx: usize) -> Option<DbHisto
     if !block.is_db() {
         return None;
     }
-    let alias = block.alias.as_deref().filter(|s| !s.is_empty())?.to_string();
+    let alias = block
+        .alias
+        .as_deref()
+        .filter(|s| !s.is_empty())?
+        .to_string();
     // `block_type` is `db-postgres`, `db-mysql`, `db-sqlite`. Strip
     // the `db-` prefix for the namespaced method label so the
     // history modal shows a clean `postgres` / `mysql` / `sqlite`
@@ -1963,9 +1899,7 @@ pub fn derive_db_history_stats(
         Some(DbResult::Mutation { rows_affected }) => Some(*rows_affected as i64),
         _ => None,
     };
-    let response_size = serde_json::to_string(response)
-        .ok()
-        .map(|s| s.len() as i64);
+    let response_size = serde_json::to_string(response).ok().map(|s| s.len() as i64);
     (status, response_size)
 }
 
@@ -2014,7 +1948,10 @@ pub fn open_db_settings_modal(app: &mut App) -> Result<(), String> {
         | Some(Cursor::InBlockResult { segment_idx, .. }) => segment_idx,
         _ => return Err("place the cursor on a block first".into()),
     };
-    let block = match app.document().and_then(|d| d.segments().get(segment_idx).cloned()) {
+    let block = match app
+        .document()
+        .and_then(|d| d.segments().get(segment_idx).cloned())
+    {
         Some(crate::buffer::Segment::Block(b)) => b,
         _ => return Err("place the cursor on a block first".into()),
     };
@@ -2131,10 +2068,7 @@ pub fn confirm_db_settings_modal(app: &mut App) {
                 for (key, value) in &writes {
                     match value {
                         Some(n) => {
-                            obj.insert(
-                                (*key).to_string(),
-                                serde_json::Value::Number((*n).into()),
-                            );
+                            obj.insert((*key).to_string(), serde_json::Value::Number((*n).into()));
                         }
                         None => {
                             obj.remove(*key);
@@ -2331,8 +2265,12 @@ mod tests {
         // The whole point of the gate is to *not* prompt when
         // there's a WHERE clause — power users hit `r` constantly
         // and confirming every UPDATE would be obnoxious.
-        assert!(!is_unscoped_destructive("UPDATE users SET x = 1 WHERE id = 7"));
-        assert!(!is_unscoped_destructive("DELETE FROM users WHERE active = 0"));
+        assert!(!is_unscoped_destructive(
+            "UPDATE users SET x = 1 WHERE id = 7"
+        ));
+        assert!(!is_unscoped_destructive(
+            "DELETE FROM users WHERE active = 0"
+        ));
         // Case-insensitive WHERE detection.
         assert!(!is_unscoped_destructive("delete from users where id < 10"));
     }
@@ -2376,16 +2314,8 @@ mod tests {
         // Identical body / conn / env → identical hash. The cache
         // contract relies on this being stable across processes.
         let env = env_map(&[("TOKEN", "abc")]);
-        let h1 = compute_db_cache_hash(
-            "SELECT 1 WHERE x = {{TOKEN}}",
-            Some("conn-1"),
-            &env,
-        );
-        let h2 = compute_db_cache_hash(
-            "SELECT 1 WHERE x = {{TOKEN}}",
-            Some("conn-1"),
-            &env,
-        );
+        let h1 = compute_db_cache_hash("SELECT 1 WHERE x = {{TOKEN}}", Some("conn-1"), &env);
+        let h2 = compute_db_cache_hash("SELECT 1 WHERE x = {{TOKEN}}", Some("conn-1"), &env);
         assert_eq!(h1, h2);
     }
 
@@ -2395,16 +2325,8 @@ mod tests {
         // `{{KEY}}`. Bump the value of a referenced var and the
         // hash must shift so the next run sees a miss.
         let body = "SELECT 1 WHERE x = {{TOKEN}}";
-        let h_old = compute_db_cache_hash(
-            body,
-            Some("conn-1"),
-            &env_map(&[("TOKEN", "old")]),
-        );
-        let h_new = compute_db_cache_hash(
-            body,
-            Some("conn-1"),
-            &env_map(&[("TOKEN", "new")]),
-        );
+        let h_old = compute_db_cache_hash(body, Some("conn-1"), &env_map(&[("TOKEN", "old")]));
+        let h_new = compute_db_cache_hash(body, Some("conn-1"), &env_map(&[("TOKEN", "new")]));
         assert_ne!(h_old, h_new);
     }
 
@@ -2417,11 +2339,7 @@ mod tests {
         // every cached query.
         let body = "SELECT 1";
         let h1 = compute_db_cache_hash(body, Some("conn-1"), &env_map(&[]));
-        let h2 = compute_db_cache_hash(
-            body,
-            Some("conn-1"),
-            &env_map(&[("UNRELATED", "v")]),
-        );
+        let h2 = compute_db_cache_hash(body, Some("conn-1"), &env_map(&[("UNRELATED", "v")]));
         assert_eq!(h1, h2);
     }
 
@@ -2515,7 +2433,8 @@ mod tests {
     fn resolve_block_refs_replaces_refs_with_question_marks() {
         // Two-block doc; second block references the first by alias.
         // The output SQL must carry placeholders, never the raw value.
-        let md = "```http alias=upstream\nGET /users/7\n```\n\n```db-postgres alias=q\nSELECT 1\n```\n";
+        let md =
+            "```http alias=upstream\nGET /users/7\n```\n\n```db-postgres alias=q\nSELECT 1\n```\n";
         let mut doc = make_doc(md);
         let blocks = block_indices(&doc);
         set_cache(&mut doc, blocks[0], serde_json::json!({ "id": 7 }));
@@ -2539,11 +2458,7 @@ mod tests {
         let mut doc = make_doc(md);
         let blocks = block_indices(&doc);
         let payload = "7'; DROP TABLE users; --";
-        set_cache(
-            &mut doc,
-            blocks[0],
-            serde_json::json!({ "id": payload }),
-        );
+        set_cache(&mut doc, blocks[0], serde_json::json!({ "id": payload }));
         let (sql, binds) = resolve_block_refs(
             doc.segments(),
             blocks[1],
@@ -2556,10 +2471,7 @@ mod tests {
             !sql.contains("DROP"),
             "injection payload leaked into SQL: {sql}"
         );
-        assert_eq!(
-            binds,
-            vec![serde_json::Value::String(payload.to_string())]
-        );
+        assert_eq!(binds, vec![serde_json::Value::String(payload.to_string())]);
     }
 
     #[test]
@@ -2628,13 +2540,9 @@ mod tests {
         let md = "```db-postgres alias=q\nSELECT 1\n```\n";
         let doc = make_doc(md);
         let blocks = block_indices(&doc);
-        let (sql, binds) = resolve_block_refs(
-            doc.segments(),
-            blocks[0],
-            "SELECT {{API_TOKEN}}",
-            &env,
-        )
-        .expect("resolves");
+        let (sql, binds) =
+            resolve_block_refs(doc.segments(), blocks[0], "SELECT {{API_TOKEN}}", &env)
+                .expect("resolves");
         assert_eq!(sql, "SELECT ?");
         assert_eq!(binds, vec![serde_json::json!("abc-123")]);
     }
@@ -2710,15 +2618,16 @@ mod tests {
         // `{{q.response.id}}` ≡ `results[0].rows[0].id` — the
         // pre-redesign shape. Notes that pre-date multi-result must
         // keep working, so this is a parity guarantee.
-        let md = "```db-postgres alias=src\nSELECT 1\n```\n\n```db-postgres alias=q\nSELECT 1\n```\n";
+        let md =
+            "```db-postgres alias=src\nSELECT 1\n```\n\n```db-postgres alias=q\nSELECT 1\n```\n";
         let mut doc = make_doc(md);
         let blocks = block_indices(&doc);
         set_cache(
             &mut doc,
             blocks[0],
-            db_response(serde_json::json!([
-                select_result(serde_json::json!([{ "id": 7, "name": "alice" }])),
-            ])),
+            db_response(serde_json::json!([select_result(
+                serde_json::json!([{ "id": 7, "name": "alice" }])
+            ),])),
         );
         let (sql, binds) = resolve_block_refs(
             doc.segments(),
@@ -2735,15 +2644,16 @@ mod tests {
     fn db_shim_explicit_path_walks_results_array() {
         // `{{q.response.0.rows.0.id}}` is the shape `{{` autocomplete
         // will guide users toward — passes through `results[]` cleanly.
-        let md = "```db-postgres alias=src\nSELECT 1\n```\n\n```db-postgres alias=q\nSELECT 1\n```\n";
+        let md =
+            "```db-postgres alias=src\nSELECT 1\n```\n\n```db-postgres alias=q\nSELECT 1\n```\n";
         let mut doc = make_doc(md);
         let blocks = block_indices(&doc);
         set_cache(
             &mut doc,
             blocks[0],
-            db_response(serde_json::json!([
-                select_result(serde_json::json!([{ "id": 7 }, { "id": 8 }])),
-            ])),
+            db_response(serde_json::json!([select_result(
+                serde_json::json!([{ "id": 7 }, { "id": 8 }])
+            ),])),
         );
         let (_, binds) = resolve_block_refs(
             doc.segments(),
@@ -2760,7 +2670,8 @@ mod tests {
         // `BEGIN; SELECT a; SELECT b; ROLLBACK;` → 4 results. The
         // numeric shortcut `response.2` lets a downstream block grab
         // the *second* SELECT without spelling out `results.2`.
-        let md = "```db-postgres alias=src\nSELECT 1\n```\n\n```db-postgres alias=q\nSELECT 1\n```\n";
+        let md =
+            "```db-postgres alias=src\nSELECT 1\n```\n\n```db-postgres alias=q\nSELECT 1\n```\n";
         let mut doc = make_doc(md);
         let blocks = block_indices(&doc);
         set_cache(
@@ -2788,15 +2699,16 @@ mod tests {
         // `response.stats.elapsed_ms` walks the raw `DbResponse`
         // shape — useful for "did the upstream block take too long?"
         // gating, and proves the passthrough branch is wired.
-        let md = "```db-postgres alias=src\nSELECT 1\n```\n\n```db-postgres alias=q\nSELECT 1\n```\n";
+        let md =
+            "```db-postgres alias=src\nSELECT 1\n```\n\n```db-postgres alias=q\nSELECT 1\n```\n";
         let mut doc = make_doc(md);
         let blocks = block_indices(&doc);
         set_cache(
             &mut doc,
             blocks[0],
-            db_response(serde_json::json!([
-                select_result(serde_json::json!([{ "id": 1 }])),
-            ])),
+            db_response(serde_json::json!([select_result(
+                serde_json::json!([{ "id": 1 }])
+            ),])),
         );
         let (_, binds) = resolve_block_refs(
             doc.segments(),
@@ -2867,15 +2779,16 @@ mod tests {
         // `response.5` against a single-result response surfaces a
         // bounds error with the actual length so users can fix the
         // path.
-        let md = "```db-postgres alias=src\nSELECT 1\n```\n\n```db-postgres alias=q\nSELECT 1\n```\n";
+        let md =
+            "```db-postgres alias=src\nSELECT 1\n```\n\n```db-postgres alias=q\nSELECT 1\n```\n";
         let mut doc = make_doc(md);
         let blocks = block_indices(&doc);
         set_cache(
             &mut doc,
             blocks[0],
-            db_response(serde_json::json!([
-                select_result(serde_json::json!([{ "id": 1 }])),
-            ])),
+            db_response(serde_json::json!([select_result(
+                serde_json::json!([{ "id": 1 }])
+            ),])),
         );
         let err = resolve_block_refs(
             doc.segments(),
@@ -2892,7 +2805,8 @@ mod tests {
         // Pre-redesign caches don't have `{results: [...]}` — the
         // shim must not engage so older notes still resolve via plain
         // dot-navigation. Here the cached blob is a flat object.
-        let md = "```db-postgres alias=src\nSELECT 1\n```\n\n```db-postgres alias=q\nSELECT 1\n```\n";
+        let md =
+            "```db-postgres alias=src\nSELECT 1\n```\n\n```db-postgres alias=q\nSELECT 1\n```\n";
         let mut doc = make_doc(md);
         let blocks = block_indices(&doc);
         set_cache(&mut doc, blocks[0], serde_json::json!({ "id": 42 }));
@@ -2913,8 +2827,7 @@ mod tests {
         // `timeout=NNNN` token in the fence flows here as
         // `Some(NNNN)`. Executor's `DbParams.timeout_ms` reads it
         // verbatim and wraps the run in `tokio::time::timeout`.
-        let params =
-            build_db_executor_params("conn-1", "SELECT 1", &[], 0, 100, Some(500));
+        let params = build_db_executor_params("conn-1", "SELECT 1", &[], 0, 100, Some(500));
         assert_eq!(params["timeout_ms"], 500);
     }
 
@@ -2923,8 +2836,7 @@ mod tests {
         // No fence token → field serializes as `null`. Executor
         // falls back to the connection's default timeout (and then
         // to 30s if there's no override either).
-        let params =
-            build_db_executor_params("conn-1", "SELECT 1", &[], 0, 100, None);
+        let params = build_db_executor_params("conn-1", "SELECT 1", &[], 0, 100, None);
         assert!(params["timeout_ms"].is_null());
     }
 
@@ -2933,8 +2845,7 @@ mod tests {
         // Bind values land as a JSON array in the same position
         // the executor reads them. Sanity check on the wire shape.
         let binds = vec![serde_json::json!(7), serde_json::json!("alice")];
-        let params =
-            build_db_executor_params("conn-1", "SELECT ?, ?", &binds, 0, 50, None);
+        let params = build_db_executor_params("conn-1", "SELECT ?, ?", &binds, 0, 50, None);
         assert_eq!(params["bind_values"][0], 7);
         assert_eq!(params["bind_values"][1], "alice");
         assert_eq!(params["fetch_size"], 50);
@@ -2960,8 +2871,8 @@ mod tests {
         let md = "```http alias=existing\nGET /\n```\n\n```db-postgres\nSELECT 1\n```\n";
         let doc = make_doc(md);
         let blocks = block_indices(&doc);
-        let err = validate_alias_unique(&doc, blocks[1], "existing")
-            .expect_err("collision must error");
+        let err =
+            validate_alias_unique(&doc, blocks[1], "existing").expect_err("collision must error");
         assert!(err.contains("existing"), "got: {err}");
     }
 
@@ -3042,11 +2953,13 @@ mod tests {
     fn preview_sql_truncates_with_ellipsis() {
         // Strings longer than the 200-char cap get truncated and
         // suffixed with `…` so the user knows there's more.
-        let long_sql = "SELECT ".to_string()
-            + &"col_name, ".repeat(40)
-            + "FROM huge_table";
+        let long_sql = "SELECT ".to_string() + &"col_name, ".repeat(40) + "FROM huge_table";
         let preview = preview_sql(&long_sql);
-        assert!(preview.chars().count() <= 201, "got len {}", preview.chars().count());
+        assert!(
+            preview.chars().count() <= 201,
+            "got len {}",
+            preview.chars().count()
+        );
         assert!(preview.ends_with('…'));
     }
 

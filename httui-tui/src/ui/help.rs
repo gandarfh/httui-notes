@@ -37,68 +37,194 @@ const SECTIONS: &[Section] = &[
     Section {
         title: "Modes",
         entries: &[
-            Entry { chord: "i / a / I / A", label: "enter insert (cursor / after / line-start / line-end)" },
-            Entry { chord: "v / V", label: "visual char / visual line" },
-            Entry { chord: "gv", label: "reselect last visual region" },
-            Entry { chord: "zz / zt / zb", label: "scroll cursor to center / top / bottom" },
-            Entry { chord: "Esc", label: "back to normal" },
-            Entry { chord: ":", label: "ex command-line" },
-            Entry { chord: "/  ?", label: "search forward / backward" },
+            Entry {
+                chord: "i / a / I / A",
+                label: "enter insert (cursor / after / line-start / line-end)",
+            },
+            Entry {
+                chord: "v / V",
+                label: "visual char / visual line",
+            },
+            Entry {
+                chord: "gv",
+                label: "reselect last visual region",
+            },
+            Entry {
+                chord: "zz / zt / zb",
+                label: "scroll cursor to center / top / bottom",
+            },
+            Entry {
+                chord: "Esc",
+                label: "back to normal",
+            },
+            Entry {
+                chord: ":",
+                label: "ex command-line",
+            },
+            Entry {
+                chord: "/  ?",
+                label: "search forward / backward",
+            },
         ],
     },
     Section {
         title: "Files & tabs",
         entries: &[
-            Entry { chord: "Ctrl-E", label: "toggle file tree" },
-            Entry { chord: "Ctrl-P", label: "quick-open file (fuzzy)" },
-            Entry { chord: "Ctrl-F", label: "content search (FTS5)" },
-            Entry { chord: "gt / gT", label: "next / prev tab" },
-            Entry { chord: "<n>gt", label: "go to tab n" },
-            Entry { chord: "gb", label: "tab picker (centered)" },
-            Entry { chord: "Ctrl-W v / s", label: "split vertical / horizontal" },
-            Entry { chord: "Ctrl-W h/j/k/l", label: "focus pane left/down/up/right" },
-            Entry { chord: "Ctrl-W c", label: "close focused pane" },
+            Entry {
+                chord: "Ctrl-E",
+                label: "toggle file tree",
+            },
+            Entry {
+                chord: "Ctrl-P",
+                label: "quick-open file (fuzzy)",
+            },
+            Entry {
+                chord: "Ctrl-F",
+                label: "content search (FTS5)",
+            },
+            Entry {
+                chord: "gt / gT",
+                label: "next / prev tab",
+            },
+            Entry {
+                chord: "<n>gt",
+                label: "go to tab n",
+            },
+            Entry {
+                chord: "gb",
+                label: "tab picker (centered)",
+            },
+            Entry {
+                chord: "Ctrl-W v / s",
+                label: "split vertical / horizontal",
+            },
+            Entry {
+                chord: "Ctrl-W h/j/k/l",
+                label: "focus pane left/down/up/right",
+            },
+            Entry {
+                chord: "Ctrl-W c",
+                label: "close focused pane",
+            },
         ],
     },
     Section {
         title: "Block operations",
         entries: &[
-            Entry { chord: "Enter", label: "run block / open result detail (on result row)" },
-            Entry { chord: "Ctrl-C", label: "cancel running query" },
-            Entry { chord: "Ctrl-X", label: "EXPLAIN current DB block" },
-            Entry { chord: "gr", label: "rerun last block (cursor anywhere)" },
-            Entry { chord: "g] / g[", label: "jump to next / previous block" },
-            Entry { chord: "ga", label: "edit block alias" },
-            Entry { chord: "gd", label: "cycle display mode (input / split / output)" },
-            Entry { chord: "gc", label: "open connection picker (DB blocks)" },
-            Entry { chord: "gs", label: "open block settings (limit / timeout)" },
-            Entry { chord: "gx", label: "open export picker (DB result / HTTP request)" },
-            Entry { chord: "gh", label: "open block run-history (HTTP blocks)" },
-            Entry { chord: "Ctrl-Shift-C", label: "copy HTTP block as cURL" },
-            Entry { chord: "dd / yy (on block)", label: "cut / yank entire block" },
+            Entry {
+                chord: "Enter",
+                label: "run block / open result detail (on result row)",
+            },
+            Entry {
+                chord: "Ctrl-C",
+                label: "cancel running query",
+            },
+            Entry {
+                chord: "Ctrl-X",
+                label: "EXPLAIN current DB block",
+            },
+            Entry {
+                chord: "gr",
+                label: "rerun last block (cursor anywhere)",
+            },
+            Entry {
+                chord: "g] / g[",
+                label: "jump to next / previous block",
+            },
+            Entry {
+                chord: "ga",
+                label: "edit block alias",
+            },
+            Entry {
+                chord: "gd",
+                label: "cycle display mode (input / split / output)",
+            },
+            Entry {
+                chord: "gc",
+                label: "open connection picker (DB blocks)",
+            },
+            Entry {
+                chord: "gs",
+                label: "open block settings (limit / timeout)",
+            },
+            Entry {
+                chord: "gx",
+                label: "open export picker (DB result / HTTP request)",
+            },
+            Entry {
+                chord: "gh",
+                label: "open block run-history (HTTP blocks)",
+            },
+            Entry {
+                chord: "Ctrl-Shift-C",
+                label: "copy HTTP block as cURL",
+            },
+            Entry {
+                chord: "dd / yy (on block)",
+                label: "cut / yank entire block",
+            },
         ],
     },
     Section {
         title: "Environments & connections",
         entries: &[
-            Entry { chord: "gE", label: "open environment picker" },
-            Entry { chord: "gc", label: "open connection picker (in DB block)" },
-            Entry { chord: "D (in conn picker)", label: "delete highlighted connection" },
+            Entry {
+                chord: "gE",
+                label: "open environment picker",
+            },
+            Entry {
+                chord: "gc",
+                label: "open connection picker (in DB block)",
+            },
+            Entry {
+                chord: "D (in conn picker)",
+                label: "delete highlighted connection",
+            },
         ],
     },
     Section {
         title: "Help & misc",
         entries: &[
-            Entry { chord: "g?", label: "this help modal" },
-            Entry { chord: "gN", label: "insert new block from template" },
-            Entry { chord: ":w / :wq / :q / :q!", label: "write / write-quit / quit / force-quit" },
-            Entry { chord: "Ctrl-S", label: "save (works in normal + insert)" },
-            Entry { chord: "gW", label: "write all dirty tabs" },
-            Entry { chord: ":e <path>", label: "open file" },
-            Entry { chord: ":%s/foo/bar", label: "substitute (literal, doc-global)" },
-            Entry { chord: ":N", label: "go to line N (e.g., :42)" },
-            Entry { chord: "u / Ctrl-R", label: "undo / redo" },
-            Entry { chord: "Y (in detail modal)", label: "copy entire body to clipboard" },
+            Entry {
+                chord: "g?",
+                label: "this help modal",
+            },
+            Entry {
+                chord: "gN",
+                label: "insert new block from template",
+            },
+            Entry {
+                chord: ":w / :wq / :q / :q!",
+                label: "write / write-quit / quit / force-quit",
+            },
+            Entry {
+                chord: "Ctrl-S",
+                label: "save (works in normal + insert)",
+            },
+            Entry {
+                chord: "gW",
+                label: "write all dirty tabs",
+            },
+            Entry {
+                chord: ":e <path>",
+                label: "open file",
+            },
+            Entry {
+                chord: ":%s/foo/bar",
+                label: "substitute (literal, doc-global)",
+            },
+            Entry {
+                chord: ":N",
+                label: "go to line N (e.g., :42)",
+            },
+            Entry {
+                chord: "u / Ctrl-R",
+                label: "undo / redo",
+            },
+            Entry {
+                chord: "Y (in detail modal)",
+                label: "copy entire body to clipboard",
+            },
         ],
     },
 ];

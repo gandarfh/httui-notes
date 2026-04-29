@@ -16,10 +16,15 @@ use crate::app::App;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExCmd {
     Write,
-    Quit { force: bool },
+    Quit {
+        force: bool,
+    },
     WriteQuit,
     /// `:e <path>` / `:edit <path>` / `:e! <path>`.
-    Edit { path: String, force: bool },
+    Edit {
+        path: String,
+        force: bool,
+    },
     /// `:noh` / `:nohlsearch` — clear the active search highlight.
     NoHighlight,
     /// `:%s/pattern/replacement[/]` — global, literal substitution
@@ -30,7 +35,10 @@ pub enum ExCmd {
     /// the doc to markdown, replaces the literal substring, and
     /// re-parses — works uniformly across prose and block bodies
     /// so renaming an alias used in `{{alias.x}}` refs Just Works.
-    Substitute { pattern: String, replacement: String },
+    Substitute {
+        pattern: String,
+        replacement: String,
+    },
     /// `:N` — bare-number form: jump to line N (1-indexed). Vim
     /// convention; useful for navigating to a line cited in a
     /// stack trace or compiler output. Reuses the `Motion::GotoLine`
@@ -91,7 +99,9 @@ pub fn parse(buf: &str) -> Result<ExCmd, ParseError> {
             // `:e` / `:edit` with no arg — reloading the current buffer
             // is a vim convenience we don't support yet, so flag it as
             // a missing argument.
-            return Err(ParseError::MissingArg(if force { "e!" } else { "e" }.into()));
+            return Err(ParseError::MissingArg(
+                if force { "e!" } else { "e" }.into(),
+            ));
         }
         return Ok(ExCmd::Edit {
             path: args.to_string(),
@@ -139,9 +149,7 @@ fn parse_substitute(body: &str) -> Result<ExCmd, ParseError> {
     let replacement_part = &after_mid[..end];
 
     if pattern_part.is_empty() {
-        return Err(ParseError::Unknown(
-            "substitute: empty pattern".into(),
-        ));
+        return Err(ParseError::Unknown("substitute: empty pattern".into()));
     }
     Ok(ExCmd::Substitute {
         pattern: unescape_slashes(pattern_part),
@@ -194,19 +202,20 @@ pub fn execute(app: &mut App, cmd: ExCmd) -> ExResult {
             Ok(_) => quit_or_close(app, /* force = */ true),
             Err(msg) => ExResult::Err(msg),
         },
-        ExCmd::Edit { path, force } => {
-            match app.open_document(PathBuf::from(path), force) {
-                Ok(msg) => ExResult::Ok(msg),
-                Err(msg) => ExResult::Err(msg),
-            }
-        }
+        ExCmd::Edit { path, force } => match app.open_document(PathBuf::from(path), force) {
+            Ok(msg) => ExResult::Ok(msg),
+            Err(msg) => ExResult::Err(msg),
+        },
         ExCmd::NoHighlight => {
             // Hide matches without losing the pattern — `n`/`N` keep
             // navigating; the next `/`-search re-arms `search_highlight`.
             app.vim.search_highlight = false;
             ExResult::Ok(String::new())
         }
-        ExCmd::Substitute { pattern, replacement } => apply_substitute(app, pattern, replacement),
+        ExCmd::Substitute {
+            pattern,
+            replacement,
+        } => apply_substitute(app, pattern, replacement),
         ExCmd::GotoLine(n) => {
             // Reuse the motion engine so behavior matches `<n>G`
             // exactly: viewport scrolls, cursor lands on the first
@@ -262,7 +271,6 @@ fn apply_substitute(app: &mut App, pattern: String, replacement: String) -> ExRe
     }
 }
 
-
 /// Convenience: parse + execute in one call. The cmdline buffer
 /// passed in must NOT include the leading `:`.
 pub fn run(app: &mut App, buf: &str) -> ExResult {
@@ -285,17 +293,12 @@ pub fn run(app: &mut App, buf: &str) -> ExResult {
 ///
 /// `force == false` rejects when the closed unit has dirty content.
 fn quit_or_close(app: &mut App, force: bool) -> ExResult {
-    let leaf_count = app
-        .active_tab()
-        .map(|t| t.leaf_count())
-        .unwrap_or(0);
+    let leaf_count = app.active_tab().map(|t| t.leaf_count()).unwrap_or(0);
     if leaf_count > 1 {
         // Closing a split. Refuse only when the *focused* pane is dirty
         // — sibling splits are unaffected.
         if !force && app.document().is_some_and(|d| d.is_dirty()) {
-            return ExResult::Err(
-                "no write since last change (add ! to override)".into(),
-            );
+            return ExResult::Err("no write since last change (add ! to override)".into());
         }
         if let Some(tab) = app.active_tab_mut() {
             tab.close_focused();
@@ -347,12 +350,9 @@ fn write_document(app: &mut App) -> Result<String, String> {
         let path_for_index = file_str.clone();
         let body_for_index = body.clone();
         tokio::spawn(async move {
-            if let Err(e) = httui_core::search::update_search_entry(
-                &pool,
-                &path_for_index,
-                &body_for_index,
-            )
-            .await
+            if let Err(e) =
+                httui_core::search::update_search_entry(&pool, &path_for_index, &body_for_index)
+                    .await
             {
                 tracing::warn!("search index update failed: {e}");
             }
@@ -488,7 +488,10 @@ mod tests {
         // tab via Quick Open) and Ctrl+W (close tab). The cmdline
         // parser must reject the old aliases so they stay one source
         // of truth.
-        assert!(matches!(parse("tabnew foo.md"), Err(ParseError::Unknown(_))));
+        assert!(matches!(
+            parse("tabnew foo.md"),
+            Err(ParseError::Unknown(_))
+        ));
         assert!(matches!(parse("tabclose"), Err(ParseError::Unknown(_))));
     }
 

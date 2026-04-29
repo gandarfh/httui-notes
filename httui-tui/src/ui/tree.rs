@@ -24,7 +24,12 @@ pub fn width() -> u16 {
 
 pub fn render(frame: &mut Frame, area: Rect, tree: &FileTree, focused: bool) {
     let (border_color, title_style) = if focused {
-        (Color::LightYellow, Style::default().fg(Color::LightYellow).add_modifier(Modifier::BOLD))
+        (
+            Color::LightYellow,
+            Style::default()
+                .fg(Color::LightYellow)
+                .add_modifier(Modifier::BOLD),
+        )
     } else {
         (Color::DarkGray, Style::default().fg(Color::Gray))
     };

@@ -79,14 +79,10 @@ fn paint_body(
     if body_area.width == 0 || body_area.height == 0 {
         return;
     }
-    let rope = match state
-        .doc
-        .segments()
-        .iter()
-        .find_map(|s| match s {
-            Segment::Prose(r) => Some(r),
-            _ => None,
-        }) {
+    let rope = match state.doc.segments().iter().find_map(|s| match s {
+        Segment::Prose(r) => Some(r),
+        _ => None,
+    }) {
         Some(r) => r,
         None => return,
     };
@@ -126,7 +122,9 @@ fn paint_body(
     let para = Paragraph::new(lines).style(bg);
     frame.render_widget(para, body_area);
 
-    let cursor_screen_y = body_area.y.saturating_add(cursor_line.saturating_sub(offset));
+    let cursor_screen_y = body_area
+        .y
+        .saturating_add(cursor_line.saturating_sub(offset));
     let cursor_screen_x = body_area
         .x
         .saturating_add(cursor_col.min(body_area.width.saturating_sub(1)));
@@ -135,7 +133,15 @@ fn paint_body(
     }
 
     if let Some(overlay) = visual {
-        paint_visual_selection(frame, body_area, rope, offset, overlay, cursor_line, cursor_col);
+        paint_visual_selection(
+            frame,
+            body_area,
+            rope,
+            offset,
+            overlay,
+            cursor_line,
+            cursor_col,
+        );
     }
 }
 
@@ -164,9 +170,19 @@ fn paint_visual_selection(
     } else {
         let (lo_line, lo_col, hi_line, hi_col) =
             if (anchor_line, anchor_col) <= (cursor_line as usize, cursor_col as usize) {
-                (anchor_line, anchor_col, cursor_line as usize, cursor_col as usize)
+                (
+                    anchor_line,
+                    anchor_col,
+                    cursor_line as usize,
+                    cursor_col as usize,
+                )
             } else {
-                (cursor_line as usize, cursor_col as usize, anchor_line, anchor_col)
+                (
+                    cursor_line as usize,
+                    cursor_col as usize,
+                    anchor_line,
+                    anchor_col,
+                )
             };
         (lo_line, lo_col, hi_line, hi_col)
     };
@@ -336,9 +352,7 @@ fn clamp_viewport(viewport_top: u16, height: u16, cursor: u16, total: u16) -> u1
     }
     let scrolloff = SCROLL_OFF.min(height / 2);
     let upper = cursor.saturating_sub(scrolloff);
-    let lower = cursor
-        .saturating_add(scrolloff + 1)
-        .saturating_sub(height);
+    let lower = cursor.saturating_add(scrolloff + 1).saturating_sub(height);
     let next = if viewport_top > upper {
         upper
     } else if viewport_top < lower {

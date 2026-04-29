@@ -34,11 +34,7 @@ pub fn render(frame: &mut Frame, editor_area: Rect, state: &BlockTemplatePickerS
         }
     }
 
-    let title = format!(
-        " New block · {}/{} ",
-        state.selected + 1,
-        templates.len()
-    );
+    let title = format!(" New block · {}/{} ", state.selected + 1, templates.len());
     let outer = Block::default()
         .borders(Borders::ALL)
         .title(title)

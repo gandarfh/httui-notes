@@ -1,11 +1,11 @@
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{mpsc, Mutex, Notify};
 use tauri::{AppHandle, Emitter, Manager};
-use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
+use tauri_plugin_shell::ShellExt;
+use tokio::sync::{mpsc, Mutex, Notify};
 
 use super::protocol::{IncomingMessage, OutgoingMessage};
 
@@ -90,10 +90,7 @@ fn find_claude(node_path: &str) -> Option<String> {
         }
     }
 
-    let candidates = [
-        "/opt/homebrew/bin/claude",
-        "/usr/local/bin/claude",
-    ];
+    let candidates = ["/opt/homebrew/bin/claude", "/usr/local/bin/claude"];
     for candidate in &candidates {
         if Path::new(candidate).exists() {
             return Some(candidate.to_string());
@@ -166,7 +163,11 @@ impl SidecarManager {
                 }
 
                 let delay = BACKOFF_DELAYS[attempt.min(BACKOFF_DELAYS.len() - 1)];
-                eprintln!("[sidecar] Respawning in {:?} (attempt {})...", delay, attempt + 1);
+                eprintln!(
+                    "[sidecar] Respawning in {:?} (attempt {})...",
+                    delay,
+                    attempt + 1
+                );
                 tokio::time::sleep(delay).await;
 
                 if shutdown_respawn.load(Ordering::Relaxed) {
@@ -179,7 +180,9 @@ impl SidecarManager {
                     &requests_respawn,
                     &pong_respawn,
                     &hmac_respawn,
-                ).await {
+                )
+                .await
+                {
                     Ok(_) => {
                         eprintln!("[sidecar] Respawned successfully");
                         let _ = app_respawn.emit("chat:sidecar-status", "connected");
@@ -215,11 +218,8 @@ impl SidecarManager {
                     drop(guard); // Release lock before waiting
 
                     // Wait for pong with timeout
-                    let pong_result = tokio::time::timeout(
-                        HEALTH_CHECK_TIMEOUT,
-                        pong_health.notified(),
-                    )
-                    .await;
+                    let pong_result =
+                        tokio::time::timeout(HEALTH_CHECK_TIMEOUT, pong_health.notified()).await;
 
                     if pong_result.is_err() {
                         eprintln!("[sidecar] Health check timeout — killing process");
@@ -246,14 +246,23 @@ impl SidecarManager {
     ) -> Result<(), String> {
         let script_path = app
             .path()
-            .resolve("resources/claude-sidecar.mjs", tauri::path::BaseDirectory::Resource)
+            .resolve(
+                "resources/claude-sidecar.mjs",
+                tauri::path::BaseDirectory::Resource,
+            )
             .map_err(|e| format!("Failed to resolve sidecar resource path: {e}"))?;
 
-        let node_path = find_node().ok_or("Node.js not found. Install Node.js to use the chat feature.")?;
+        let node_path =
+            find_node().ok_or("Node.js not found. Install Node.js to use the chat feature.")?;
 
         // Resolve claude CLI path — same bin directory as node, or via which
         let claude_path = find_claude(&node_path).unwrap_or_default();
-        eprintln!("[sidecar] node={}, claude={}, script={}", node_path, claude_path, script_path.display());
+        eprintln!(
+            "[sidecar] node={}, claude={}, script={}",
+            node_path,
+            claude_path,
+            script_path.display()
+        );
 
         // Build PATH that includes the node/claude bin directory so that
         // subprocesses spawned by the Agent SDK (which use #!/usr/bin/env node) work.
@@ -291,7 +300,15 @@ impl SidecarManager {
         let pong_clone = pong_notify.clone();
         let hmac_clone = hmac_secret.to_string();
         tauri::async_runtime::spawn(async move {
-            Self::read_events(rx, requests_clone, app_clone, child_clone, pong_clone, hmac_clone).await;
+            Self::read_events(
+                rx,
+                requests_clone,
+                app_clone,
+                child_clone,
+                pong_clone,
+                hmac_clone,
+            )
+            .await;
         });
 
         Ok(())
@@ -299,7 +316,9 @@ impl SidecarManager {
 
     /// Send a message to the sidecar process via stdin (T25: HMAC signed).
     pub async fn send(&self, msg: OutgoingMessage) -> Result<(), String> {
-        let payload = msg.to_ndjson().map_err(|e| format!("Serialization error: {e}"))?;
+        let payload = msg
+            .to_ndjson()
+            .map_err(|e| format!("Serialization error: {e}"))?;
         // T25: Sign message with HMAC — transmit payload as a JSON string value
         // to avoid re-serialization mismatch between serde_json and JS JSON.stringify
         let hmac = super::protocol::compute_hmac(&self.hmac_secret, &payload);
@@ -382,10 +401,10 @@ impl SidecarManager {
                     let parsed_line = if let Ok(envelope) =
                         serde_json::from_str::<serde_json::Value>(line)
                     {
-                        if let (Some(hmac_val), Some(payload)) =
-                            (envelope.get("hmac").and_then(|v| v.as_str()),
-                             envelope.get("payload"))
-                        {
+                        if let (Some(hmac_val), Some(payload)) = (
+                            envelope.get("hmac").and_then(|v| v.as_str()),
+                            envelope.get("payload"),
+                        ) {
                             // payload can be a string (new protocol) or object (legacy)
                             let payload_str = if let Some(s) = payload.as_str() {
                                 s.to_string()

@@ -58,9 +58,7 @@ pub fn watch_vault(
                 .iter()
                 .filter(|p| {
                     let s = p.to_string_lossy().to_string();
-                    (s.ends_with(".md") || p.is_dir())
-                        && !s.contains("/.")
-                        && !s.contains("\\.")
+                    (s.ends_with(".md") || p.is_dir()) && !s.contains("/.") && !s.contains("\\.")
                 })
                 .map(|p| {
                     p.strip_prefix(&vault_for_thread)
@@ -107,10 +105,7 @@ pub fn watch_vault(
                             }
                             Err(_) => {
                                 // File might be mid-write, emit plain event
-                                let _ = handle.emit(
-                                    "fs-event",
-                                    FileEvent::Modified { path },
-                                );
+                                let _ = handle.emit("fs-event", FileEvent::Modified { path });
                             }
                         }
                     }
@@ -126,7 +121,5 @@ pub fn watch_vault(
         }
     });
 
-    Ok(VaultWatcher {
-        _watcher: watcher,
-    })
+    Ok(VaultWatcher { _watcher: watcher })
 }

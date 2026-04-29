@@ -46,12 +46,10 @@ impl KeyChord {
 // ───────────── single-key shortcuts ─────────────
 
 /// `Ctrl+P` — open the quick-open file picker modal.
-pub const QUICK_OPEN: KeyChord =
-    KeyChord::new(KeyModifiers::CONTROL, KeyCode::Char('p'));
+pub const QUICK_OPEN: KeyChord = KeyChord::new(KeyModifiers::CONTROL, KeyCode::Char('p'));
 
 /// `Ctrl+E` — toggle the file-tree sidebar focus.
-pub const TREE_TOGGLE: KeyChord =
-    KeyChord::new(KeyModifiers::CONTROL, KeyCode::Char('e'));
+pub const TREE_TOGGLE: KeyChord = KeyChord::new(KeyModifiers::CONTROL, KeyCode::Char('e'));
 
 /// `Ctrl+F` — open the content-search modal (FTS5 over the vault's
 /// `.md` files). Vim binds `<C-f>` to "page down" but only via the
@@ -59,8 +57,7 @@ pub const TREE_TOGGLE: KeyChord =
 /// covers most needs, freeing `<C-f>` for "Find content". The
 /// modal is full-screen overlay; keys flow into the input until
 /// Esc/Ctrl-C closes.
-pub const CONTENT_SEARCH: KeyChord =
-    KeyChord::new(KeyModifiers::CONTROL, KeyCode::Char('f'));
+pub const CONTENT_SEARCH: KeyChord = KeyChord::new(KeyModifiers::CONTROL, KeyCode::Char('f'));
 
 /// `Tab` — swap focus between the sidebar and the editor.
 /// `matches_focus_swap` accepts any modifier (terminals send
@@ -78,8 +75,7 @@ pub const RUN_BLOCK: KeyChord = KeyChord::new(KeyModifiers::NONE, KeyCode::Char(
 /// when the cursor is parked on a result row. Dispatch checks the
 /// cursor; on any other position it's a no-op. `<CR>` in normal
 /// is `+` in stock vim, which we don't bind.
-pub const OPEN_DB_ROW_DETAIL: KeyChord =
-    KeyChord::new(KeyModifiers::NONE, KeyCode::Enter);
+pub const OPEN_DB_ROW_DETAIL: KeyChord = KeyChord::new(KeyModifiers::NONE, KeyCode::Enter);
 
 // ───────────── multi-key chords ─────────────
 
@@ -94,8 +90,7 @@ pub const OPEN_CONNECTION_PICKER: KeyChord =
 /// EXPLAIN keyword and run it. Vim binds `Ctrl+X` to "decrement
 /// number under cursor" (the counterpart to `Ctrl+A`); we don't
 /// implement either, so the slot is free. Mnemonic: "X" = E**X**plain.
-pub const EXPLAIN_BLOCK: KeyChord =
-    KeyChord::new(KeyModifiers::CONTROL, KeyCode::Char('x'));
+pub const EXPLAIN_BLOCK: KeyChord = KeyChord::new(KeyModifiers::CONTROL, KeyCode::Char('x'));
 
 // `Ctrl+Shift+C` — copy the focused HTTP block as a cURL command,
 // with `{{refs}}` resolved and clipboard write inline (no picker).

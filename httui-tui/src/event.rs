@@ -119,7 +119,11 @@ impl EventLoop {
                 }
             }
         });
-        Ok(Self { rx, tx, _handle: handle })
+        Ok(Self {
+            rx,
+            tx,
+            _handle: handle,
+        })
     }
 
     pub async fn next(&mut self) -> Option<AppEvent> {

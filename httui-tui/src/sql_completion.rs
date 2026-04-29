@@ -114,24 +114,85 @@ pub fn explain_wrap(query: &str, dialect: Dialect) -> String {
 /// form — the popup match is case-insensitive so `select` still
 /// matches `SELECT`.
 const ANSI_KEYWORDS: &[&str] = &[
-    "ADD", "ALL", "ALTER", "AND", "ANALYZE", "AS", "ASC", "BEGIN",
-    "BETWEEN", "BY", "CASCADE", "CASE", "CAST", "CHECK", "COLUMN",
-    "COMMIT", "CONSTRAINT", "CREATE", "CROSS", "DEFAULT", "DELETE",
-    "DESC", "DISTINCT", "DROP", "ELSE", "END", "EXCEPT", "EXISTS",
-    "EXPLAIN", "FALSE", "FOREIGN", "FROM", "FULL", "GROUP", "HAVING",
-    "IF", "IN", "INDEX", "INNER", "INSERT", "INTERSECT", "INTO", "IS",
-    "JOIN", "KEY", "LEFT", "LIKE", "LIMIT", "NOT", "NULL", "OFFSET",
-    "ON", "OR", "ORDER", "OUTER", "PRIMARY", "REFERENCES", "RIGHT",
-    "ROLLBACK", "SELECT", "SET", "TABLE", "THEN", "TRUE", "UNION",
-    "UNIQUE", "UPDATE", "USING", "VALUES", "VIEW", "WHEN", "WHERE",
+    "ADD",
+    "ALL",
+    "ALTER",
+    "AND",
+    "ANALYZE",
+    "AS",
+    "ASC",
+    "BEGIN",
+    "BETWEEN",
+    "BY",
+    "CASCADE",
+    "CASE",
+    "CAST",
+    "CHECK",
+    "COLUMN",
+    "COMMIT",
+    "CONSTRAINT",
+    "CREATE",
+    "CROSS",
+    "DEFAULT",
+    "DELETE",
+    "DESC",
+    "DISTINCT",
+    "DROP",
+    "ELSE",
+    "END",
+    "EXCEPT",
+    "EXISTS",
+    "EXPLAIN",
+    "FALSE",
+    "FOREIGN",
+    "FROM",
+    "FULL",
+    "GROUP",
+    "HAVING",
+    "IF",
+    "IN",
+    "INDEX",
+    "INNER",
+    "INSERT",
+    "INTERSECT",
+    "INTO",
+    "IS",
+    "JOIN",
+    "KEY",
+    "LEFT",
+    "LIKE",
+    "LIMIT",
+    "NOT",
+    "NULL",
+    "OFFSET",
+    "ON",
+    "OR",
+    "ORDER",
+    "OUTER",
+    "PRIMARY",
+    "REFERENCES",
+    "RIGHT",
+    "ROLLBACK",
+    "SELECT",
+    "SET",
+    "TABLE",
+    "THEN",
+    "TRUE",
+    "UNION",
+    "UNIQUE",
+    "UPDATE",
+    "USING",
+    "VALUES",
+    "VIEW",
+    "WHEN",
+    "WHERE",
     "WITH",
 ];
 
 /// Postgres-flavored extras — keywords + dialect-specific syntax
 /// like `RETURNING` and `ILIKE` that aren't in pure ANSI but show up
 /// constantly in real notes.
-const POSTGRES_KEYWORDS: &[&str] =
-    &["ILIKE", "MATERIALIZED", "RECURSIVE", "RETURNING"];
+const POSTGRES_KEYWORDS: &[&str] = &["ILIKE", "MATERIALIZED", "RECURSIVE", "RETURNING"];
 
 /// MySQL extras — `IGNORE`, `REPLACE`, etc. Conservative list; the
 /// engine accepts anything but we keep the popup focused on what
@@ -140,42 +201,124 @@ const MYSQL_KEYWORDS: &[&str] = &["IGNORE", "REPLACE", "STRAIGHT_JOIN"];
 
 /// SQLite extras — `PRAGMA` is the big one; the rest mirror common
 /// dialect-specific syntax.
-const SQLITE_KEYWORDS: &[&str] =
-    &["AUTOINCREMENT", "GLOB", "PRAGMA", "VACUUM"];
+const SQLITE_KEYWORDS: &[&str] = &["AUTOINCREMENT", "GLOB", "PRAGMA", "VACUUM"];
 
 /// Postgres function builtins. Curated, not exhaustive — covers
 /// aggregates, string manipulation, JSON, and the date/time helpers
 /// users reach for daily.
 const POSTGRES_FUNCTIONS: &[&str] = &[
-    "ABS", "AVG", "CASE", "COALESCE", "COUNT", "CURRENT_DATE",
-    "CURRENT_TIMESTAMP", "DATE_PART", "DATE_TRUNC", "EXTRACT",
-    "GENERATE_SERIES", "GREATEST", "INITCAP", "JSONB_BUILD_OBJECT",
-    "JSONB_EACH", "JSONB_EXTRACT_PATH", "LEAST", "LENGTH", "LOWER",
-    "MAX", "MIN", "NOW", "NULLIF", "POSITION", "REGEXP_REPLACE",
-    "REPLACE", "ROUND", "ROW_NUMBER", "STRING_AGG", "SUBSTRING", "SUM",
-    "TO_CHAR", "TO_DATE", "TO_TIMESTAMP", "TRIM", "UPPER",
+    "ABS",
+    "AVG",
+    "CASE",
+    "COALESCE",
+    "COUNT",
+    "CURRENT_DATE",
+    "CURRENT_TIMESTAMP",
+    "DATE_PART",
+    "DATE_TRUNC",
+    "EXTRACT",
+    "GENERATE_SERIES",
+    "GREATEST",
+    "INITCAP",
+    "JSONB_BUILD_OBJECT",
+    "JSONB_EACH",
+    "JSONB_EXTRACT_PATH",
+    "LEAST",
+    "LENGTH",
+    "LOWER",
+    "MAX",
+    "MIN",
+    "NOW",
+    "NULLIF",
+    "POSITION",
+    "REGEXP_REPLACE",
+    "REPLACE",
+    "ROUND",
+    "ROW_NUMBER",
+    "STRING_AGG",
+    "SUBSTRING",
+    "SUM",
+    "TO_CHAR",
+    "TO_DATE",
+    "TO_TIMESTAMP",
+    "TRIM",
+    "UPPER",
 ];
 
 /// MySQL function builtins.
 const MYSQL_FUNCTIONS: &[&str] = &[
-    "ABS", "AVG", "CONCAT", "CONCAT_WS", "COUNT", "CURDATE",
-    "CURRENT_DATE", "CURRENT_TIMESTAMP", "DATE_ADD", "DATE_FORMAT",
-    "DATE_SUB", "DAY", "EXTRACT", "GREATEST", "GROUP_CONCAT", "HOUR",
-    "IF", "IFNULL", "JSON_EXTRACT", "JSON_OBJECT", "LEAST", "LENGTH",
-    "LOWER", "MAX", "MIN", "MONTH", "NOW", "NULLIF", "REPLACE",
-    "ROUND", "ROW_NUMBER", "SUBSTRING", "SUM", "TIMESTAMP", "TRIM",
-    "UPPER", "YEAR",
+    "ABS",
+    "AVG",
+    "CONCAT",
+    "CONCAT_WS",
+    "COUNT",
+    "CURDATE",
+    "CURRENT_DATE",
+    "CURRENT_TIMESTAMP",
+    "DATE_ADD",
+    "DATE_FORMAT",
+    "DATE_SUB",
+    "DAY",
+    "EXTRACT",
+    "GREATEST",
+    "GROUP_CONCAT",
+    "HOUR",
+    "IF",
+    "IFNULL",
+    "JSON_EXTRACT",
+    "JSON_OBJECT",
+    "LEAST",
+    "LENGTH",
+    "LOWER",
+    "MAX",
+    "MIN",
+    "MONTH",
+    "NOW",
+    "NULLIF",
+    "REPLACE",
+    "ROUND",
+    "ROW_NUMBER",
+    "SUBSTRING",
+    "SUM",
+    "TIMESTAMP",
+    "TRIM",
+    "UPPER",
+    "YEAR",
 ];
 
 /// SQLite function builtins. Smaller list — SQLite has fewer
 /// builtins. Includes `JSON_EXTRACT` for the JSON1 extension which
 /// is commonly enabled.
 const SQLITE_FUNCTIONS: &[&str] = &[
-    "ABS", "AVG", "CASE", "COALESCE", "COUNT", "DATE", "DATETIME",
-    "GROUP_CONCAT", "IFNULL", "JSON_EXTRACT", "JULIANDAY", "LENGTH",
-    "LIKELY", "LOWER", "MAX", "MIN", "NULLIF", "PRINTF", "RANDOM",
-    "REPLACE", "ROUND", "STRFTIME", "SUBSTR", "SUM", "TIME", "TRIM",
-    "TYPEOF", "UNLIKELY", "UPPER",
+    "ABS",
+    "AVG",
+    "CASE",
+    "COALESCE",
+    "COUNT",
+    "DATE",
+    "DATETIME",
+    "GROUP_CONCAT",
+    "IFNULL",
+    "JSON_EXTRACT",
+    "JULIANDAY",
+    "LENGTH",
+    "LIKELY",
+    "LOWER",
+    "MAX",
+    "MIN",
+    "NULLIF",
+    "PRINTF",
+    "RANDOM",
+    "REPLACE",
+    "ROUND",
+    "STRFTIME",
+    "SUBSTR",
+    "SUM",
+    "TIME",
+    "TRIM",
+    "TYPEOF",
+    "UNLIKELY",
+    "UPPER",
 ];
 
 /// What the cursor's surrounding SQL is asking for. The dispatcher
@@ -210,7 +353,9 @@ impl SqlContext {
     /// Convenience for tests / call sites that don't care about
     /// scope. Returns `Open { in_scope: vec![] }`.
     pub fn open_no_scope() -> Self {
-        SqlContext::Open { in_scope: Vec::new() }
+        SqlContext::Open {
+            in_scope: Vec::new(),
+        }
     }
 }
 
@@ -372,11 +517,7 @@ pub fn complete(
                     .find(|t| t.name.eq_ignore_ascii_case(table_name))
                 {
                     for col in &table.columns {
-                        if col
-                            .name
-                            .to_ascii_uppercase()
-                            .starts_with(&prefix_upper)
-                        {
+                        if col.name.to_ascii_uppercase().starts_with(&prefix_upper) {
                             out.push(CompletionItem {
                                 label: col.name.clone(),
                                 kind: CompletionKind::Column,
@@ -404,11 +545,7 @@ pub fn complete(
                         .find(|t| t.name.eq_ignore_ascii_case(table_name))
                     {
                         for col in &table.columns {
-                            if col
-                                .name
-                                .to_ascii_uppercase()
-                                .starts_with(&prefix_upper)
-                            {
+                            if col.name.to_ascii_uppercase().starts_with(&prefix_upper) {
                                 out.push(CompletionItem {
                                     label: col.name.clone(),
                                     kind: CompletionKind::Column,
@@ -647,9 +784,9 @@ pub fn complete_refs(
     let mut cursor: &serde_json::Value = &synthetic_root;
     for seg in &path_segs[1..] {
         let next = cursor.get(seg).or_else(|| {
-            seg.parse::<usize>().ok().and_then(|i| {
-                cursor.as_array().and_then(|a| a.get(i))
-            })
+            seg.parse::<usize>()
+                .ok()
+                .and_then(|i| cursor.as_array().and_then(|a| a.get(i)))
         });
         match next {
             Some(v) => cursor = v,
@@ -687,12 +824,12 @@ pub fn complete_refs(
 
     // Numeric labels (array indices) sort numerically so `9` comes
     // before `10`; mixed / text labels fall back to alpha.
-    out.sort_by(|a, b| {
-        match (a.label.parse::<usize>(), b.label.parse::<usize>()) {
+    out.sort_by(
+        |a, b| match (a.label.parse::<usize>(), b.label.parse::<usize>()) {
             (Ok(n), Ok(m)) => n.cmp(&m),
             _ => a.label.cmp(&b.label),
-        }
-    });
+        },
+    );
     out.dedup_by(|a, b| a.label == b.label);
     out
 }
@@ -772,7 +909,12 @@ mod tests {
     #[test]
     fn complete_includes_dialect_extras_for_postgres() {
         // Postgres adds RETURNING; generic doesn't.
-        let pg = complete(Dialect::Postgres, "RETUR", SqlContext::open_no_scope(), None);
+        let pg = complete(
+            Dialect::Postgres,
+            "RETUR",
+            SqlContext::open_no_scope(),
+            None,
+        );
         assert!(pg.iter().any(|i| i.label == "RETURNING"));
         let gen = complete(Dialect::Generic, "RETUR", SqlContext::open_no_scope(), None);
         assert!(gen.iter().all(|i| i.label != "RETURNING"));
@@ -782,7 +924,12 @@ mod tests {
     fn complete_includes_function_builtins_for_dialect() {
         // `date_t` should match `DATE_TRUNC` on Postgres but not on
         // SQLite (where it's not a standard function).
-        let pg = complete(Dialect::Postgres, "date_t", SqlContext::open_no_scope(), None);
+        let pg = complete(
+            Dialect::Postgres,
+            "date_t",
+            SqlContext::open_no_scope(),
+            None,
+        );
         assert!(pg.iter().any(|i| i.label == "DATE_TRUNC"));
         let sqlite = complete(Dialect::Sqlite, "date_t", SqlContext::open_no_scope(), None);
         assert!(sqlite.iter().all(|i| i.label != "DATE_TRUNC"));
@@ -947,17 +1094,32 @@ mod tests {
                 schema: Some("public".into()),
                 name: "users".into(),
                 columns: vec![
-                    SchemaColumn { name: "id".into(), data_type: Some("int4".into()) },
-                    SchemaColumn { name: "email".into(), data_type: Some("text".into()) },
-                    SchemaColumn { name: "name".into(), data_type: Some("text".into()) },
+                    SchemaColumn {
+                        name: "id".into(),
+                        data_type: Some("int4".into()),
+                    },
+                    SchemaColumn {
+                        name: "email".into(),
+                        data_type: Some("text".into()),
+                    },
+                    SchemaColumn {
+                        name: "name".into(),
+                        data_type: Some("text".into()),
+                    },
                 ],
             },
             SchemaTable {
                 schema: Some("public".into()),
                 name: "orders".into(),
                 columns: vec![
-                    SchemaColumn { name: "id".into(), data_type: Some("int4".into()) },
-                    SchemaColumn { name: "user_id".into(), data_type: Some("int4".into()) },
+                    SchemaColumn {
+                        name: "id".into(),
+                        data_type: Some("int4".into()),
+                    },
+                    SchemaColumn {
+                        name: "user_id".into(),
+                        data_type: Some("int4".into()),
+                    },
                 ],
             },
         ]
@@ -969,8 +1131,7 @@ mod tests {
         // appear, alongside keywords/builtins (a `SELECT` subquery
         // is legal here too, so we keep the keywords).
         let schema = fake_schema();
-        let items =
-            complete(Dialect::Postgres, "us", SqlContext::Table, Some(&schema));
+        let items = complete(Dialect::Postgres, "us", SqlContext::Table, Some(&schema));
         let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
         assert!(labels.contains(&"users"), "users should be in: {labels:?}");
         // Detail carries the schema name so the popup can show
@@ -1029,8 +1190,7 @@ mod tests {
     fn complete_table_context_with_no_schema_falls_back_to_keywords() {
         // Schema not yet cached (`None`) → no schema items, but
         // keywords/builtins still appear so the popup isn't empty.
-        let items =
-            complete(Dialect::Postgres, "SEL", SqlContext::Table, None);
+        let items = complete(Dialect::Postgres, "SEL", SqlContext::Table, None);
         assert!(items.iter().any(|i| i.label == "SELECT"));
     }
 
@@ -1047,9 +1207,8 @@ mod tests {
     fn extract_tables_in_scope_picks_up_join_clauses() {
         // `JOIN` adds tables alongside the FROM target. Order
         // mirrors source order — useful when ranking suggestions.
-        let scope = extract_tables_in_scope(
-            "SELECT * FROM users JOIN orders ON users.id = orders.user_id",
-        );
+        let scope =
+            extract_tables_in_scope("SELECT * FROM users JOIN orders ON users.id = orders.user_id");
         assert_eq!(scope, vec!["users", "orders"]);
     }
 
@@ -1057,8 +1216,7 @@ mod tests {
     fn extract_tables_in_scope_dedups_repeats() {
         // The same table joined twice (with aliases) shouldn't
         // double-list — V1 stops at the table name.
-        let scope =
-            extract_tables_in_scope("FROM users JOIN users AS u2 ON 1=1");
+        let scope = extract_tables_in_scope("FROM users JOIN users AS u2 ON 1=1");
         assert_eq!(scope, vec!["users"]);
     }
 
@@ -1066,8 +1224,7 @@ mod tests {
     fn extract_tables_in_scope_skips_subquery_marker() {
         // `FROM (SELECT ...)` — `SELECT` is one of the pseudo-keywords
         // we explicitly skip. The inner `FROM users` still hits.
-        let scope =
-            extract_tables_in_scope("SELECT * FROM (SELECT id FROM users) sub");
+        let scope = extract_tables_in_scope("SELECT * FROM (SELECT id FROM users) sub");
         assert_eq!(scope, vec!["users"]);
     }
 
@@ -1119,8 +1276,7 @@ mod tests {
             in_scope: vec!["users".into(), "orders".into()],
         };
         let items = complete(Dialect::Postgres, "id", ctx, Some(&schema));
-        let id_items: Vec<&CompletionItem> =
-            items.iter().filter(|i| i.label == "id").collect();
+        let id_items: Vec<&CompletionItem> = items.iter().filter(|i| i.label == "id").collect();
         assert_eq!(id_items.len(), 1);
         assert_eq!(id_items[0].detail.as_deref(), Some("from users"));
     }
@@ -1141,8 +1297,7 @@ mod tests {
         // Verifies keywords keep showing up under Table ctx — a
         // user might be starting a subquery (`FROM (SELECT ...)`).
         let schema = fake_schema();
-        let items =
-            complete(Dialect::Postgres, "S", SqlContext::Table, Some(&schema));
+        let items = complete(Dialect::Postgres, "S", SqlContext::Table, Some(&schema));
         let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
         assert!(labels.contains(&"SELECT"));
     }
@@ -1374,12 +1529,11 @@ mod tests {
         let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
         assert_eq!(labels, vec!["0"]);
         let zero = items.iter().find(|i| i.label == "0").unwrap();
-        assert!(
-            zero.detail
-                .as_deref()
-                .map(|d| d.contains("keys"))
-                .unwrap_or(false)
-        );
+        assert!(zero
+            .detail
+            .as_deref()
+            .map(|d| d.contains("keys"))
+            .unwrap_or(false));
     }
 
     #[test]

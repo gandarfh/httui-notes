@@ -94,9 +94,8 @@ impl Default for BlocksConfig {
 
 /// Path to the canonical config file under XDG.
 pub fn default_config_path() -> TuiResult<PathBuf> {
-    let dirs = ProjectDirs::from("com", "httui", "notes-tui").ok_or_else(|| {
-        TuiError::Config("could not resolve project dirs (no $HOME?)".into())
-    })?;
+    let dirs = ProjectDirs::from("com", "httui", "notes-tui")
+        .ok_or_else(|| TuiError::Config("could not resolve project dirs (no $HOME?)".into()))?;
     Ok(dirs.config_dir().join("config.toml"))
 }
 

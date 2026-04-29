@@ -46,14 +46,8 @@ async fn execute_block(
     block_type: String,
     params: serde_json::Value,
 ) -> Result<httui_notes::executor::BlockResult, String> {
-    let req = httui_notes::executor::BlockRequest {
-        block_type,
-        params,
-    };
-    registry
-        .execute(req)
-        .await
-        .map_err(|e| e.to_string())
+    let req = httui_notes::executor::BlockRequest { block_type, params };
+    registry.execute(req).await.map_err(|e| e.to_string())
 }
 
 /// Newtype wrapper letting the registry hold `DbExecutor` via `Arc` so the
@@ -260,10 +254,7 @@ async fn list_block_examples(
 
 /// Delete a single pinned example by primary key.
 #[tauri::command]
-async fn delete_block_example(
-    pool: tauri::State<'_, SqlitePool>,
-    id: i64,
-) -> Result<u64, String> {
+async fn delete_block_example(pool: tauri::State<'_, SqlitePool>, id: i64) -> Result<u64, String> {
     httui_notes::block_examples::delete_example(&pool, id)
         .await
         .map_err(|e| e.to_string())
@@ -324,7 +315,12 @@ async fn get_cached_schema(
     connection_id: String,
     ttl_seconds: Option<i64>,
 ) -> Result<Option<Vec<httui_notes::db::schema_cache::SchemaEntry>>, String> {
-    httui_notes::db::schema_cache::get_cached_schema(&pool, &connection_id, ttl_seconds.unwrap_or(300)).await
+    httui_notes::db::schema_cache::get_cached_schema(
+        &pool,
+        &connection_id,
+        ttl_seconds.unwrap_or(300),
+    )
+    .await
 }
 
 // --- Config commands ---
@@ -435,11 +431,7 @@ async fn delete_note(
 /// Rename / move a note within the vault. Errors if `new_path` already
 /// exists or escapes the vault.
 #[tauri::command]
-fn rename_note(
-    vault_path: String,
-    old_path: String,
-    new_path: String,
-) -> Result<(), String> {
+fn rename_note(vault_path: String, old_path: String, new_path: String) -> Result<(), String> {
     httui_notes::fs::rename_note(&vault_path, &old_path, &new_path)
 }
 
@@ -480,8 +472,11 @@ fn start_watching(
     ignore_paths: tauri::State<'_, Arc<Mutex<Vec<String>>>>,
     watcher_state: tauri::State<'_, Mutex<Option<httui_notes::fs::watcher::VaultWatcher>>>,
 ) -> Result<(), String> {
-    let watcher =
-        httui_notes::fs::watcher::watch_vault(&vault_path, app_handle, ignore_paths.inner().clone())?;
+    let watcher = httui_notes::fs::watcher::watch_vault(
+        &vault_path,
+        app_handle,
+        ignore_paths.inner().clone(),
+    )?;
     let mut state = watcher_state.lock().unwrap();
     *state = Some(watcher);
     Ok(())
@@ -619,10 +614,7 @@ async fn create_environment(
 /// Delete an environment and its variables. Cascade clears any
 /// keychain-stored secret values.
 #[tauri::command]
-async fn delete_environment(
-    pool: tauri::State<'_, SqlitePool>,
-    id: String,
-) -> Result<(), String> {
+async fn delete_environment(pool: tauri::State<'_, SqlitePool>, id: String) -> Result<(), String> {
     httui_notes::db::environments::delete_environment(&pool, &id).await
 }
 
@@ -667,15 +659,19 @@ async fn set_env_variable(
     value: String,
     is_secret: Option<bool>,
 ) -> Result<httui_notes::db::environments::EnvVariable, String> {
-    httui_notes::db::environments::set_env_variable(&pool, &environment_id, key, value, is_secret.unwrap_or(false)).await
+    httui_notes::db::environments::set_env_variable(
+        &pool,
+        &environment_id,
+        key,
+        value,
+        is_secret.unwrap_or(false),
+    )
+    .await
 }
 
 /// Delete a variable. If `is_secret`, also drops the keychain entry.
 #[tauri::command]
-async fn delete_env_variable(
-    pool: tauri::State<'_, SqlitePool>,
-    id: String,
-) -> Result<(), String> {
+async fn delete_env_variable(pool: tauri::State<'_, SqlitePool>, id: String) -> Result<(), String> {
     httui_notes::db::environments::delete_env_variable(&pool, &id).await
 }
 
@@ -747,11 +743,18 @@ fn extract_tabs_from_layout(value: &serde_json::Value) -> Vec<(String, String)> 
 /// list the workspace, and read every open tab's content concurrently.
 /// Replaces ~10 chatty calls so the editor renders without flicker.
 #[tauri::command]
-async fn restore_session(
-    pool: tauri::State<'_, SqlitePool>,
-) -> Result<SessionState, String> {
+async fn restore_session(pool: tauri::State<'_, SqlitePool>) -> Result<SessionState, String> {
     // Batch all config reads concurrently
-    let (vaults_raw, vim_raw, sidebar_raw, active_vault, pane_layout, active_pane_id, active_file, scroll_positions) = tokio::join!(
+    let (
+        vaults_raw,
+        vim_raw,
+        sidebar_raw,
+        active_vault,
+        pane_layout,
+        active_pane_id,
+        active_file,
+        scroll_positions,
+    ) = tokio::join!(
         httui_notes::config::get_config(&pool, "vaults"),
         httui_notes::config::get_config(&pool, "vim_enabled"),
         httui_notes::config::get_config(&pool, "sidebar_open"),
@@ -842,8 +845,8 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
-            let app_data_dir = httui_core::paths::default_data_dir()
-                .expect("failed to resolve data dir");
+            let app_data_dir =
+                httui_core::paths::default_data_dir().expect("failed to resolve data dir");
 
             match httui_core::paths::migrate_legacy_data(&app_data_dir) {
                 Ok(httui_core::paths::MigrationOutcome::Migrated { from }) => {
@@ -892,16 +895,13 @@ fn main() {
             // Executor registry. DbExecutor is held as Arc<…> so the
             // cancel-aware streamed command (see src/executions.rs) can
             // share a single instance with the legacy `execute_block`.
-            let db_executor = Arc::new(
-                httui_notes::executor::db::DbExecutor::new(conn_manager),
-            );
+            let db_executor = Arc::new(httui_notes::executor::db::DbExecutor::new(conn_manager));
             app.manage(db_executor.clone());
             app.manage(httui_notes::executions::ExecutionRegistry::new());
 
             // HTTP executor is held as Arc<…> so the cancel-aware streamed
             // command can share a single instance with the legacy `execute_block`.
-            let http_executor =
-                Arc::new(httui_notes::executor::http::HttpExecutor::new());
+            let http_executor = Arc::new(httui_notes::executor::http::HttpExecutor::new());
             app.manage(http_executor.clone());
 
             let mut executor_registry = httui_notes::executor::ExecutorRegistry::new();
@@ -916,14 +916,12 @@ fn main() {
 
             // Permission broker
             let pool_for_broker: SqlitePool = app.state::<SqlitePool>().inner().clone();
-            app.manage(Arc::new(httui_notes::chat::permissions::PermissionBroker::new(
-                pool_for_broker,
-            )));
+            app.manage(Arc::new(
+                httui_notes::chat::permissions::PermissionBroker::new(pool_for_broker),
+            ));
 
             app.manage(Arc::new(Mutex::new(Vec::<String>::new()))); // ignore_paths
-            app.manage(Mutex::new(
-                None::<httui_notes::fs::watcher::VaultWatcher>,
-            ));
+            app.manage(Mutex::new(None::<httui_notes::fs::watcher::VaultWatcher>));
 
             Ok(())
         })
@@ -998,8 +996,9 @@ fn main() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 let app = window.app_handle().clone();
-                let sidecar_state = app
-                    .state::<std::sync::Arc<tokio::sync::Mutex<Option<httui_notes::chat::sidecar::SidecarManager>>>>();
+                let sidecar_state = app.state::<std::sync::Arc<
+                    tokio::sync::Mutex<Option<httui_notes::chat::sidecar::SidecarManager>>,
+                >>();
                 let sidecar = sidecar_state.inner().clone();
                 tauri::async_runtime::spawn(async move {
                     let guard = sidecar.lock().await;

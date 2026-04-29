@@ -75,13 +75,8 @@ impl PermissionBroker {
 
         // 4-5. Check DB rules (persisted 'always' then 'session')
         let workspace = cwd.map(|s| s.to_string());
-        if let Ok(Some(rule)) = chat::check_permission(
-            &self.pool,
-            tool_name,
-            workspace.as_deref(),
-            session_id,
-        )
-        .await
+        if let Ok(Some(rule)) =
+            chat::check_permission(&self.pool, tool_name, workspace.as_deref(), session_id).await
         {
             return match rule.behavior.as_str() {
                 "allow" => PermissionVerdict::Allow,
@@ -98,7 +93,10 @@ impl PermissionBroker {
 /// Extract the relevant filesystem path from tool input based on tool name.
 fn extract_path(tool_name: &str, input: &serde_json::Value) -> Option<String> {
     match tool_name {
-        "Read" | "Edit" | "Write" => input.get("file_path").and_then(|v| v.as_str()).map(String::from),
+        "Read" | "Edit" | "Write" => input
+            .get("file_path")
+            .and_then(|v| v.as_str())
+            .map(String::from),
         "Glob" | "Grep" => input.get("path").and_then(|v| v.as_str()).map(String::from),
         _ => None,
     }
@@ -124,7 +122,10 @@ mod tests {
     #[test]
     fn test_extract_path_read() {
         let input = serde_json::json!({"file_path": "/home/user/file.rs"});
-        assert_eq!(extract_path("Read", &input), Some("/home/user/file.rs".to_string()));
+        assert_eq!(
+            extract_path("Read", &input),
+            Some("/home/user/file.rs".to_string())
+        );
     }
 
     #[test]
@@ -194,9 +195,9 @@ mod tests {
         let session = chat::create_session(&pool, None).await.unwrap();
 
         // Insert an 'always allow' rule for Edit
-        chat::insert_permission(
-            &pool, "Edit", None, None, "always", "allow", None,
-        ).await.unwrap();
+        chat::insert_permission(&pool, "Edit", None, None, "always", "allow", None)
+            .await
+            .unwrap();
 
         let broker = PermissionBroker::new(pool);
         // Edit inside cwd — would normally be AskUser without the rule,

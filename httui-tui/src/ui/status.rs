@@ -45,7 +45,10 @@ pub fn render_status_bar(frame: &mut Frame, area: Rect, app: &App) {
 
     if app.vim.mode == Mode::Search {
         let prompt = if app.vim.search_forward { '/' } else { '?' };
-        let line = Line::from(vec![Span::raw(format!("{prompt}{}", app.vim.search_buf.as_str()))]);
+        let line = Line::from(vec![Span::raw(format!(
+            "{prompt}{}",
+            app.vim.search_buf.as_str()
+        ))]);
         frame.render_widget(Paragraph::new(line), area);
         return;
     }
@@ -80,10 +83,7 @@ pub fn render_status_bar(frame: &mut Frame, area: Rect, app: &App) {
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_else(|| "(no file)".into());
 
-    let block_count = app
-        .document()
-        .map(count_blocks)
-        .unwrap_or(0);
+    let block_count = app.document().map(count_blocks).unwrap_or(0);
 
     let cursor_label = app
         .document()
@@ -233,8 +233,9 @@ fn count_blocks(doc: &Document) -> usize {
 fn focused_block_conn_name(app: &App) -> Option<String> {
     let doc = app.document()?;
     let segment_idx = match doc.cursor() {
-        Cursor::InBlock { segment_idx, .. }
-        | Cursor::InBlockResult { segment_idx, .. } => segment_idx,
+        Cursor::InBlock { segment_idx, .. } | Cursor::InBlockResult { segment_idx, .. } => {
+            segment_idx
+        }
         _ => return None,
     };
     let block = match doc.segments().get(segment_idx)? {
@@ -313,10 +314,7 @@ mod tests {
 
     #[test]
     fn short_paths_stay_intact() {
-        assert_eq!(
-            compact_vault_path(&PathBuf::from("/notes")),
-            "/notes"
-        );
+        assert_eq!(compact_vault_path(&PathBuf::from("/notes")), "/notes");
     }
 
     #[test]

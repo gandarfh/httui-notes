@@ -62,8 +62,16 @@ pub fn apply_visual(
     doc: &mut Document,
     reg: &mut Register,
 ) -> OpOutcome {
-    let (Cursor::InProse { segment_idx: a_seg, offset: a_off },
-         Cursor::InProse { segment_idx: c_seg, offset: c_off }) = (anchor, cursor)
+    let (
+        Cursor::InProse {
+            segment_idx: a_seg,
+            offset: a_off,
+        },
+        Cursor::InProse {
+            segment_idx: c_seg,
+            offset: c_off,
+        },
+    ) = (anchor, cursor)
     else {
         return OpOutcome::default();
     };
@@ -327,19 +335,14 @@ fn apply_range(
 
 // ───────────── paste ─────────────
 
-fn paste_charwise(
-    pos: PastePos,
-    seg_idx: usize,
-    offset: usize,
-    body: &str,
-    doc: &mut Document,
-) {
+fn paste_charwise(pos: PastePos, seg_idx: usize, offset: usize, body: &str, doc: &mut Document) {
     let rope = match doc.segments().get(seg_idx) {
         Some(Segment::Prose(r)) => r,
         _ => return,
     };
     let total = rope.len_chars();
-    let on_newline_or_end = offset >= total || rope.char(offset.min(total.saturating_sub(1))) == '\n';
+    let on_newline_or_end =
+        offset >= total || rope.char(offset.min(total.saturating_sub(1))) == '\n';
     let insert_at = match pos {
         // `p` after cursor — but only if there's a char to come after.
         // On EOL / EOF we still paste at offset (vim's "after" degenerates
@@ -362,13 +365,7 @@ fn paste_charwise(
     }
 }
 
-fn paste_linewise(
-    pos: PastePos,
-    seg_idx: usize,
-    offset: usize,
-    body: &str,
-    doc: &mut Document,
-) {
+fn paste_linewise(pos: PastePos, seg_idx: usize, offset: usize, body: &str, doc: &mut Document) {
     let rope = match doc.segments().get(seg_idx) {
         Some(Segment::Prose(r)) => r,
         _ => return,
@@ -440,8 +437,14 @@ mod tests {
         // "hello world" → anchor at h (0), cursor at o of "hello" (4). Yank.
         let mut d = doc("hello world\n");
         let mut r = Register::empty();
-        let anchor = Cursor::InProse { segment_idx: 0, offset: 0 };
-        let cursor = Cursor::InProse { segment_idx: 0, offset: 4 };
+        let anchor = Cursor::InProse {
+            segment_idx: 0,
+            offset: 0,
+        };
+        let cursor = Cursor::InProse {
+            segment_idx: 0,
+            offset: 4,
+        };
         d.set_cursor(cursor);
         let out = apply_visual(Operator::Yank, anchor, cursor, false, &mut d, &mut r);
         assert!(!out.enter_insert);
@@ -455,8 +458,14 @@ mod tests {
     fn visual_charwise_delete_removes_inclusive_range() {
         let mut d = doc("hello world\n");
         let mut r = Register::empty();
-        let anchor = Cursor::InProse { segment_idx: 0, offset: 0 };
-        let cursor = Cursor::InProse { segment_idx: 0, offset: 4 };
+        let anchor = Cursor::InProse {
+            segment_idx: 0,
+            offset: 0,
+        };
+        let cursor = Cursor::InProse {
+            segment_idx: 0,
+            offset: 4,
+        };
         d.set_cursor(cursor);
         apply_visual(Operator::Delete, anchor, cursor, false, &mut d, &mut r);
         assert_eq!(prose(&d, 0), " world");
@@ -468,8 +477,14 @@ mod tests {
         let mut d = doc("alpha\nbeta\ngamma\n");
         let mut r = Register::empty();
         // Anchor on line 0 (offset 2 within "alpha"), cursor on line 1.
-        let anchor = Cursor::InProse { segment_idx: 0, offset: 2 };
-        let cursor = Cursor::InProse { segment_idx: 0, offset: 8 }; // mid "beta"
+        let anchor = Cursor::InProse {
+            segment_idx: 0,
+            offset: 2,
+        };
+        let cursor = Cursor::InProse {
+            segment_idx: 0,
+            offset: 8,
+        }; // mid "beta"
         d.set_cursor(cursor);
         apply_visual(Operator::Yank, anchor, cursor, true, &mut d, &mut r);
         // Whole lines selected, register normalized with trailing newline.

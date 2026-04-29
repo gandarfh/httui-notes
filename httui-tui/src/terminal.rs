@@ -23,8 +23,8 @@ pub fn setup(mouse: bool) -> TuiResult<Tui> {
             .map_err(|e| TuiError::Terminal(format!("enter alt screen: {e}")))?;
     }
     let backend = CrosstermBackend::new(stdout);
-    let terminal = Terminal::new(backend)
-        .map_err(|e| TuiError::Terminal(format!("ratatui new: {e}")))?;
+    let terminal =
+        Terminal::new(backend).map_err(|e| TuiError::Terminal(format!("ratatui new: {e}")))?;
     Ok(terminal)
 }
 

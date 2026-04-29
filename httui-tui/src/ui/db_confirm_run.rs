@@ -99,5 +99,10 @@ fn compute_popup_rect(editor_area: Rect) -> Rect {
     let y = editor_area
         .y
         .saturating_add((editor_area.height.saturating_sub(height)) / 2);
-    Rect { x, y, width, height }
+    Rect {
+        x,
+        y,
+        width,
+        height,
+    }
 }

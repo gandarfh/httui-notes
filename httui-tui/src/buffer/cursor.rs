@@ -13,18 +13,9 @@
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Cursor {
-    InProse {
-        segment_idx: usize,
-        offset: usize,
-    },
-    InBlock {
-        segment_idx: usize,
-        offset: usize,
-    },
-    InBlockResult {
-        segment_idx: usize,
-        row: usize,
-    },
+    InProse { segment_idx: usize, offset: usize },
+    InBlock { segment_idx: usize, offset: usize },
+    InBlockResult { segment_idx: usize, row: usize },
 }
 
 impl Cursor {

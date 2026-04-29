@@ -301,16 +301,14 @@ mod tests {
     #[test]
     fn iw_inside_word() {
         let d = doc_with_cursor("hello world\n", 2);
-        let (_, s, e) =
-            compute_range(TextObject::Word { around: false }, &d).expect("iw range");
+        let (_, s, e) = compute_range(TextObject::Word { around: false }, &d).expect("iw range");
         assert_eq!(slice(&d, s, e), "hello");
     }
 
     #[test]
     fn iw_on_punctuation_run() {
         let d = doc_with_cursor("a---b\n", 2);
-        let (_, s, e) =
-            compute_range(TextObject::Word { around: false }, &d).expect("iw range");
+        let (_, s, e) = compute_range(TextObject::Word { around: false }, &d).expect("iw range");
         assert_eq!(slice(&d, s, e), "---");
     }
 

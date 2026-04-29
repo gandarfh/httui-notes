@@ -239,7 +239,12 @@ mod tests {
         let layouts = layout_document(&doc, 80);
         let block_h = layouts
             .iter()
-            .find(|l| matches!(doc.segments()[l.segment_idx], crate::buffer::Segment::Block(_)))
+            .find(|l| {
+                matches!(
+                    doc.segments()[l.segment_idx],
+                    crate::buffer::Segment::Block(_)
+                )
+            })
             .unwrap()
             .height;
         // 3 SQL lines + chrome (4: border + header + footer + border).

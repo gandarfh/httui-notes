@@ -95,14 +95,10 @@ fn paint_body(
     // The modal builds the body via `Document::from_markdown(plain)`,
     // which yields a single Prose segment. Defensively walk for the
     // first one; if there's somehow no prose, paint an empty body.
-    let rope = match state
-        .doc
-        .segments()
-        .iter()
-        .find_map(|s| match s {
-            Segment::Prose(r) => Some(r),
-            _ => None,
-        }) {
+    let rope = match state.doc.segments().iter().find_map(|s| match s {
+        Segment::Prose(r) => Some(r),
+        _ => None,
+    }) {
         Some(r) => r,
         None => return,
     };
@@ -158,7 +154,9 @@ fn paint_body(
     // Place the terminal cursor at the column inside the highlighted
     // line, clamped to the body area so a long-value column doesn't
     // overflow into the border.
-    let cursor_screen_y = body_area.y.saturating_add(cursor_line.saturating_sub(offset));
+    let cursor_screen_y = body_area
+        .y
+        .saturating_add(cursor_line.saturating_sub(offset));
     let cursor_screen_x = body_area
         .x
         .saturating_add(cursor_col.min(body_area.width.saturating_sub(1)));
@@ -167,7 +165,15 @@ fn paint_body(
     }
 
     if let Some(overlay) = visual {
-        paint_visual_selection(frame, body_area, rope, offset, overlay, cursor_line, cursor_col);
+        paint_visual_selection(
+            frame,
+            body_area,
+            rope,
+            offset,
+            overlay,
+            cursor_line,
+            cursor_col,
+        );
     }
 }
 
@@ -202,9 +208,19 @@ fn paint_visual_selection(
     } else {
         let (lo_line, lo_col, hi_line, hi_col) =
             if (anchor_line, anchor_col) <= (cursor_line as usize, cursor_col as usize) {
-                (anchor_line, anchor_col, cursor_line as usize, cursor_col as usize)
+                (
+                    anchor_line,
+                    anchor_col,
+                    cursor_line as usize,
+                    cursor_col as usize,
+                )
             } else {
-                (cursor_line as usize, cursor_col as usize, anchor_line, anchor_col)
+                (
+                    cursor_line as usize,
+                    cursor_col as usize,
+                    anchor_line,
+                    anchor_col,
+                )
             };
         (lo_line, lo_col, hi_line, hi_col)
     };
@@ -285,9 +301,7 @@ fn style_body_line(text: String, bg: Style) -> Line<'static> {
         .fg(Color::Cyan)
         .bg(Color::Black)
         .add_modifier(Modifier::BOLD);
-    let type_style = Style::default()
-        .fg(Color::DarkGray)
-        .bg(Color::Black);
+    let type_style = Style::default().fg(Color::DarkGray).bg(Color::Black);
     if let Some(idx) = text.find("  (") {
         let (name, ty) = text.split_at(idx);
         return Line::from(vec![
@@ -343,9 +357,7 @@ fn clamp_viewport(viewport_top: u16, height: u16, cursor: u16, total: u16) -> u1
     }
     let scrolloff = SCROLL_OFF.min(height / 2);
     let upper = cursor.saturating_sub(scrolloff);
-    let lower = cursor
-        .saturating_add(scrolloff + 1)
-        .saturating_sub(height);
+    let lower = cursor.saturating_add(scrolloff + 1).saturating_sub(height);
     let next = if viewport_top > upper {
         upper
     } else if viewport_top < lower {

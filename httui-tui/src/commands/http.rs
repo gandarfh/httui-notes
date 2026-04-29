@@ -34,12 +34,9 @@ pub fn apply_run_http_block(app: &mut App, segment_idx: usize) {
 
     let segments_snapshot: Vec<Segment> = doc.segments().to_vec();
     let mut resolved = block.params.clone();
-    if let Err(msg) = resolve_in_http_params(
-        &mut resolved,
-        &segments_snapshot,
-        segment_idx,
-        &env_vars,
-    ) {
+    if let Err(msg) =
+        resolve_in_http_params(&mut resolved, &segments_snapshot, segment_idx, &env_vars)
+    {
         if let Some(doc) = app.tabs.active_document_mut() {
             if let Some(b) = doc.block_at_mut(segment_idx) {
                 b.state = ExecutionState::Error(msg.clone());
@@ -213,7 +210,10 @@ fn snapshot_block_meta(
         let parts: Vec<String> = arr
             .iter()
             .filter_map(|p| {
-                let k = p.get("key").and_then(|v| v.as_str()).filter(|s| !s.is_empty())?;
+                let k = p
+                    .get("key")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())?;
                 let v = p.get("value").and_then(|v| v.as_str()).unwrap_or("");
                 if v.is_empty() {
                     Some(k.to_string())
@@ -246,7 +246,11 @@ fn snapshot_block_meta(
             size += k.len() + 2 + v.len() + 2; // "K: V\r\n"
         }
     }
-    let body = block.params.get("body").and_then(|v| v.as_str()).unwrap_or("");
+    let body = block
+        .params
+        .get("body")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     if !body.is_empty() {
         size += 2; // blank line "\r\n"
         size += body.len();
@@ -280,10 +284,7 @@ pub fn copy_as_curl(app: &mut crate::app::App) {
     {
         Some(Segment::Block(b)) => b,
         _ => {
-            app.set_status(
-                crate::app::StatusKind::Info,
-                "no block at cursor",
-            );
+            app.set_status(crate::app::StatusKind::Info, "no block at cursor");
             return;
         }
     };
@@ -311,10 +312,9 @@ pub fn copy_as_curl(app: &mut crate::app::App) {
     // Resolve refs the same way the run path does. Failure stays
     // soft — surface it via the status line, don't crash.
     let env_vars = tokio::task::block_in_place(|| {
-        tokio::runtime::Handle::current()
-            .block_on(crate::commands::db::load_active_env_vars(
-                app.pool_manager.app_pool(),
-            ))
+        tokio::runtime::Handle::current().block_on(crate::commands::db::load_active_env_vars(
+            app.pool_manager.app_pool(),
+        ))
     })
     .unwrap_or_default();
     let segments_snapshot: Vec<Segment> = app
@@ -322,12 +322,9 @@ pub fn copy_as_curl(app: &mut crate::app::App) {
         .map(|d| d.segments().to_vec())
         .unwrap_or_default();
     let mut resolved = block.params.clone();
-    if let Err(msg) = resolve_in_http_params(
-        &mut resolved,
-        &segments_snapshot,
-        segment_idx,
-        &env_vars,
-    ) {
+    if let Err(msg) =
+        resolve_in_http_params(&mut resolved, &segments_snapshot, segment_idx, &env_vars)
+    {
         app.set_status(
             crate::app::StatusKind::Error,
             format!("ref resolution failed: {msg}"),
@@ -443,7 +440,9 @@ pub fn move_block_history_cursor(app: &mut crate::app::App, delta: i32) {
         return;
     }
     let last = state.entries.len() as i64 - 1;
-    let next = (state.selected as i64).saturating_add(delta as i64).clamp(0, last);
+    let next = (state.selected as i64)
+        .saturating_add(delta as i64)
+        .clamp(0, last);
     state.selected = next as usize;
 }
 
@@ -515,9 +514,7 @@ fn http_response_to_json(r: &HttpResponse) -> serde_json::Value {
     let headers: Vec<serde_json::Value> = r
         .headers
         .iter()
-        .map(|(k, v)| {
-            serde_json::json!({ "key": k, "value": v })
-        })
+        .map(|(k, v)| serde_json::json!({ "key": k, "value": v }))
         .collect();
     let cookies: Vec<serde_json::Value> = r
         .cookies
@@ -572,7 +569,11 @@ pub(crate) fn resolve_in_http_params(
             resolve_kv_in_place(p, segments, current_segment, env_vars)?;
         }
     }
-    if let Some(s) = params.get("body").and_then(|v| v.as_str()).map(String::from) {
+    if let Some(s) = params
+        .get("body")
+        .and_then(|v| v.as_str())
+        .map(String::from)
+    {
         let resolved = resolve_text_refs(&s, segments, current_segment, env_vars)?;
         if let Some(slot) = params.get_mut("body") {
             *slot = serde_json::Value::String(resolved);
@@ -664,13 +665,7 @@ mod tests {
     fn resolve_text_refs_substitutes_env_vars() {
         let segs = empty_segs();
         let env = env(&[("TOKEN", "abc123"), ("HOST", "api.x.com")]);
-        let out = resolve_text_refs(
-            "https://{{HOST}}/v1?t={{TOKEN}}",
-            &segs,
-            0,
-            &env,
-        )
-        .unwrap();
+        let out = resolve_text_refs("https://{{HOST}}/v1?t={{TOKEN}}", &segs, 0, &env).unwrap();
         assert_eq!(out, "https://api.x.com/v1?t=abc123");
     }
 
@@ -762,10 +757,7 @@ mod tests {
         };
         let v = http_response_to_json(&response);
         assert_eq!(v.get("status").and_then(|x| x.as_u64()), Some(200));
-        assert_eq!(
-            v.get("status_text").and_then(|x| x.as_str()),
-            Some("OK")
-        );
+        assert_eq!(v.get("status_text").and_then(|x| x.as_str()), Some("OK"));
         let headers_arr = v.get("headers").and_then(|x| x.as_array()).unwrap();
         assert_eq!(headers_arr.len(), 1);
         assert_eq!(

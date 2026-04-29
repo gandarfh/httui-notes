@@ -683,8 +683,10 @@ impl Document {
     /// preserved on this side; the new `Document` is folded in.
     pub fn replace_with_text(&mut self, text: &str, new_cursor: Cursor) -> TuiResult<()> {
         // Capture cached state by alias on the way out.
-        let mut cached: std::collections::HashMap<String, (ExecutionState, Option<serde_json::Value>)> =
-            std::collections::HashMap::new();
+        let mut cached: std::collections::HashMap<
+            String,
+            (ExecutionState, Option<serde_json::Value>),
+        > = std::collections::HashMap::new();
         for seg in &self.segments {
             if let Segment::Block(b) = seg {
                 if let Some(alias) = &b.alias {
@@ -927,10 +929,7 @@ mod tests {
             .iter()
             .map(|s| match s {
                 Segment::Prose(r) => format!("Prose({:?})", r.to_string()),
-                Segment::Block(b) => format!(
-                    "Block(type={}, alias={:?})",
-                    b.block_type, b.alias
-                ),
+                Segment::Block(b) => format!("Block(type={}, alias={:?})", b.block_type, b.alias),
             })
             .collect()
     }
@@ -1082,11 +1081,7 @@ mod tests {
         let md = "# t\n\n```db-sqlite alias=q\nSELECT 1\n```\n";
         let mut doc = Document::from_markdown(md).unwrap();
         // Find the block segment.
-        let block_idx = doc
-            .segments()
-            .iter()
-            .position(|s| s.is_block())
-            .unwrap();
+        let block_idx = doc.segments().iter().position(|s| s.is_block()).unwrap();
         // Park cursor at end of first SQL line ("SELECT 1" has 8
         // chars, so col 8 is EOL).
         doc.set_cursor(cursor_in_body(&doc, block_idx, 0, 8));
@@ -1226,11 +1221,7 @@ mod tests {
         let doc = Document::from_markdown(WITH_NON_EXECUTABLE_FENCE).unwrap();
         // The javascript fence must be inside a prose segment; only the
         // http block is counted.
-        let blocks: Vec<&BlockNode> = doc
-            .segments()
-            .iter()
-            .filter_map(|s| s.as_block())
-            .collect();
+        let blocks: Vec<&BlockNode> = doc.segments().iter().filter_map(|s| s.as_block()).collect();
         assert_eq!(blocks.len(), 1);
         assert!(blocks[0].is_http());
 
@@ -1366,10 +1357,7 @@ mod tests {
         // the same logical block — that's the contract paste relies
         // on. Ends with `\n` so paste's linewise semantics insert a
         // clean line.
-        let d = Document::from_markdown(
-            "```db-postgres alias=q\nSELECT 1\n```\n",
-        )
-        .unwrap();
+        let d = Document::from_markdown("```db-postgres alias=q\nSELECT 1\n```\n").unwrap();
         let blk_idx = d
             .segments
             .iter()
@@ -1402,10 +1390,9 @@ mod tests {
         // surrounding prose runs (one is the synthetic empty pad)
         // collapse into one merged Prose so the segment list stays
         // clean.
-        let mut d = Document::from_markdown(
-            "before\n\n```db-postgres alias=q\nSELECT 1\n```\n\nafter\n",
-        )
-        .unwrap();
+        let mut d =
+            Document::from_markdown("before\n\n```db-postgres alias=q\nSELECT 1\n```\n\nafter\n")
+                .unwrap();
         let blk_idx = d
             .segments
             .iter()
@@ -1413,10 +1400,7 @@ mod tests {
             .unwrap();
         let yanked = d.delete_block_at(blk_idx).expect("yanked something");
         assert!(yanked.contains("alias=q"));
-        assert!(d
-            .segments
-            .iter()
-            .all(|s| !matches!(s, Segment::Block(_))));
+        assert!(d.segments.iter().all(|s| !matches!(s, Segment::Block(_))));
         // Document text now has both `before` and `after` prose
         // contents reachable.
         let text: String = d
@@ -1436,10 +1420,9 @@ mod tests {
         // Cut → paste cycle: the fence text yanked from `delete_block_at`
         // can be inserted into another prose and a re-parse rebuilds
         // the block. This is the cut/paste-to-move-block flow.
-        let mut d = Document::from_markdown(
-            "head\n\n```db-postgres alias=q\nSELECT 1\n```\n\ntail\n",
-        )
-        .unwrap();
+        let mut d =
+            Document::from_markdown("head\n\n```db-postgres alias=q\nSELECT 1\n```\n\ntail\n")
+                .unwrap();
         let blk_idx = d
             .segments
             .iter()
@@ -1471,10 +1454,8 @@ mod tests {
     fn reparse_prose_assigns_fresh_block_ids() {
         // Newly-spliced blocks must not collide with IDs the document
         // already minted — `next_block_id` is bumped per insert.
-        let mut d = Document::from_markdown(
-            "```db-postgres alias=existing\nSELECT 1\n```\n\n",
-        )
-        .unwrap();
+        let mut d =
+            Document::from_markdown("```db-postgres alias=existing\nSELECT 1\n```\n\n").unwrap();
         let existing_id = match d.segments.iter().find(|s| matches!(s, Segment::Block(_))) {
             Some(Segment::Block(b)) => b.id,
             _ => panic!("expected a block"),
@@ -1482,9 +1463,7 @@ mod tests {
         // Append a new fence to the trailing prose and re-parse.
         let trailing_idx = d.segments.len() - 1;
         if let Some(Segment::Prose(rope)) = d.segments.get_mut(trailing_idx) {
-            rope.append(Rope::from_str(
-                "```db-mysql alias=fresh\nSELECT 2\n```\n",
-            ));
+            rope.append(Rope::from_str("```db-mysql alias=fresh\nSELECT 2\n```\n"));
         }
         assert!(d.reparse_prose_at(trailing_idx));
         let new_ids: Vec<BlockId> = d

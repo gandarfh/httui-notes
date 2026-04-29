@@ -93,13 +93,8 @@ impl TabBar {
     /// call on `App` itself.
     pub fn active_document_mut(&mut self) -> Option<&mut crate::buffer::Document> {
         let idx = self.active;
-        self.tabs
-            .get_mut(idx)?
-            .active_leaf_mut()
-            .document
-            .as_mut()
+        self.tabs.get_mut(idx)?.active_leaf_mut().document.as_mut()
     }
-
 }
 
 /// In-flight async DB execution. Stores the cancel handle so a
@@ -925,17 +920,18 @@ impl App {
             // SQLite cache (TTL 300s) is the fast path; introspection
             // hits the actual driver only on miss / expired entries.
             // Mirrors `useSchemaCacheStore.ensureLoaded` on desktop.
-            let result = match httui_core::db::schema_cache::get_cached_schema(
-                &app_pool, &conn_id, 300,
-            )
-            .await
-            {
-                Ok(Some(entries)) if !entries.is_empty() => Ok(entries),
-                _ => httui_core::db::schema_cache::introspect_schema(
-                    &pool_mgr, &app_pool, &conn_id,
-                )
-                .await,
-            };
+            let result =
+                match httui_core::db::schema_cache::get_cached_schema(&app_pool, &conn_id, 300)
+                    .await
+                {
+                    Ok(Some(entries)) if !entries.is_empty() => Ok(entries),
+                    _ => {
+                        httui_core::db::schema_cache::introspect_schema(
+                            &pool_mgr, &app_pool, &conn_id,
+                        )
+                        .await
+                    }
+                };
             let _ = sender.send(crate::event::AppEvent::SchemaLoaded {
                 connection_id: conn_id,
                 result,
@@ -981,10 +977,7 @@ impl App {
     /// cursor being on it. Silent no-op when the active pane has no
     /// path or the segment isn't a block.
     pub fn record_run_anchor(&mut self, segment_idx: usize) {
-        let Some(file_path) = self
-            .active_pane()
-            .and_then(|p| p.document_path.clone())
-        else {
+        let Some(file_path) = self.active_pane().and_then(|p| p.document_path.clone()) else {
             return;
         };
         let alias = self
@@ -1190,7 +1183,9 @@ impl App {
         let name = file_name(&relative_path);
         // No tab yet (e.g. last close left us empty)? Open as new tab.
         if self.tabs.is_empty() {
-            self.tabs.tabs.push(TabState::new(Pane::new(doc, relative_path)));
+            self.tabs
+                .tabs
+                .push(TabState::new(Pane::new(doc, relative_path)));
             self.tabs.active = 0;
             return Ok(format!("\"{name}\""));
         }
@@ -1303,20 +1298,13 @@ impl App {
             ));
         }
         std::fs::create_dir_all(&abs).map_err(|e| format!("create folder failed: {e}"))?;
-        Ok(format!(
-            "created folder \"{}\"",
-            file_name(&relative_path)
-        ))
+        Ok(format!("created folder \"{}\"", file_name(&relative_path)))
     }
 
     /// Rename a vault-relative path. With `src == None` the focused
     /// pane's path is used. Updates every pane (across all tabs) that
     /// currently shows the renamed path.
-    pub fn rename_path(
-        &mut self,
-        src: Option<PathBuf>,
-        dst: PathBuf,
-    ) -> Result<String, String> {
+    pub fn rename_path(&mut self, src: Option<PathBuf>, dst: PathBuf) -> Result<String, String> {
         let src_rel = match src {
             Some(p) => p,
             None => self
@@ -1361,9 +1349,7 @@ impl App {
             let dst_key = dst.to_string_lossy().to_string();
             let dst_abs_for_read = dst_abs.clone();
             tokio::spawn(async move {
-                if let Err(e) =
-                    httui_core::search::remove_search_entry(&pool, &src_key).await
-                {
+                if let Err(e) = httui_core::search::remove_search_entry(&pool, &src_key).await {
                     tracing::warn!("search index rename (drop old) failed: {e}");
                 }
                 let body = std::fs::read_to_string(&dst_abs_for_read).unwrap_or_default();
@@ -1382,11 +1368,7 @@ impl App {
     /// Delete a path under the vault. Panes pointing at the deleted
     /// path are emptied (document/path → None); a tab containing only
     /// empty leaves is collapsed to a single empty leaf.
-    pub fn delete_path(
-        &mut self,
-        target: Option<PathBuf>,
-        force: bool,
-    ) -> Result<String, String> {
+    pub fn delete_path(&mut self, target: Option<PathBuf>, force: bool) -> Result<String, String> {
         let target_rel = match target {
             Some(p) => p,
             None => self
@@ -1395,16 +1377,12 @@ impl App {
                 .ok_or_else(|| "no file name".to_string())?,
         };
         let opens_current = self.document_path() == Some(&target_rel);
-        if opens_current
-            && !force
-            && self.document().is_some_and(|d| d.is_dirty())
-        {
+        if opens_current && !force && self.document().is_some_and(|d| d.is_dirty()) {
             return Err("no write since last change (add ! to override)".into());
         }
         let vault = self.vault_path.clone();
         let abs = vault.join(&target_rel);
-        let metadata = std::fs::metadata(&abs)
-            .map_err(|e| format!("delete failed: {e}"))?;
+        let metadata = std::fs::metadata(&abs).map_err(|e| format!("delete failed: {e}"))?;
         let was_dir = metadata.is_dir();
         if was_dir {
             std::fs::remove_dir_all(&abs).map_err(|e| format!("delete failed: {e}"))?;
@@ -1505,11 +1483,7 @@ fn file_name(p: &std::path::Path) -> String {
         .unwrap_or_else(|| p.display().to_string())
 }
 
-pub async fn run(
-    config: Config,
-    resolved: ResolvedVault,
-    app_pool: SqlitePool,
-) -> TuiResult<()> {
+pub async fn run(config: Config, resolved: ResolvedVault, app_pool: SqlitePool) -> TuiResult<()> {
     info!(vault = %resolved.vault.display(), "starting notes-tui");
 
     terminal::install_panic_hook();
@@ -1562,12 +1536,7 @@ async fn main_loop(
                 kind,
                 outcome,
             }) => {
-                crate::commands::db::handle_db_block_result(
-                    app,
-                    segment_idx,
-                    kind,
-                    outcome,
-                );
+                crate::commands::db::handle_db_block_result(app, segment_idx, kind, outcome);
             }
             Some(AppEvent::HttpBlockResult {
                 segment_idx,
@@ -1660,10 +1629,7 @@ fn handle_file_changed_externally(app: &mut App, path: std::path::PathBuf) {
     let new_doc = match Document::from_markdown(&disk) {
         Ok(d) => d,
         Err(e) => {
-            app.set_status(
-                crate::app::StatusKind::Error,
-                format!("reload failed: {e}"),
-            );
+            app.set_status(crate::app::StatusKind::Error, format!("reload failed: {e}"));
             return;
         }
     };
@@ -1723,9 +1689,7 @@ fn cursor_y(doc: &Document, layouts: &[SegmentLayout]) -> u16 {
                     RawSection::Body { line, .. } => {
                         l.y_start.saturating_add(3).saturating_add(line as u16)
                     }
-                    RawSection::Closer => {
-                        l.y_start.saturating_add(l.height.saturating_sub(3))
-                    }
+                    RawSection::Closer => l.y_start.saturating_add(l.height.saturating_sub(3)),
                 }
             })
             .unwrap_or(0),

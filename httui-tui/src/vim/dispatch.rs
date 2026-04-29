@@ -2,16 +2,17 @@ use crossterm::event::KeyEvent;
 use ropey::Rope;
 
 use crate::app::{App, StatusKind};
-use crate::buffer::{Cursor, Segment};
 use crate::buffer::block::BlockNode;
+use crate::buffer::{Cursor, Segment};
+use crate::commands::db::{load_active_env_vars, resolve_connection_id_sync};
+use crate::pane::{FocusDir, SplitDir};
+use crate::tree::{TreePrompt, TreePromptKind};
 use crate::vim::change::{ChangeOrigin, ChangeRecord};
 use crate::vim::ex::{self, ExResult};
 use crate::vim::insert::{position_for_insert, recoil_after_exit};
 use crate::vim::mode::Mode;
 use crate::vim::motions;
 use crate::vim::operator;
-use crate::commands::db::{load_active_env_vars, resolve_connection_id_sync};
-use crate::pane::{FocusDir, SplitDir};
 use crate::vim::parser::{
     parse_block_history, parse_block_template_picker, parse_cmdline, parse_connection_picker,
     parse_content_search, parse_db_confirm_run, parse_db_export_picker, parse_db_row_detail,
@@ -21,7 +22,6 @@ use crate::vim::parser::{
     Operator, PastePos, TextObject, WindowCmd,
 };
 use crate::vim::search;
-use crate::tree::{TreePrompt, TreePromptKind};
 
 /// Top-level vim key dispatcher. The app's `handle_key` delegates here.
 pub fn dispatch(app: &mut App, key: KeyEvent) {
@@ -137,10 +137,7 @@ pub fn dispatch(app: &mut App, key: KeyEvent) {
     // the completion popup against the new prefix. `InsertChar` and
     // `DeleteBackward` are the two paths that shift the prefix at
     // the cursor; everything else is a no-op for the popup.
-    if matches!(
-        action,
-        Action::InsertChar(_) | Action::DeleteBackward
-    ) {
+    if matches!(action, Action::InsertChar(_) | Action::DeleteBackward) {
         refresh_completion_popup(app);
     }
 }
@@ -236,9 +233,7 @@ fn rebuild_completion_popup(app: &mut App, allow_empty_prefix: bool) {
     // ref-path mode entirely. The prefix the popup tracks is what's
     // typed since the last `{{` or `.` — same accept semantics as
     // the SQL path (backspace prefix, splice label).
-    if let Some(ref_detect) =
-        crate::sql_completion::detect_ref_context(&body, line, offset)
-    {
+    if let Some(ref_detect) = crate::sql_completion::detect_ref_context(&body, line, offset) {
         // Need env vars to populate top-level ref candidates.
         let env_vars: std::collections::HashMap<String, String> =
             tokio::task::block_in_place(|| {
@@ -282,15 +277,15 @@ fn rebuild_completion_popup(app: &mut App, allow_empty_prefix: bool) {
     // Detect the prefix word at the cursor. When we got there via a
     // manual trigger and the cursor isn't on a word char, fall back
     // to "no prefix, anchor at cursor" so the popup still opens.
-    let (anchor_offset, prefix) =
-        match crate::sql_completion::prefix_at_cursor(&body, line, offset) {
-            Some(p) => p,
-            None if allow_empty_prefix => (offset, String::new()),
-            None => {
-                app.completion_popup = None;
-                return;
-            }
-        };
+    let (anchor_offset, prefix) = match crate::sql_completion::prefix_at_cursor(&body, line, offset)
+    {
+        Some(p) => p,
+        None if allow_empty_prefix => (offset, String::new()),
+        None => {
+            app.completion_popup = None;
+            return;
+        }
+    };
     let dialect = crate::sql_completion::Dialect::from_block(block);
     let context = crate::sql_completion::detect_context(&body, line, anchor_offset);
     // The fence may carry either a UUID (canonical, written by the
@@ -323,12 +318,8 @@ fn rebuild_completion_popup(app: &mut App, allow_empty_prefix: bool) {
             app.ensure_schema_loaded(id);
         }
     }
-    let items = crate::sql_completion::complete(
-        dialect,
-        &prefix,
-        context,
-        schema_tables.as_deref(),
-    );
+    let items =
+        crate::sql_completion::complete(dialect, &prefix, context, schema_tables.as_deref());
     if items.is_empty() {
         app.completion_popup = None;
         return;
@@ -392,7 +383,9 @@ fn apply_cancel_db_run(app: &mut App) {
 }
 
 fn apply_completion_next(app: &mut App) {
-    let Some(state) = app.completion_popup.as_mut() else { return };
+    let Some(state) = app.completion_popup.as_mut() else {
+        return;
+    };
     if state.items.is_empty() {
         return;
     }
@@ -400,7 +393,9 @@ fn apply_completion_next(app: &mut App) {
 }
 
 fn apply_completion_prev(app: &mut App) {
-    let Some(state) = app.completion_popup.as_mut() else { return };
+    let Some(state) = app.completion_popup.as_mut() else {
+        return;
+    };
     if state.items.is_empty() {
         return;
     }
@@ -420,12 +415,16 @@ fn apply_completion_dismiss(app: &mut App) {
 /// (which clears the partial word in the body), then insert each
 /// char of the label. Cursor lands at the end of the inserted text.
 fn apply_completion_accept(app: &mut App) {
-    let Some(state) = app.completion_popup.take() else { return };
+    let Some(state) = app.completion_popup.take() else {
+        return;
+    };
     let Some(item) = state.items.get(state.selected).cloned() else {
         return;
     };
     let prefix_chars = state.prefix.chars().count();
-    let Some(doc) = app.tabs.active_document_mut() else { return };
+    let Some(doc) = app.tabs.active_document_mut() else {
+        return;
+    };
     doc.snapshot();
     for _ in 0..prefix_chars {
         doc.delete_char_before_cursor();
@@ -615,9 +614,7 @@ fn apply_action(app: &mut App, action: Action, recording: bool) {
             return_from_visual(app);
         }
         Action::VisualSwap => {
-            if let (Some(anchor), Some(doc)) =
-                (app.vim.visual_anchor, app.document_mut())
-            {
+            if let (Some(anchor), Some(doc)) = (app.vim.visual_anchor, app.document_mut()) {
                 let cur = doc.cursor();
                 doc.set_cursor(anchor);
                 app.vim.visual_anchor = Some(cur);
@@ -879,9 +876,10 @@ fn apply_action(app: &mut App, action: Action, recording: bool) {
             match ex::run(app, &buf) {
                 ExResult::Ok(msg) => app.set_status(StatusKind::Info, msg),
                 ExResult::Err(msg) => app.set_status(StatusKind::Error, msg),
-                ExResult::Unknown(s) => {
-                    app.set_status(StatusKind::Error, format!("E492: not an editor command: {s}"))
-                }
+                ExResult::Unknown(s) => app.set_status(
+                    StatusKind::Error,
+                    format!("E492: not an editor command: {s}"),
+                ),
                 ExResult::Empty | ExResult::Quit => {}
             }
         }
@@ -1366,13 +1364,7 @@ fn execute_search(app: &mut App, pattern: &str, forward: bool, save: bool) {
 
 // ───────────── operator wrappers (snapshot + record) ─────────────
 
-fn apply_op_motion(
-    app: &mut App,
-    op: Operator,
-    motion: Motion,
-    count: usize,
-    recording: bool,
-) {
+fn apply_op_motion(app: &mut App, op: Operator, motion: Motion, count: usize, recording: bool) {
     let viewport = app.viewport_height();
     let mut outcome = operator::OpOutcome::default();
     // Borrow the unnamed register out so we can use `app.document_mut()`
@@ -1392,12 +1384,10 @@ fn apply_op_motion(
     }
     if outcome.enter_insert {
         app.vim.enter_insert();
-        app.vim
-            .insert_session
-            .start_change(ChangeOrigin::Motion {
-                motion,
-                op_count: count,
-            });
+        app.vim.insert_session.start_change(ChangeOrigin::Motion {
+            motion,
+            op_count: count,
+        });
     } else if recording && op_mutates(op) {
         app.vim.last_change = Some(ChangeRecord::OperatorMotion(op, motion, count));
     }
@@ -1619,7 +1609,8 @@ fn apply_visual_operator(app: &mut App, op: Operator, _recording: bool) {
             doc.snapshot();
         }
         let cursor = doc.cursor();
-        outcome = operator::apply_visual(op, translated_anchor, cursor, linewise, doc, &mut unnamed);
+        outcome =
+            operator::apply_visual(op, translated_anchor, cursor, linewise, doc, &mut unnamed);
     }
     if let Some(swap) = swap {
         swap.exit(app);
@@ -1662,8 +1653,10 @@ fn apply_cross_segment_visual(
     let full_text = doc.to_markdown();
     let chars: Vec<char> = full_text.chars().collect();
     let total = chars.len();
-    let lo_global = doc.global_offset_for(a_seg.min(c_seg), if a_seg <= c_seg { a_off } else { c_off });
-    let hi_global = doc.global_offset_for(a_seg.max(c_seg), if a_seg <= c_seg { c_off } else { a_off });
+    let lo_global =
+        doc.global_offset_for(a_seg.min(c_seg), if a_seg <= c_seg { a_off } else { c_off });
+    let hi_global =
+        doc.global_offset_for(a_seg.max(c_seg), if a_seg <= c_seg { c_off } else { a_off });
     let (lo, hi) = (lo_global.min(total), hi_global.min(total));
 
     // Resolve the inclusive char range to delete / yank. Linewise
@@ -1691,10 +1684,7 @@ fn apply_cross_segment_visual(
 
     // Splice the range out and rebuild the doc. The cursor lands
     // at `start` (vim's convention for d / c).
-    let new_text: String = chars[..start]
-        .iter()
-        .chain(chars[end..].iter())
-        .collect();
+    let new_text: String = chars[..start].iter().chain(chars[end..].iter()).collect();
     // We need a Cursor for the new doc; pre-compute as InProse
     // segment 0 offset 0; replace_with_text clamps it sanely.
     let target = Cursor::InProse {
@@ -1714,8 +1704,14 @@ fn apply_cross_segment_visual(
 
 fn endpoint_of(c: Cursor) -> Option<(usize, usize)> {
     match c {
-        Cursor::InProse { segment_idx, offset } => Some((segment_idx, offset)),
-        Cursor::InBlock { segment_idx, offset } => Some((segment_idx, offset)),
+        Cursor::InProse {
+            segment_idx,
+            offset,
+        } => Some((segment_idx, offset)),
+        Cursor::InBlock {
+            segment_idx,
+            offset,
+        } => Some((segment_idx, offset)),
         Cursor::InBlockResult { .. } => None,
     }
 }
@@ -1813,9 +1809,10 @@ fn is_empty_prose(s: &Segment) -> bool {
 /// selection paints inclusively at both ends. Mode stays Visual /
 /// VisualLine — user can layer more motions on top.
 fn apply_visual_select_textobject(app: &mut App, textobj: TextObject) {
-    let Some(doc) = app.document_mut() else { return };
-    let Some((segment_idx, start, end)) =
-        crate::vim::textobject::compute_range(textobj, doc)
+    let Some(doc) = app.document_mut() else {
+        return;
+    };
+    let Some((segment_idx, start, end)) = crate::vim::textobject::compute_range(textobj, doc)
     else {
         return;
     };
@@ -1859,7 +1856,6 @@ fn return_from_visual(app: &mut App) {
 // vim-side action handlers (`apply_confirm_db_run`,
 // `maybe_prefetch_db_more_rows`, the top-level dispatcher) call
 // directly into that module.
-
 
 /// Distance from the bottom of the loaded result that triggers an
 /// eager fetch of the next page. Half the on-screen viewport feels
@@ -1932,7 +1928,6 @@ fn maybe_prefetch_db_more_rows(app: &mut App) {
     }
 }
 
-
 // ───────────── connection picker popup ─────────────
 
 /// `gc` — open the connection picker popup anchored to the DB
@@ -1947,7 +1942,10 @@ fn open_connection_picker(app: &mut App) -> Result<(), String> {
         | Some(Cursor::InBlockResult { segment_idx, .. }) => segment_idx,
         _ => return Err("no DB block at cursor".into()),
     };
-    let block = match app.document().and_then(|d| d.segments().get(segment_idx).cloned()) {
+    let block = match app
+        .document()
+        .and_then(|d| d.segments().get(segment_idx).cloned())
+    {
         Some(Segment::Block(b)) => b,
         _ => return Err("no DB block at cursor".into()),
     };
@@ -1960,8 +1958,9 @@ fn open_connection_picker(app: &mut App) -> Result<(), String> {
 
     let pool_mgr = app.pool_manager.clone();
     let raw = tokio::task::block_in_place(|| {
-        tokio::runtime::Handle::current()
-            .block_on(httui_core::db::connections::list_connections(pool_mgr.app_pool()))
+        tokio::runtime::Handle::current().block_on(httui_core::db::connections::list_connections(
+            pool_mgr.app_pool(),
+        ))
     });
     let connections: Vec<crate::app::ConnectionEntry> = match raw {
         Ok(list) => list
@@ -2008,12 +2007,16 @@ fn apply_close_connection_picker(app: &mut App) {
 }
 
 fn apply_move_connection_picker_cursor(app: &mut App, delta: i32) {
-    let Some(state) = app.connection_picker.as_mut() else { return };
+    let Some(state) = app.connection_picker.as_mut() else {
+        return;
+    };
     if state.connections.is_empty() {
         return;
     }
     let last = state.connections.len() as i64 - 1;
-    let next = (state.selected as i64).saturating_add(delta as i64).clamp(0, last);
+    let next = (state.selected as i64)
+        .saturating_add(delta as i64)
+        .clamp(0, last);
     state.selected = next as usize;
 }
 
@@ -2055,10 +2058,7 @@ fn apply_confirm_connection_picker(app: &mut App) {
     // completion engine has tables/columns ready to suggest. Cheap to
     // call repeatedly — `ensure_schema_loaded` dedups on `pending`.
     app.ensure_schema_loaded(&picked_id);
-    app.set_status(
-        StatusKind::Info,
-        format!("connection set to {picked_name}"),
-    );
+    app.set_status(StatusKind::Info, format!("connection set to {picked_name}"));
 }
 
 /// `D` in the connection picker — drop the highlighted connection
@@ -2077,15 +2077,13 @@ fn apply_delete_connection_in_picker(app: &mut App) {
     let id = picked.id.clone();
     let name = picked.name.clone();
     let result = tokio::task::block_in_place(|| {
-        tokio::runtime::Handle::current().block_on(
-            httui_core::db::connections::delete_connection(pool_mgr.app_pool(), &id),
-        )
+        tokio::runtime::Handle::current().block_on(httui_core::db::connections::delete_connection(
+            pool_mgr.app_pool(),
+            &id,
+        ))
     });
     if let Err(e) = result {
-        app.set_status(
-            StatusKind::Error,
-            format!("delete connection failed: {e}"),
-        );
+        app.set_status(StatusKind::Error, format!("delete connection failed: {e}"));
         return;
     }
 
@@ -2093,8 +2091,9 @@ fn apply_delete_connection_in_picker(app: &mut App) {
     // emptied the list, close the picker — there's nothing left to
     // pick.
     let raw = tokio::task::block_in_place(|| {
-        tokio::runtime::Handle::current()
-            .block_on(httui_core::db::connections::list_connections(pool_mgr.app_pool()))
+        tokio::runtime::Handle::current().block_on(httui_core::db::connections::list_connections(
+            pool_mgr.app_pool(),
+        ))
     });
     match raw {
         Ok(list) => {
@@ -2207,10 +2206,7 @@ fn apply_rerun_last_block(app: &mut App) {
         app.set_status(StatusKind::Info, "no block has been run yet");
         return;
     };
-    let Some(active_path) = app
-        .active_pane()
-        .and_then(|p| p.document_path.clone())
-    else {
+    let Some(active_path) = app.active_pane().and_then(|p| p.document_path.clone()) else {
         app.set_status(StatusKind::Info, "no document open");
         return;
     };
@@ -2226,10 +2222,13 @@ fn apply_rerun_last_block(app: &mut App) {
         // Alias-first lookup so edits that shifted segment_idx don't
         // fire the wrong block.
         let by_alias = anchor.alias.as_deref().and_then(|a| {
-            doc.segments().iter().enumerate().find_map(|(i, s)| match s {
-                Segment::Block(b) if b.alias.as_deref() == Some(a) => Some(i),
-                _ => None,
-            })
+            doc.segments()
+                .iter()
+                .enumerate()
+                .find_map(|(i, s)| match s {
+                    Segment::Block(b) if b.alias.as_deref() == Some(a) => Some(i),
+                    _ => None,
+                })
         });
         by_alias.or_else(|| {
             // Fall back to the recorded index, but only if it still
@@ -2299,7 +2298,10 @@ fn compute_cursor_y(
     use crate::buffer::block::raw_section_at;
     use crate::buffer::block::RawSection;
     match doc.cursor() {
-        Cursor::InProse { segment_idx, offset } => {
+        Cursor::InProse {
+            segment_idx,
+            offset,
+        } => {
             let layout = layouts
                 .iter()
                 .find(|l| l.segment_idx == segment_idx)
@@ -2310,9 +2312,15 @@ fn compute_cursor_y(
                 }
                 _ => 0,
             };
-            layout.map(|l| l.y_start).unwrap_or(0).saturating_add(line_offset)
+            layout
+                .map(|l| l.y_start)
+                .unwrap_or(0)
+                .saturating_add(line_offset)
         }
-        Cursor::InBlock { segment_idx, offset } => {
+        Cursor::InBlock {
+            segment_idx,
+            offset,
+        } => {
             let Some(layout) = layouts.iter().find(|l| l.segment_idx == segment_idx) else {
                 return 0;
             };
@@ -2325,19 +2333,19 @@ fn compute_cursor_y(
             // mapping in `ui::mod`.
             match raw_section_at(raw, offset) {
                 RawSection::Header => layout.y_start.saturating_add(2),
-                RawSection::Closer => layout.y_start.saturating_add(layout.height.saturating_sub(3)),
+                RawSection::Closer => layout
+                    .y_start
+                    .saturating_add(layout.height.saturating_sub(3)),
                 RawSection::Body { line, .. } => {
                     layout.y_start.saturating_add(3).saturating_add(line as u16)
                 }
             }
         }
-        Cursor::InBlockResult { segment_idx, .. } => {
-            layouts
-                .iter()
-                .find(|l| l.segment_idx == segment_idx)
-                .map(|l| l.y_start)
-                .unwrap_or(0)
-        }
+        Cursor::InBlockResult { segment_idx, .. } => layouts
+            .iter()
+            .find(|l| l.segment_idx == segment_idx)
+            .map(|l| l.y_start)
+            .unwrap_or(0),
     }
 }
 
@@ -2417,7 +2425,11 @@ fn apply_write_all(app: &mut App) {
     }
     app.tabs.active = original_active;
 
-    let status_kind = if errored > 0 { StatusKind::Error } else { StatusKind::Info };
+    let status_kind = if errored > 0 {
+        StatusKind::Error
+    } else {
+        StatusKind::Info
+    };
     let msg = match (written, errored) {
         (0, 0) => "no dirty buffers".to_string(),
         (n, 0) => format!("{n} files written"),
@@ -2470,12 +2482,16 @@ fn apply_open_tab_picker(app: &mut App) {
 }
 
 fn apply_move_tab_picker_cursor(app: &mut App, delta: i32) {
-    let Some(state) = app.tab_picker.as_mut() else { return };
+    let Some(state) = app.tab_picker.as_mut() else {
+        return;
+    };
     if state.entries.is_empty() {
         return;
     }
     let last = state.entries.len() as i64 - 1;
-    let next = (state.selected as i64).saturating_add(delta as i64).clamp(0, last);
+    let next = (state.selected as i64)
+        .saturating_add(delta as i64)
+        .clamp(0, last);
     state.selected = next as usize;
 }
 
@@ -2499,13 +2515,17 @@ fn apply_confirm_tab_picker(app: &mut App) {
 // ───────────── block-template picker (gN) ─────────────
 
 fn apply_move_block_template_picker_cursor(app: &mut App, delta: i32) {
-    let Some(state) = app.block_template_picker.as_mut() else { return };
+    let Some(state) = app.block_template_picker.as_mut() else {
+        return;
+    };
     let len = crate::app::BlockTemplate::ALL.len();
     if len == 0 {
         return;
     }
     let last = len as i64 - 1;
-    let next = (state.selected as i64).saturating_add(delta as i64).clamp(0, last);
+    let next = (state.selected as i64)
+        .saturating_add(delta as i64)
+        .clamp(0, last);
     state.selected = next as usize;
 }
 
@@ -2539,7 +2559,10 @@ fn apply_confirm_block_template_picker(app: &mut App) {
         None => return,
     };
     let (segment_idx, line_offset_for_insert) = match cursor {
-        Cursor::InProse { segment_idx, offset } => {
+        Cursor::InProse {
+            segment_idx,
+            offset,
+        } => {
             // Compute the char offset at the start of the line *after*
             // the cursor's line so the splice goes onto a fresh line.
             let Some(doc) = app.document() else { return };
@@ -2638,7 +2661,10 @@ fn open_environment_picker(app: &mut App) -> Result<(), String> {
     }
     let entries: Vec<crate::app::EnvironmentEntry> = entries
         .into_iter()
-        .map(|e| crate::app::EnvironmentEntry { id: e.id, name: e.name })
+        .map(|e| crate::app::EnvironmentEntry {
+            id: e.id,
+            name: e.name,
+        })
         .collect();
     // Pre-select the active env so Enter is a no-op confirm. Falls
     // back to the first entry when nothing is active.
@@ -2663,12 +2689,16 @@ fn apply_close_environment_picker(app: &mut App) {
 }
 
 fn apply_move_environment_picker_cursor(app: &mut App, delta: i32) {
-    let Some(state) = app.environment_picker.as_mut() else { return };
+    let Some(state) = app.environment_picker.as_mut() else {
+        return;
+    };
     if state.entries.is_empty() {
         return;
     }
     let last = state.entries.len() as i64 - 1;
-    let next = (state.selected as i64).saturating_add(delta as i64).clamp(0, last);
+    let next = (state.selected as i64)
+        .saturating_add(delta as i64)
+        .clamp(0, last);
     state.selected = next as usize;
 }
 
@@ -2910,13 +2940,14 @@ fn render_value_text(v: &serde_json::Value) -> Vec<String> {
 /// clipboard backend is reachable (SSH without a forwarder, headless
 /// container, sandbox).
 fn apply_copy_db_row_detail_json(app: &mut App) {
-    let Some(state) = app.db_row_detail.as_ref() else { return };
+    let Some(state) = app.db_row_detail.as_ref() else {
+        return;
+    };
     let Some(payload) = db_row_payload(app, state.segment_idx, state.row) else {
         app.set_status(StatusKind::Error, "row no longer available");
         return;
     };
-    let text = serde_json::to_string_pretty(&payload)
-        .unwrap_or_else(|_| payload.to_string());
+    let text = serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string());
     match crate::clipboard::set_text(&text) {
         Ok(()) => app.set_status(StatusKind::Info, "row copied as JSON"),
         Err(msg) => app.set_status(StatusKind::Error, msg),
@@ -2927,11 +2958,7 @@ fn apply_copy_db_row_detail_json(app: &mut App) {
 /// object. Source for the modal's `y` clipboard copy. Returns
 /// `None` if the block / row vanished between the keystroke and
 /// the dispatch (e.g. user re-ran the block in another tab).
-fn db_row_payload(
-    app: &App,
-    segment_idx: usize,
-    row: usize,
-) -> Option<serde_json::Value> {
+fn db_row_payload(app: &App, segment_idx: usize, row: usize) -> Option<serde_json::Value> {
     let doc = app.document()?;
     let Segment::Block(block) = doc.segments().get(segment_idx)? else {
         return None;
@@ -3021,7 +3048,9 @@ fn apply_close_http_response_detail(app: &mut App) {
 /// rendered modal text) to the clipboard. Falls back gracefully when
 /// the clipboard isn't reachable or no body is cached.
 fn apply_copy_http_response_body(app: &mut App) {
-    let Some(state) = app.http_response_detail.as_ref() else { return };
+    let Some(state) = app.http_response_detail.as_ref() else {
+        return;
+    };
     let Some(text) = http_response_raw_body(app, state.segment_idx) else {
         app.set_status(StatusKind::Error, "no response body to copy");
         return;
@@ -3154,7 +3183,11 @@ fn http_response_raw_body(app: &App, segment_idx: usize) -> Option<String> {
     };
     let cached = block.cached_result.as_ref()?;
     let body = render_http_body(cached);
-    if body.is_empty() { None } else { Some(body) }
+    if body.is_empty() {
+        None
+    } else {
+        Some(body)
+    }
 }
 
 // ───────────── window / split commands ─────────────
@@ -3201,10 +3234,7 @@ fn focus_dir(app: &mut App, dir: FocusDir) {
 /// Close the focused pane. When it's the only pane in the active tab,
 /// closes the tab; when there are no tabs left, quits.
 fn close_focused_pane(app: &mut App) {
-    let leaf_count = app
-        .active_tab()
-        .map(|t| t.leaf_count())
-        .unwrap_or(0);
+    let leaf_count = app.active_tab().map(|t| t.leaf_count()).unwrap_or(0);
     if leaf_count > 1 {
         if app.document().is_some_and(|d| d.is_dirty()) {
             app.set_status(
@@ -3287,12 +3317,7 @@ fn replay_once(app: &mut App, record: ChangeRecord) {
     }
 }
 
-fn replay_insert_session(
-    app: &mut App,
-    pos: Option<InsertPos>,
-    _origin: Option<()>,
-    typed: &str,
-) {
+fn replay_insert_session(app: &mut App, pos: Option<InsertPos>, _origin: Option<()>, typed: &str) {
     if let Some(p) = pos {
         apply_action(app, Action::EnterInsert(p), false);
     }

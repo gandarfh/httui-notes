@@ -73,7 +73,10 @@ fn heading(line: &str) -> Option<Vec<Span<'static>>> {
     };
     let style = Style::default().fg(color).add_modifier(Modifier::BOLD);
     Some(vec![
-        Span::styled(format!("{} ", "#".repeat(level)), Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            format!("{} ", "#".repeat(level)),
+            Style::default().fg(Color::DarkGray),
+        ),
         Span::styled(text.to_string(), style),
     ])
 }
@@ -106,10 +109,12 @@ fn blockquote(line: &str) -> Option<Vec<Span<'static>>> {
             "> ".to_string(),
             Style::default().fg(Color::DarkGray),
         )];
-        spans.extend(inline_spans(rest).into_iter().map(|s| Span::styled(
-            s.content.into_owned(),
-            s.style.add_modifier(Modifier::ITALIC | Modifier::DIM),
-        )));
+        spans.extend(inline_spans(rest).into_iter().map(|s| {
+            Span::styled(
+                s.content.into_owned(),
+                s.style.add_modifier(Modifier::ITALIC | Modifier::DIM),
+            )
+        }));
         Some(spans)
     } else {
         None

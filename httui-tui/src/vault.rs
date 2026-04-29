@@ -62,9 +62,9 @@ fn prompt_for_vault() -> TuiResult<PathBuf> {
     }
 
     let expanded = expand_tilde(trimmed);
-    let path = PathBuf::from(&expanded).canonicalize().map_err(|e| {
-        TuiError::InvalidArg(format!("cannot resolve {expanded}: {e}"))
-    })?;
+    let path = PathBuf::from(&expanded)
+        .canonicalize()
+        .map_err(|e| TuiError::InvalidArg(format!("cannot resolve {expanded}: {e}")))?;
     if !path.is_dir() {
         return Err(TuiError::InvalidArg(format!(
             "{} is not a directory",

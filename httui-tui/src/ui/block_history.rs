@@ -278,11 +278,7 @@ fn ran_ago_string(ran_at_rfc3339: &str, now: DateTime<Utc>) -> String {
     then.format("%Y-%m-%d").to_string()
 }
 
-fn compute_popup_rect(
-    area: Rect,
-    state: &BlockHistoryState,
-    anchor: Option<BlockAnchor>,
-) -> Rect {
+fn compute_popup_rect(area: Rect, state: &BlockHistoryState, anchor: Option<BlockAnchor>) -> Rect {
     let width = POPUP_WIDTH.min(area.width.saturating_sub(2));
     let visible = state.entries.len().min(MAX_VISIBLE_ROWS) as u16;
     let height = visible + 3; // top border + footer + bottom border

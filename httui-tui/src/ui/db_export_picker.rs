@@ -43,11 +43,7 @@ pub fn render(
         }
     }
 
-    let title = format!(
-        " Export · {}/{} ",
-        state.selected + 1,
-        state.formats.len()
-    );
+    let title = format!(" Export · {}/{} ", state.selected + 1, state.formats.len());
     let outer = Block::default()
         .borders(Borders::ALL)
         .title(title)

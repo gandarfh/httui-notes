@@ -318,9 +318,7 @@ mod tests {
         let msg = IncomingMessage::from_ndjson(json).unwrap();
         match msg {
             IncomingMessage::Done {
-                usage,
-                stop_reason,
-                ..
+                usage, stop_reason, ..
             } => {
                 let u = usage.unwrap();
                 assert_eq!(u.input_tokens, 100);
@@ -334,7 +332,8 @@ mod tests {
 
     #[test]
     fn test_incoming_error_deserialization() {
-        let json = r#"{"type":"error","request_id":"req-1","category":"auth","message":"Not logged in"}"#;
+        let json =
+            r#"{"type":"error","request_id":"req-1","category":"auth","message":"Not logged in"}"#;
         let msg = IncomingMessage::from_ndjson(json).unwrap();
         match msg {
             IncomingMessage::Error {

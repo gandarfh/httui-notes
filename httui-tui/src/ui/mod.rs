@@ -10,17 +10,17 @@ mod content_search;
 mod cursor;
 mod db_confirm_run;
 mod db_export_picker;
+pub mod db_row_detail;
 mod db_settings_modal;
 mod environment_picker;
 mod fence_edit;
 mod help;
-mod tab_picker;
-pub mod db_row_detail;
 pub mod http_response_detail;
 mod prose;
 mod quickopen;
 mod sql_highlight;
 mod status;
+mod tab_picker;
 mod tabs;
 mod tree;
 
@@ -55,7 +55,11 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     // Vertical layout: optional tab bar (1 row) → body → status (1 row).
     let show_tabs = app.tabs.len() > 1;
     let constraints: &[Constraint] = if show_tabs {
-        &[Constraint::Length(1), Constraint::Min(1), Constraint::Length(1)]
+        &[
+            Constraint::Length(1),
+            Constraint::Min(1),
+            Constraint::Length(1),
+        ]
     } else {
         &[Constraint::Min(1), Constraint::Length(1)]
     };
@@ -140,8 +144,14 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     // leaf — the moving end of the selection is the cursor, the anchor
     // lives on `VimState`).
     let visual_overlay = match (app.vim.mode, app.vim.visual_anchor) {
-        (Mode::Visual, Some(anchor)) => Some(VisualOverlay { anchor, linewise: false }),
-        (Mode::VisualLine, Some(anchor)) => Some(VisualOverlay { anchor, linewise: true }),
+        (Mode::Visual, Some(anchor)) => Some(VisualOverlay {
+            anchor,
+            linewise: false,
+        }),
+        (Mode::VisualLine, Some(anchor)) => Some(VisualOverlay {
+            anchor,
+            linewise: true,
+        }),
         _ => None,
     };
 
@@ -246,8 +256,14 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     // (Visual, VisualLine) is active over the modal's body.
     if let Some(state) = app.db_row_detail.as_mut() {
         let visual = match (app.vim.mode, app.vim.visual_anchor) {
-            (Mode::Visual, Some(anchor)) => Some(VisualOverlay { anchor, linewise: false }),
-            (Mode::VisualLine, Some(anchor)) => Some(VisualOverlay { anchor, linewise: true }),
+            (Mode::Visual, Some(anchor)) => Some(VisualOverlay {
+                anchor,
+                linewise: false,
+            }),
+            (Mode::VisualLine, Some(anchor)) => Some(VisualOverlay {
+                anchor,
+                linewise: true,
+            }),
             _ => None,
         };
         db_row_detail::render(frame, editor_area, state, visual);
@@ -257,8 +273,14 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     // up.
     if let Some(state) = app.http_response_detail.as_mut() {
         let visual = match (app.vim.mode, app.vim.visual_anchor) {
-            (Mode::Visual, Some(anchor)) => Some(VisualOverlay { anchor, linewise: false }),
-            (Mode::VisualLine, Some(anchor)) => Some(VisualOverlay { anchor, linewise: true }),
+            (Mode::Visual, Some(anchor)) => Some(VisualOverlay {
+                anchor,
+                linewise: false,
+            }),
+            (Mode::VisualLine, Some(anchor)) => Some(VisualOverlay {
+                anchor,
+                linewise: true,
+            }),
             _ => None,
         };
         http_response_detail::render(frame, editor_area, state, visual);
@@ -374,7 +396,11 @@ fn compute_block_anchor(app: &App, editor_area: Rect, segment_idx: usize) -> Opt
     let visible_height = layout
         .height
         .saturating_sub(viewport_top.saturating_sub(layout.y_start))
-        .min(editor_area.height.saturating_sub(screen_top.saturating_sub(editor_area.y)));
+        .min(
+            editor_area
+                .height
+                .saturating_sub(screen_top.saturating_sub(editor_area.y)),
+        );
     if visible_height == 0 {
         return None;
     }
@@ -458,13 +484,7 @@ fn render_pane_tree(
                     // visual mode is single-pane.
                     if is_focused {
                         if let Some(overlay) = visual_overlay {
-                            overlay_visual_selection(
-                                frame,
-                                area,
-                                doc,
-                                pane.viewport_top,
-                                overlay,
-                            );
+                            overlay_visual_selection(frame, area, doc, pane.viewport_top, overlay);
                         }
                     }
                 }
@@ -534,13 +554,25 @@ fn overlay_visual_selection(
     overlay: VisualOverlay,
 ) {
     let (a_seg, a_off) = match overlay.anchor {
-        Cursor::InProse { segment_idx, offset } => (segment_idx, offset),
-        Cursor::InBlock { segment_idx, offset } => (segment_idx, offset),
+        Cursor::InProse {
+            segment_idx,
+            offset,
+        } => (segment_idx, offset),
+        Cursor::InBlock {
+            segment_idx,
+            offset,
+        } => (segment_idx, offset),
         Cursor::InBlockResult { .. } => return,
     };
     let (c_seg, c_off) = match doc.cursor() {
-        Cursor::InProse { segment_idx, offset } => (segment_idx, offset),
-        Cursor::InBlock { segment_idx, offset } => (segment_idx, offset),
+        Cursor::InProse {
+            segment_idx,
+            offset,
+        } => (segment_idx, offset),
+        Cursor::InBlock {
+            segment_idx,
+            offset,
+        } => (segment_idx, offset),
         Cursor::InBlockResult { .. } => return,
     };
     // Establish lo / hi by (segment, offset) so the highlight
@@ -576,8 +608,16 @@ fn overlay_visual_selection(
         };
         let total = rope.len_chars();
         // What slice of this segment is selected?
-        let seg_lo_off = if seg_idx == lo_seg { lo_off.min(total) } else { 0 };
-        let seg_hi_off = if seg_idx == hi_seg { hi_off.min(total) } else { total };
+        let seg_lo_off = if seg_idx == lo_seg {
+            lo_off.min(total)
+        } else {
+            0
+        };
+        let seg_hi_off = if seg_idx == hi_seg {
+            hi_off.min(total)
+        } else {
+            total
+        };
         if seg_hi_off < seg_lo_off {
             continue;
         }
@@ -868,10 +908,11 @@ fn render_segment_no_cursor(
         None => return,
     };
     let top_skip = viewport_top.saturating_sub(layout.y_start);
-    let visible_height = layout
-        .height
-        .saturating_sub(top_skip)
-        .min(editor_area.height.saturating_sub(layout.y_start.saturating_sub(viewport_top)));
+    let visible_height = layout.height.saturating_sub(top_skip).min(
+        editor_area
+            .height
+            .saturating_sub(layout.y_start.saturating_sub(viewport_top)),
+    );
     if visible_height == 0 {
         return;
     }
@@ -967,10 +1008,11 @@ fn render_segment(
     // Viewport clipping. `top_skip` is how many rows of this segment
     // are above the viewport top — they'll be drawn off-screen.
     let top_skip = viewport_top.saturating_sub(layout.y_start);
-    let visible_height = layout
-        .height
-        .saturating_sub(top_skip)
-        .min(editor_area.height.saturating_sub(layout.y_start.saturating_sub(viewport_top)));
+    let visible_height = layout.height.saturating_sub(top_skip).min(
+        editor_area
+            .height
+            .saturating_sub(layout.y_start.saturating_sub(viewport_top)),
+    );
     if visible_height == 0 {
         return;
     }
@@ -1008,9 +1050,7 @@ fn render_segment(
             );
             let focused = in_block || in_result;
             let selected_row = match cursor {
-                Cursor::InBlockResult { segment_idx, row }
-                    if segment_idx == layout.segment_idx =>
-                {
+                Cursor::InBlockResult { segment_idx, row } if segment_idx == layout.segment_idx => {
                     Some(row)
                 }
                 _ => None,
@@ -1024,11 +1064,7 @@ fn render_segment(
             // across frames (cursor floats inside the visible window
             // — same feel as the editor pane scroll).
             let viewport_slot: Option<&mut u16> = if in_result {
-                Some(
-                    result_viewport_top
-                        .entry(layout.segment_idx)
-                        .or_insert(0),
-                )
+                Some(result_viewport_top.entry(layout.segment_idx).or_insert(0))
             } else {
                 result_viewport_top.get_mut(&layout.segment_idx)
             };
@@ -1056,9 +1092,7 @@ fn render_segment(
                     let line_idx = raw.char_to_line(offset.min(raw.len_chars()));
                     let line_start = raw.line_to_char(line_idx);
                     let col = offset.saturating_sub(line_start);
-                    let max_x = area
-                        .x
-                        .saturating_add(area.width.saturating_sub(2));
+                    let max_x = area.x.saturating_add(area.width.saturating_sub(2));
                     match raw_section_at(raw, offset) {
                         RawSection::Body { line, col } => {
                             cursor::render_inblock_cursor(frame, area, line, col);
@@ -1087,8 +1121,7 @@ fn render_segment(
                             // footer bar.
                             let y = if b.is_http() {
                                 let request_height =
-                                    crate::buffer::block::body_line_count(&b.raw)
-                                        .max(1) as u16;
+                                    crate::buffer::block::body_line_count(&b.raw).max(1) as u16;
                                 area.y.saturating_add(3 + request_height)
                             } else {
                                 area.y.saturating_add(area.height.saturating_sub(3))
@@ -1156,4 +1189,3 @@ fn overlay_search_highlights(
         }
     }
 }
-

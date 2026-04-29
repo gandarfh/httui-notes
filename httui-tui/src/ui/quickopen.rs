@@ -64,10 +64,7 @@ pub fn render(frame: &mut Frame, editor_area: Rect, qo: &QuickOpen) -> (u16, u16
     // Prompt line — styled bg so trailing cells past the typed query
     // stay black instead of bleeding.
     let prompt_line = Line::from(vec![
-        Span::styled(
-            "> ",
-            Style::default().bg(Color::Black).fg(Color::LightCyan),
-        ),
+        Span::styled("> ", Style::default().bg(Color::Black).fg(Color::LightCyan)),
         Span::styled(qo.query.as_str().to_string(), bg_style),
     ]);
     frame.render_widget(Paragraph::new(prompt_line).style(bg_style), prompt_area);

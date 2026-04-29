@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
-use rmcp::{ServiceExt, transport::stdio};
+use rmcp::{transport::stdio, ServiceExt};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -52,16 +52,10 @@ async fn main() -> Result<()> {
         conn_manager.clone(),
     )));
 
-    let server = server::NotesMcpServer::new(
-        pool,
-        conn_manager,
-        Arc::new(registry),
-        args.vault,
-    );
+    let server = server::NotesMcpServer::new(pool, conn_manager, Arc::new(registry), args.vault);
 
     let service = server.serve(stdio()).await?;
     service.waiting().await?;
 
     Ok(())
 }
-

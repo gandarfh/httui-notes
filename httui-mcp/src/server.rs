@@ -1,9 +1,8 @@
 use httui_core::db::connections::PoolManager;
 use httui_core::executor::ExecutorRegistry;
 use rmcp::{
-    ServerHandler, model::*,
-    handler::server::wrapper::Parameters,
-    schemars, tool, tool_handler, tool_router,
+    handler::server::wrapper::Parameters, model::*, schemars, tool, tool_handler, tool_router,
+    ServerHandler,
 };
 use sqlx::sqlite::SqlitePool;
 use std::collections::VecDeque;
@@ -49,7 +48,10 @@ impl NotesMcpServer {
         let window = std::time::Duration::from_secs(EXECUTE_RATE_WINDOW_SECS);
 
         // Remove expired entries
-        while timestamps.front().is_some_and(|t| now.duration_since(*t) > window) {
+        while timestamps
+            .front()
+            .is_some_and(|t| now.duration_since(*t) > window)
+        {
             timestamps.pop_front();
         }
 
@@ -68,13 +70,17 @@ impl NotesMcpServer {
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct ListNotesInput {
-    #[schemars(description = "Optional subdirectory path to list (relative to vault root). Lists all notes if omitted.")]
+    #[schemars(
+        description = "Optional subdirectory path to list (relative to vault root). Lists all notes if omitted."
+    )]
     pub path: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct ReadNoteInput {
-    #[schemars(description = "Path to the note file, relative to vault root (e.g. 'api/users.md')")]
+    #[schemars(
+        description = "Path to the note file, relative to vault root (e.g. 'api/users.md')"
+    )]
     pub path: String,
 }
 
@@ -173,12 +179,16 @@ impl NotesMcpServer {
         tools::notes::search_notes(&self.pool, &input.query).await
     }
 
-    #[tool(description = "List all executable blocks (HTTP, DB) in a note with their type, alias, and parameters.")]
+    #[tool(
+        description = "List all executable blocks (HTTP, DB) in a note with their type, alias, and parameters."
+    )]
     async fn list_blocks(&self, Parameters(input): Parameters<ListBlocksInput>) -> String {
         tools::blocks::list_blocks(&self.vault_path, &input.note_path)
     }
 
-    #[tool(description = "Execute an executable block by its alias. Resolves dependencies and environment variables automatically.")]
+    #[tool(
+        description = "Execute an executable block by its alias. Resolves dependencies and environment variables automatically."
+    )]
     async fn execute_block(&self, Parameters(input): Parameters<ExecuteBlockInput>) -> String {
         // T07: Rate limit execute_block calls
         if let Err(e) = self.check_execute_rate_limit().await {
@@ -195,7 +205,10 @@ impl NotesMcpServer {
     }
 
     #[tool(description = "List all environments.")]
-    async fn list_environments(&self, Parameters(_input): Parameters<ListEnvironmentsInput>) -> String {
+    async fn list_environments(
+        &self,
+        Parameters(_input): Parameters<ListEnvironmentsInput>,
+    ) -> String {
         tools::environments::list_environments(&self.pool).await
     }
 
@@ -217,7 +230,10 @@ impl NotesMcpServer {
     }
 
     #[tool(description = "List all configured database connections.")]
-    async fn list_connections(&self, Parameters(_input): Parameters<ListConnectionsInput>) -> String {
+    async fn list_connections(
+        &self,
+        Parameters(_input): Parameters<ListConnectionsInput>,
+    ) -> String {
         tools::connections::list_connections(&self.pool).await
     }
 

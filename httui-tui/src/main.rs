@@ -52,9 +52,9 @@ async fn run(cli: Cli) -> TuiResult<()> {
         None => httui_core::paths::default_data_dir()?,
     };
     std::fs::create_dir_all(&data_dir)?;
-    let pool = httui_core::db::init_db(&data_dir).await.map_err(|e| {
-        TuiError::Config(format!("init database at {data_dir:?}: {e}"))
-    })?;
+    let pool = httui_core::db::init_db(&data_dir)
+        .await
+        .map_err(|e| TuiError::Config(format!("init database at {data_dir:?}: {e}")))?;
 
     let resolved = vault::resolve(&pool).await?;
 
@@ -83,9 +83,8 @@ fn init_tracing(level: &str) -> TuiResult<tracing_appender::non_blocking::Worker
 }
 
 fn log_dir() -> TuiResult<PathBuf> {
-    let dirs = ProjectDirs::from("com", "httui", "notes-tui").ok_or_else(|| {
-        TuiError::Config("could not resolve project dirs (no $HOME?)".into())
-    })?;
+    let dirs = ProjectDirs::from("com", "httui", "notes-tui")
+        .ok_or_else(|| TuiError::Config("could not resolve project dirs (no $HOME?)".into()))?;
     // `state_dir` is Linux-only; on macOS/Windows fall back to data_local_dir.
     let path = dirs
         .state_dir()

@@ -223,7 +223,9 @@ pub enum Action {
     SearchExecute,
     SearchCancel,
     /// `n` repeats the last search; `reverse=true` flips direction (`N`).
-    SearchRepeat { reverse: bool },
+    SearchRepeat {
+        reverse: bool,
+    },
     /// `Ctrl+P` — open the quick-open modal.
     EnterQuickOpen,
     QuickOpenChar(char),
@@ -612,7 +614,8 @@ fn try_motion(key: KeyEvent) -> Option<Motion> {
     // the file-tree toggle, `Ctrl+H` the move-left, etc. The two
     // CTRL-bearing motions (`Ctrl+D`/`Ctrl+U`) match before falling
     // into the unmodified branch.
-    let plain = !modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER);
+    let plain =
+        !modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER);
     Some(match (modifiers, code) {
         (KeyModifiers::CONTROL, KeyCode::Char('d')) => Motion::HalfPageDown,
         (KeyModifiers::CONTROL, KeyCode::Char('u')) => Motion::HalfPageUp,
@@ -793,7 +796,10 @@ pub fn parse_normal(state: &mut VimState, key: KeyEvent) -> Action {
         };
         let around = !inner;
         if let Some(textobj) = build_textobject(around, target) {
-            let (op, op_count) = state.pending_operator.take().unwrap_or((Operator::Delete, 1));
+            let (op, op_count) = state
+                .pending_operator
+                .take()
+                .unwrap_or((Operator::Delete, 1));
             state.pending_textobj_inner = None;
             return Action::OperatorTextObject(op, textobj, op_count.max(1));
         }
@@ -810,11 +816,7 @@ pub fn parse_normal(state: &mut VimState, key: KeyEvent) -> Action {
             let d = c.to_digit(10).unwrap() as usize;
             if d == 0 && state.pending_count.is_none() {
                 if let Some((op, op_count)) = state.pending_operator.take() {
-                    return Action::OperatorMotion(
-                        op,
-                        Motion::LineStart,
-                        op_count.max(1),
-                    );
+                    return Action::OperatorMotion(op, Motion::LineStart, op_count.max(1));
                 }
                 return Action::Motion(Motion::LineStart, 1);
             }
@@ -826,7 +828,8 @@ pub fn parse_normal(state: &mut VimState, key: KeyEvent) -> Action {
     // `z` (no modifier) starts the scroll-positioning chord.
     // Counts before `z` aren't supported (vim's behavior here is
     // niche — `<n>zz` sets scrolloff to N — out of scope V1).
-    if modifiers == KeyModifiers::NONE && matches!(code, KeyCode::Char('z'))
+    if modifiers == KeyModifiers::NONE
+        && matches!(code, KeyCode::Char('z'))
         && state.pending_operator.is_none()
         && !state.pending_g
     {
@@ -1139,22 +1142,12 @@ pub fn parse_normal(state: &mut VimState, key: KeyEvent) -> Action {
 
         // Operator shortcuts (uppercase). All of these decompose into
         // `<op><motion>` or `<op><op>` so the operator engine handles them.
-        (_, KeyCode::Char('D')) => {
-            Action::OperatorMotion(Operator::Delete, Motion::LineEnd, count)
-        }
-        (_, KeyCode::Char('C')) => {
-            Action::OperatorMotion(Operator::Change, Motion::LineEnd, count)
-        }
+        (_, KeyCode::Char('D')) => Action::OperatorMotion(Operator::Delete, Motion::LineEnd, count),
+        (_, KeyCode::Char('C')) => Action::OperatorMotion(Operator::Change, Motion::LineEnd, count),
         (_, KeyCode::Char('Y')) => Action::OperatorLinewise(Operator::Yank, count),
-        (_, KeyCode::Char('x')) => {
-            Action::OperatorMotion(Operator::Delete, Motion::Right, count)
-        }
-        (_, KeyCode::Char('X')) => {
-            Action::OperatorMotion(Operator::Delete, Motion::Left, count)
-        }
-        (_, KeyCode::Char('s')) => {
-            Action::OperatorMotion(Operator::Change, Motion::Right, count)
-        }
+        (_, KeyCode::Char('x')) => Action::OperatorMotion(Operator::Delete, Motion::Right, count),
+        (_, KeyCode::Char('X')) => Action::OperatorMotion(Operator::Delete, Motion::Left, count),
+        (_, KeyCode::Char('s')) => Action::OperatorMotion(Operator::Change, Motion::Right, count),
         (_, KeyCode::Char('S')) => Action::OperatorLinewise(Operator::Change, count),
 
         // Visual mode entry — `v` charwise, `V` linewise. The dispatch
@@ -1189,9 +1182,7 @@ pub fn parse_normal(state: &mut VimState, key: KeyEvent) -> Action {
         (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char('?')) => {
             Action::EnterSearch(false)
         }
-        (KeyModifiers::NONE, KeyCode::Char('n')) => {
-            Action::SearchRepeat { reverse: false }
-        }
+        (KeyModifiers::NONE, KeyCode::Char('n')) => Action::SearchRepeat { reverse: false },
         (_, KeyCode::Char('N')) => Action::SearchRepeat { reverse: true },
 
         // Command-line entry.
@@ -1284,9 +1275,8 @@ pub fn parse_visual(state: &mut VimState, key: KeyEvent) -> Action {
 
     // `v` toggles charwise visual off; `V` toggles linewise off. The
     // other letter swaps mode (handled in dispatch — emits a re-enter).
-    let plain_letter = !modifiers.intersects(
-        KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER,
-    );
+    let plain_letter =
+        !modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER);
     if plain_letter {
         if state.mode == Mode::Visual && code == KeyCode::Char('v') {
             return Action::ExitVisual;
@@ -1497,9 +1487,7 @@ pub fn parse_tree(key: KeyEvent) -> Action {
         (_, KeyCode::Char('k')) | (_, KeyCode::Up) => Action::TreeSelectPrev,
         (_, KeyCode::Char('G')) => Action::TreeSelectLast,
         (_, KeyCode::Char('g')) => Action::TreeSelectFirst,
-        (_, KeyCode::Char('l')) | (_, KeyCode::Right) | (_, KeyCode::Enter) => {
-            Action::TreeActivate
-        }
+        (_, KeyCode::Char('l')) | (_, KeyCode::Right) | (_, KeyCode::Enter) => Action::TreeActivate,
         (_, KeyCode::Char('h')) | (_, KeyCode::Left) => Action::TreeCollapse,
         (_, KeyCode::Char('R')) => Action::TreeRefresh,
         (_, KeyCode::Char('a')) => Action::TreeCreate,
@@ -1762,12 +1750,8 @@ pub fn parse_block_template_picker(key: KeyEvent) -> Action {
         (_, KeyCode::Up) | (KeyModifiers::NONE, KeyCode::Char('k')) => {
             Action::MoveBlockTemplatePickerCursor(-1)
         }
-        (KeyModifiers::CONTROL, KeyCode::Char('n')) => {
-            Action::MoveBlockTemplatePickerCursor(1)
-        }
-        (KeyModifiers::CONTROL, KeyCode::Char('p')) => {
-            Action::MoveBlockTemplatePickerCursor(-1)
-        }
+        (KeyModifiers::CONTROL, KeyCode::Char('n')) => Action::MoveBlockTemplatePickerCursor(1),
+        (KeyModifiers::CONTROL, KeyCode::Char('p')) => Action::MoveBlockTemplatePickerCursor(-1),
         _ => Action::Noop,
     }
 }
@@ -1907,9 +1891,7 @@ pub fn parse_content_search(key: KeyEvent) -> Action {
         // Plain printable char (no CONTROL) → into the buffer.
         // Ctrl-shifted chars stay rejected so terminal-emulator
         // chord sequences don't accidentally land in typing.
-        (mods, Char(c)) if !mods.contains(KeyModifiers::CONTROL) => {
-            Action::ContentSearchChar(c)
-        }
+        (mods, Char(c)) if !mods.contains(KeyModifiers::CONTROL) => Action::ContentSearchChar(c),
         _ => Action::Noop,
     }
 }
@@ -1948,8 +1930,9 @@ pub fn parse_db_confirm_run(key: KeyEvent) -> Action {
     match (modifiers, code) {
         (_, KeyCode::Esc) => Action::CancelDbRun,
         (KeyModifiers::CONTROL, KeyCode::Char('c')) => Action::CancelDbRun,
-        (KeyModifiers::NONE, KeyCode::Char('n'))
-        | (KeyModifiers::NONE, KeyCode::Char('N')) => Action::CancelDbRun,
+        (KeyModifiers::NONE, KeyCode::Char('n')) | (KeyModifiers::NONE, KeyCode::Char('N')) => {
+            Action::CancelDbRun
+        }
         (KeyModifiers::NONE, KeyCode::Char('y'))
         | (KeyModifiers::NONE, KeyCode::Char('Y'))
         | (_, KeyCode::Enter) => Action::ConfirmDbRun,
@@ -2328,10 +2311,7 @@ mod tests {
     fn ctrl_w_unknown_suffix_clears_prefix() {
         let mut s = VimState::new();
         parse_normal(&mut s, key_ctrl(KeyCode::Char('w')));
-        assert_eq!(
-            parse_normal(&mut s, key(KeyCode::Char('z'))),
-            Action::Noop
-        );
+        assert_eq!(parse_normal(&mut s, key(KeyCode::Char('z'))), Action::Noop);
         assert!(!s.pending_window);
         // After cancellation, normal motions resume immediately.
         assert_eq!(
@@ -2368,8 +2348,14 @@ mod tests {
 
     #[test]
     fn cmdline_chars_and_specials() {
-        assert_eq!(parse_cmdline(key(KeyCode::Char('w'))), Action::CmdlineChar('w'));
-        assert_eq!(parse_cmdline(key(KeyCode::Backspace)), Action::CmdlineBackspace);
+        assert_eq!(
+            parse_cmdline(key(KeyCode::Char('w'))),
+            Action::CmdlineChar('w')
+        );
+        assert_eq!(
+            parse_cmdline(key(KeyCode::Backspace)),
+            Action::CmdlineBackspace
+        );
         assert_eq!(parse_cmdline(key(KeyCode::Enter)), Action::CmdlineExecute);
         assert_eq!(parse_cmdline(key(KeyCode::Esc)), Action::CmdlineCancel);
         assert_eq!(
@@ -2453,10 +2439,7 @@ mod tests {
         // second `d` resolves to the display-mode cycle action. Uses
         // the same `pending_g` plumbing as `gg`/`gt`/`gT`.
         let mut s = VimState::new();
-        assert_eq!(
-            parse_normal(&mut s, key(KeyCode::Char('g'))),
-            Action::Noop
-        );
+        assert_eq!(parse_normal(&mut s, key(KeyCode::Char('g'))), Action::Noop);
         assert_eq!(
             parse_normal(&mut s, key(KeyCode::Char('d'))),
             Action::CycleDisplayMode
@@ -2470,10 +2453,7 @@ mod tests {
         // prefix some users bind — letting tmux see the keystroke
         // before we do is the right call.
         let mut s = VimState::new();
-        assert_eq!(
-            parse_normal(&mut s, key(KeyCode::Char('g'))),
-            Action::Noop
-        );
+        assert_eq!(parse_normal(&mut s, key(KeyCode::Char('g'))), Action::Noop);
         assert_eq!(
             parse_normal(&mut s, key(KeyCode::Char('a'))),
             Action::OpenFenceEditAlias
@@ -2615,10 +2595,7 @@ mod tests {
         // (HTTP-only + aliased + has-rows) is in the dispatch
         // handler, not the parser.
         let mut s = VimState::new();
-        assert_eq!(
-            parse_normal(&mut s, key(KeyCode::Char('g'))),
-            Action::Noop
-        );
+        assert_eq!(parse_normal(&mut s, key(KeyCode::Char('g'))), Action::Noop);
         assert_eq!(
             parse_normal(&mut s, key(KeyCode::Char('h'))),
             Action::OpenBlockHistory
@@ -2675,10 +2652,7 @@ mod tests {
         // Sidesteps `<C-x>` (already bound to ExplainBlock) and `y`
         // (yank chord prefix). Same `pending_g` plumbing.
         let mut s = VimState::new();
-        assert_eq!(
-            parse_normal(&mut s, key(KeyCode::Char('g'))),
-            Action::Noop
-        );
+        assert_eq!(parse_normal(&mut s, key(KeyCode::Char('g'))), Action::Noop);
         assert_eq!(
             parse_normal(&mut s, key(KeyCode::Char('x'))),
             Action::OpenDbExportPicker
@@ -2691,10 +2665,7 @@ mod tests {
         // family per the chord-constraints memory; one chord opens
         // a multi-input modal instead of one chord per field.
         let mut s = VimState::new();
-        assert_eq!(
-            parse_normal(&mut s, key(KeyCode::Char('g'))),
-            Action::Noop
-        );
+        assert_eq!(parse_normal(&mut s, key(KeyCode::Char('g'))), Action::Noop);
         assert_eq!(
             parse_normal(&mut s, key(KeyCode::Char('s'))),
             Action::OpenDbSettingsModal
@@ -2955,11 +2926,7 @@ mod tests {
         let action = parse_normal(&mut s, key(KeyCode::Char('w')));
         assert_eq!(
             action,
-            Action::OperatorTextObject(
-                Operator::Delete,
-                TextObject::Word { around: false },
-                1
-            )
+            Action::OperatorTextObject(Operator::Delete, TextObject::Word { around: false }, 1)
         );
         assert!(s.pending_operator.is_none());
         assert!(s.pending_textobj_inner.is_none());
@@ -3244,8 +3211,14 @@ mod tests {
 
     #[test]
     fn search_prompt_keys() {
-        assert_eq!(parse_search(key(KeyCode::Char('a'))), Action::SearchChar('a'));
-        assert_eq!(parse_search(key(KeyCode::Backspace)), Action::SearchBackspace);
+        assert_eq!(
+            parse_search(key(KeyCode::Char('a'))),
+            Action::SearchChar('a')
+        );
+        assert_eq!(
+            parse_search(key(KeyCode::Backspace)),
+            Action::SearchBackspace
+        );
         assert_eq!(parse_search(key(KeyCode::Enter)), Action::SearchExecute);
         assert_eq!(parse_search(key(KeyCode::Esc)), Action::SearchCancel);
     }
@@ -3285,10 +3258,7 @@ mod tests {
     #[test]
     fn tab_emits_focus_swap() {
         let mut s = VimState::new();
-        assert_eq!(
-            parse_normal(&mut s, key(KeyCode::Tab)),
-            Action::FocusSwap
-        );
+        assert_eq!(parse_normal(&mut s, key(KeyCode::Tab)), Action::FocusSwap);
     }
 
     #[test]
@@ -3303,10 +3273,7 @@ mod tests {
         assert_eq!(parse_tree(key(KeyCode::Char('R'))), Action::TreeRefresh);
         assert_eq!(parse_tree(key(KeyCode::Tab)), Action::FocusSwap);
         assert_eq!(parse_tree(key(KeyCode::Esc)), Action::FocusSwap);
-        assert_eq!(
-            parse_tree(key_ctrl(KeyCode::Char('e'))),
-            Action::TreeToggle
-        );
+        assert_eq!(parse_tree(key_ctrl(KeyCode::Char('e'))), Action::TreeToggle);
     }
 
     #[test]
@@ -3385,9 +3352,15 @@ mod tests {
 
     #[test]
     fn insert_translates_chars_and_specials() {
-        assert_eq!(parse_insert(key(KeyCode::Char('x'))), Action::InsertChar('x'));
+        assert_eq!(
+            parse_insert(key(KeyCode::Char('x'))),
+            Action::InsertChar('x')
+        );
         assert_eq!(parse_insert(key(KeyCode::Enter)), Action::InsertNewline);
-        assert_eq!(parse_insert(key(KeyCode::Backspace)), Action::DeleteBackward);
+        assert_eq!(
+            parse_insert(key(KeyCode::Backspace)),
+            Action::DeleteBackward
+        );
         assert_eq!(parse_insert(key(KeyCode::Delete)), Action::DeleteForward);
         assert_eq!(parse_insert(key(KeyCode::Esc)), Action::ExitInsert);
         assert_eq!(
@@ -3467,10 +3440,7 @@ mod tests {
         // `{` completes `yi{` → OperatorTextObject(Yank, ...).
         let action = parse_db_row_detail(&mut s, key(KeyCode::Char('{')));
         assert!(
-            matches!(
-                action,
-                Action::OperatorTextObject(Operator::Yank, _, _)
-            ),
+            matches!(action, Action::OperatorTextObject(Operator::Yank, _, _)),
             "expected yank text-object, got {action:?}"
         );
     }

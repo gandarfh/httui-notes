@@ -35,9 +35,9 @@ fn with_parser<R>(f: impl FnOnce(&mut Parser) -> R) -> Option<R> {
             p.set_language(&lang).ok()?;
             *slot = Some(p);
         }
-        Some(f(slot
-            .as_mut()
-            .expect("slot was set to Some on the line above (or already Some on entry)")))
+        Some(f(slot.as_mut().expect(
+            "slot was set to Some on the line above (or already Some on entry)",
+        )))
     })
 }
 
@@ -64,7 +64,10 @@ pub fn highlight(query: &str) -> Vec<Vec<Span<'static>>> {
     let line_count = line_starts.len().max(1);
     for line_idx in 0..line_count {
         let line_start = line_starts[line_idx];
-        let line_end = line_starts.get(line_idx + 1).copied().unwrap_or(bytes.len());
+        let line_end = line_starts
+            .get(line_idx + 1)
+            .copied()
+            .unwrap_or(bytes.len());
         // Trim trailing newline from the slice so the span doesn't
         // emit an extra blank cell at end-of-line.
         let content_end = if line_end > line_start && bytes.get(line_end - 1) == Some(&b'\n') {
@@ -146,7 +149,11 @@ fn manual_lex(query: &str) -> Vec<StyledSpan> {
             while i < bytes.len() && bytes[i] != b'\n' {
                 i += 1;
             }
-            out.push(StyledSpan { start, end: i, style: comment });
+            out.push(StyledSpan {
+                start,
+                end: i,
+                style: comment,
+            });
             continue;
         }
         // Strings.
@@ -168,7 +175,11 @@ fn manual_lex(query: &str) -> Vec<StyledSpan> {
                 }
                 i += 1;
             }
-            out.push(StyledSpan { start, end: i, style: string });
+            out.push(StyledSpan {
+                start,
+                end: i,
+                style: string,
+            });
             continue;
         }
         // Numbers.
@@ -177,20 +188,26 @@ fn manual_lex(query: &str) -> Vec<StyledSpan> {
             while i < bytes.len() && (bytes[i].is_ascii_digit() || bytes[i] == b'.') {
                 i += 1;
             }
-            out.push(StyledSpan { start, end: i, style: number });
+            out.push(StyledSpan {
+                start,
+                end: i,
+                style: number,
+            });
             continue;
         }
         // Identifiers — match against keyword list.
         if b.is_ascii_alphabetic() || b == b'_' {
             let start = i;
-            while i < bytes.len()
-                && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_')
-            {
+            while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
                 i += 1;
             }
             if let Ok(word) = std::str::from_utf8(&bytes[start..i]) {
                 if is_anonymous_keyword(word) {
-                    out.push(StyledSpan { start, end: i, style: kw });
+                    out.push(StyledSpan {
+                        start,
+                        end: i,
+                        style: kw,
+                    });
                 }
             }
             continue;
@@ -285,22 +302,100 @@ fn is_anonymous_keyword(kind: &str) -> bool {
     let upper = kind.to_ascii_uppercase();
     matches!(
         upper.as_str(),
-        "SELECT" | "FROM" | "WHERE" | "JOIN" | "INNER" | "OUTER" | "LEFT"
-            | "RIGHT" | "FULL" | "CROSS" | "ON" | "USING" | "AND" | "OR"
-            | "NOT" | "IN" | "BETWEEN" | "LIKE" | "ILIKE" | "IS" | "NULL"
-            | "AS" | "ORDER" | "BY" | "GROUP" | "HAVING" | "LIMIT" | "OFFSET"
-            | "INSERT" | "INTO" | "VALUES" | "UPDATE" | "SET" | "DELETE"
-            | "CREATE" | "TABLE" | "INDEX" | "VIEW" | "DROP" | "ALTER" | "ADD"
-            | "COLUMN" | "PRIMARY" | "KEY" | "FOREIGN" | "REFERENCES"
-            | "CONSTRAINT" | "UNIQUE" | "CHECK" | "DEFAULT" | "BEGIN"
-            | "COMMIT" | "ROLLBACK" | "TRANSACTION" | "IF" | "EXISTS"
-            | "CASE" | "WHEN" | "THEN" | "ELSE" | "END" | "UNION" | "ALL"
-            | "DISTINCT" | "WITH" | "RETURNING" | "RECURSIVE" | "EXCEPT"
-            | "INTERSECT" | "ASC" | "DESC" | "TRUE" | "FALSE" | "EXPLAIN"
-            | "ANALYZE" | "VACUUM" | "PRAGMA" | "TEMP" | "TEMPORARY"
-            | "BOOLEAN" | "INTEGER" | "BIGINT" | "SMALLINT" | "DECIMAL"
-            | "NUMERIC" | "VARCHAR" | "CHAR" | "TEXT" | "DATE" | "TIME"
-            | "TIMESTAMP" | "INTERVAL" | "AUTOINCREMENT" | "SERIAL"
+        "SELECT"
+            | "FROM"
+            | "WHERE"
+            | "JOIN"
+            | "INNER"
+            | "OUTER"
+            | "LEFT"
+            | "RIGHT"
+            | "FULL"
+            | "CROSS"
+            | "ON"
+            | "USING"
+            | "AND"
+            | "OR"
+            | "NOT"
+            | "IN"
+            | "BETWEEN"
+            | "LIKE"
+            | "ILIKE"
+            | "IS"
+            | "NULL"
+            | "AS"
+            | "ORDER"
+            | "BY"
+            | "GROUP"
+            | "HAVING"
+            | "LIMIT"
+            | "OFFSET"
+            | "INSERT"
+            | "INTO"
+            | "VALUES"
+            | "UPDATE"
+            | "SET"
+            | "DELETE"
+            | "CREATE"
+            | "TABLE"
+            | "INDEX"
+            | "VIEW"
+            | "DROP"
+            | "ALTER"
+            | "ADD"
+            | "COLUMN"
+            | "PRIMARY"
+            | "KEY"
+            | "FOREIGN"
+            | "REFERENCES"
+            | "CONSTRAINT"
+            | "UNIQUE"
+            | "CHECK"
+            | "DEFAULT"
+            | "BEGIN"
+            | "COMMIT"
+            | "ROLLBACK"
+            | "TRANSACTION"
+            | "IF"
+            | "EXISTS"
+            | "CASE"
+            | "WHEN"
+            | "THEN"
+            | "ELSE"
+            | "END"
+            | "UNION"
+            | "ALL"
+            | "DISTINCT"
+            | "WITH"
+            | "RETURNING"
+            | "RECURSIVE"
+            | "EXCEPT"
+            | "INTERSECT"
+            | "ASC"
+            | "DESC"
+            | "TRUE"
+            | "FALSE"
+            | "EXPLAIN"
+            | "ANALYZE"
+            | "VACUUM"
+            | "PRAGMA"
+            | "TEMP"
+            | "TEMPORARY"
+            | "BOOLEAN"
+            | "INTEGER"
+            | "BIGINT"
+            | "SMALLINT"
+            | "DECIMAL"
+            | "NUMERIC"
+            | "VARCHAR"
+            | "CHAR"
+            | "TEXT"
+            | "DATE"
+            | "TIME"
+            | "TIMESTAMP"
+            | "INTERVAL"
+            | "AUTOINCREMENT"
+            | "SERIAL"
     )
 }
 
@@ -360,13 +455,7 @@ fn push_plain(bytes: &[u8], start: usize, end: usize, out: &mut Vec<Span<'static
     }
 }
 
-fn push_styled(
-    bytes: &[u8],
-    start: usize,
-    end: usize,
-    style: Style,
-    out: &mut Vec<Span<'static>>,
-) {
+fn push_styled(bytes: &[u8], start: usize, end: usize, style: Style, out: &mut Vec<Span<'static>>) {
     if let Ok(s) = std::str::from_utf8(&bytes[start..end]) {
         out.push(Span::styled(s.to_string(), style));
     }

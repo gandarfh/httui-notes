@@ -8,8 +8,8 @@
 pub mod change;
 pub mod dispatch;
 pub mod ex;
-pub mod keybindings;
 pub mod insert;
+pub mod keybindings;
 pub mod lineedit;
 pub mod mode;
 pub mod motions;

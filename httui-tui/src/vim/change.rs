@@ -24,7 +24,10 @@ pub enum ChangeRecord {
     OperatorTextObject(Operator, TextObject, usize),
     Paste(PastePos, usize),
     /// Plain insert session: `i…<Esc>`, `a…<Esc>`, `o…<Esc>`, etc.
-    Insert { pos: InsertPos, typed: String },
+    Insert {
+        pos: InsertPos,
+        typed: String,
+    },
     /// Change-then-insert: `cw…<Esc>`, `ci"…<Esc>`, `S…<Esc>`. Replays
     /// by re-applying the operator (which puts us in insert mode) and
     /// then re-typing the captured text.
@@ -33,7 +36,10 @@ pub enum ChangeRecord {
         op_count: usize,
         typed: String,
     },
-    ChangeLinewise { op_count: usize, typed: String },
+    ChangeLinewise {
+        op_count: usize,
+        typed: String,
+    },
     ChangeTextObject {
         textobj: TextObject,
         op_count: usize,
@@ -55,9 +61,17 @@ pub struct InsertSession {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChangeOrigin {
-    Motion { motion: Motion, op_count: usize },
-    Linewise { op_count: usize },
-    TextObject { textobj: TextObject, op_count: usize },
+    Motion {
+        motion: Motion,
+        op_count: usize,
+    },
+    Linewise {
+        op_count: usize,
+    },
+    TextObject {
+        textobj: TextObject,
+        op_count: usize,
+    },
 }
 
 impl InsertSession {

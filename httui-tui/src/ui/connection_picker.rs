@@ -73,7 +73,10 @@ pub fn render(
         .iter()
         .map(|c| {
             ListItem::new(Line::from(vec![
-                Span::styled(c.name.clone(), Style::default().bg(Color::Black).fg(Color::White)),
+                Span::styled(
+                    c.name.clone(),
+                    Style::default().bg(Color::Black).fg(Color::White),
+                ),
                 Span::styled(
                     format!("  ({})", c.kind),
                     Style::default().bg(Color::Black).fg(Color::DarkGray),
@@ -88,7 +91,11 @@ pub fn render(
             .add_modifier(Modifier::BOLD),
     );
     let mut list_state = ListState::default();
-    list_state.select(Some(state.selected.min(state.connections.len().saturating_sub(1))));
+    list_state.select(Some(
+        state
+            .selected
+            .min(state.connections.len().saturating_sub(1)),
+    ));
     frame.render_stateful_widget(list, body_area, &mut list_state);
 
     let chip_key = Style::default()
@@ -142,13 +149,12 @@ fn compute_popup_rect(
             // editor area.
             let max_x = area.x + area.width.saturating_sub(width);
             let x = (area.x + 2).min(max_x); // +2 = past the block's left border
-            // Vertical: prefer above the block. If the block sits
-            // too close to the top of the editor, drop the popup
-            // below the block instead.
+                                             // Vertical: prefer above the block. If the block sits
+                                             // too close to the top of the editor, drop the popup
+                                             // below the block instead.
             let above_y = a.screen_top.checked_sub(height);
             let below_y = a.screen_top.saturating_add(a.height);
-            let fits_below = below_y.saturating_add(height)
-                <= area.y.saturating_add(area.height);
+            let fits_below = below_y.saturating_add(height) <= area.y.saturating_add(area.height);
             let y = match (above_y, fits_below) {
                 (Some(top), _) if top >= area.y => top,
                 (_, true) => below_y,

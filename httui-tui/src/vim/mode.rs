@@ -154,6 +154,4 @@ impl Mode {
             Mode::TabPicker => Color::LightBlue,
         }
     }
-
 }
-

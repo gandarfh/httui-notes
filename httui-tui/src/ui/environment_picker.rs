@@ -85,7 +85,9 @@ pub fn render(frame: &mut Frame, editor_area: Rect, state: &EnvironmentPickerSta
             .add_modifier(Modifier::BOLD),
     );
     let mut list_state = ListState::default();
-    list_state.select(Some(state.selected.min(state.entries.len().saturating_sub(1))));
+    list_state.select(Some(
+        state.selected.min(state.entries.len().saturating_sub(1)),
+    ));
     frame.render_stateful_widget(list, body_area, &mut list_state);
 
     let chip_key = Style::default()
