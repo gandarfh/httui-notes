@@ -21,6 +21,8 @@ pub struct AttachmentInput {
     pub path: String,
 }
 
+/// Create a new chat session (optional `cwd` overrides the active vault
+/// path used as Claude's working directory).
 #[tauri::command]
 pub async fn create_chat_session(
     pool: tauri::State<'_, SqlitePool>,
@@ -29,6 +31,7 @@ pub async fn create_chat_session(
     chat::create_session(&pool, cwd).await
 }
 
+/// List non-archived chat sessions, most recent first.
 #[tauri::command]
 pub async fn list_chat_sessions(
     pool: tauri::State<'_, SqlitePool>,
@@ -36,6 +39,8 @@ pub async fn list_chat_sessions(
     chat::list_sessions(&pool).await
 }
 
+/// Fetch a single session row including its `claude_session_id` for
+/// resume.
 #[tauri::command]
 pub async fn get_chat_session(
     pool: tauri::State<'_, SqlitePool>,
@@ -44,6 +49,8 @@ pub async fn get_chat_session(
     chat::get_session(&pool, session_id).await
 }
 
+/// Mark a session as archived. Sessions are kept in SQLite (never
+/// hard-deleted) so message history survives.
 #[tauri::command]
 pub async fn archive_chat_session(
     pool: tauri::State<'_, SqlitePool>,
@@ -52,6 +59,8 @@ pub async fn archive_chat_session(
     chat::archive_session(&pool, session_id).await
 }
 
+/// List the messages of a session, oldest first, ready for the
+/// transcript renderer.
 #[tauri::command]
 pub async fn list_chat_messages(
     pool: tauri::State<'_, SqlitePool>,
@@ -60,6 +69,9 @@ pub async fn list_chat_messages(
     chat::list_messages(&pool, session_id).await
 }
 
+/// Persist a user message, normalize attached images (resize > 2048px,
+/// re-encode JPEG Q85), resolve `[[wikilinks]]`, and ship the payload to
+/// the sidecar. Streams events back via `chat:delta`/`chat:done`.
 #[tauri::command]
 pub async fn send_chat_message(
     app: AppHandle,
@@ -455,6 +467,8 @@ pub async fn send_chat_message(
     Ok(request_id)
 }
 
+/// Cancel an in-flight chat request mid-stream. The sidecar reacts by
+/// sending a final `chat:done` with `cancelled: true`.
 #[tauri::command]
 pub async fn abort_chat(
     sidecar: tauri::State<'_, SidecarState>,
@@ -465,6 +479,10 @@ pub async fn abort_chat(
     mgr.send(OutgoingMessage::Abort { request_id }).await
 }
 
+/// Resolve a `PermissionRequest` from the sidecar (Allow / Deny with
+/// scope Once / Session / Always). For Session and Always scopes,
+/// also persists a rule in `tool_permissions` so future identical
+/// requests skip the user prompt.
 #[tauri::command]
 pub async fn respond_chat_permission(
     pool: tauri::State<'_, SqlitePool>,
@@ -510,6 +528,8 @@ pub async fn respond_chat_permission(
     .await
 }
 
+/// List persisted permission rules for a workspace (or global rules
+/// when `workspace` is `None`).
 #[tauri::command]
 pub async fn list_tool_permissions(
     pool: tauri::State<'_, SqlitePool>,
@@ -518,6 +538,7 @@ pub async fn list_tool_permissions(
     chat::list_permissions(&pool, workspace.as_deref()).await
 }
 
+/// Remove a persisted permission rule by id (PermissionManager UI).
 #[tauri::command]
 pub async fn delete_tool_permission(
     pool: tauri::State<'_, SqlitePool>,
@@ -526,6 +547,9 @@ pub async fn delete_tool_permission(
     chat::delete_permission(&pool, id).await
 }
 
+/// Persist a clipboard / dropped image to the app's tmp dir and
+/// return the absolute path. Used to keep the in-flight chat IPC
+/// payload light — the frontend only needs to send the path.
 #[tauri::command]
 pub async fn save_attachment_tmp(
     bytes: Vec<u8>,
@@ -557,6 +581,9 @@ pub async fn save_attachment_tmp(
     Ok(path.to_string_lossy().to_string())
 }
 
+/// Delete every message in `session_id` whose `turn_index >=
+/// turn_index`. Used by the "edit and resend" flow to truncate the
+/// transcript before re-sending.
 #[tauri::command]
 pub async fn delete_messages_after(
     pool: tauri::State<'_, SqlitePool>,
@@ -572,6 +599,8 @@ pub async fn delete_messages_after(
     Ok(())
 }
 
+/// Drop the stored `claude_session_id` so the next `send_chat_message`
+/// starts a fresh Claude session (used after a resume failure).
 #[tauri::command]
 pub async fn clear_session_claude_id(
     pool: tauri::State<'_, SqlitePool>,
@@ -585,6 +614,8 @@ pub async fn clear_session_claude_id(
     Ok(())
 }
 
+/// Change the working directory associated with a session. The new
+/// `cwd` takes effect on the next `send_chat_message`.
 #[tauri::command]
 pub async fn update_chat_session_cwd(
     pool: tauri::State<'_, SqlitePool>,
@@ -600,6 +631,8 @@ pub async fn update_chat_session_cwd(
     Ok(())
 }
 
+/// Return token usage aggregated per day in the inclusive `[from, to]`
+/// range (ISO `YYYY-MM-DD`). Powers the `UsagePanel` chart.
 #[tauri::command]
 pub async fn get_usage_stats(
     pool: tauri::State<'_, SqlitePool>,

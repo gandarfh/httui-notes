@@ -173,7 +173,7 @@ impl NotesMcpServer {
         tools::notes::search_notes(&self.pool, &input.query).await
     }
 
-    #[tool(description = "List all executable blocks (HTTP, DB, E2E) in a note with their type, alias, and parameters.")]
+    #[tool(description = "List all executable blocks (HTTP, DB) in a note with their type, alias, and parameters.")]
     async fn list_blocks(&self, Parameters(input): Parameters<ListBlocksInput>) -> String {
         tools::blocks::list_blocks(&self.vault_path, &input.note_path)
     }
