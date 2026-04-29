@@ -11,17 +11,22 @@
  * are pending.
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Box, Flex, Heading, Stack, Text, Button } from "@chakra-ui/react";
 
 import { useWorkspaceStore } from "@/stores/workspace";
-import { scaffoldVault } from "@/lib/tauri/commands";
+import { scaffoldVault, writeNote } from "@/lib/tauri/commands";
 import { EmptyVaultSidebar } from "@/components/layout/empty-vault/EmptyVaultSidebar";
 import { EmBrancoCard } from "@/components/layout/empty-vault/EmBrancoCard";
 import { TemplatesCard } from "@/components/layout/empty-vault/TemplatesCard";
 import { ImportarCard } from "@/components/layout/empty-vault/ImportarCard";
 import { EmptyVaultFooter } from "@/components/layout/empty-vault/EmptyVaultFooter";
 import { FUJI_BG_DARK, FUJI_BG_LIGHT } from "@/theme/tokens";
+import {
+  buildRunbookFromUrl,
+  extractUrl,
+  PASTE_URL_RUNBOOK_PATH,
+} from "@/lib/paste-url";
 
 interface CreateState {
   busy: boolean;
@@ -60,6 +65,74 @@ export function EmptyVaultScreen() {
     }
     setCreateState({ busy: false, error: null });
   }, [switchVault]);
+
+  // Paste-URL flow (Epic 41 Story 06): when the user pastes a clean
+  // http(s) URL while on the empty-vault screen, scaffold a vault and
+  // seed it with `runbooks/untitled.md` containing a runnable HTTP
+  // GET block for that URL. Non-URL pastes fall through to the OS
+  // default. Listens at document level so the user doesn't have to
+  // click anything first.
+  const handleCreateWithUrl = useCallback(
+    async (url: string) => {
+      setCreateState({ busy: true, error: null });
+      try {
+        const { open: openDialog } = await import(
+          "@tauri-apps/plugin-dialog"
+        );
+        const selected = await openDialog({
+          directory: true,
+          multiple: false,
+          title: "Choose folder for new vault",
+        });
+        if (!selected) {
+          setCreateState({ busy: false, error: null });
+          return;
+        }
+        const path = selected as string;
+        await scaffoldVault(path);
+        await writeNote(
+          path,
+          PASTE_URL_RUNBOOK_PATH,
+          buildRunbookFromUrl(url),
+        );
+        await switchVault(path);
+      } catch (err) {
+        setCreateState({
+          busy: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return;
+      }
+      setCreateState({ busy: false, error: null });
+    },
+    [switchVault],
+  );
+
+  useEffect(() => {
+    function onPaste(event: ClipboardEvent) {
+      const text = event.clipboardData?.getData("text/plain") ?? "";
+      const url = extractUrl(text);
+      if (!url) return;
+      // Don't fight the OS paste menu when an input is focused — the
+      // user is pasting *into* something, not on the screen as a
+      // whole. The empty-vault screen has no inputs, but plugins or
+      // future widgets might add one. `target` is `Document` for
+      // bubbling pastes that didn't hit a focused element; skip the
+      // input check in that case.
+      const target = event.target;
+      if (target instanceof Element) {
+        if (target.matches("input, textarea, [contenteditable]")) {
+          return;
+        }
+      }
+      event.preventDefault();
+      void handleCreateWithUrl(url);
+    }
+    document.addEventListener("paste", onPaste);
+    return () => {
+      document.removeEventListener("paste", onPaste);
+    };
+  }, [handleCreateWithUrl]);
 
   return (
     <Flex

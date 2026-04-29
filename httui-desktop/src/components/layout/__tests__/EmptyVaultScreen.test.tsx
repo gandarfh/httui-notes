@@ -119,4 +119,67 @@ describe("EmptyVaultScreen", () => {
     expect(scaffoldCalled).toBe(false);
     expect(useWorkspaceStore.getState().vaultPath).toBeNull();
   });
+
+  it("Pasting a URL scaffolds + writes the seed runbook (Story 06)", async () => {
+    vi.mocked(openDialog).mockResolvedValue("/tmp/paste-vault");
+    let scaffolded: string | null = null;
+    let written: { vaultPath: string; filePath: string; content: string } | null = null;
+    mockTauriCommand("scaffold_vault", (args) => {
+      scaffolded = (args as { vaultPath: string }).vaultPath;
+      return {
+        vault_path: scaffolded,
+        created: ["connections.toml"],
+        already_a_vault: false,
+      };
+    });
+    mockTauriCommand("write_note", (args) => {
+      written = args as { vaultPath: string; filePath: string; content: string };
+      return null;
+    });
+    mockTauriCommand("set_active_vault", () => null);
+    mockTauriCommand("list_workspace", () => []);
+    mockTauriCommand("start_watching", () => null);
+    mockTauriCommand("rebuild_search_index", () => null);
+    mockTauriCommand("stop_watching", () => null);
+
+    renderWithProviders(<EmptyVaultScreen />);
+
+    const paste = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(paste, "clipboardData", {
+      value: {
+        getData: (type: string) =>
+          type === "text/plain" ? "https://api.example.com/users" : "",
+      },
+    });
+    document.dispatchEvent(paste);
+
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(scaffolded).toBe("/tmp/paste-vault");
+    expect(written?.vaultPath).toBe("/tmp/paste-vault");
+    expect(written?.filePath).toBe("runbooks/untitled.md");
+    expect(written?.content).toContain("GET https://api.example.com/users");
+    expect(useWorkspaceStore.getState().vaultPath).toBe("/tmp/paste-vault");
+  });
+
+  it("Pasting non-URL text falls through (no scaffold)", async () => {
+    let scaffoldCalled = false;
+    mockTauriCommand("scaffold_vault", () => {
+      scaffoldCalled = true;
+      return null;
+    });
+
+    renderWithProviders(<EmptyVaultScreen />);
+
+    const paste = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(paste, "clipboardData", {
+      value: {
+        getData: () => "hello world",
+      },
+    });
+    document.dispatchEvent(paste);
+
+    await new Promise((r) => setTimeout(r, 10));
+    expect(scaffoldCalled).toBe(false);
+  });
 });
