@@ -123,22 +123,25 @@ handler + 07 detection hook + AppShell mount)
       pastes (and pastes inside inputs / textareas /
       contenteditable) fall through to the OS.
 
-## Story 07: First-launch banner after MVP upgrade — partial done (commit 95689c4)
+## Story 07: First-launch banner after MVP upgrade — done (4 slices)
 
 ### Tasks
 
 - [x] `<MigrationBanner onMigrate onDismiss docsHref?>` visual —
       closed by 95689c4. `role="alert"`, primary CTA, dismiss icon
       button, docs link.
-- [ ] **Carry**: AppShell mount of `<MigrationBanner>` (slice 3)
-      + wire `migrate_vault_to_v1` Tauri dispatch through the
-      banner's `onMigrate` callback (slice 4).
-      Slice 1 shipped (commit 5e13578): dismissal persistence
-      schema + `useSettingsStore.setMvpMigrationDismissed`.
-      Slice 2 shipped (commit 2be0096): backend
-      `detect_migration_candidate` + `detect_vault_migration`
-      Tauri command + `useMigrationDetection(vaultPath)` hook
-      returning `{ candidate, shouldShowBanner, dismiss, refresh }`.
+- [x] Carry shipped across 4 slices:
+      - Slice 1 (5e13578): dismissal persistence schema +
+        `useSettingsStore.setMvpMigrationDismissed`.
+      - Slice 2 (2be0096): backend `detect_migration_candidate` +
+        `detect_vault_migration` Tauri command +
+        `useMigrationDetection(vaultPath)` hook returning
+        `{ candidate, shouldShowBanner, dismiss, refresh }`.
+      - Slices 3+4 (a142ff2): `MigrationBannerHost` mounted in
+        AppShell consumes the hook, dispatches
+        `migrate_vault_to_v1` on `onMigrate`, surfaces inline
+        running/error/success states, calls `refresh()` to clear
+        the banner after migrating.
 
 ## Acceptance criteria
 
