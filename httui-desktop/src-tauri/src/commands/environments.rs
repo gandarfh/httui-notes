@@ -35,13 +35,23 @@ use httui_core::vault_config::environments_store::SetVarInput;
 
 use super::vault_stores::VaultStoreRegistry;
 
-/// Wire-compat: matches the legacy `db::environments::Environment` shape.
+/// Wire-compat: matches the legacy `db::environments::Environment` shape,
+/// plus canvas §6 metadata (Story 03) — `description`, `temporary`,
+/// `connections_used`. Older frontend code that destructures only the
+/// legacy fields keeps working; the Environments page reads the new
+/// fields directly.
 #[derive(Debug, Clone, Serialize)]
 pub struct Environment {
     pub id: String,
     pub name: String,
     pub is_active: bool,
     pub created_at: String,
+    /// `[meta].description` — free text shown below the env name.
+    pub description: Option<String>,
+    /// `[meta].temporary` — true marks the env as a throw-away.
+    pub temporary: bool,
+    /// `[meta].connections_used` allowlist (empty = all connections).
+    pub connections_used: Vec<String>,
 }
 
 /// Wire-compat: matches the legacy `db::environments::EnvVariable`.
@@ -80,6 +90,9 @@ pub async fn list_environments(
         .map(|e| Environment {
             id: e.name.clone(),
             is_active: active.as_deref() == Some(e.name.as_str()),
+            description: e.description.clone(),
+            temporary: e.temporary,
+            connections_used: e.connections_used.clone(),
             name: e.name,
             created_at: String::new(),
         })
@@ -100,6 +113,9 @@ pub async fn create_environment(
         name: env.name,
         is_active: false,
         created_at: String::new(),
+        description: env.description,
+        temporary: env.temporary,
+        connections_used: env.connections_used,
     })
 }
 
@@ -148,6 +164,9 @@ pub async fn duplicate_environment(
         name: new_env.name,
         is_active: false,
         created_at: String::new(),
+        description: new_env.description,
+        temporary: new_env.temporary,
+        connections_used: new_env.connections_used,
     })
 }
 

@@ -327,6 +327,12 @@ export interface Environment {
   name: string;
   is_active: boolean;
   created_at: string;
+  /** `[meta].description` (Story 03). Empty/undefined when not set. */
+  description?: string | null;
+  /** `[meta].temporary` (Story 03). Default false. */
+  temporary?: boolean;
+  /** `[meta].connections_used` allowlist (Story 03). Empty = all. */
+  connections_used?: string[];
 }
 
 export interface EnvVariable {
