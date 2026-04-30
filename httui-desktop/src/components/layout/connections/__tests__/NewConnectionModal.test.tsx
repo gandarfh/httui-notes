@@ -227,4 +227,55 @@ describe("NewConnectionModal", () => {
         .disabled,
     ).toBe(true);
   });
+
+  it("controlled kind: renders kindProp and routes picker selections via onKindChange", async () => {
+    const onKindChange = vi.fn();
+    const { rerender } = renderWithProviders(
+      <NewConnectionModal
+        open
+        kind="postgres"
+        onKindChange={onKindChange}
+        onCancel={vi.fn()}
+      />,
+    );
+    expect(getHeader().getByText("PostgreSQL")).toBeInTheDocument();
+    await userEvent.setup().click(
+      screen.getByTestId("new-connection-kind-mysql"),
+    );
+    expect(onKindChange).toHaveBeenCalledWith("mysql");
+    // Header still reflects controlled prop until parent re-renders.
+    expect(getHeader().getByText("PostgreSQL")).toBeInTheDocument();
+    rerender(
+      <NewConnectionModal
+        open
+        kind="mysql"
+        onKindChange={onKindChange}
+        onCancel={vi.fn()}
+      />,
+    );
+    expect(getHeader().getByText("MySQL / MariaDB")).toBeInTheDocument();
+  });
+
+  it("controlled activeTab: routes tab clicks via onTabChange", async () => {
+    const onTabChange = vi.fn();
+    renderWithProviders(
+      <NewConnectionModal
+        open
+        activeTab="form"
+        onTabChange={onTabChange}
+        onCancel={vi.fn()}
+      />,
+    );
+    await userEvent.setup().click(
+      screen.getByText(
+        NEW_CONNECTION_TABS.find((t) => t.id === "ssl")!.label,
+      ),
+    );
+    expect(onTabChange).toHaveBeenCalledWith("ssl");
+    // The placeholder still reflects the controlled prop ("form")
+    // until the parent re-renders with the new value.
+    expect(
+      screen.getByTestId("new-connection-placeholder-form"),
+    ).toBeInTheDocument();
+  });
 });

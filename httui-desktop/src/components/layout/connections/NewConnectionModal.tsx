@@ -58,6 +58,16 @@ export interface NewConnectionModalProps {
   open: boolean;
   /** Initial selected kind. Defaults to "postgres" (canvas spec). */
   initialKind?: ConnectionKind;
+  /** Controlled selected kind (Phase 3). When supplied, the picker
+   * routes selection up via `onKindChange` instead of holding local
+   * state — lets the consumer patch the kind from a connection-string
+   * paste. */
+  kind?: ConnectionKind;
+  onKindChange?: (next: ConnectionKind) => void;
+  /** Controlled active tab (Phase 3). When supplied, the modal calls
+   * `onTabChange` instead of holding local state. */
+  activeTab?: NewConnectionTabId;
+  onTabChange?: (next: NewConnectionTabId) => void;
   /** Called when the user dismisses (Esc, overlay click, Cancel). */
   onCancel: () => void;
   /** Save dispatch — Phase 1 stub; phases 2+3 wire form state. */
@@ -83,6 +93,10 @@ export interface NewConnectionModalProps {
 export function NewConnectionModal({
   open,
   initialKind = "postgres",
+  kind: kindProp,
+  onKindChange,
+  activeTab: activeTabProp,
+  onTabChange,
   onCancel,
   onSave,
   onTest,
@@ -90,10 +104,20 @@ export function NewConnectionModal({
   saveDisabled = false,
 }: NewConnectionModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
-  const [selectedKind, setSelectedKind] =
+  const [internalKind, setInternalKind] =
     useState<ConnectionKind>(initialKind);
-  const [activeTab, setActiveTab] =
+  const [internalTab, setInternalTab] =
     useState<NewConnectionTabId>("form");
+  const selectedKind = kindProp ?? internalKind;
+  const activeTab = activeTabProp ?? internalTab;
+  const setSelectedKind = (next: ConnectionKind) => {
+    if (kindProp === undefined) setInternalKind(next);
+    onKindChange?.(next);
+  };
+  const setActiveTab = (next: NewConnectionTabId) => {
+    if (activeTabProp === undefined) setInternalTab(next);
+    onTabChange?.(next);
+  };
 
   useEffect(() => {
     if (!open) return;
