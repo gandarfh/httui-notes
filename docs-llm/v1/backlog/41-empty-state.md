@@ -130,11 +130,15 @@ handler + 07 detection hook + AppShell mount)
 - [x] `<MigrationBanner onMigrate onDismiss docsHref?>` visual —
       closed by 95689c4. `role="alert"`, primary CTA, dismiss icon
       button, docs link.
-- [ ] **Carry**: detection hook (MVP `notes.db` without v1 layout)
-      + AppShell mount + `migrate_vault_to_v1` Tauri dispatch.
-      Dismissal persistence shipped slice 1 (commit 5e13578):
-      `[ui] mvp_migration_dismissed: bool` schema + `UserUiPrefs`
-      mirror + `useSettingsStore.setMvpMigrationDismissed`.
+- [ ] **Carry**: AppShell mount of `<MigrationBanner>` (slice 3)
+      + wire `migrate_vault_to_v1` Tauri dispatch through the
+      banner's `onMigrate` callback (slice 4).
+      Slice 1 shipped (commit 5e13578): dismissal persistence
+      schema + `useSettingsStore.setMvpMigrationDismissed`.
+      Slice 2 shipped (commit 2be0096): backend
+      `detect_migration_candidate` + `detect_vault_migration`
+      Tauri command + `useMigrationDetection(vaultPath)` hook
+      returning `{ candidate, shouldShowBanner, dismiss, refresh }`.
 
 ## Acceptance criteria
 
