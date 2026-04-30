@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
 
 import { VariableDetailContent } from "@/components/layout/variables/VariableDetailContent";
 import type { VariableRow } from "@/components/layout/variables/variable-derive";
@@ -108,6 +109,45 @@ describe("VariableDetailContent", () => {
     expect(
       screen.queryByTestId("variable-detail-uses-placeholder"),
     ).not.toBeInTheDocument();
+  });
+
+  it("renders the is_secret toggle and forwards onToggleSecret + confirmDemote", async () => {
+    const onToggleSecret = vi.fn();
+    const confirmDemote = vi.fn(async () => true);
+    renderWithProviders(
+      <VariableDetailContent
+        row={row({ isSecret: true, scope: "personal" })}
+        envNames={["local"]}
+        onToggleSecret={onToggleSecret}
+        confirmDemote={confirmDemote}
+      />,
+    );
+    expect(screen.getByTestId("variable-secret-toggle")).toBeInTheDocument();
+    await userEvent
+      .setup()
+      .click(screen.getByTestId("variable-secret-toggle-switch"));
+    expect(confirmDemote).toHaveBeenCalledTimes(1);
+    expect(onToggleSecret).toHaveBeenCalledWith(false);
+  });
+
+  it("forwards onCommitValue down to each value row", async () => {
+    const onCommitValue = vi.fn();
+    renderWithProviders(
+      <VariableDetailContent
+        row={row({ values: { local: "x" } })}
+        envNames={["local"]}
+        onCommitValue={onCommitValue}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("variable-value-row-local-edit"));
+    const input = screen.getByTestId(
+      "variable-value-row-local-input",
+    ) as HTMLInputElement;
+    await user.clear(input);
+    await user.type(input, "y");
+    await user.click(screen.getByTestId("variable-value-row-local-save"));
+    expect(onCommitValue).toHaveBeenCalledWith("local", "y");
   });
 
   it("uses row.values[env] for each value cell", () => {

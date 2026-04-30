@@ -1,17 +1,18 @@
-// Canvas §6 Variables — detail panel composer (Epic 43 Story 02 slice 1).
+// Canvas §6 Variables — detail panel composer (Epic 43 Story 02).
 //
-// Three sections inside the 380px detail slot: header (key + scope +
+// Four sections inside the 380px detail slot: header (key + scope +
 // secret chip), VALORES POR AMBIENTE list (one row per env, with
-// Show/Hide for secrets), USED IN BLOCKS slot (slice 4 plugs the
-// references list here). Read-only this slice; edit + is_secret toggle
-// land in the next slice. Pure presentational; consumer plugs
-// `fetchSecret`.
+// Show/Hide + Edit/Save/Cancel for secrets), is_secret toggle
+// (slice 3), USED IN BLOCKS slot (slice 4 plugs the references list
+// here). Pure presentational; consumer plugs `fetchSecret`,
+// `onCommitValue`, `onToggleSecret`, and `confirmDemote`.
 
 import { Box, Flex, Text } from "@chakra-ui/react";
 import type { ReactNode } from "react";
 
 import type { VariableRow } from "./variable-derive";
 import { VariableDetailHeader } from "./VariableDetailHeader";
+import { VariableSecretToggle } from "./VariableSecretToggle";
 import { VariableValueRow } from "./VariableValueRow";
 
 export interface VariableDetailContentProps {
@@ -20,6 +21,12 @@ export interface VariableDetailContentProps {
   envNames: ReadonlyArray<string>;
   /** Async cleartext fetch (keychain) for secret values. */
   fetchSecret?: (env: string) => Promise<string | undefined>;
+  /** Per-env value commit (consumer wires `EnvironmentsStore::set_var`). */
+  onCommitValue?: (env: string, next: string) => void;
+  /** is_secret flip (consumer owns keychain↔TOML migration). */
+  onToggleSecret?: (next: boolean) => void;
+  /** Demotion confirmation gate (secret → public). */
+  confirmDemote?: () => Promise<boolean>;
   /** Slice 4 plugs the used-in-blocks reference list here. */
   usedInBlocksSlot?: ReactNode;
 }
@@ -28,6 +35,9 @@ export function VariableDetailContent({
   row,
   envNames,
   fetchSecret,
+  onCommitValue,
+  onToggleSecret,
+  confirmDemote,
   usedInBlocksSlot,
 }: VariableDetailContentProps) {
   return (
@@ -51,9 +61,16 @@ export function VariableDetailContent({
               value={row.values[env]}
               isSecret={row.isSecret}
               fetchSecret={fetchSecret}
+              onCommit={onCommitValue}
             />
           ))
         )}
+
+        <VariableSecretToggle
+          isSecret={row.isSecret}
+          onToggle={onToggleSecret}
+          confirmDemote={confirmDemote}
+        />
 
         <SectionLabel mt={3}>USED IN BLOCKS</SectionLabel>
         {usedInBlocksSlot ?? <UsesPlaceholder usesCount={row.usesCount} />}
