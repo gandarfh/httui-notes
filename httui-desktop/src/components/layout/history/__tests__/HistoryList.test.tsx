@@ -5,6 +5,7 @@ import {
   HistoryList,
   formatElapsed,
   formatRelative,
+  hasPlan,
   label,
   outcomeTone,
 } from "@/components/layout/history/HistoryList";
@@ -108,6 +109,46 @@ describe("HistoryList", () => {
     );
     const row = screen.getByTestId("history-row");
     expect(row.textContent).not.toMatch(/ms/);
+  });
+
+  // Story 05 task 2 — EXPLAIN plan chip
+
+  it("shows the plan chip when entry.plan is set", () => {
+    renderWithProviders(
+      <HistoryList
+        entries={[entry({ plan: '[{"Plan":{"Node Type":"Seq Scan"}}]' })]}
+      />,
+    );
+    expect(screen.getByTestId("history-row-plan")).toBeInTheDocument();
+    expect(screen.getByTestId("history-row-plan").textContent).toContain(
+      "plan",
+    );
+  });
+
+  it("hides the plan chip when entry.plan is undefined", () => {
+    renderWithProviders(<HistoryList entries={[entry()]} />);
+    expect(screen.queryByTestId("history-row-plan")).not.toBeInTheDocument();
+  });
+
+  it("hides the plan chip when entry.plan is empty / whitespace", () => {
+    renderWithProviders(
+      <HistoryList entries={[entry({ plan: "   " })]} />,
+    );
+    expect(screen.queryByTestId("history-row-plan")).not.toBeInTheDocument();
+  });
+});
+
+describe("hasPlan", () => {
+  it("returns true for a non-empty plan string", () => {
+    expect(hasPlan(entry({ plan: '{"x":1}' }))).toBe(true);
+  });
+  it("returns false when plan is undefined / null / missing", () => {
+    expect(hasPlan(entry())).toBe(false);
+  });
+  it("returns false for an empty / whitespace plan", () => {
+    expect(hasPlan(entry({ plan: "" }))).toBe(false);
+    expect(hasPlan(entry({ plan: "   " }))).toBe(false);
+    expect(hasPlan(entry({ plan: "\t\n" }))).toBe(false);
   });
 });
 

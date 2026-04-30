@@ -82,6 +82,22 @@ export function HistoryList({ entries, onSelect }: HistoryListProps) {
             >
               {label(entry)}
             </Text>
+            {hasPlan(entry) && (
+              <Box
+                data-testid="history-row-plan"
+                fontFamily="mono"
+                fontSize="10px"
+                color="fg.3"
+                px="4px"
+                py="1px"
+                borderRadius="3px"
+                bg="bg.2"
+                flexShrink={0}
+                title="EXPLAIN plan captured for this run"
+              >
+                📊 plan
+              </Box>
+            )}
             {entry.status !== null && (
               <Text
                 fontFamily="mono"
@@ -122,6 +138,15 @@ export function outcomeTone(entry: HistoryEntry): HistoryOutcomeTone {
     if (entry.status >= 200 && entry.status < 300) return "ok";
   }
   return "muted";
+}
+
+/** Whether the row has a captured EXPLAIN plan (Epic 53 Story 05).
+ *  Treats empty-string + whitespace-only `plan` as absent so the
+ *  truncated-fallback "all-whitespace" edge case doesn't surface a
+ *  meaningless chip. Pure — exported so consumers can render the
+ *  same chip in detail panels. */
+export function hasPlan(entry: HistoryEntry): boolean {
+  return typeof entry.plan === "string" && entry.plan.trim().length > 0;
 }
 
 /** Block label = alias when set, else `<METHOD> <URL>`. */
