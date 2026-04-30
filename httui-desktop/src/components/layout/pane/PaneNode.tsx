@@ -101,6 +101,7 @@ export function PaneNode({
               content={content}
               vimEnabled={vimEnabled}
               showConflict={hasConflict(activeTab.filePath)}
+              dirty={unsavedFiles.has(activeTab.filePath)}
               onConflictReload={() =>
                 resolveConflict(
                   activeTab.filePath,

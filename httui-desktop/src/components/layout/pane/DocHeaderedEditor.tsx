@@ -20,7 +20,10 @@ import { Box } from "@chakra-ui/react";
 import { MarkdownEditor } from "@/components/editor/MarkdownEditor";
 import { ConflictBanner } from "../ConflictBanner";
 import { DocHeaderShell } from "../docheader/DocHeaderShell";
+import type { BranchSummaryData } from "../docheader/docheader-meta";
 import { useFileDocHeaderCompact } from "@/hooks/useFileDocHeaderCompact";
+import { useFileMtime } from "@/hooks/useFileMtime";
+import { useGitStatus } from "@/hooks/useGitStatus";
 import { extractFrontmatter } from "@/lib/blocks/extract-frontmatter-tags";
 import type { DocHeaderFrontmatter } from "../docheader/docheader-derive";
 
@@ -30,6 +33,10 @@ export interface DocHeaderedEditorProps {
   content: string;
   vimEnabled: boolean;
   showConflict: boolean;
+  /** Whether the active tab has unsaved edits (drives the meta-strip
+   * `· unsaved` suffix on the `Edited Xm ago` chip). PaneNode reads
+   * this from `unsavedFiles.has(filePath)`. */
+  dirty: boolean;
   onConflictReload: () => void;
   onConflictKeep: () => void;
   onChange: (content: string) => void;
@@ -42,12 +49,28 @@ export function DocHeaderedEditor({
   content,
   vimEnabled,
   showConflict,
+  dirty,
   onConflictReload,
   onConflictKeep,
   onChange,
   onNavigateFile,
 }: DocHeaderedEditorProps) {
   const { compact, setCompact } = useFileDocHeaderCompact(vaultPath, filePath);
+  const { mtime } = useFileMtime(vaultPath, filePath);
+  const { status: gitStatus } = useGitStatus(vaultPath);
+
+  const branch = useMemo<BranchSummaryData | null>(() => {
+    if (!gitStatus) return null;
+    // Per-file `+N ~M` requires a future Tauri command (`git_diff_stat
+    // _for_file`) — for now we only surface the branch name. The
+    // BranchSummaryData shape allows zero counts; formatBranchSummary
+    // omits them, so the chip just shows "Branch <name>".
+    return {
+      branch: gitStatus.branch,
+      addedLines: 0,
+      modifiedLines: 0,
+    };
+  }, [gitStatus]);
 
   // Parse frontmatter inline (synchronous TS port of the Rust slice-1
   // schema — title + abstract + tags only). Re-runs every keystroke,
@@ -96,6 +119,9 @@ export function DocHeaderedEditor({
         onToggleCompact={() => {
           void setCompact(!compact);
         }}
+        mtimeMs={mtime}
+        dirty={dirty}
+        branch={branch}
       />
       <Box flex={1} overflow="hidden">
         <MarkdownEditor

@@ -22,11 +22,21 @@ vi.mock("../../docheader/DocHeaderShell", () => ({
     compact,
     onToggleCompact,
     frontmatter,
+    mtimeMs,
+    dirty,
+    branch,
   }: {
     filePath: string;
     compact?: boolean;
     onToggleCompact?: () => void;
-    frontmatter?: { title?: string; abstract?: string; tags?: readonly string[] } | null;
+    frontmatter?: {
+      title?: string;
+      abstract?: string;
+      tags?: readonly string[];
+    } | null;
+    mtimeMs?: number | null;
+    dirty?: boolean;
+    branch?: { branch: string | null } | null;
   }) => (
     <button
       data-testid="docheader-stub"
@@ -36,6 +46,9 @@ vi.mock("../../docheader/DocHeaderShell", () => ({
       data-fm-title={frontmatter?.title ?? ""}
       data-fm-abstract={frontmatter?.abstract ?? ""}
       data-fm-tags={(frontmatter?.tags ?? []).join(",")}
+      data-mtime={String(mtimeMs ?? "")}
+      data-dirty={String(Boolean(dirty))}
+      data-branch={branch?.branch ?? ""}
       onClick={() => onToggleCompact?.()}
     >
       docheader
@@ -51,6 +64,17 @@ vi.mock("../../ConflictBanner", () => ({
 
 beforeEach(() => {
   clearTauriMocks();
+  // Default Tauri stubs that the hooks fetch on mount. Per-test
+  // overrides via mockTauriCommand replace these.
+  mockTauriCommand("get_file_mtime", () => 1_700_000_000_000);
+  mockTauriCommand("git_status_cmd", () => ({
+    branch: "main",
+    upstream: null,
+    ahead: 0,
+    behind: 0,
+    changed: [],
+    clean: true,
+  }));
 });
 
 afterEach(() => {
@@ -64,11 +88,13 @@ describe("DocHeaderedEditor", () => {
     content: "# hi\n",
     vimEnabled: false,
     showConflict: false,
+    dirty: false,
     onConflictReload: vi.fn(),
     onConflictKeep: vi.fn(),
     onChange: vi.fn(),
     onNavigateFile: undefined,
   };
+
 
   it("mounts the DocHeader card above the editor with filePath threaded", () => {
     mockTauriCommand("get_file_settings", () => ({ auto_capture: false }));
@@ -220,5 +246,45 @@ describe("DocHeaderedEditor", () => {
     expect(screen.getByTestId("docheader-stub").dataset.fmTitle).toBe(
       "Renamed",
     );
+  });
+
+  it("threads mtime from useFileMtime into the meta strip", async () => {
+    mockTauriCommand("get_file_mtime", () => 1_734_000_000_000);
+    renderWithProviders(<DocHeaderedEditor {...baseProps} />);
+    await vi.waitFor(() => {
+      expect(screen.getByTestId("docheader-stub").dataset.mtime).toBe(
+        "1734000000000",
+      );
+    });
+  });
+
+  it("threads dirty=true into the meta strip when the prop is set", () => {
+    renderWithProviders(<DocHeaderedEditor {...baseProps} dirty={true} />);
+    expect(screen.getByTestId("docheader-stub").dataset.dirty).toBe("true");
+  });
+
+  it("threads branch name from useGitStatus into the meta strip", async () => {
+    mockTauriCommand("git_status_cmd", () => ({
+      branch: "feat/integration",
+      upstream: null,
+      ahead: 0,
+      behind: 0,
+      changed: [],
+      clean: true,
+    }));
+    renderWithProviders(<DocHeaderedEditor {...baseProps} />);
+    await vi.waitFor(() => {
+      expect(screen.getByTestId("docheader-stub").dataset.branch).toBe(
+        "feat/integration",
+      );
+    });
+  });
+
+  it("leaves branch null when the git status hasn't loaded yet", () => {
+    mockTauriCommand("git_status_cmd", () => {
+      throw new Error("not a git repo");
+    });
+    renderWithProviders(<DocHeaderedEditor {...baseProps} />);
+    expect(screen.getByTestId("docheader-stub").dataset.branch).toBe("");
   });
 });
