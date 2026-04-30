@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  dbResponseToAssertionContext,
   evaluateAllAssertions,
   evaluateAssertion,
   extractAssertionLines,
+  httpResponseToAssertionContext,
   parseAllAssertions,
   parseAssertionLine,
   parseRhs,
@@ -287,5 +289,74 @@ describe("evaluateAssertion / evaluateAllAssertions", () => {
     expect(out.pass).toBe(false);
     expect(out.failures.length).toBe(2);
     expect(out.failures[0].raw).toContain("status === 404");
+  });
+});
+
+describe("httpResponseToAssertionContext", () => {
+  it("maps status_code / headers / body straight through", () => {
+    const ctx = httpResponseToAssertionContext({
+      status_code: 200,
+      headers: { "Content-Type": "application/json" },
+      body: { id: 1 },
+      elapsed_ms: 42,
+    });
+    expect(ctx.status).toBe(200);
+    expect(ctx.headers).toEqual({ "Content-Type": "application/json" });
+    expect(ctx.body).toEqual({ id: 1 });
+  });
+
+  it("prefers timing.total_ms over elapsed_ms when present", () => {
+    const ctx = httpResponseToAssertionContext({
+      status_code: 200,
+      headers: {},
+      body: null,
+      elapsed_ms: 99,
+      timing: { total_ms: 42 },
+    });
+    expect(ctx.time_ms).toBe(42);
+  });
+
+  it("falls back to elapsed_ms when timing.total_ms is missing", () => {
+    const ctx = httpResponseToAssertionContext({
+      status_code: 200,
+      headers: {},
+      body: null,
+      elapsed_ms: 99,
+    });
+    expect(ctx.time_ms).toBe(99);
+  });
+});
+
+describe("dbResponseToAssertionContext", () => {
+  it("uses the first SELECT result's rows for $.row", () => {
+    const ctx = dbResponseToAssertionContext({
+      results: [{ kind: "select", rows: [{ id: 1 }, { id: 2 }] }],
+      stats: { elapsed_ms: 7 },
+    });
+    expect(ctx.row).toEqual([{ id: 1 }, { id: 2 }]);
+    expect(ctx.body).toEqual([{ id: 1 }, { id: 2 }]);
+    expect(ctx.time_ms).toBe(7);
+  });
+
+  it("returns empty rows when no SELECT result is present", () => {
+    const ctx = dbResponseToAssertionContext({
+      results: [{ kind: "mutation", rows_affected: 3 }],
+    });
+    expect(ctx.row).toEqual([]);
+    expect(ctx.body).toEqual([]);
+  });
+
+  it("returns empty rows when SELECT exists but rows isn't an array", () => {
+    const ctx = dbResponseToAssertionContext({
+      results: [{ kind: "select", rows: null }],
+    });
+    expect(ctx.row).toEqual([]);
+  });
+
+  it("works with no stats", () => {
+    const ctx = dbResponseToAssertionContext({
+      results: [],
+    });
+    expect(ctx.time_ms).toBeUndefined();
   });
 });

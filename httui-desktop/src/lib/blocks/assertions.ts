@@ -297,6 +297,47 @@ export function evaluateAllAssertions(
   return { pass: failures.length === 0, failures };
 }
 
+// --- Adapters from concrete response shapes (Story 03 — runtime wiring) ---
+
+/** Build an `AssertionContext` from the HTTP response shape emitted by
+ * `executeHttpStreamed`. `time_ms` prefers `timing.total_ms` over
+ * `elapsed_ms` because the breakdown total is the canonical figure;
+ * either is fine for the `time < N` predicate. */
+export function httpResponseToAssertionContext(resp: {
+  status_code: number;
+  headers: Record<string, string>;
+  body: unknown;
+  elapsed_ms?: number;
+  timing?: { total_ms?: number };
+}): AssertionContext {
+  return {
+    status: resp.status_code,
+    time_ms: resp.timing?.total_ms ?? resp.elapsed_ms,
+    body: resp.body,
+    headers: resp.headers,
+  };
+}
+
+/** Build an `AssertionContext` from the DB response shape. Uses the
+ * first SELECT result's rows for `$.row[N].col`; mutation-only or
+ * error-only responses produce an empty `row` array (so `$.row[N]`
+ * evaluates to undefined and assertions fail with a clear reason). */
+export function dbResponseToAssertionContext(resp: {
+  results: ReadonlyArray<{ kind: string } & Record<string, unknown>>;
+  stats?: { elapsed_ms?: number };
+}): AssertionContext {
+  const select = resp.results.find((r) => r.kind === "select");
+  const rows =
+    select && Array.isArray(select.rows)
+      ? (select.rows as Record<string, unknown>[])
+      : [];
+  return {
+    time_ms: resp.stats?.elapsed_ms,
+    row: rows,
+    body: rows,
+  };
+}
+
 /** Navigate a JSONPath fragment like `.foo.bar` or `[0].col`. Returns
  * undefined when the path doesn't resolve. Limited subset: dot
  * descent and numeric index brackets only — no filters, no `..`. */
