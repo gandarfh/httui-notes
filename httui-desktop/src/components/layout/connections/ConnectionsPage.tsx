@@ -23,6 +23,7 @@ import {
 import { ConnectionsListPanel } from "./ConnectionsListPanel";
 import { ConnectionsDetailPanel } from "./ConnectionsDetailPanel";
 import type { HotTableEntry } from "./ConnectionDetailSchemaPreview";
+import type { RunbookUsage } from "./connection-usages";
 import {
   buildListRows,
   countsByKind as deriveCountsByKind,
@@ -70,6 +71,15 @@ export interface ConnectionsPageProps {
   /** Click "Refresh" in the schema preview — consumer should call
    * `useSchemaCacheStore.refresh(id)`. */
   onRefreshSchema?: (id: string) => void;
+  /** Story 04 — runbook usages keyed by connection id. Consumer
+   * fills via a vault-grep Tauri command driven by
+   * `connection-usages.ts`. */
+  usagesByConnection?: Record<string, RunbookUsage[]>;
+  /** True while the consumer is loading usages for a connection. */
+  usagesLoadingByConnection?: Record<string, boolean>;
+  /** Click on a usage row → consumer opens the file at the line
+   * (typically `useEditorSession.handleFileSelect` + cursor scroll). */
+  onOpenUsage?: (filePath: string, line: number) => void;
 }
 
 export function ConnectionsPage({
@@ -85,6 +95,9 @@ export function ConnectionsPage({
   schemaByConnection,
   hotTablesByConnection,
   onRefreshSchema,
+  usagesByConnection,
+  usagesLoadingByConnection,
+  onOpenUsage,
 }: ConnectionsPageProps) {
   const [selectedKind, setSelectedKind] = useState<ConnectionKind | null>(
     null,
@@ -193,6 +206,17 @@ export function ConnectionsPage({
             ? () => onRefreshSchema(selectedConnection.id)
             : undefined
         }
+        usages={
+          selectedConnection
+            ? usagesByConnection?.[selectedConnection.id] ?? []
+            : []
+        }
+        usagesLoading={
+          selectedConnection
+            ? usagesLoadingByConnection?.[selectedConnection.id] ?? false
+            : false
+        }
+        onOpenUsage={onOpenUsage}
       />
     </Flex>
   );

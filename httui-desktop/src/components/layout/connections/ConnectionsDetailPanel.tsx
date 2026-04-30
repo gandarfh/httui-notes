@@ -13,6 +13,8 @@ import {
   ConnectionDetailSchemaPreview,
   type HotTableEntry,
 } from "./ConnectionDetailSchemaPreview";
+import { ConnectionDetailUsedIn } from "./ConnectionDetailUsedIn";
+import type { RunbookUsage } from "./connection-usages";
 import type {
   Connection,
   UpdateConnectionInput,
@@ -44,6 +46,11 @@ export interface ConnectionsDetailPanelProps {
   hotTables?: HotTableEntry[];
   /** Click → consumer triggers `useSchemaCacheStore.refresh`. */
   onRefreshSchema?: () => void;
+  /** Story 04 — runbook usages for the selected connection. */
+  usages?: RunbookUsage[];
+  usagesLoading?: boolean;
+  /** Click on a usage row → consumer opens the file at the line. */
+  onOpenUsage?: (filePath: string, line: number) => void;
 }
 
 export function ConnectionsDetailPanel({
@@ -56,6 +63,9 @@ export function ConnectionsDetailPanel({
   schemaError = null,
   hotTables = [],
   onRefreshSchema,
+  usages = [],
+  usagesLoading = false,
+  onOpenUsage,
 }: ConnectionsDetailPanelProps) {
   return (
     <Box
@@ -101,9 +111,14 @@ export function ConnectionsDetailPanel({
             hotTables={hotTables}
             onRefresh={onRefreshSchema}
           />
+          <ConnectionDetailUsedIn
+            usages={usages}
+            loading={usagesLoading}
+            onOpen={onOpenUsage}
+          />
           <Text fontSize="11px" color="fg.3">
-            Used-in-runbooks (Story 04) + footer actions (Story 05)
-            ship in follow-up slices.
+            Footer actions (Story 05) + new-connection modal
+            (Story 06) ship in follow-up slices.
           </Text>
         </Stack>
       ) : (
