@@ -112,4 +112,64 @@ describe("GitFileList", () => {
     );
     expect(screen.getByTestId("git-file-row-a-stage")).toBeInTheDocument();
   });
+
+  it("fires onToggleStage when the stage checkbox is clicked", async () => {
+    const onToggleStage = vi.fn();
+    const onSelect = vi.fn();
+    renderWithProviders(
+      <GitFileList
+        changed={[fc({ path: "a" })]}
+        onToggleStage={onToggleStage}
+        onSelect={onSelect}
+      />,
+    );
+    await userEvent.setup().click(screen.getByTestId("git-file-row-a-stage"));
+    expect(onToggleStage).toHaveBeenCalledTimes(1);
+    expect(onToggleStage.mock.calls[0]![0].path).toBe("a");
+    // Checkbox click must not bubble up to the row's onSelect.
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("encodes status as 'changed' for an unknown XY code", () => {
+    renderWithProviders(
+      <GitFileList changed={[fc({ path: "x", status: ".X" })]} />,
+    );
+    expect(
+      screen.getByTestId("git-file-row-x").getAttribute("data-status"),
+    ).toBe("changed");
+  });
+
+  it("renders an added row for status 'A.'", () => {
+    renderWithProviders(
+      <GitFileList changed={[fc({ path: "a", status: "A.", staged: true })]} />,
+    );
+    expect(
+      screen.getByTestId("git-file-row-a").getAttribute("data-status"),
+    ).toBe("added");
+  });
+
+  it("renders a renamed row for status '.R'", () => {
+    renderWithProviders(
+      <GitFileList changed={[fc({ path: "r", status: ".R" })]} />,
+    );
+    expect(
+      screen.getByTestId("git-file-row-r").getAttribute("data-status"),
+    ).toBe("renamed");
+  });
+
+  it("renders a conflicted row for status '.U'", () => {
+    renderWithProviders(
+      <GitFileList changed={[fc({ path: "c", status: ".U" })]} />,
+    );
+    expect(
+      screen.getByTestId("git-file-row-c").getAttribute("data-status"),
+    ).toBe("conflicted");
+  });
+
+  it("does not fire onSelect when no callback is provided", async () => {
+    renderWithProviders(<GitFileList changed={[fc({ path: "a" })]} />);
+    // Should not crash without onSelect.
+    await userEvent.setup().click(screen.getByTestId("git-file-row-a"));
+    expect(screen.getByTestId("git-file-row-a")).toBeInTheDocument();
+  });
 });
