@@ -9,6 +9,7 @@ import {
   rebuildSearchIndex,
 } from "@/lib/tauri/commands";
 import type { FileEntry } from "@/lib/tauri/commands";
+import { useTagIndexStore } from "@/stores/tagIndex";
 
 // --- Types ---
 
@@ -77,6 +78,15 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           ]);
           startWatching(path).catch(() => {});
           rebuildSearchIndex(path).catch(() => {});
+          // Bootstrap the vault-wide tag index so quick-open #tag,
+          // tag-filter dropdowns, and TagColumn autocomplete work
+          // immediately after vault switch — Epic 52 Story 04 mount.
+          // Failure is non-fatal (tag index just stays at its
+          // previous shape); per-save refreshes will catch up.
+          useTagIndexStore
+            .getState()
+            .loadFromVault(path)
+            .catch(() => {});
         } catch (err) {
           console.error("Failed to switch vault:", err);
         }

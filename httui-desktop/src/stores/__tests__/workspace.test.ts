@@ -84,6 +84,25 @@ describe("workspaceStore", () => {
   });
 
   describe("switchVault", () => {
+    it("bootstraps the tag index via scan_vault_tags_cmd on switch", async () => {
+      mockTauriCommand("stop_watching", () => {});
+      mockTauriCommand("set_config", () => {});
+      mockTauriCommand("list_workspace", () => []);
+      mockTauriCommand("start_watching", () => {});
+      mockTauriCommand("rebuild_search_index", () => {});
+      let scanCalled = false;
+      mockTauriCommand("scan_vault_tags_cmd", () => {
+        scanCalled = true;
+        return [];
+      });
+
+      await useWorkspaceStore.getState().switchVault(VAULT);
+      // Wait one microtask for the fire-and-forget loadFromVault.
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(scanCalled).toBe(true);
+    });
+
     it("stops watching, sets vault, refreshes tree, restarts watcher", async () => {
       const tree = [mkEntry("hello.md")];
       const calls: string[] = [];
