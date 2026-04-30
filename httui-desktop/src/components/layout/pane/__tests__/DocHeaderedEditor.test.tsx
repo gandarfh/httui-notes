@@ -287,4 +287,70 @@ describe("DocHeaderedEditor", () => {
     renderWithProviders(<DocHeaderedEditor {...baseProps} />);
     expect(screen.getByTestId("docheader-stub").dataset.branch).toBe("");
   });
+
+  it("refreshes mtime on the dirty → clean rising edge (post-save)", async () => {
+    let mtimeValue = 1_700_000_000_000;
+    let calls = 0;
+    mockTauriCommand("get_file_mtime", () => {
+      calls += 1;
+      return mtimeValue;
+    });
+    const { rerender } = renderWithProviders(
+      <DocHeaderedEditor {...baseProps} dirty={true} />,
+    );
+    await vi.waitFor(() => {
+      expect(calls).toBeGreaterThanOrEqual(1);
+    });
+    const beforeRefresh = calls;
+
+    // Simulate the post-save flip: dirty true → false should trigger
+    // a fresh mtime poll. Bump the mtime so the value visibly
+    // changes after refresh.
+    mtimeValue = 1_700_000_999_999;
+    rerender(<DocHeaderedEditor {...baseProps} dirty={false} />);
+
+    await vi.waitFor(() => {
+      expect(calls).toBeGreaterThan(beforeRefresh);
+      expect(screen.getByTestId("docheader-stub").dataset.mtime).toBe(
+        "1700000999999",
+      );
+    });
+  });
+
+  it("does NOT refresh mtime when dirty stays the same across rerenders", async () => {
+    let calls = 0;
+    mockTauriCommand("get_file_mtime", () => {
+      calls += 1;
+      return 1_700_000_000_000;
+    });
+    const { rerender } = renderWithProviders(
+      <DocHeaderedEditor {...baseProps} dirty={false} />,
+    );
+    await vi.waitFor(() => expect(calls).toBeGreaterThanOrEqual(1));
+    const initialCalls = calls;
+
+    // Idempotent rerender — dirty stays false, no extra mtime poll.
+    rerender(<DocHeaderedEditor {...baseProps} dirty={false} />);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(calls).toBe(initialCalls);
+  });
+
+  it("does NOT refresh mtime on the clean → dirty falling edge", async () => {
+    let calls = 0;
+    mockTauriCommand("get_file_mtime", () => {
+      calls += 1;
+      return 1_700_000_000_000;
+    });
+    const { rerender } = renderWithProviders(
+      <DocHeaderedEditor {...baseProps} dirty={false} />,
+    );
+    await vi.waitFor(() => expect(calls).toBeGreaterThanOrEqual(1));
+    const initialCalls = calls;
+
+    // Editing flips dirty: clean → dirty. Mtime hasn't changed on
+    // disk (write hasn't happened yet); skip the refresh.
+    rerender(<DocHeaderedEditor {...baseProps} dirty={true} />);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(calls).toBe(initialCalls);
+  });
 });

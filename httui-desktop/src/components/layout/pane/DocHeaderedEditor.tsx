@@ -14,7 +14,7 @@
 // data (author / branch / last-run summary) + frontmatter parse is
 // the next slice and stays in this same component.
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Box } from "@chakra-ui/react";
 
 import { MarkdownEditor } from "@/components/editor/MarkdownEditor";
@@ -56,8 +56,22 @@ export function DocHeaderedEditor({
   onNavigateFile,
 }: DocHeaderedEditorProps) {
   const { compact, setCompact } = useFileDocHeaderCompact(vaultPath, filePath);
-  const { mtime } = useFileMtime(vaultPath, filePath);
+  const { mtime, refresh: refreshMtime } = useFileMtime(vaultPath, filePath);
   const { status: gitStatus } = useGitStatus(vaultPath);
+
+  // Refresh the mtime poll on the dirty → clean rising edge — this
+  // means a save just succeeded (the auto-save path flips
+  // `unsavedFiles` from true → false after `writeNote` resolves).
+  // Without this, the meta strip would lag until the next focus
+  // event arrives, leaving "Edited 2m ago · unsaved" stale on
+  // screen post-save.
+  const prevDirtyRef = useRef(dirty);
+  useEffect(() => {
+    if (prevDirtyRef.current && !dirty) {
+      refreshMtime();
+    }
+    prevDirtyRef.current = dirty;
+  }, [dirty, refreshMtime]);
 
   const branch = useMemo<BranchSummaryData | null>(() => {
     if (!gitStatus) return null;
