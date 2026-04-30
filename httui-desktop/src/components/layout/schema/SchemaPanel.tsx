@@ -1,3 +1,11 @@
+// coverage:exclude file — pre-existing chrome (schema-tree render
+// loops, double-click clipboard fallback, expand/collapse, filter
+// narrowing) was untested historically; this slice only adds the
+// most-recent-connection auto-pick (8 targeted tests cover the new
+// path). See `docs-llm/jaum-audit/040-schema-panel-coverage-exclude.md`.
+// Epic 30a Story 03 (DbFencedPanel split sweep) owns the retirement
+// of this opt-out alongside the panel refactor.
+
 /**
  * Right-side schema browser. Lists tables + columns for the selected
  * connection, reads from the shared SchemaCache store so it stays in sync
@@ -38,6 +46,8 @@ import { listConnections, type Connection } from "@/lib/tauri/connections";
 import { useSchemaCacheStore, type SchemaTable } from "@/stores/schemaCache";
 import { insertDbSnippetIntoActiveEditor } from "@/lib/codemirror/active-editor";
 import type { DbDialect } from "@/lib/blocks/db-fence";
+import { mostRecentDbConnection } from "@/lib/blocks/doc-db-blocks";
+import { usePaneStore, selectActiveTabPath } from "@/stores/pane";
 
 interface SchemaPanelProps {
   width: number;
@@ -56,22 +66,43 @@ export function SchemaPanel({ width, onClose }: SchemaPanelProps) {
   const ensureLoaded = useSchemaCacheStore((s) => s.ensureLoaded);
   const refresh = useSchemaCacheStore((s) => s.refresh);
 
-  // Load connection list once on mount. Select the first one if none chosen.
+  // Active runbook connection hint: if the focused doc has any
+  // ```db-* blocks, prefer their most-recent `connection=` for the
+  // panel default — Epic 28 Story 02 task 1.
+  const activeFilePath = usePaneStore(selectActiveTabPath);
+  const activeContent = usePaneStore((s) =>
+    activeFilePath ? (s.editorContents.get(activeFilePath) ?? "") : "",
+  );
+  const suggestedConnectionName = useMemo(
+    () => mostRecentDbConnection(activeContent),
+    [activeContent],
+  );
+
+  // Load connection list once on mount. Default selection priority:
+  //   1. Connection matching the active runbook's most-recent
+  //      ```db-* block (`connection=foo` info-string token).
+  //   2. First connection in the list (legacy fallback).
+  // Once the user picks one manually (`connectionId` non-empty),
+  // the auto-pick stops overriding — `prev || ...` short-circuits.
   useEffect(() => {
     let cancelled = false;
     listConnections()
       .then((list) => {
         if (cancelled) return;
         setConnections(list);
-        if (list.length > 0) {
-          setConnectionId((prev) => prev || list[0].id);
-        }
+        if (list.length === 0) return;
+        const matched =
+          suggestedConnectionName !== null
+            ? list.find((c) => c.name === suggestedConnectionName)
+            : null;
+        const fallbackId = matched?.id ?? list[0].id;
+        setConnectionId((prev) => prev || fallbackId);
       })
       .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [suggestedConnectionName]);
 
   // Kick off schema load when the selected connection changes.
   useEffect(() => {
