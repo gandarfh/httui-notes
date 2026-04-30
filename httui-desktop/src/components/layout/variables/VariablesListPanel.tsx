@@ -23,6 +23,8 @@ export interface VariablesListPanelProps {
   onCreateNew?: () => void;
   /** Slot — slice 2 plugs `<VariableListRow>` rows here. */
   rowsSlot?: ReactNode;
+  /** Slot — Story 05 plugs `<NewVariableForm>` above the table headers when the consumer is in create mode. */
+  inlineFormSlot?: ReactNode;
 }
 
 export function VariablesListPanel({
@@ -33,6 +35,7 @@ export function VariablesListPanel({
   onImportDotenv,
   onCreateNew,
   rowsSlot,
+  inlineFormSlot,
 }: VariablesListPanelProps) {
   return (
     <Flex
@@ -100,6 +103,8 @@ export function VariablesListPanel({
           </Box>
         )}
       </Flex>
+
+      {inlineFormSlot}
 
       <TableHeaders envColumnNames={envColumnNames} />
 

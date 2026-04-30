@@ -39,6 +39,8 @@ export interface VariablesPageProps {
   /** Manual composition slot. Wins over the auto-rows path. */
   rowsSlot?: ReactNode;
   detailSlot?: ReactNode;
+  /** Slot for `<NewVariableForm>` rendered above the rows. */
+  inlineFormSlot?: ReactNode;
 }
 
 export function VariablesPage({
@@ -53,6 +55,7 @@ export function VariablesPage({
   onCreateNew,
   rowsSlot,
   detailSlot,
+  inlineFormSlot,
 }: VariablesPageProps) {
   const [scope, setScope] = useState<VariableScope>(
     VARIABLE_SCOPES.includes(initialScope) ? initialScope : "all",
@@ -110,6 +113,7 @@ export function VariablesPage({
         onImportDotenv={onImportDotenv}
         onCreateNew={onCreateNew}
         rowsSlot={finalRowsSlot}
+        inlineFormSlot={inlineFormSlot}
       />
       <VariablesDetailPanel selectedKey={selectedKey}>
         {detailSlot}

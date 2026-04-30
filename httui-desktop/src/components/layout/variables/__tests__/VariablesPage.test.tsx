@@ -161,6 +161,16 @@ describe("VariablesPage", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("renders inlineFormSlot above the table when supplied", () => {
+    renderWithProviders(
+      <VariablesPage
+        envColumnNames={["local"]}
+        inlineFormSlot={<div data-testid="form-stub" />}
+      />,
+    );
+    expect(screen.getByTestId("form-stub")).toBeInTheDocument();
+  });
+
   it("forwards onImportDotenv + onCreateNew handlers", async () => {
     const onImportDotenv = vi.fn();
     const onCreateNew = vi.fn();
