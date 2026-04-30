@@ -2,9 +2,9 @@
 //! the panel UI calls these, the substantive logic lives in core.
 
 use httui_core::git::{
-    git_branch_list, git_checkout, git_checkout_b, git_commit, git_diff, git_log,
-    git_remote_list, git_status, stage_path, unstage_path, BranchInfo, CommitInfo, GitStatus,
-    Remote,
+    git_branch_list, git_checkout, git_checkout_b, git_commit, git_diff, git_fetch, git_log,
+    git_pull, git_push, git_remote_list, git_status, stage_path, unstage_path, BranchInfo,
+    CommitInfo, GitStatus, Remote,
 };
 use std::path::PathBuf;
 
@@ -88,6 +88,36 @@ pub async fn git_commit_cmd(
     amend: bool,
 ) -> Result<(), String> {
     git_commit(&PathBuf::from(vault_path), &message, amend)
+}
+
+/// `git fetch [<remote>]`. Powers Story 05's `<GitSyncButtons>`
+/// fetch action. Returns the combined stdout+stderr for the toast.
+#[tauri::command]
+pub async fn git_fetch_cmd(
+    vault_path: String,
+    remote: Option<String>,
+) -> Result<String, String> {
+    git_fetch(&PathBuf::from(vault_path), remote.as_deref())
+}
+
+/// `git pull [<remote> <branch>]`.
+#[tauri::command]
+pub async fn git_pull_cmd(
+    vault_path: String,
+    remote: Option<String>,
+    branch: Option<String>,
+) -> Result<String, String> {
+    git_pull(&PathBuf::from(vault_path), remote.as_deref(), branch.as_deref())
+}
+
+/// `git push [<remote> <branch>]`.
+#[tauri::command]
+pub async fn git_push_cmd(
+    vault_path: String,
+    remote: Option<String>,
+    branch: Option<String>,
+) -> Result<String, String> {
+    git_push(&PathBuf::from(vault_path), remote.as_deref(), branch.as_deref())
 }
 
 #[cfg(test)]

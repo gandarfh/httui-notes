@@ -98,3 +98,34 @@ export function gitCommit(
 ): Promise<void> {
   return invoke("git_commit_cmd", { vaultPath, message, amend });
 }
+
+export function gitFetch(
+  vaultPath: string,
+  remote?: string,
+): Promise<string> {
+  return invoke("git_fetch_cmd", { vaultPath, remote: remote ?? null });
+}
+
+export function gitPull(
+  vaultPath: string,
+  remote?: string,
+  branch?: string,
+): Promise<string> {
+  return invoke("git_pull_cmd", {
+    vaultPath,
+    remote: remote ?? null,
+    branch: branch ?? null,
+  });
+}
+
+export function gitPush(
+  vaultPath: string,
+  remote?: string,
+  branch?: string,
+): Promise<string> {
+  return invoke("git_push_cmd", {
+    vaultPath,
+    remote: remote ?? null,
+    branch: branch ?? null,
+  });
+}
