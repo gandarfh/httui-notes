@@ -30,6 +30,9 @@ pub mod tag_commands;
 // Run-body filesystem cache (Epic 47 Story 01).
 pub mod run_body_commands;
 
+// Captures persistence (Epic 46 Story 03).
+pub mod captures_commands;
+
 // File-backed config (epic 09 foundation; cutover in epic 19).
 pub mod vault_config_commands;
 
