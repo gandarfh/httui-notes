@@ -481,6 +481,7 @@ fn main() {
             httui_notes::git_commands::git_log_cmd,
             httui_notes::git_commands::git_diff_cmd,
             httui_notes::git_commands::git_branch_list_cmd,
+            httui_notes::git_commands::git_remote_list_cmd,
             restore_session,
             httui_notes::commands::files::list_workspace,
             httui_notes::commands::files::read_note,

@@ -2,7 +2,8 @@
 //! the panel UI calls these, the substantive logic lives in core.
 
 use httui_core::git::{
-    git_branch_list, git_diff, git_log, git_status, BranchInfo, CommitInfo, GitStatus,
+    git_branch_list, git_diff, git_log, git_remote_list, git_status, BranchInfo, CommitInfo,
+    GitStatus, Remote,
 };
 use std::path::PathBuf;
 
@@ -35,6 +36,13 @@ pub async fn git_diff_cmd(
 #[tauri::command]
 pub async fn git_branch_list_cmd(vault_path: String) -> Result<Vec<BranchInfo>, String> {
     git_branch_list(&PathBuf::from(vault_path))
+}
+
+/// Configured remotes (`git remote -v` deduped to one entry per
+/// `(name, url)`). Powers Epic 49's `<SharePopover>`.
+#[tauri::command]
+pub async fn git_remote_list_cmd(vault_path: String) -> Result<Vec<Remote>, String> {
+    git_remote_list(&PathBuf::from(vault_path))
 }
 
 #[cfg(test)]

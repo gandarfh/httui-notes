@@ -62,3 +62,12 @@ export function gitDiff(
 export function gitBranchList(vaultPath: string): Promise<BranchInfo[]> {
   return invoke("git_branch_list_cmd", { vaultPath });
 }
+
+export interface Remote {
+  name: string;
+  url: string;
+}
+
+export function gitRemoteList(vaultPath: string): Promise<Remote[]> {
+  return invoke("git_remote_list_cmd", { vaultPath });
+}
