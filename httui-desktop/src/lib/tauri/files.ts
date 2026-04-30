@@ -23,9 +23,16 @@ export function getFileMtime(
 
 /** Per-file workspace settings persisted under
  * `[files."<file_path>"]` in `.httui/workspace.toml`. Carry-over from
- * Epic 39 Story 03 — backs the editor toolbar's auto-capture toggle. */
+ * Epic 39 Story 03 — backs the editor toolbar's auto-capture toggle.
+ *
+ * `docheader_compact` is optional on the wire because the Rust
+ * struct `#[serde(skip_serializing_if = ...)]`s default-valued
+ * booleans, so an entry without an explicit `false` flips its
+ * field to `undefined` in JSON. Treat undefined as `false` at every
+ * read site. */
 export interface FileSettings {
   auto_capture: boolean;
+  docheader_compact?: boolean;
 }
 
 /** Read the per-file workspace settings entry. Returns the
