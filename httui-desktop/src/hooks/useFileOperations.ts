@@ -113,6 +113,9 @@ export function useFileOperations({
       try {
         await renameNote(vaultPath, sourcePath, newPath);
         await refreshFileTree(vaultPath);
+        // Drop the old path's tag entry — same semantic as
+        // handleRename. Next save under the new path re-indexes.
+        useTagIndexStore.getState().removeFile(sourcePath);
       } catch (err) {
         console.error("Failed to move file:", err);
       }
