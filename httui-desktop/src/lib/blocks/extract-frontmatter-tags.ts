@@ -1,49 +1,92 @@
-// Epic 52 Story 04 — TS frontmatter tag extraction.
+// Epic 50 + Epic 52 — TS frontmatter parser.
 //
-// Used by the per-save hook driving `useTagIndexStore.setTagsForFile`
-// after a runbook write. Synchronous so the hook can fire during
-// the save callback without an extra IPC round-trip — the Rust
-// `httui_core::frontmatter::parse_frontmatter` already does the
+// Used by:
+// - Per-save hook driving `useTagIndexStore.setTagsForFile`
+//   (`extractFrontmatterTags`).
+// - DocHeaderedEditor mount feeding `<DocHeaderShell frontmatter={…}>`
+//   so the H1 falls back to the typed title before reaching the
+//   first-heading / filename branches in `pickH1Title`
+//   (`extractFrontmatter`).
+//
+// Synchronous so the consumer can fire it inside the editor save
+// callback / render path without an extra IPC round-trip — the Rust
+// `httui_core::frontmatter::parse_frontmatter` (252ba21) is the
 // authoritative parse on the vault-walker path
 // (`scan_vault_tags_cmd`); this is the lightweight per-edit
 // counterpart.
 //
-// Drift contract: if the Rust parser learns block-list `tags:` (the
-// canvas-mock schema only specifies the flow shape), this helper
-// must learn it too. Cross-checked by `parse_flow_list_returns_empty
+// Drift contract: this parser must match the Rust slice-1 schema —
+// flow-style `tags: [a, b]` only (no block-list); single-line scalar
+// `title:` / `abstract:` (block scalar `abstract: |` returns undefined
+// here, mirroring `Frontmatter::extra` capture on the Rust side).
+// When the Rust parser learns block-list / block-scalar, this helper
+// must too. Cross-checked by `parse_flow_list_returns_empty
 // _for_block_list_or_other_shapes` in the Rust tests + the matching
-// `extractFrontmatterTags returns [] on block-list shape` test below.
-//
-// The full frontmatter typed parse stays Rust-side. This helper
-// only returns tags because that's the per-save store mutator
-// signature; status / owner / title come from the
-// `parse_frontmatter_cmd` Tauri command path used by DocHeader.
+// "returns [] on block-list shape" test below.
 
-/** Extract the flow-list `tags:` value from a runbook's YAML
- *  frontmatter. Returns `[]` when the document has no frontmatter,
- *  no `tags:` key, an unrecognised block-list shape, or any other
- *  non-flow value. Tags are unquoted and trimmed; empty entries
- *  (`tags: [a, , b]`) are filtered out. Duplicates within the same
- *  file are deduped (mirrors `useTagIndexStore.loadFromVault`). */
-export function extractFrontmatterTags(content: string): string[] {
+export interface FrontmatterShape {
+  title?: string;
+  abstract?: string;
+  tags: string[];
+}
+
+/** Parse the frontmatter region into the DocHeader shape (title +
+ *  abstract + tags). Returns an object with `tags: []` and missing
+ *  optionals when the document has no frontmatter / no closing fence
+ *  / unknown keys. Each typed key follows the Rust slice-1 rule
+ *  (flow-style only; block scalar values fall through as
+ *  `undefined`). */
+export function extractFrontmatter(content: string): FrontmatterShape {
   const yaml = splitFrontmatterYaml(content);
-  if (yaml === null) return [];
+  if (yaml === null) return { tags: [] };
+
+  let title: string | undefined;
+  let abstractText: string | undefined;
+  let tags: string[] = [];
+  // Track which top-level keys we've already accepted so duplicate
+  // lines (malformed input) take the first occurrence — matches the
+  // first-wins shape of the Rust `parse_typed` loop.
+  const seen = new Set<string>();
 
   const lines = yaml.split("\n");
   for (const line of lines) {
-    // Top-level keys only — indented lines belong to nested
-    // structures we don't decode here.
     if (line.startsWith(" ") || line.startsWith("\t")) continue;
     const trimmed = line.replace(/[\r\n]+$/, "");
     if (trimmed === "" || trimmed.startsWith("#")) continue;
     const colonIdx = trimmed.indexOf(":");
     if (colonIdx < 0) continue;
     const key = trimmed.slice(0, colonIdx).trim();
-    if (key !== "tags") continue;
+    if (seen.has(key)) continue;
     const valuePart = trimmed.slice(colonIdx + 1).trim();
-    return parseFlowList(valuePart);
+
+    if (key === "title") {
+      seen.add(key);
+      const u = unquote(valuePart);
+      if (u !== "") title = u;
+    } else if (key === "abstract") {
+      seen.add(key);
+      // Block-scalar marker (`abstract: |` / `abstract: >`) — leave
+      // undefined (Rust slice-1 also defers).
+      if (valuePart === "|" || valuePart === ">") continue;
+      const u = unquote(valuePart);
+      if (u !== "") abstractText = u;
+    } else if (key === "tags") {
+      seen.add(key);
+      tags = parseFlowList(valuePart);
+    }
   }
-  return [];
+
+  const out: FrontmatterShape = { tags };
+  if (title !== undefined) out.title = title;
+  if (abstractText !== undefined) out.abstract = abstractText;
+  return out;
+}
+
+/** Extract the flow-list `tags:` value from a runbook's YAML
+ *  frontmatter. Convenience wrapper around `extractFrontmatter` —
+ *  preserved for the per-save tag-index hook which only needs tags. */
+export function extractFrontmatterTags(content: string): string[] {
+  return extractFrontmatter(content).tags;
 }
 
 /** Split the YAML region (between the `---` fences) out of the

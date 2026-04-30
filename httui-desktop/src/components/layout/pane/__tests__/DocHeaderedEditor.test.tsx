@@ -21,15 +21,21 @@ vi.mock("../../docheader/DocHeaderShell", () => ({
     filePath,
     compact,
     onToggleCompact,
+    frontmatter,
   }: {
     filePath: string;
     compact?: boolean;
     onToggleCompact?: () => void;
+    frontmatter?: { title?: string; abstract?: string; tags?: readonly string[] } | null;
   }) => (
     <button
       data-testid="docheader-stub"
       data-file={filePath}
       data-compact={String(Boolean(compact))}
+      data-fm-null={String(frontmatter === null)}
+      data-fm-title={frontmatter?.title ?? ""}
+      data-fm-abstract={frontmatter?.abstract ?? ""}
+      data-fm-tags={(frontmatter?.tags ?? []).join(",")}
       onClick={() => onToggleCompact?.()}
     >
       docheader
@@ -149,5 +155,70 @@ describe("DocHeaderedEditor", () => {
     const editor = screen.getByTestId("markdown-editor");
     expect(editor.dataset.file).toBe("notes/foo.md");
     expect(editor.dataset.len).toBe("4");
+  });
+
+  it("threads frontmatter=null when content has no fence", () => {
+    mockTauriCommand("get_file_settings", () => ({ auto_capture: false }));
+    renderWithProviders(
+      <DocHeaderedEditor {...baseProps} content={"# heading only\n"} />,
+    );
+    const header = screen.getByTestId("docheader-stub");
+    expect(header.dataset.fmNull).toBe("true");
+    expect(header.dataset.fmTitle).toBe("");
+    expect(header.dataset.fmTags).toBe("");
+  });
+
+  it("parses frontmatter title + abstract + tags from the document", () => {
+    mockTauriCommand("get_file_settings", () => ({ auto_capture: false }));
+    const doc = [
+      "---",
+      'title: "Payments — debug capture failures"',
+      'abstract: "Capture flow when X"',
+      "tags: [payments, debug]",
+      "---",
+      "body",
+      "",
+    ].join("\n");
+    renderWithProviders(
+      <DocHeaderedEditor {...baseProps} content={doc} />,
+    );
+    const header = screen.getByTestId("docheader-stub");
+    expect(header.dataset.fmNull).toBe("false");
+    expect(header.dataset.fmTitle).toBe("Payments — debug capture failures");
+    expect(header.dataset.fmAbstract).toBe("Capture flow when X");
+    expect(header.dataset.fmTags).toBe("payments,debug");
+  });
+
+  it("frontmatter survives subsequent body edits (parser memoized on content)", async () => {
+    mockTauriCommand("get_file_settings", () => ({ auto_capture: false }));
+    const initial = "---\ntitle: Stable\n---\nbody\n";
+    const { rerender } = renderWithProviders(
+      <DocHeaderedEditor {...baseProps} content={initial} />,
+    );
+    expect(screen.getByTestId("docheader-stub").dataset.fmTitle).toBe(
+      "Stable",
+    );
+
+    // Edit body only — title stays.
+    rerender(
+      <DocHeaderedEditor
+        {...baseProps}
+        content={"---\ntitle: Stable\n---\nbody edited\n"}
+      />,
+    );
+    expect(screen.getByTestId("docheader-stub").dataset.fmTitle).toBe(
+      "Stable",
+    );
+
+    // Edit title — reflects.
+    rerender(
+      <DocHeaderedEditor
+        {...baseProps}
+        content={"---\ntitle: Renamed\n---\nbody edited\n"}
+      />,
+    );
+    expect(screen.getByTestId("docheader-stub").dataset.fmTitle).toBe(
+      "Renamed",
+    );
   });
 });

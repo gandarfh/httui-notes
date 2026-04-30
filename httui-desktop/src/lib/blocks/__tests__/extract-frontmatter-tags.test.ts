@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { extractFrontmatterTags } from "@/lib/blocks/extract-frontmatter-tags";
+import {
+  extractFrontmatter,
+  extractFrontmatterTags,
+} from "@/lib/blocks/extract-frontmatter-tags";
 
 describe("extractFrontmatterTags", () => {
   it("returns [] when there's no frontmatter", () => {
@@ -131,5 +134,79 @@ describe("extractFrontmatterTags", () => {
     // first-wins keeps things deterministic.
     const doc = "---\ntags: [first]\ntags: [second]\n---\n";
     expect(extractFrontmatterTags(doc)).toEqual(["first"]);
+  });
+});
+
+describe("extractFrontmatter", () => {
+  it("returns empty shape with tags:[] for content without frontmatter", () => {
+    expect(extractFrontmatter("# heading only\n")).toEqual({ tags: [] });
+    expect(extractFrontmatter("")).toEqual({ tags: [] });
+  });
+
+  it("extracts title + abstract + tags from a typical document", () => {
+    const doc =
+      '---\ntitle: "Payments — debug capture failures"\nabstract: "Capture flow when X"\ntags: [payments, debug]\n---\nbody\n';
+    expect(extractFrontmatter(doc)).toEqual({
+      title: "Payments — debug capture failures",
+      abstract: "Capture flow when X",
+      tags: ["payments", "debug"],
+    });
+  });
+
+  it("unquotes both quote styles for title", () => {
+    expect(
+      extractFrontmatter("---\ntitle: 'single quoted'\n---\n").title,
+    ).toBe("single quoted");
+    expect(
+      extractFrontmatter('---\ntitle: "double quoted"\n---\n').title,
+    ).toBe("double quoted");
+  });
+
+  it("treats `abstract: |` block-scalar marker as undefined (Rust slice-1)", () => {
+    // Drift contract: when the Rust parser learns block-scalar
+    // bodies, this helper must too. For now the multi-line abstract
+    // body is captured by the Rust raw_yaml region only — the TS
+    // helper returns abstract = undefined.
+    const doc = "---\nabstract: |\n  multi line\n  body here\n---\n";
+    expect(extractFrontmatter(doc).abstract).toBeUndefined();
+  });
+
+  it("treats `abstract: >` folded-scalar marker as undefined", () => {
+    expect(extractFrontmatter("---\nabstract: >\n  folded\n---\n").abstract)
+      .toBeUndefined();
+  });
+
+  it("returns title undefined when blank / empty-quoted (Rust slice-1)", () => {
+    // Mirrors the Rust `parse_typed` behaviour: a literal empty
+    // value (after unquote) is dropped. Whitespace-inside-quotes
+    // (`'   '`) survives as-is — pickH1Title trims it downstream
+    // before falling back through firstHeading → filename.
+    expect(extractFrontmatter("---\ntitle: \n---\n").title).toBeUndefined();
+    expect(extractFrontmatter("---\ntitle: \"\"\n---\n").title).toBeUndefined();
+    expect(extractFrontmatter("---\ntitle: ''\n---\n").title).toBeUndefined();
+  });
+
+  it("first-wins on duplicate `title:` lines", () => {
+    expect(
+      extractFrontmatter("---\ntitle: First\ntitle: Second\n---\n").title,
+    ).toBe("First");
+  });
+
+  it("preserves missing optionals as undefined (no shape pollution)", () => {
+    const fm = extractFrontmatter("---\ntitle: Solo\n---\n");
+    expect(fm.title).toBe("Solo");
+    expect(fm.abstract).toBeUndefined();
+    expect(fm.tags).toEqual([]);
+    expect("abstract" in fm).toBe(false);
+  });
+
+  it("ignores indented lines (parent block scalars don't leak)", () => {
+    const doc = "---\nabstract: |\n  title: should-not-leak\n---\n";
+    expect(extractFrontmatter(doc).title).toBeUndefined();
+  });
+
+  it("extractFrontmatterTags wraps extractFrontmatter consistently", () => {
+    const doc = "---\ntitle: x\ntags: [a, b]\n---\n";
+    expect(extractFrontmatterTags(doc)).toEqual(extractFrontmatter(doc).tags);
   });
 });

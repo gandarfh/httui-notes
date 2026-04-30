@@ -14,12 +14,15 @@
 // data (author / branch / last-run summary) + frontmatter parse is
 // the next slice and stays in this same component.
 
+import { useMemo } from "react";
 import { Box } from "@chakra-ui/react";
 
 import { MarkdownEditor } from "@/components/editor/MarkdownEditor";
 import { ConflictBanner } from "../ConflictBanner";
 import { DocHeaderShell } from "../docheader/DocHeaderShell";
 import { useFileDocHeaderCompact } from "@/hooks/useFileDocHeaderCompact";
+import { extractFrontmatter } from "@/lib/blocks/extract-frontmatter-tags";
+import type { DocHeaderFrontmatter } from "../docheader/docheader-derive";
 
 export interface DocHeaderedEditorProps {
   filePath: string;
@@ -46,6 +49,31 @@ export function DocHeaderedEditor({
 }: DocHeaderedEditorProps) {
   const { compact, setCompact } = useFileDocHeaderCompact(vaultPath, filePath);
 
+  // Parse frontmatter inline (synchronous TS port of the Rust slice-1
+  // schema — title + abstract + tags only). Re-runs every keystroke,
+  // but the parser short-circuits on `---\n` absence so the common
+  // body-edit case is a single string-prefix check. The Rust
+  // `parse_frontmatter` stays the authoritative parser on the vault-
+  // walker path; this is the per-edit synchronous counterpart.
+  const frontmatter = useMemo<DocHeaderFrontmatter | null>(() => {
+    const fm = extractFrontmatter(content);
+    if (
+      fm.title === undefined &&
+      fm.abstract === undefined &&
+      fm.tags.length === 0
+    ) {
+      // No frontmatter at all → null lets the card fall back through
+      // first-heading → filename. Distinct from "fenced but empty"
+      // which still renders the card chrome.
+      return null;
+    }
+    return {
+      title: fm.title,
+      abstract: fm.abstract,
+      tags: fm.tags,
+    };
+  }, [content]);
+
   return (
     <Box
       data-testid="doc-headered-editor"
@@ -63,6 +91,7 @@ export function DocHeaderedEditor({
       )}
       <DocHeaderShell
         filePath={filePath}
+        frontmatter={frontmatter}
         compact={compact}
         onToggleCompact={() => {
           void setCompact(!compact);
