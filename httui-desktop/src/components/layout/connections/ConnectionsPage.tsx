@@ -15,12 +15,14 @@ import type {
   UpdateConnectionInput,
 } from "@/lib/tauri/connections";
 
+import type { ConnectionSchema } from "@/stores/schemaCache";
 import {
   ConnectionsKindSidebar,
   type EnvSummary,
 } from "./ConnectionsKindSidebar";
 import { ConnectionsListPanel } from "./ConnectionsListPanel";
 import { ConnectionsDetailPanel } from "./ConnectionsDetailPanel";
+import type { HotTableEntry } from "./ConnectionDetailSchemaPreview";
 import {
   buildListRows,
   countsByKind as deriveCountsByKind,
@@ -54,6 +56,20 @@ export interface ConnectionsPageProps {
   ) => Promise<void> | void;
   /** Rotate-password handler (Story 02). */
   onRotatePassword?: (id: string, newPassword: string) => Promise<void> | void;
+  /** Story 03 — schema state for the selected connection. */
+  schemaByConnection?: Record<
+    string,
+    {
+      schema: ConnectionSchema | null;
+      loading: boolean;
+      error: string | null;
+    }
+  >;
+  /** Hot-tables map (canvas: top 5 from `block_run_history`). */
+  hotTablesByConnection?: Record<string, HotTableEntry[]>;
+  /** Click "Refresh" in the schema preview — consumer should call
+   * `useSchemaCacheStore.refresh(id)`. */
+  onRefreshSchema?: (id: string) => void;
 }
 
 export function ConnectionsPage({
@@ -66,6 +82,9 @@ export function ConnectionsPage({
   onMoreRow,
   onSaveCredentials,
   onRotatePassword,
+  schemaByConnection,
+  hotTablesByConnection,
+  onRefreshSchema,
 }: ConnectionsPageProps) {
   const [selectedKind, setSelectedKind] = useState<ConnectionKind | null>(
     null,
@@ -147,6 +166,31 @@ export function ConnectionsPage({
         onRotatePassword={
           selectedConnection && onRotatePassword
             ? (pw) => onRotatePassword(selectedConnection.id, pw)
+            : undefined
+        }
+        schema={
+          selectedConnection
+            ? schemaByConnection?.[selectedConnection.id]?.schema ?? null
+            : null
+        }
+        schemaLoading={
+          selectedConnection
+            ? schemaByConnection?.[selectedConnection.id]?.loading ?? false
+            : false
+        }
+        schemaError={
+          selectedConnection
+            ? schemaByConnection?.[selectedConnection.id]?.error ?? null
+            : null
+        }
+        hotTables={
+          selectedConnection
+            ? hotTablesByConnection?.[selectedConnection.id] ?? []
+            : []
+        }
+        onRefreshSchema={
+          selectedConnection && onRefreshSchema
+            ? () => onRefreshSchema(selectedConnection.id)
             : undefined
         }
       />

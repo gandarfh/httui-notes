@@ -9,10 +9,15 @@
 import { Box, Stack, Text } from "@chakra-ui/react";
 
 import { ConnectionDetailCredentials } from "./ConnectionDetailCredentials";
+import {
+  ConnectionDetailSchemaPreview,
+  type HotTableEntry,
+} from "./ConnectionDetailSchemaPreview";
 import type {
   Connection,
   UpdateConnectionInput,
 } from "@/lib/tauri/connections";
+import type { ConnectionSchema } from "@/stores/schemaCache";
 
 export interface ConnectionsDetailPanelProps {
   /** Currently-selected connection name, or `null` for no
@@ -29,6 +34,16 @@ export interface ConnectionsDetailPanelProps {
    * keychain and update the `{{keychain:…}}` ref in
    * `connections.toml` (Story 02). */
   onRotatePassword?: (newPassword: string) => Promise<void> | void;
+  /** Story 03 — pre-fetched schema (consumer drives via
+   * `useSchemaCacheStore.ensureLoaded`). */
+  schema?: ConnectionSchema | null;
+  schemaLoading?: boolean;
+  schemaError?: string | null;
+  /** Top-N hot tables for the schema preview header section.
+   * Consumer derives from a `block_run_history` join. */
+  hotTables?: HotTableEntry[];
+  /** Click → consumer triggers `useSchemaCacheStore.refresh`. */
+  onRefreshSchema?: () => void;
 }
 
 export function ConnectionsDetailPanel({
@@ -36,6 +51,11 @@ export function ConnectionsDetailPanel({
   selectedConnection = null,
   onSaveCredentials,
   onRotatePassword,
+  schema = null,
+  schemaLoading = false,
+  schemaError = null,
+  hotTables = [],
+  onRefreshSchema,
 }: ConnectionsDetailPanelProps) {
   return (
     <Box
@@ -74,9 +94,16 @@ export function ConnectionsDetailPanel({
             onSave={onSaveCredentials ?? (() => {})}
             onRotatePassword={onRotatePassword ?? (() => {})}
           />
+          <ConnectionDetailSchemaPreview
+            schema={schema}
+            loading={schemaLoading}
+            error={schemaError}
+            hotTables={hotTables}
+            onRefresh={onRefreshSchema}
+          />
           <Text fontSize="11px" color="fg.3">
-            Schema preview (Story 03) + used-in-runbooks (Story 04)
-            + footer actions (Story 05) ship in follow-up slices.
+            Used-in-runbooks (Story 04) + footer actions (Story 05)
+            ship in follow-up slices.
           </Text>
         </Stack>
       ) : (
