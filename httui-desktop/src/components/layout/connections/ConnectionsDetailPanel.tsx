@@ -14,6 +14,7 @@ import {
   type HotTableEntry,
 } from "./ConnectionDetailSchemaPreview";
 import { ConnectionDetailUsedIn } from "./ConnectionDetailUsedIn";
+import { ConnectionDetailFooter } from "./ConnectionDetailFooter";
 import type { RunbookUsage } from "./connection-usages";
 import type {
   Connection,
@@ -51,6 +52,12 @@ export interface ConnectionsDetailPanelProps {
   usagesLoading?: boolean;
   /** Click on a usage row → consumer opens the file at the line. */
   onOpenUsage?: (filePath: string, line: number) => void;
+  /** Story 05 — footer actions. Test resolves to elapsed ms,
+   * Duplicate clones with " (copy)" suffix, Delete removes the
+   * connection + keychain entry after a two-step confirm. */
+  onTestConnection?: () => Promise<number>;
+  onDuplicateConnection?: () => Promise<void> | void;
+  onDeleteConnection?: () => Promise<void> | void;
 }
 
 export function ConnectionsDetailPanel({
@@ -66,6 +73,9 @@ export function ConnectionsDetailPanel({
   usages = [],
   usagesLoading = false,
   onOpenUsage,
+  onTestConnection,
+  onDuplicateConnection,
+  onDeleteConnection,
 }: ConnectionsDetailPanelProps) {
   return (
     <Box
@@ -116,10 +126,13 @@ export function ConnectionsDetailPanel({
             loading={usagesLoading}
             onOpen={onOpenUsage}
           />
-          <Text fontSize="11px" color="fg.3">
-            Footer actions (Story 05) + new-connection modal
-            (Story 06) ship in follow-up slices.
-          </Text>
+          {onTestConnection && onDuplicateConnection && onDeleteConnection && (
+            <ConnectionDetailFooter
+              onTest={onTestConnection}
+              onDuplicate={onDuplicateConnection}
+              onDelete={onDeleteConnection}
+            />
+          )}
         </Stack>
       ) : (
         <Stack gap={3} data-testid="connections-detail-placeholder">

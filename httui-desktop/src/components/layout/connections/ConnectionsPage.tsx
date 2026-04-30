@@ -80,6 +80,11 @@ export interface ConnectionsPageProps {
   /** Click on a usage row → consumer opens the file at the line
    * (typically `useEditorSession.handleFileSelect` + cursor scroll). */
   onOpenUsage?: (filePath: string, line: number) => void;
+  /** Story 05 — footer actions, dispatched with the selected
+   * connection's id. */
+  onTestConnection?: (id: string) => Promise<number>;
+  onDuplicateConnection?: (id: string) => Promise<void> | void;
+  onDeleteConnection?: (id: string) => Promise<void> | void;
 }
 
 export function ConnectionsPage({
@@ -98,6 +103,9 @@ export function ConnectionsPage({
   usagesByConnection,
   usagesLoadingByConnection,
   onOpenUsage,
+  onTestConnection,
+  onDuplicateConnection,
+  onDeleteConnection,
 }: ConnectionsPageProps) {
   const [selectedKind, setSelectedKind] = useState<ConnectionKind | null>(
     null,
@@ -217,6 +225,21 @@ export function ConnectionsPage({
             : false
         }
         onOpenUsage={onOpenUsage}
+        onTestConnection={
+          selectedConnection && onTestConnection
+            ? () => onTestConnection(selectedConnection.id)
+            : undefined
+        }
+        onDuplicateConnection={
+          selectedConnection && onDuplicateConnection
+            ? () => onDuplicateConnection(selectedConnection.id)
+            : undefined
+        }
+        onDeleteConnection={
+          selectedConnection && onDeleteConnection
+            ? () => onDeleteConnection(selectedConnection.id)
+            : undefined
+        }
       />
     </Flex>
   );
