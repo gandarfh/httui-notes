@@ -27,10 +27,14 @@ export interface DocHeaderMetaStripProps {
   dirty?: boolean;
   branch?: BranchSummaryData | null;
   lastRun?: LastRunSummary | null;
+  /** `frontmatter.owner` from the Story 01 parser. Hidden when
+   *  null / undefined / empty so consumer mounts unconditionally. */
+  owner?: string | null;
   onSelectAuthor?: () => void;
   onSelectEdited?: () => void;
   onSelectBranch?: () => void;
   onSelectLastRun?: () => void;
+  onSelectOwner?: (owner: string) => void;
 }
 
 export function DocHeaderMetaStrip({
@@ -39,11 +43,14 @@ export function DocHeaderMetaStrip({
   dirty,
   branch,
   lastRun,
+  owner,
   onSelectAuthor,
   onSelectEdited,
   onSelectBranch,
   onSelectLastRun,
+  onSelectOwner,
 }: DocHeaderMetaStripProps) {
+  const trimmedOwner = owner?.trim();
   return (
     <Flex
       data-testid="docheader-meta-strip"
@@ -64,6 +71,16 @@ export function DocHeaderMetaStrip({
           }
         >
           {authorInitialsFromFirstCommit(author)}
+        </Chip>
+      )}
+      {trimmedOwner && (
+        <Chip
+          testId="docheader-meta-owner"
+          tone="muted"
+          onClick={onSelectOwner ? () => onSelectOwner(trimmedOwner) : undefined}
+          title={`owner: ${trimmedOwner}`}
+        >
+          @{trimmedOwner}
         </Chip>
       )}
       {mtimeMs !== undefined && (

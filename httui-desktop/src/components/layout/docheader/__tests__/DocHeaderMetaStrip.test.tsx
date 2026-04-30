@@ -132,4 +132,54 @@ describe("DocHeaderMetaStrip", () => {
       screen.getByTestId("docheader-meta-edited").textContent,
     ).toMatch(/Not yet saved/);
   });
+
+  it("renders the owner chip with @-prefix when owner is set", () => {
+    renderWithProviders(<DocHeaderMetaStrip owner="alice" />);
+    const owner = screen.getByTestId("docheader-meta-owner");
+    expect(owner).toBeInTheDocument();
+    expect(owner.textContent).toBe("@alice");
+    expect(owner).toHaveAttribute("title", "owner: alice");
+  });
+
+  it("hides the owner chip when owner is undefined / null / empty / whitespace", () => {
+    const { rerender } = renderWithProviders(<DocHeaderMetaStrip />);
+    expect(
+      screen.queryByTestId("docheader-meta-owner"),
+    ).not.toBeInTheDocument();
+    rerender(<DocHeaderMetaStrip owner={null} />);
+    expect(
+      screen.queryByTestId("docheader-meta-owner"),
+    ).not.toBeInTheDocument();
+    rerender(<DocHeaderMetaStrip owner="" />);
+    expect(
+      screen.queryByTestId("docheader-meta-owner"),
+    ).not.toBeInTheDocument();
+    rerender(<DocHeaderMetaStrip owner="   " />);
+    expect(
+      screen.queryByTestId("docheader-meta-owner"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("trims owner whitespace before render", () => {
+    renderWithProviders(<DocHeaderMetaStrip owner="  bob  " />);
+    expect(screen.getByTestId("docheader-meta-owner").textContent).toBe(
+      "@bob",
+    );
+  });
+
+  it("owner chip becomes a button and fires onSelectOwner with trimmed value", async () => {
+    const onSelectOwner = vi.fn();
+    renderWithProviders(
+      <DocHeaderMetaStrip owner=" carol " onSelectOwner={onSelectOwner} />,
+    );
+    const owner = screen.getByTestId("docheader-meta-owner");
+    expect(owner.tagName).toBe("BUTTON");
+    await userEvent.click(owner);
+    expect(onSelectOwner).toHaveBeenCalledWith("carol");
+  });
+
+  it("owner chip is a span without onSelectOwner", () => {
+    renderWithProviders(<DocHeaderMetaStrip owner="dave" />);
+    expect(screen.getByTestId("docheader-meta-owner").tagName).toBe("SPAN");
+  });
 });
