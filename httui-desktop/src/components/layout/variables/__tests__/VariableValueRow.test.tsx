@@ -163,3 +163,169 @@ describe("VariableValueRow (read-only + reveal)", () => {
     ).toMatch(/vazio/);
   });
 });
+
+describe("VariableValueRow (edit mode)", () => {
+  it("hides the Edit button when no onCommit handler is supplied", () => {
+    renderWithProviders(
+      <VariableValueRow env="local" value="x" isSecret={false} />,
+    );
+    expect(
+      screen.queryByTestId("variable-value-row-local-edit"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("hides the Edit button on a masked secret row", () => {
+    renderWithProviders(
+      <VariableValueRow
+        env="staging"
+        value={undefined}
+        isSecret={true}
+        onCommit={() => {}}
+      />,
+    );
+    expect(
+      screen.queryByTestId("variable-value-row-staging-edit"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("enters edit mode for a non-secret row pre-filled with the current value", async () => {
+    const onCommit = vi.fn();
+    renderWithProviders(
+      <VariableValueRow
+        env="local"
+        value="http://localhost"
+        isSecret={false}
+        onCommit={onCommit}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("variable-value-row-local-edit"));
+    const input = screen.getByTestId(
+      "variable-value-row-local-input",
+    ) as HTMLInputElement;
+    expect(input.value).toBe("http://localhost");
+    expect(
+      screen.getByTestId("variable-value-row-local").getAttribute("data-mode"),
+    ).toBe("edit");
+  });
+
+  it("commits the draft on Save and returns to view mode", async () => {
+    const onCommit = vi.fn();
+    renderWithProviders(
+      <VariableValueRow
+        env="local"
+        value="old"
+        isSecret={false}
+        onCommit={onCommit}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("variable-value-row-local-edit"));
+    const input = screen.getByTestId(
+      "variable-value-row-local-input",
+    ) as HTMLInputElement;
+    await user.clear(input);
+    await user.type(input, "new-value");
+    await user.click(screen.getByTestId("variable-value-row-local-save"));
+    expect(onCommit).toHaveBeenCalledWith("local", "new-value");
+    expect(
+      screen.getByTestId("variable-value-row-local").getAttribute("data-mode"),
+    ).toBe("view");
+  });
+
+  it("discards the draft on Cancel without calling onCommit", async () => {
+    const onCommit = vi.fn();
+    renderWithProviders(
+      <VariableValueRow
+        env="local"
+        value="old"
+        isSecret={false}
+        onCommit={onCommit}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("variable-value-row-local-edit"));
+    const input = screen.getByTestId(
+      "variable-value-row-local-input",
+    ) as HTMLInputElement;
+    await user.clear(input);
+    await user.type(input, "discarded");
+    await user.click(screen.getByTestId("variable-value-row-local-cancel"));
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(
+      screen.getByTestId("variable-value-row-local-display").textContent,
+    ).toBe("old");
+  });
+
+  it("commits on Enter and cancels on Escape", async () => {
+    const onCommit = vi.fn();
+    renderWithProviders(
+      <VariableValueRow
+        env="local"
+        value="initial"
+        isSecret={false}
+        onCommit={onCommit}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("variable-value-row-local-edit"));
+    const input = screen.getByTestId("variable-value-row-local-input");
+    await user.type(input, "{Enter}");
+    expect(onCommit).toHaveBeenCalledWith("local", "initial");
+
+    await user.click(screen.getByTestId("variable-value-row-local-edit"));
+    const input2 = screen.getByTestId("variable-value-row-local-input");
+    await user.type(input2, "{Escape}");
+    expect(onCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats undefined value as the empty draft when entering edit", async () => {
+    const onCommit = vi.fn();
+    renderWithProviders(
+      <VariableValueRow
+        env="prod"
+        value={undefined}
+        isSecret={false}
+        onCommit={onCommit}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("variable-value-row-prod-edit"));
+    expect(
+      (screen.getByTestId("variable-value-row-prod-input") as HTMLInputElement)
+        .value,
+    ).toBe("");
+  });
+
+  it("allows edit on a revealed secret and uses the revealed cleartext as draft", async () => {
+    const fetchSecret = vi.fn(async () => "real-token");
+    const onCommit = vi.fn();
+    renderWithProviders(
+      <VariableValueRow
+        env="staging"
+        value={undefined}
+        isSecret={true}
+        fetchSecret={fetchSecret}
+        onCommit={onCommit}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("variable-value-row-staging-show"));
+    expect(
+      screen.getByTestId("variable-value-row-staging-edit"),
+    ).toBeInTheDocument();
+    await user.click(screen.getByTestId("variable-value-row-staging-edit"));
+    const input = screen.getByTestId(
+      "variable-value-row-staging-input",
+    ) as HTMLInputElement;
+    expect(input.value).toBe("real-token");
+    await user.clear(input);
+    await user.type(input, "rotated-token");
+    await user.click(screen.getByTestId("variable-value-row-staging-save"));
+    expect(onCommit).toHaveBeenCalledWith("staging", "rotated-token");
+    // After save, the revealed display should reflect the new draft.
+    expect(
+      screen.getByTestId("variable-value-row-staging-display").textContent,
+    ).toBe("rotated-token");
+  });
+});

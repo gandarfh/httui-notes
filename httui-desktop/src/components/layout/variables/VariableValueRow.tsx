@@ -1,16 +1,16 @@
-// Canvas §6 Variables — detail panel value row (Epic 43 Story 02 slice 1).
+// Canvas §6 Variables — detail panel value row (Epic 43 Story 02 slice 2).
 //
-// One row per env. Read-only this slice: shows the value (or em-dash
-// for undefined / `••••••••` mask for secret-not-revealed) plus a
-// `Show` / `Hide` toggle when the variable is a secret. Edit + Save
-// land in the next slice. The consumer plugs `fetchSecret` to resolve
-// the cleartext from the keychain on demand — undefined disables the
-// toggle.
+// One row per env. Two top-level modes: VIEW (display + Show/Hide for
+// secrets + Edit) and EDIT (input + Save/Cancel). Edit is gated to
+// values the user can already see — non-secret rows or
+// secret-revealed rows. The consumer plugs `fetchSecret` for keychain
+// resolution and `onCommit` to persist the edit (`EnvironmentsStore::
+// set_var` lands at the page mount).
 
 import { Box, Flex, Text } from "@chakra-ui/react";
 import { useState } from "react";
 
-import { Btn } from "@/components/atoms";
+import { Btn, Input } from "@/components/atoms";
 
 const SECRET_MASK = "••••••••";
 
@@ -21,6 +21,8 @@ export interface VariableValueRowProps {
   isSecret: boolean;
   /** Async cleartext fetch (keychain). Returning undefined renders an empty cleartext. */
   fetchSecret?: (env: string) => Promise<string | undefined>;
+  /** Called on Save with the new draft. Consumer wires the store/Tauri write. */
+  onCommit?: (env: string, next: string) => void;
 }
 
 type RevealState =
@@ -34,8 +36,11 @@ export function VariableValueRow({
   value,
   isSecret,
   fetchSecret,
+  onCommit,
 }: VariableValueRowProps) {
   const [reveal, setReveal] = useState<RevealState>({ kind: "masked" });
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
 
   async function handleShow() {
     if (!fetchSecret) return;
@@ -55,9 +60,35 @@ export function VariableValueRow({
     setReveal({ kind: "masked" });
   }
 
+  function handleEdit() {
+    if (isSecret && reveal.kind === "revealed") {
+      setDraft(reveal.value);
+    } else if (!isSecret) {
+      setDraft(value ?? "");
+    } else {
+      return;
+    }
+    setEditing(true);
+  }
+
+  function handleSave() {
+    onCommit?.(env, draft);
+    if (isSecret && reveal.kind === "revealed") {
+      setReveal({ kind: "revealed", value: draft });
+    }
+    setEditing(false);
+  }
+
+  function handleCancel() {
+    setEditing(false);
+  }
+
+  const canEdit = !isSecret || reveal.kind === "revealed";
+
   return (
     <Flex
       data-testid={`variable-value-row-${env}`}
+      data-mode={editing ? "edit" : "view"}
       align="center"
       gap={2}
       px={4}
@@ -77,22 +108,43 @@ export function VariableValueRow({
       >
         {env}
       </Text>
-      <Box flex={1} minW={0}>
-        <ValueDisplay
+      {editing ? (
+        <ValueEditor
           env={env}
-          value={value}
-          isSecret={isSecret}
-          reveal={reveal}
+          draft={draft}
+          onChangeDraft={setDraft}
+          onSave={handleSave}
+          onCancel={handleCancel}
         />
-      </Box>
-      {isSecret && (
-        <SecretToggle
-          env={env}
-          reveal={reveal}
-          enabled={!!fetchSecret}
-          onShow={handleShow}
-          onHide={handleHide}
-        />
+      ) : (
+        <>
+          <Box flex={1} minW={0}>
+            <ValueDisplay
+              env={env}
+              value={value}
+              isSecret={isSecret}
+              reveal={reveal}
+            />
+          </Box>
+          {isSecret && (
+            <SecretToggle
+              env={env}
+              reveal={reveal}
+              enabled={!!fetchSecret}
+              onShow={handleShow}
+              onHide={handleHide}
+            />
+          )}
+          {canEdit && onCommit && (
+            <Btn
+              variant="ghost"
+              data-testid={`variable-value-row-${env}-edit`}
+              onClick={handleEdit}
+            >
+              Edit
+            </Btn>
+          )}
+        </>
       )}
     </Flex>
   );
@@ -210,5 +262,55 @@ function SecretToggle({
     >
       {reveal.kind === "loading" ? "…" : "Show"}
     </Btn>
+  );
+}
+
+function ValueEditor({
+  env,
+  draft,
+  onChangeDraft,
+  onSave,
+  onCancel,
+}: {
+  env: string;
+  draft: string;
+  onChangeDraft: (v: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <>
+      <Box flex={1} minW={0}>
+        <Input
+          data-testid={`variable-value-row-${env}-input`}
+          value={draft}
+          onChange={(e) => onChangeDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              onSave();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              onCancel();
+            }
+          }}
+          autoFocus
+        />
+      </Box>
+      <Btn
+        variant="primary"
+        data-testid={`variable-value-row-${env}-save`}
+        onClick={onSave}
+      >
+        Save
+      </Btn>
+      <Btn
+        variant="ghost"
+        data-testid={`variable-value-row-${env}-cancel`}
+        onClick={onCancel}
+      >
+        Cancel
+      </Btn>
+    </>
   );
 }
