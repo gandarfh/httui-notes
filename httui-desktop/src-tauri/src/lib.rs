@@ -27,6 +27,9 @@ pub mod git_commands;
 // Vault-wide tag index (Epic 52 Story 04).
 pub mod tag_commands;
 
+// Run-body filesystem cache (Epic 47 Story 01).
+pub mod run_body_commands;
+
 // File-backed config (epic 09 foundation; cutover in epic 19).
 pub mod vault_config_commands;
 
