@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Post-commit feedback — runs both gates in report-only mode.
+# Pre-commit feedback — runs both gates in report-only mode.
 # Never blocks the commit; the push-time hook is the actual enforcer.
 set -e
 

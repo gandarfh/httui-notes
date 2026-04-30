@@ -6,7 +6,7 @@ REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
 
 mkdir -p .git/hooks
-for hook in pre-push post-commit; do
+for hook in pre-push pre-commit; do
     src="$REPO_ROOT/scripts/hooks/$hook"
     dst="$REPO_ROOT/.git/hooks/$hook"
     if [ -e "$dst" ] && [ ! -L "$dst" ]; then
@@ -20,7 +20,7 @@ for hook in pre-push post-commit; do
 done
 
 echo
-echo "setup-hooks: done. Pre-push will block on coverage; post-commit reports only."
+echo "setup-hooks: done. Pre-push will block on coverage; pre-commit reports only."
 echo "Need cargo-llvm-cov?"
 echo "  rustup component add llvm-tools-preview"
 echo "  cargo install cargo-llvm-cov"
