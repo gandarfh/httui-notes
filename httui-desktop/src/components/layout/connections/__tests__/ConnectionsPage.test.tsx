@@ -176,8 +176,10 @@ describe("ConnectionsPage", () => {
       screen.getByTestId("connections-detail-empty"),
     ).toBeInTheDocument();
     await userEvent.setup().click(screen.getByTestId("connection-row-a"));
+    // Slice 2 (Story 02): with a real Connection in the list,
+    // selection routes into the loaded credentials panel.
     expect(
-      screen.getByTestId("connections-detail-placeholder").textContent,
+      screen.getByTestId("connections-detail-loaded").textContent,
     ).toContain("alpha-conn");
   });
 
@@ -189,6 +191,43 @@ describe("ConnectionsPage", () => {
       />,
     );
     expect(screen.getByTestId("env-row-staging")).toBeInTheDocument();
+  });
+
+  it("forwards onSaveCredentials with the selected connection id", async () => {
+    const onSaveCredentials = vi.fn().mockResolvedValue(undefined);
+    renderWithProviders(
+      <ConnectionsPage
+        connections={[conn("c1", "alpha", "postgres")]}
+        onSaveCredentials={onSaveCredentials}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("connection-row-c1"));
+    await user.click(screen.getByTestId("credentials-edit"));
+    await user.click(screen.getByTestId("credentials-save"));
+    expect(onSaveCredentials).toHaveBeenCalledWith(
+      "c1",
+      expect.any(Object),
+    );
+  });
+
+  it("forwards onRotatePassword with the selected connection id", async () => {
+    const onRotatePassword = vi.fn().mockResolvedValue(undefined);
+    renderWithProviders(
+      <ConnectionsPage
+        connections={[conn("c1", "alpha", "postgres")]}
+        onRotatePassword={onRotatePassword}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("connection-row-c1"));
+    await user.click(screen.getByTestId("credentials-rotate"));
+    await user.type(
+      screen.getByTestId("credentials-rotate-input"),
+      "new-pw",
+    );
+    await user.click(screen.getByTestId("credentials-rotate-save"));
+    expect(onRotatePassword).toHaveBeenCalledWith("c1", "new-pw");
   });
 
   it("status header reflects enrichment-derived intents", () => {

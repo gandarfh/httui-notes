@@ -10,7 +10,10 @@
 import { useMemo, useState } from "react";
 import { Flex } from "@chakra-ui/react";
 
-import type { Connection } from "@/lib/tauri/connections";
+import type {
+  Connection,
+  UpdateConnectionInput,
+} from "@/lib/tauri/connections";
 
 import {
   ConnectionsKindSidebar,
@@ -44,6 +47,13 @@ export interface ConnectionsPageProps {
   onTestAll?: () => void;
   onCreateNew?: () => void;
   onMoreRow?: (id: string) => void;
+  /** Save handler for the credentials Edit/Save flow (Story 02). */
+  onSaveCredentials?: (
+    id: string,
+    input: UpdateConnectionInput,
+  ) => Promise<void> | void;
+  /** Rotate-password handler (Story 02). */
+  onRotatePassword?: (id: string, newPassword: string) => Promise<void> | void;
 }
 
 export function ConnectionsPage({
@@ -54,6 +64,8 @@ export function ConnectionsPage({
   onTestAll,
   onCreateNew,
   onMoreRow,
+  onSaveCredentials,
+  onRotatePassword,
 }: ConnectionsPageProps) {
   const [selectedKind, setSelectedKind] = useState<ConnectionKind | null>(
     null,
@@ -84,10 +96,12 @@ export function ConnectionsPage({
 
   const status = useMemo(() => listStatusCounts(rows), [rows]);
 
-  const selectedConnectionName = useMemo(() => {
+  const selectedConnection = useMemo(() => {
     if (selectedId === null) return null;
-    return connections.find((c) => c.id === selectedId)?.name ?? null;
+    return connections.find((c) => c.id === selectedId) ?? null;
   }, [selectedId, connections]);
+
+  const selectedConnectionName = selectedConnection?.name ?? null;
 
   const handleTestAll = useMemo(
     () => onTestAll ?? (() => {}),
@@ -124,6 +138,17 @@ export function ConnectionsPage({
       />
       <ConnectionsDetailPanel
         selectedConnectionName={selectedConnectionName}
+        selectedConnection={selectedConnection}
+        onSaveCredentials={
+          selectedConnection && onSaveCredentials
+            ? (input) => onSaveCredentials(selectedConnection.id, input)
+            : undefined
+        }
+        onRotatePassword={
+          selectedConnection && onRotatePassword
+            ? (pw) => onRotatePassword(selectedConnection.id, pw)
+            : undefined
+        }
       />
     </Flex>
   );
