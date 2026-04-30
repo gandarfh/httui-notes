@@ -406,9 +406,6 @@ Files with a current `// coverage:exclude file` opt-out:
 - `httui-core/src/db/pool_exec_mysql.rs` (254 L) — async mysql query
   execution; needs live MySQL pool. Audit-027 batch; **closes by
   Epic 32**.
-- `httui-core/src/db/pool_manager.rs` (196 L) — pool lifecycle + TTL
-  eviction loop; coupled to live pools. Audit-027 batch; **closes
-  by Epic 32**.
 - `httui-core/src/db/schema_cache_remote.rs` (~50 L) — async
   Postgres + MySQL introspection wrappers (split out of
   `schema_cache.rs` so the pure mappers + SQLite path stay under
@@ -502,6 +499,27 @@ sha are the record.
 
 ## Closed items (with commits)
 
+- **Coverage — `db/pool_manager.rs` opt-out lifted (46.5% → 95.3%)** —
+  closed by `ff8b28c` (audit-027 unwind). The cache-only surface
+  (`invalidate`, `cleanup_expired`, `get_query_timeout`,
+  `cleanup_query_log`) plus construction shape and the cached-hit
+  path of `get_pool` are now under the gate via a `#[cfg(test)]
+  insert_for_test` seed helper that builds a `DatabasePool::Sqlite`
+  from `:memory:`. The live PG/MySQL `create_pool` paths stay
+  uncovered but the rest of the file is exercised.
+- **Coverage — `db/schema_cache.rs` opt-out lifted (78% → 97.4%)** —
+  closed by `8b704b3` (audit-028: split async PG/MySQL shells into
+  `schema_cache_remote.rs`).
+- **Coverage — `db/lookup.rs` opt-out lifted (71.4% → 100%)** —
+  closed by `bf390d6`.
+- **Coverage — `commands/vault_stores.rs` opt-out lifted (75.6% → 99.2%)** —
+  closed by `bf390d6`.
+- **Coverage — `httui-mcp/src/main.rs` opt-out lifted (0% → 80%)** —
+  closed by `bf390d6` (refactor + 8 tests on resolve_db_path /
+  init_pool / build_registry / run).
+- **Coverage — `GeneralSection.tsx` opt-out lifted (72.7% → 100%)** —
+  closed by `bf390d6` (autosave-banner + history-retention guard
+  tests + active-vault display).
 - **SRP — `db/connections.rs` (2894 L → 403 prod)** — closed by
   Epic 20a Story 01 across 8 commits (`a5019dd`, `d7f57df`,
   `02ed418`, `8a65d0e`, `e3874e6`, `1c8bacd`, `3387db1`, `a07e744`).
