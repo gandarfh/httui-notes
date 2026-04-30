@@ -1,0 +1,52 @@
+// Canvas §6 Environments — pure metadata helpers (Epic 44 Story 01).
+//
+// Personal envs live in `.local.toml` files (gitignored); the
+// underlying name is the same as the public env. Temporary envs
+// declare `[meta].temporary = true` in the TOML — we don't read the
+// file here, we just provide the type + filename helpers.
+
+const LOCAL_SUFFIX = ".local.toml";
+const TOML_SUFFIX = ".toml";
+
+export interface EnvironmentSummary {
+  /** Display name (filename minus the `.toml` / `.local.toml` suffix). */
+  name: string;
+  /** Original filename relative to `envs/`. Used as identity. */
+  filename: string;
+  /** Number of variables defined in this env. */
+  varCount: number;
+  /** Number of connections referenced by `[meta].connections_used`. 0 = all. */
+  connectionsUsedCount: number;
+  /** True when this is the workspace's current active env. */
+  isActive: boolean;
+  /** True when the file ends with `.local.toml` (gitignored). */
+  isPersonal: boolean;
+  /** True when `[meta].temporary = true` in the TOML. */
+  isTemporary: boolean;
+  /** Optional `[meta].description` value. */
+  description?: string;
+}
+
+export function isPersonalEnvFilename(filename: string): boolean {
+  return filename.endsWith(LOCAL_SUFFIX);
+}
+
+export function envNameFromFilename(filename: string): string {
+  if (filename.endsWith(LOCAL_SUFFIX)) {
+    return filename.slice(0, -LOCAL_SUFFIX.length);
+  }
+  if (filename.endsWith(TOML_SUFFIX)) {
+    return filename.slice(0, -TOML_SUFFIX.length);
+  }
+  return filename;
+}
+
+/** Sort: active first, then alpha by display name (case-insensitive). */
+export function sortEnvironments(
+  envs: ReadonlyArray<EnvironmentSummary>,
+): ReadonlyArray<EnvironmentSummary> {
+  return [...envs].sort((a, b) => {
+    if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+    return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+  });
+}
