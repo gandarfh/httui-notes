@@ -56,7 +56,7 @@ export function WindowChrome({ title }: { title: string }) {
 // ─────────────────────────────────────────────────────────
 // MethodPill — colored HTTP method badge
 // ─────────────────────────────────────────────────────────
-function MethodPill({
+export function MethodPill({
   method,
 }: {
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
