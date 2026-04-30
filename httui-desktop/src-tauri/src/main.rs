@@ -102,6 +102,17 @@ fn search_files(
     httui_notes::search::search_files(&vault_path, &query)
 }
 
+/// Vault grep for `{{KEY}}` and `{{KEY.…}}` references. Powers the
+/// "Used in blocks" detail-panel section in the Variables page
+/// (Epic 43 Story 04). Pure file scan — no FTS5 dependency.
+#[tauri::command]
+fn grep_var_uses(
+    vault_path: String,
+    key: String,
+) -> Result<Vec<httui_notes::var_uses::VarUseEntry>, String> {
+    httui_notes::var_uses::grep_var_uses(&vault_path, &key)
+}
+
 /// Rebuild the SQLite FTS5 index for the vault. Called on first run
 /// and when switching vaults.
 #[tauri::command]
@@ -482,6 +493,7 @@ fn main() {
             start_watching,
             stop_watching,
             search_files,
+            grep_var_uses,
             rebuild_search_index,
             search_content,
             update_search_entry,

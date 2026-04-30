@@ -7,6 +7,7 @@ pub use httui_core::config;
 pub use httui_core::db;
 pub use httui_core::executor;
 pub use httui_core::search;
+pub use httui_core::var_uses;
 
 // fs re-exports core + local watcher
 pub mod fs {

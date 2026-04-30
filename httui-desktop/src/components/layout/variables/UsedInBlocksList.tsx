@@ -1,0 +1,161 @@
+// Canvas §6 Variables — used-in-blocks list (Epic 43 Story 04).
+//
+// Presentational. Takes the raw flat `entries` (or `loading` /
+// `error`) and groups by file. Click a hit fires `onJump(filePath,
+// line)` so the consumer can open the file at the right line.
+
+import { Box, Flex, Text } from "@chakra-ui/react";
+
+import type { VarUseEntry } from "@/lib/tauri/var-uses";
+
+import { groupVarUsesByFile } from "./used-in-blocks-group";
+
+export interface UsedInBlocksListProps {
+  entries: ReadonlyArray<VarUseEntry> | undefined;
+  loading?: boolean;
+  error?: string | null;
+  onJump?: (filePath: string, line: number) => void;
+}
+
+export function UsedInBlocksList({
+  entries,
+  loading,
+  error,
+  onJump,
+}: UsedInBlocksListProps) {
+  if (loading) {
+    return (
+      <Text
+        data-testid="used-in-blocks-loading"
+        fontSize="11px"
+        color="fg.3"
+        px={4}
+        py={2}
+      >
+        Buscando referências…
+      </Text>
+    );
+  }
+  if (error) {
+    return (
+      <Text
+        data-testid="used-in-blocks-error"
+        fontSize="11px"
+        color="error"
+        px={4}
+        py={2}
+      >
+        ⚠ {error}
+      </Text>
+    );
+  }
+  if (!entries || entries.length === 0) {
+    return (
+      <Text
+        data-testid="used-in-blocks-empty"
+        fontSize="11px"
+        color="fg.3"
+        px={4}
+        py={2}
+      >
+        Nenhuma referência encontrada no vault.
+      </Text>
+    );
+  }
+
+  const groups = groupVarUsesByFile(entries);
+
+  return (
+    <Flex
+      direction="column"
+      data-testid="used-in-blocks-list"
+      data-count={entries.length}
+    >
+      {groups.map((group) => (
+        <Box
+          key={group.filePath}
+          data-testid={`used-in-blocks-group-${group.filePath}`}
+        >
+          <Text
+            fontFamily="mono"
+            fontSize="10px"
+            fontWeight="bold"
+            color="fg.2"
+            px={4}
+            pt={2}
+            pb={1}
+            data-testid={`used-in-blocks-file-${group.filePath}`}
+          >
+            {group.filePath}{" "}
+            <Text as="span" color="fg.3" fontWeight="normal">
+              ({group.hits.length})
+            </Text>
+          </Text>
+          {group.hits.map((hit) => (
+            <Hit
+              key={`${group.filePath}:${hit.line}`}
+              filePath={group.filePath}
+              line={hit.line}
+              snippet={hit.snippet}
+              onJump={onJump}
+            />
+          ))}
+        </Box>
+      ))}
+    </Flex>
+  );
+}
+
+function Hit({
+  filePath,
+  line,
+  snippet,
+  onJump,
+}: {
+  filePath: string;
+  line: number;
+  snippet: string;
+  onJump?: (filePath: string, line: number) => void;
+}) {
+  const interactive = !!onJump;
+  return (
+    <Flex
+      as={interactive ? "button" : "div"}
+      type={interactive ? "button" : undefined}
+      data-testid={`used-in-blocks-hit-${filePath}:${line}`}
+      onClick={interactive ? () => onJump?.(filePath, line) : undefined}
+      align="baseline"
+      gap={2}
+      px={4}
+      py={1}
+      cursor={interactive ? "pointer" : "default"}
+      borderWidth={0}
+      bg="transparent"
+      textAlign="left"
+      w="full"
+      _hover={interactive ? { bg: "bg.1" } : undefined}
+    >
+      <Text
+        as="span"
+        fontFamily="mono"
+        fontSize="10px"
+        color="fg.3"
+        flexShrink={0}
+        w="32px"
+        textAlign="right"
+      >
+        {line}
+      </Text>
+      <Text
+        as="span"
+        fontFamily="mono"
+        fontSize="11px"
+        color="fg"
+        truncate
+        title={snippet}
+      >
+        {snippet}
+      </Text>
+    </Flex>
+  );
+}
