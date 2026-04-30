@@ -44,6 +44,9 @@ interface SettingsState {
   // Layout
   sidebarOpen: boolean;
 
+  // MVP-to-v1 migration banner
+  mvpMigrationDismissed: boolean;
+
   // Actions
   openSettings: () => void;
   closeSettings: () => void;
@@ -59,6 +62,7 @@ interface SettingsState {
   setVimEnabled: (enabled: boolean) => void;
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
+  setMvpMigrationDismissed: (dismissed: boolean) => void;
   loadSettings: () => Promise<void>;
 }
 
@@ -104,6 +108,7 @@ export const useSettingsStore = create<SettingsState>()(
       vimEnabled: false,
       vimMode: "normal",
       sidebarOpen: true,
+      mvpMigrationDismissed: false,
 
       openSettings: () => set({ settingsOpen: true }),
       closeSettings: () => set({ settingsOpen: false }),
@@ -172,6 +177,14 @@ export const useSettingsStore = create<SettingsState>()(
         patchUiPrefs((ui) => ({ ...ui, sidebar_open: open })).catch(() => {});
       },
 
+      setMvpMigrationDismissed: (dismissed) => {
+        set({ mvpMigrationDismissed: dismissed });
+        patchUiPrefs((ui) => ({
+          ...ui,
+          mvp_migration_dismissed: dismissed,
+        })).catch(() => {});
+      },
+
       loadSettings: async () => {
         const file = await getUserConfig();
         const ui = file.ui;
@@ -209,6 +222,7 @@ export const useSettingsStore = create<SettingsState>()(
           colorMode: parseColorMode(ui.color_mode),
           vimEnabled: ui.vim_enabled ?? false,
           sidebarOpen: ui.sidebar_open ?? true,
+          mvpMigrationDismissed: ui.mvp_migration_dismissed ?? false,
           loaded: true,
         });
       },

@@ -31,6 +31,7 @@ function userFile(uiOverrides: Record<string, unknown> = {}) {
       vim_enabled: false,
       sidebar_open: true,
       color_mode: "system",
+      mvp_migration_dismissed: false,
       ...uiOverrides,
     },
     shortcuts: {},
@@ -59,6 +60,7 @@ function resetStore() {
     vimEnabled: false,
     vimMode: "normal",
     sidebarOpen: true,
+    mvpMigrationDismissed: false,
   });
 }
 
@@ -288,6 +290,50 @@ describe("settingsStore", () => {
       await useSettingsStore.getState().loadSettings();
 
       expect(useSettingsStore.getState().colorMode).toBe("system");
+    });
+  });
+
+  describe("mvpMigrationDismissed", () => {
+    it("defaults to false", () => {
+      expect(useSettingsStore.getState().mvpMigrationDismissed).toBe(false);
+    });
+
+    it("setMvpMigrationDismissed(true) updates state and persists", async () => {
+      const read = mockUserConfig();
+
+      useSettingsStore.getState().setMvpMigrationDismissed(true);
+
+      expect(useSettingsStore.getState().mvpMigrationDismissed).toBe(true);
+      await flushPersist();
+      expect(read().ui.mvp_migration_dismissed).toBe(true);
+    });
+
+    it("setMvpMigrationDismissed(false) round-trips back to false", async () => {
+      const read = mockUserConfig({ mvp_migration_dismissed: true });
+
+      useSettingsStore.getState().setMvpMigrationDismissed(false);
+
+      expect(useSettingsStore.getState().mvpMigrationDismissed).toBe(false);
+      await flushPersist();
+      expect(read().ui.mvp_migration_dismissed).toBe(false);
+    });
+
+    it("loadSettings hydrates mvpMigrationDismissed from config", async () => {
+      mockUserConfig({ mvp_migration_dismissed: true });
+
+      await useSettingsStore.getState().loadSettings();
+
+      expect(useSettingsStore.getState().mvpMigrationDismissed).toBe(true);
+    });
+
+    it("falls back to false when ui.mvp_migration_dismissed is omitted", async () => {
+      // Pass null instead of true/false to simulate a TOML file
+      // written by an older version that pre-dates the field.
+      mockUserConfig({ mvp_migration_dismissed: undefined });
+
+      await useSettingsStore.getState().loadSettings();
+
+      expect(useSettingsStore.getState().mvpMigrationDismissed).toBe(false);
     });
   });
 });

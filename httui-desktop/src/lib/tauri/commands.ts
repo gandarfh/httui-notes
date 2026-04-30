@@ -61,6 +61,12 @@ export interface UserUiPrefs {
   sidebar_open: boolean;
   /** Color mode: `"system"` | `"light"` | `"dark"`. */
   color_mode: string;
+  /**
+   * MVP-to-v1 migration banner dismissed. Once true, the banner
+   * stays hidden across launches even if a legacy notes.db is
+   * detected.
+   */
+  mvp_migration_dismissed: boolean;
 }
 
 /** `[secrets]` section. */
