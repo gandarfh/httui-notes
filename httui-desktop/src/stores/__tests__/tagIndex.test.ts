@@ -217,4 +217,47 @@ describe("tagIndex store", () => {
       useTagIndexStore.getState().loadFromVault("/missing"),
     ).rejects.toThrow("vault not found");
   });
+
+  // Story 04 task 2 — refreshTagsForFile (per-save shortcut)
+
+  it("refreshTagsForFile parses content and indexes the tags", () => {
+    const content = "---\ntags: [payments, debug]\n---\nbody\n";
+    const tags = useTagIndexStore.getState().refreshTagsForFile("a.md", content);
+    expect(tags).toEqual(["payments", "debug"]);
+    const s = useTagIndexStore.getState();
+    expect(s.getFilesByTag("payments")).toEqual(["a.md"]);
+    expect(s.getFilesByTag("debug")).toEqual(["a.md"]);
+  });
+
+  it("refreshTagsForFile clears tags when frontmatter is removed", () => {
+    // First save: file has tags.
+    useTagIndexStore
+      .getState()
+      .refreshTagsForFile("a.md", "---\ntags: [a, b]\n---\nbody\n");
+    expect(useTagIndexStore.getState().getAllTags()).toEqual(["a", "b"]);
+
+    // Subsequent save: user dropped the frontmatter — tags collapse.
+    const tags = useTagIndexStore
+      .getState()
+      .refreshTagsForFile("a.md", "no frontmatter body only\n");
+    expect(tags).toEqual([]);
+    expect(useTagIndexStore.getState().getAllTags()).toEqual([]);
+  });
+
+  it("refreshTagsForFile flips the file's tag set on each save", () => {
+    const s = useTagIndexStore.getState();
+    s.refreshTagsForFile("a.md", "---\ntags: [old]\n---\n");
+    s.refreshTagsForFile("a.md", "---\ntags: [new]\n---\n");
+    const after = useTagIndexStore.getState();
+    expect(after.getFilesByTag("old")).toEqual([]);
+    expect(after.getFilesByTag("new")).toEqual(["a.md"]);
+  });
+
+  it("refreshTagsForFile is a no-op for content without frontmatter", () => {
+    const tags = useTagIndexStore
+      .getState()
+      .refreshTagsForFile("a.md", "# Just markdown\n\nbody\n");
+    expect(tags).toEqual([]);
+    expect(useTagIndexStore.getState().byFile["a.md"]).toEqual([]);
+  });
 });

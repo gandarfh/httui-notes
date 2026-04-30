@@ -11,6 +11,7 @@
 import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 
+import { extractFrontmatterTags } from "@/lib/blocks/extract-frontmatter-tags";
 import { scanVaultTags } from "@/lib/tauri/tags";
 
 interface TagIndexState {
@@ -21,6 +22,13 @@ interface TagIndexState {
    *  cheaply on `setTagsForFile`. */
   byFile: Readonly<Record<string, ReadonlyArray<string>>>;
   setTagsForFile: (filePath: string, tags: ReadonlyArray<string>) => void;
+  /** Per-save shortcut: parses `content` with
+   *  `extractFrontmatterTags` and forwards to `setTagsForFile`.
+   *  Called from the editor save flow + the Tauri file-watcher
+   *  hook so the index stays in sync without an IPC round-trip
+   *  through the Rust walker. Returns the freshly-applied tag
+   *  list so the consumer can log / surface it. */
+  refreshTagsForFile: (filePath: string, content: string) => string[];
   removeFile: (filePath: string) => void;
   clearAll: () => void;
   /** Bootstrap from the Rust vault walker. Calls
@@ -76,6 +84,12 @@ export const useTagIndexStore = create<TagIndexState>()(
           undefined,
           "tag-index/setTagsForFile",
         ),
+
+      refreshTagsForFile: (filePath, content) => {
+        const tags = extractFrontmatterTags(content);
+        get().setTagsForFile(filePath, tags);
+        return tags;
+      },
 
       removeFile: (filePath) =>
         set(
