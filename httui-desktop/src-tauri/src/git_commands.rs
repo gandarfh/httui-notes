@@ -199,4 +199,126 @@ mod tests {
         // No working-tree changes after init.
         assert_eq!(d, "");
     }
+
+    #[tokio::test]
+    async fn remote_list_round_trip() {
+        let dir = TempDir::new().unwrap();
+        init_with_commit(&dir);
+        let r = git_remote_list_cmd(dir.path().to_string_lossy().into())
+            .await
+            .unwrap();
+        assert!(r.is_empty());
+        // Add a remote and re-check.
+        let _ = Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .args(["remote", "add", "origin", "git@github.com:o/r.git"])
+            .output();
+        let r2 = git_remote_list_cmd(dir.path().to_string_lossy().into())
+            .await
+            .unwrap();
+        assert_eq!(r2.len(), 1);
+        assert_eq!(r2[0].name, "origin");
+    }
+
+    #[tokio::test]
+    async fn checkout_round_trip() {
+        let dir = TempDir::new().unwrap();
+        init_with_commit(&dir);
+        // Create + switch to feat/x.
+        git_checkout_b_cmd(
+            dir.path().to_string_lossy().into(),
+            "feat/x".into(),
+        )
+        .await
+        .unwrap();
+        // Switch back to main.
+        git_checkout_cmd(
+            dir.path().to_string_lossy().into(),
+            "main".into(),
+        )
+        .await
+        .unwrap();
+        let head = Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .args(["rev-parse", "--abbrev-ref", "HEAD"])
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&head.stdout).trim(), "main");
+    }
+
+    #[tokio::test]
+    async fn stage_unstage_round_trip() {
+        let dir = TempDir::new().unwrap();
+        init_with_commit(&dir);
+        std::fs::write(dir.path().join("new"), "x").unwrap();
+        stage_path_cmd(
+            dir.path().to_string_lossy().into(),
+            "new".into(),
+        )
+        .await
+        .unwrap();
+        unstage_path_cmd(
+            dir.path().to_string_lossy().into(),
+            "new".into(),
+        )
+        .await
+        .unwrap();
+        // After unstage, "new" should still be untracked.
+        let s = Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .args(["status", "--porcelain"])
+            .output()
+            .unwrap();
+        assert!(String::from_utf8_lossy(&s.stdout).contains("?? new"));
+    }
+
+    #[tokio::test]
+    async fn commit_round_trip() {
+        let dir = TempDir::new().unwrap();
+        init_with_commit(&dir);
+        std::fs::write(dir.path().join("b"), "x").unwrap();
+        stage_path_cmd(dir.path().to_string_lossy().into(), "b".into())
+            .await
+            .unwrap();
+        git_commit_cmd(
+            dir.path().to_string_lossy().into(),
+            "second".into(),
+            false,
+        )
+        .await
+        .unwrap();
+        let l = git_log_cmd(dir.path().to_string_lossy().into(), 10, None)
+            .await
+            .unwrap();
+        assert_eq!(l.len(), 2);
+        assert_eq!(l[0].subject, "second");
+    }
+
+    #[tokio::test]
+    async fn fetch_pull_push_no_remote_dont_panic() {
+        let dir = TempDir::new().unwrap();
+        init_with_commit(&dir);
+        // No remote configured — fetch behaviour is git-version-
+        // dependent (silent success on some, error on others).
+        // The wrapper just must not panic.
+        let _ = git_fetch_cmd(dir.path().to_string_lossy().into(), None).await;
+        // pull/push without a remote always error.
+        assert!(git_pull_cmd(
+            dir.path().to_string_lossy().into(),
+            None,
+            None,
+        )
+        .await
+        .is_err());
+        assert!(git_push_cmd(
+            dir.path().to_string_lossy().into(),
+            None,
+            None,
+        )
+        .await
+        .is_err());
+    }
 }

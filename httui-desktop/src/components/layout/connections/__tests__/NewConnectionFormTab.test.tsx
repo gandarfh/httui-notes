@@ -148,4 +148,53 @@ describe("NewConnectionFormTab", () => {
       screen.queryByTestId("new-connection-form-test-slot"),
     ).not.toBeInTheDocument();
   });
+
+  it("patches every field through onChange (host / port / database / username / password)", async () => {
+    const fields = [
+      { id: "host", typed: "h" },
+      { id: "port", typed: "5" },
+      { id: "database", typed: "d" },
+      { id: "username", typed: "u" },
+      { id: "password", typed: "p" },
+    ];
+    const user = userEvent.setup();
+    for (const f of fields) {
+      const onChange = vi.fn();
+      renderWithProviders(
+        <NewConnectionFormTab
+          kind="postgres"
+          value={EMPTY_POSTGRES_VALUE}
+          onChange={onChange}
+        />,
+      );
+      const inputs = screen.getAllByTestId(`new-connection-field-${f.id}`);
+      await user.type(inputs[inputs.length - 1]!, f.typed);
+      expect(onChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          [f.id]:
+            f.id === "host"
+              ? "localhost" + f.typed
+              : f.id === "port"
+              ? "5432" + f.typed
+              : f.typed,
+        }),
+      );
+    }
+  });
+
+  it("renders a per-kind stub for each non-postgres-shape kind", () => {
+    for (const kind of ["mongo", "graphql", "shell"] as const) {
+      const { unmount } = renderWithProviders(
+        <NewConnectionFormTab
+          kind={kind}
+          value={EMPTY_POSTGRES_VALUE}
+          onChange={vi.fn()}
+        />,
+      );
+      expect(
+        screen.getByTestId(`new-connection-form-stub-${kind}`),
+      ).toBeInTheDocument();
+      unmount();
+    }
+  });
 });
