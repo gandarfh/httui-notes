@@ -9,7 +9,7 @@ Replaces the current Chakra form-only experience.
 truth; `db::connections` legacy commands removed)
 **Desbloqueia:** Epic 23 (connection quick-edit popover), Epic 28
 (sidebar Schema tab pulls preview from here)
-**Status:** in progress (Story 01 slices 1+2 + Story 02 shipped — commits 0f1fb06, 8ed373d, 3f70006)
+**Status:** in progress (Stories 01-03 shipped at component level — commits 0f1fb06, 8ed373d, 3f70006, a4eaae5; audit-031 deferral on PK/FK + row counts)
 **Effort:** 5-6 days
 
 ---
@@ -71,15 +71,22 @@ truth; `db::connections` legacy commands removed)
       — closed by 3f70006 (component callback `onRotatePassword(newPw)`;
       consumer wires to keychain + `update_connection` on mount).
 
-## Story 03: Detail panel — schema preview
+## Story 03: Detail panel — schema preview — done at component level (a4eaae5)
 
 ### Tasks
 
-- [ ] Reuses `schemaCacheStore.fetchSchema(connection_id)`
-- [ ] Shows table tree with PK/FK icons + row counts
-- [ ] "Hot tables" — top 5 tables ordered by hit count from
-      `block_run_history` joined to schema (most-queried tables float
-      to the top)
+- [x] Reuses `schemaCacheStore.fetchSchema(connection_id)` — closed
+      by a4eaae5. Component takes `schema/loading/error/onRefresh`
+      from the consumer; the page wires `useSchemaCacheStore.ensureLoaded`
+      / `refresh` on mount.
+- [~] Shows table tree with column counts — closed by a4eaae5.
+      **PK/FK icons + per-table row counts deferred** to a follow-
+      up backend extension (audit-031) — `SchemaEntry` doesn't
+      carry that metadata yet. Carries to Story 03a or Epic 28.
+- [x] "Hot tables" — top 5 tables ordered by hit count — closed
+      by a4eaae5 (`HOT_TABLES_LIMIT` exported, top-N section
+      renders above the table tree). Real source from a
+      `block_run_history` join lands with the page mount.
 
 ## Story 04: Detail panel — used-in-runbooks
 
