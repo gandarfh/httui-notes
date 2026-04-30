@@ -5,6 +5,7 @@ import {
   deleteNote,
   renameNote,
 } from "@/lib/tauri/commands";
+import { useTagIndexStore } from "@/stores/tagIndex";
 
 export interface InlineCreate {
   type: "note" | "folder";
@@ -76,6 +77,10 @@ export function useFileOperations({
       try {
         await renameNote(vaultPath, path, newPath);
         await refreshFileTree(vaultPath);
+        // Tag index is keyed by old path — drop it. The next save
+        // (or the vault-walker re-run) re-indexes under the new
+        // path. Cheap; keeps quick-open #tag results coherent.
+        useTagIndexStore.getState().removeFile(path);
       } catch (err) {
         console.error("Failed to rename:", err);
       }
@@ -89,6 +94,7 @@ export function useFileOperations({
       try {
         await deleteNote(vaultPath, path);
         await refreshFileTree(vaultPath);
+        useTagIndexStore.getState().removeFile(path);
       } catch (err) {
         console.error("Failed to delete:", err);
       }
