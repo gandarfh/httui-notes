@@ -4,6 +4,7 @@ import { useEditorSession } from "@/hooks/useEditorSession";
 import { usePaneStore } from "@/stores/pane";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useSettingsStore } from "@/stores/settings";
+import { useTagIndexStore } from "@/stores/tagIndex";
 import { mockTauriCommand, clearTauriMocks } from "@/test/mocks/tauri";
 
 vi.mock("@/lib/theme/apply", () => ({ applyTheme: vi.fn() }));
@@ -332,6 +333,89 @@ describe("useEditorSession", () => {
       });
 
       expect(writeCalls).toBe(0);
+    });
+  });
+
+  describe("tag-index refresh on save (epic 52 / story 04)", () => {
+    it("auto-save updates the tag index from the persisted content", async () => {
+      mockTauriCommand("write_note", () => {});
+      // Reset the tag store; assert it's empty before the save.
+      useTagIndexStore.getState().clearAll();
+      expect(useTagIndexStore.getState().getAllTags()).toEqual([]);
+
+      const { result } = renderHook(() => useEditorSession());
+      act(() => {
+        result.current.handleEditorChange(
+          "p1",
+          "rb.md",
+          "---\ntags: [payments, debug]\n---\nbody\n",
+          VAULT,
+        );
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(1000);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const state = useTagIndexStore.getState();
+      expect(state.getAllTags()).toEqual(["debug", "payments"]);
+      expect(state.getFilesByTag("payments")).toEqual(["rb.md"]);
+    });
+
+    it("forceSave updates the tag index from the persisted content", async () => {
+      mockTauriCommand("write_note", () => {});
+      // Set up the active tab + content.
+      usePaneStore.setState({
+        layout: {
+          type: "leaf",
+          id: "p1",
+          tabs: [{ filePath: "rb.md", vaultPath: VAULT, kind: "file" } as never],
+          activeTab: 0,
+        } as never,
+        activePaneId: "p1",
+        editorContents: new Map([
+          ["rb.md", "---\ntags: [solo]\n---\nbody\n"],
+        ]),
+        unsavedFiles: new Set(["rb.md"]),
+      } as never);
+      useTagIndexStore.getState().clearAll();
+
+      const { result } = renderHook(() => useEditorSession());
+      act(() => result.current.forceSave());
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(useTagIndexStore.getState().getAllTags()).toEqual(["solo"]);
+    });
+
+    it("flips the file's tag set when frontmatter is removed in a save", async () => {
+      mockTauriCommand("write_note", () => {});
+      useTagIndexStore.getState().clearAll();
+      // Seed an old set of tags as if they were already indexed.
+      useTagIndexStore.getState().setTagsForFile("rb.md", ["legacy"]);
+      expect(useTagIndexStore.getState().getAllTags()).toEqual(["legacy"]);
+
+      const { result } = renderHook(() => useEditorSession());
+      // User dropped the frontmatter; auto-save persists the new
+      // body.
+      act(() => {
+        result.current.handleEditorChange(
+          "p1",
+          "rb.md",
+          "no frontmatter, body only\n",
+          VAULT,
+        );
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(1000);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(useTagIndexStore.getState().getAllTags()).toEqual([]);
     });
   });
 });

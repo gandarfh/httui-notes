@@ -1,6 +1,7 @@
 import { useCallback, useRef } from "react";
 import { readNote, writeNote, setConfig } from "@/lib/tauri/commands";
 import { usePaneStore } from "@/stores/pane";
+import { useTagIndexStore } from "@/stores/tagIndex";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useSettingsStore } from "@/stores/settings";
 
@@ -54,6 +55,10 @@ export function useEditorSession() {
             await writeNote(tabVaultPath, filePath, content);
             const store = usePaneStore.getState();
             store.markUnsaved(store.activePaneId, filePath, false);
+            // Re-index tags from the just-persisted content. The tag
+            // index store dedups + diffs against the previous tag set
+            // so this is cheap when the frontmatter didn't change.
+            useTagIndexStore.getState().refreshTagsForFile(filePath, content);
           } catch (err) {
             console.error("Auto-save failed:", err);
           }
@@ -72,8 +77,12 @@ export function useEditorSession() {
     if (!tab) return;
     const content = editorContents.get(tab.filePath);
     if (content) {
-      writeNote(tab.vaultPath, tab.filePath, content)
-        .then(() => markUnsaved(leaf.id, tab.filePath, false))
+      const filePath = tab.filePath;
+      writeNote(tab.vaultPath, filePath, content)
+        .then(() => {
+          markUnsaved(leaf.id, filePath, false);
+          useTagIndexStore.getState().refreshTagsForFile(filePath, content);
+        })
         .catch((err) => console.error("Save failed:", err));
     }
   }, []);
