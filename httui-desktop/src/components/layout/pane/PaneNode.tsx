@@ -1,9 +1,8 @@
 import { useEffect, useRef } from "react";
 import { Box, Flex, Text } from "@chakra-ui/react";
 import { TabBar } from "../TabBar";
-import { MarkdownEditor } from "@/components/editor/MarkdownEditor";
 import { DiffViewer } from "@/components/editor/DiffViewer";
-import { ConflictBanner } from "../ConflictBanner";
+import { DocHeaderedEditor } from "./DocHeaderedEditor";
 import { usePaneStore } from "@/stores/pane";
 import { useSettingsStore } from "@/stores/settings";
 import { SplitView } from "./SplitView";
@@ -96,44 +95,32 @@ export function PaneNode({
               <DiffViewer tab={activeTab} />
             </Box>
           ) : (
-            <Box
-              flex={1}
-              overflow="hidden"
-              display="flex"
-              flexDirection="column"
-            >
-              {hasConflict(activeTab.filePath) && (
-                <ConflictBanner
-                  filePath={activeTab.filePath}
-                  onReload={() =>
-                    resolveConflict(
-                      activeTab.filePath,
-                      "reload",
-                      activeTab.vaultPath,
-                    )
-                  }
-                  onKeep={() =>
-                    resolveConflict(activeTab.filePath, "keep", null)
-                  }
-                />
-              )}
-              <Box flex={1} overflow="hidden">
-                <MarkdownEditor
-                  content={content}
-                  onChange={(c) =>
-                    handleEditorChange(
-                      layout.id,
-                      activeTab.filePath,
-                      c,
-                      activeTab.vaultPath,
-                    )
-                  }
-                  filePath={activeTab.filePath}
-                  vimEnabled={vimEnabled}
-                  onNavigateFile={onNavigateFile}
-                />
-              </Box>
-            </Box>
+            <DocHeaderedEditor
+              filePath={activeTab.filePath}
+              vaultPath={activeTab.vaultPath}
+              content={content}
+              vimEnabled={vimEnabled}
+              showConflict={hasConflict(activeTab.filePath)}
+              onConflictReload={() =>
+                resolveConflict(
+                  activeTab.filePath,
+                  "reload",
+                  activeTab.vaultPath,
+                )
+              }
+              onConflictKeep={() =>
+                resolveConflict(activeTab.filePath, "keep", null)
+              }
+              onChange={(c) =>
+                handleEditorChange(
+                  layout.id,
+                  activeTab.filePath,
+                  c,
+                  activeTab.vaultPath,
+                )
+              }
+              onNavigateFile={onNavigateFile}
+            />
           )
         ) : (
           <Flex flex={1} align="center" justify="center">
@@ -155,3 +142,4 @@ export function PaneNode({
     />
   );
 }
+
