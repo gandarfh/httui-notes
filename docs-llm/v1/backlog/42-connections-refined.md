@@ -9,7 +9,7 @@ Replaces the current Chakra form-only experience.
 truth; `db::connections` legacy commands removed)
 **Desbloqueia:** Epic 23 (connection quick-edit popover), Epic 28
 (sidebar Schema tab pulls preview from here)
-**Status:** in progress (Story 01 slices 1+2 shipped — commits 0f1fb06, 8ed373d)
+**Status:** in progress (Story 01 slices 1+2 + Story 02 shipped — commits 0f1fb06, 8ed373d, 3f70006)
 **Effort:** 5-6 days
 
 ---
@@ -56,16 +56,20 @@ truth; `db::connections` legacy commands removed)
 - [x] Empty selection shows "Select a connection or create a new one"
       — closed by 0f1fb06.
 
-## Story 02: Detail panel — credentials section
+## Story 02: Detail panel — credentials section — done at component level (3f70006)
 
 ### Tasks
 
-- [ ] Read-only summary by default: host, port, user, database,
-      `••••••••` for password
-- [ ] "Edit" toggles fields editable; "Save" writes through
-      `ConnectionsStore`
-- [ ] Inline rotate-password button: prompts for new value, writes
+- [x] Read-only summary by default: host, port, user, database,
+      `••••••••` for password — closed by 3f70006.
+- [x] "Edit" toggles fields editable; "Save" writes through
+      `ConnectionsStore` — closed by 3f70006 (component-level
+      callback `onSave(input: UpdateConnectionInput)`; consumer
+      wires to the store when the page is mounted).
+- [x] Inline rotate-password button: prompts for new value, writes
       to keychain, updates `{{keychain:…}}` ref in `connections.toml`
+      — closed by 3f70006 (component callback `onRotatePassword(newPw)`;
+      consumer wires to keychain + `update_connection` on mount).
 
 ## Story 03: Detail panel — schema preview
 
