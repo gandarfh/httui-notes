@@ -11,6 +11,10 @@ interface KeyboardShortcutActions {
   forceSave: () => void;
   toggleChat: () => void;
   toggleSchemaPanel: () => void;
+  /** Optional — wired in AppShell post-Epic 27 mount. */
+  toggleOutlinePanel?: () => void;
+  /** Optional — wired in AppShell post-Epic 29 mount. */
+  toggleHistoryPanel?: () => void;
 }
 
 export function useKeyboardShortcuts(actions: KeyboardShortcutActions): void {
@@ -55,6 +59,22 @@ export function useKeyboardShortcuts(actions: KeyboardShortcutActions): void {
       if (e.shiftKey && (e.key === "d" || e.key === "D")) {
         e.preventDefault();
         actions.toggleSchemaPanel();
+      }
+      if (
+        e.shiftKey &&
+        (e.key === "o" || e.key === "O") &&
+        actions.toggleOutlinePanel
+      ) {
+        e.preventDefault();
+        actions.toggleOutlinePanel();
+      }
+      if (
+        e.shiftKey &&
+        (e.key === "h" || e.key === "H") &&
+        actions.toggleHistoryPanel
+      ) {
+        e.preventDefault();
+        actions.toggleHistoryPanel();
       }
     };
     window.addEventListener("keydown", handler);

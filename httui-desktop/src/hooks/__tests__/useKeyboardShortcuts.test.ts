@@ -96,4 +96,64 @@ describe("useKeyboardShortcuts", () => {
     window.dispatchEvent(event);
     expect(actions.toggleSidebar).not.toHaveBeenCalled();
   });
+
+  it("Cmd+Shift+O calls toggleOutlinePanel when supplied", () => {
+    const actions = {
+      ...createActions(),
+      toggleOutlinePanel: vi.fn(),
+    };
+    renderHook(() => useKeyboardShortcuts(actions));
+    fireKey("o", { shiftKey: true });
+    expect(actions.toggleOutlinePanel).toHaveBeenCalledOnce();
+  });
+
+  it("Cmd+Shift+H calls toggleHistoryPanel when supplied", () => {
+    const actions = {
+      ...createActions(),
+      toggleHistoryPanel: vi.fn(),
+    };
+    renderHook(() => useKeyboardShortcuts(actions));
+    fireKey("h", { shiftKey: true });
+    expect(actions.toggleHistoryPanel).toHaveBeenCalledOnce();
+  });
+
+  it("Cmd+Shift+O is a no-op when toggleOutlinePanel is undefined", () => {
+    // Optional action — older AppShell instances may not pass it.
+    // Don't preventDefault either — let the keyboard event bubble.
+    const actions = createActions();
+    renderHook(() => useKeyboardShortcuts(actions));
+    const event = new KeyboardEvent("keydown", {
+      key: "o",
+      metaKey: true,
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it("Cmd+Shift+H is a no-op when toggleHistoryPanel is undefined", () => {
+    const actions = createActions();
+    renderHook(() => useKeyboardShortcuts(actions));
+    const event = new KeyboardEvent("keydown", {
+      key: "h",
+      metaKey: true,
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it("Cmd+Shift+O accepts uppercase 'O'", () => {
+    const actions = {
+      ...createActions(),
+      toggleOutlinePanel: vi.fn(),
+    };
+    renderHook(() => useKeyboardShortcuts(actions));
+    fireKey("O", { shiftKey: true });
+    expect(actions.toggleOutlinePanel).toHaveBeenCalledOnce();
+  });
 });
