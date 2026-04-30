@@ -24,6 +24,9 @@ pub mod executions;
 // Git panel (Epic 20).
 pub mod git_commands;
 
+// Vault-wide tag index (Epic 52 Story 04).
+pub mod tag_commands;
+
 // File-backed config (epic 09 foundation; cutover in epic 19).
 pub mod vault_config_commands;
 

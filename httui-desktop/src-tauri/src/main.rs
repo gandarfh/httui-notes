@@ -491,6 +491,8 @@ fn main() {
             httui_notes::git_commands::git_fetch_cmd,
             httui_notes::git_commands::git_pull_cmd,
             httui_notes::git_commands::git_push_cmd,
+            // Epic 52 Story 04 — vault-wide tag index.
+            httui_notes::tag_commands::scan_vault_tags_cmd,
             restore_session,
             httui_notes::commands::files::list_workspace,
             httui_notes::commands::files::read_note,
