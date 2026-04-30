@@ -99,3 +99,17 @@ export const CONNECTION_KIND_ORDER: ReadonlyArray<ConnectionKind> = [
 export function kindColor(kind: ConnectionKind): string {
   return `oklch(${CONNECTION_KINDS[kind].hue})`;
 }
+
+/** Map the legacy `Connection.driver` (postgres / mysql / sqlite) to
+ * the canvas-§5 `ConnectionKind`. Sqlite has no slot in the canvas
+ * spec; consumers render a fallback icon when this returns `null`. */
+export function kindFromDriver(driver: string): ConnectionKind | null {
+  switch (driver) {
+    case "postgres":
+      return "postgres";
+    case "mysql":
+      return "mysql";
+    default:
+      return null;
+  }
+}

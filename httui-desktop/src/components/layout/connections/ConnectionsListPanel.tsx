@@ -10,6 +10,10 @@
 import { Box, Flex, HStack, Heading, Stack, Text } from "@chakra-ui/react";
 
 import { Btn } from "@/components/atoms";
+import {
+  ConnectionListRow,
+  type ListRowItem,
+} from "./ConnectionListRow";
 
 export interface ListStatusCounts {
   total: number;
@@ -24,8 +28,17 @@ export interface ConnectionsListPanelProps {
   onSearchChange: (value: string) => void;
   onTestAll: () => void;
   onCreateNew: () => void;
-  /** Slice 1 ships an empty state inline. Slice 2 will replace
-   * this region with the compact list rows. */
+  /** Compact list rows. Empty array → empty-state hint renders.
+   * Slice 1 left this region as a placeholder; slice 2 wires it to
+   * the real connections via the page consumer. */
+  rows?: ListRowItem[];
+  /** Currently-selected connection id (or `null`). */
+  selectedId?: string | null;
+  /** Click on a row → caller updates selection. */
+  onSelectRow?: (id: string) => void;
+  /** ⋮ row-action menu trigger (slice 2 = no-op consumer). */
+  onMoreRow?: (id: string) => void;
+  /** Empty-state hint shown when `rows` is empty / undefined. */
   emptyHint?: string;
 }
 
@@ -37,6 +50,10 @@ export function ConnectionsListPanel({
   onSearchChange,
   onTestAll,
   onCreateNew,
+  rows,
+  selectedId = null,
+  onSelectRow,
+  onMoreRow,
   emptyHint = "Select a connection or create a new one",
 }: ConnectionsListPanelProps) {
   return (
@@ -117,16 +134,36 @@ export function ConnectionsListPanel({
         _focus={{ borderColor: "accent" }}
       />
 
-      <Flex
-        flex={1}
-        align="center"
-        justify="center"
-        data-testid="connections-list-empty"
-      >
-        <Text fontSize="13px" color="fg.3">
-          {emptyHint}
-        </Text>
-      </Flex>
+      {rows && rows.length > 0 ? (
+        <Stack
+          flex={1}
+          gap={0}
+          align="stretch"
+          data-testid="connections-list-rows"
+          overflowY="auto"
+        >
+          {rows.map((row) => (
+            <ConnectionListRow
+              key={row.id}
+              item={row}
+              selected={row.id === selectedId}
+              onSelect={(id) => onSelectRow?.(id)}
+              onMore={onMoreRow}
+            />
+          ))}
+        </Stack>
+      ) : (
+        <Flex
+          flex={1}
+          align="center"
+          justify="center"
+          data-testid="connections-list-empty"
+        >
+          <Text fontSize="13px" color="fg.3">
+            {emptyHint}
+          </Text>
+        </Flex>
+      )}
 
       <Text
         data-testid="connections-list-footer"
