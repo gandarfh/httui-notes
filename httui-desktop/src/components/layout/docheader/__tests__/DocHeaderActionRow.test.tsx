@@ -130,4 +130,51 @@ describe("DocHeaderActionRow", () => {
       screen.queryByTestId("docheader-action-overflow-menu"),
     ).not.toBeInTheDocument();
   });
+
+  it("fires onArchive when the Archive item is clicked", async () => {
+    const onArchive = vi.fn();
+    renderWithProviders(<DocHeaderActionRow onArchive={onArchive} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("docheader-action-overflow"));
+    await user.click(screen.getByTestId("docheader-action-archive"));
+    expect(onArchive).toHaveBeenCalledTimes(1);
+  });
+
+  it("fires onDelete when the Delete item is clicked", async () => {
+    const onDelete = vi.fn();
+    renderWithProviders(<DocHeaderActionRow onDelete={onDelete} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("docheader-action-overflow"));
+    await user.click(screen.getByTestId("docheader-action-delete"));
+    expect(onDelete).toHaveBeenCalledTimes(1);
+    // Menu closes after firing.
+    expect(
+      screen.queryByTestId("docheader-action-overflow-menu"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders all three overflow items together when all handlers are provided", async () => {
+    renderWithProviders(
+      <DocHeaderActionRow
+        onDuplicate={() => {}}
+        onArchive={() => {}}
+        onDelete={() => {}}
+      />,
+    );
+    await userEvent
+      .setup()
+      .click(screen.getByTestId("docheader-action-overflow"));
+    expect(
+      screen.getByTestId("docheader-action-duplicate"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("docheader-action-archive")).toBeInTheDocument();
+    expect(screen.getByTestId("docheader-action-delete")).toBeInTheDocument();
+  });
+
+  it("sets aria-haspopup and aria-expanded on the overflow trigger", () => {
+    renderWithProviders(<DocHeaderActionRow onDuplicate={() => {}} />);
+    const trigger = screen.getByTestId("docheader-action-overflow");
+    expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  });
 });
