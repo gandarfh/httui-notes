@@ -1,16 +1,21 @@
-// Canvas §6 Variables — detail panel value row (Epic 43 Story 02 slice 2).
+// Canvas §6 Variables — detail panel value row (Epic 43 Story 03).
 //
 // One row per env. Two top-level modes: VIEW (display + Show/Hide for
 // secrets + Edit) and EDIT (input + Save/Cancel). Edit is gated to
 // values the user can already see — non-secret rows or
-// secret-revealed rows. The consumer plugs `fetchSecret` for keychain
-// resolution and `onCommit` to persist the edit (`EnvironmentsStore::
-// set_var` lands at the page mount).
+// secret-revealed rows. When the parent passes `override`, the row
+// flips to OVERRIDE mode: the override value renders cleartext + the
+// TEMPORARY chip; reveal/edit are bypassed (clear the override first
+// to edit the underlying). The consumer plugs `fetchSecret` for
+// keychain resolution and `onCommit` to persist the edit
+// (`EnvironmentsStore::set_var` lands at the page mount).
 
 import { Box, Flex, Text } from "@chakra-ui/react";
 import { useState } from "react";
 
 import { Btn, Input } from "@/components/atoms";
+
+import { TemporaryChip } from "./TemporaryChip";
 
 const SECRET_MASK = "••••••••";
 
@@ -23,6 +28,11 @@ export interface VariableValueRowProps {
   fetchSecret?: (env: string) => Promise<string | undefined>;
   /** Called on Save with the new draft. Consumer wires the store/Tauri write. */
   onCommit?: (env: string, next: string) => void;
+  /** Active session override for this env. When set, wins over `value` and
+   * `fetchSecret` — the chip is shown and reveal/edit are bypassed. */
+  override?: string;
+  /** Click handler for the TEMPORARY chip. Required to make the chip interactive. */
+  onClearOverride?: () => void;
 }
 
 type RevealState =
@@ -37,10 +47,13 @@ export function VariableValueRow({
   isSecret,
   fetchSecret,
   onCommit,
+  override,
+  onClearOverride,
 }: VariableValueRowProps) {
   const [reveal, setReveal] = useState<RevealState>({ kind: "masked" });
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
+  const isOverridden = override !== undefined;
 
   async function handleShow() {
     if (!fetchSecret) return;
@@ -88,7 +101,7 @@ export function VariableValueRow({
   return (
     <Flex
       data-testid={`variable-value-row-${env}`}
-      data-mode={editing ? "edit" : "view"}
+      data-mode={editing ? "edit" : isOverridden ? "override" : "view"}
       align="center"
       gap={2}
       px={4}
@@ -116,6 +129,22 @@ export function VariableValueRow({
           onSave={handleSave}
           onCancel={handleCancel}
         />
+      ) : isOverridden ? (
+        <>
+          <Box flex={1} minW={0}>
+            <Text
+              fontFamily="mono"
+              fontSize="11px"
+              color="fg"
+              title={override}
+              truncate
+              data-testid={`variable-value-row-${env}-display`}
+            >
+              {override}
+            </Text>
+          </Box>
+          <TemporaryChip onClear={onClearOverride} />
+        </>
       ) : (
         <>
           <Box flex={1} minW={0}>

@@ -297,6 +297,72 @@ describe("VariableValueRow (edit mode)", () => {
     ).toBe("");
   });
 
+  it("renders the override value and TEMPORARY chip in override mode", () => {
+    renderWithProviders(
+      <VariableValueRow
+        env="local"
+        value="from-toml"
+        isSecret={false}
+        override="from-session"
+      />,
+    );
+    expect(
+      screen.getByTestId("variable-value-row-local-display").textContent,
+    ).toBe("from-session");
+    expect(screen.getByTestId("temporary-chip")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("variable-value-row-local").getAttribute("data-mode"),
+    ).toBe("override");
+  });
+
+  it("hides Show/Hide and Edit buttons while overridden", () => {
+    renderWithProviders(
+      <VariableValueRow
+        env="staging"
+        value="x"
+        isSecret={true}
+        override="session-value"
+        onCommit={() => {}}
+        fetchSecret={async () => "real"}
+      />,
+    );
+    expect(
+      screen.queryByTestId("variable-value-row-staging-show"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("variable-value-row-staging-edit"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("clears the override when the chip is clicked", async () => {
+    const onClearOverride = vi.fn();
+    renderWithProviders(
+      <VariableValueRow
+        env="local"
+        value="from-toml"
+        isSecret={false}
+        override="from-session"
+        onClearOverride={onClearOverride}
+      />,
+    );
+    await userEvent.setup().click(screen.getByTestId("temporary-chip"));
+    expect(onClearOverride).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders override mode for an empty-string override (treated as active)", () => {
+    renderWithProviders(
+      <VariableValueRow
+        env="local"
+        value="from-toml"
+        isSecret={false}
+        override=""
+      />,
+    );
+    expect(
+      screen.getByTestId("variable-value-row-local").getAttribute("data-mode"),
+    ).toBe("override");
+  });
+
   it("allows edit on a revealed secret and uses the revealed cleartext as draft", async () => {
     const fetchSecret = vi.fn(async () => "real-token");
     const onCommit = vi.fn();
