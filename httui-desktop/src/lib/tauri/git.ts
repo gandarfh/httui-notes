@@ -82,3 +82,19 @@ export function gitCheckoutB(
 ): Promise<void> {
   return invoke("git_checkout_b_cmd", { vaultPath, newBranch });
 }
+
+export function stagePath(vaultPath: string, path: string): Promise<void> {
+  return invoke("stage_path_cmd", { vaultPath, path });
+}
+
+export function unstagePath(vaultPath: string, path: string): Promise<void> {
+  return invoke("unstage_path_cmd", { vaultPath, path });
+}
+
+export function gitCommit(
+  vaultPath: string,
+  message: string,
+  amend: boolean,
+): Promise<void> {
+  return invoke("git_commit_cmd", { vaultPath, message, amend });
+}

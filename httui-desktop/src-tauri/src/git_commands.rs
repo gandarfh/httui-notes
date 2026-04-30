@@ -2,8 +2,9 @@
 //! the panel UI calls these, the substantive logic lives in core.
 
 use httui_core::git::{
-    git_branch_list, git_checkout, git_checkout_b, git_diff, git_log, git_remote_list,
-    git_status, BranchInfo, CommitInfo, GitStatus, Remote,
+    git_branch_list, git_checkout, git_checkout_b, git_commit, git_diff, git_log,
+    git_remote_list, git_status, stage_path, unstage_path, BranchInfo, CommitInfo, GitStatus,
+    Remote,
 };
 use std::path::PathBuf;
 
@@ -61,6 +62,32 @@ pub async fn git_checkout_b_cmd(
     new_branch: String,
 ) -> Result<(), String> {
     git_checkout_b(&PathBuf::from(vault_path), &new_branch)
+}
+
+/// `git add <path>` — stages a single vault-relative file. Powers
+/// the `<GitFileList>` per-row staging checkbox (Epic 48 Story 02).
+#[tauri::command]
+pub async fn stage_path_cmd(vault_path: String, path: String) -> Result<(), String> {
+    stage_path(&PathBuf::from(vault_path), &path)
+}
+
+/// `git reset HEAD -- <path>` — drops the staged version, keeps
+/// working-tree edits.
+#[tauri::command]
+pub async fn unstage_path_cmd(vault_path: String, path: String) -> Result<(), String> {
+    unstage_path(&PathBuf::from(vault_path), &path)
+}
+
+/// `git commit -m <message>` (or `--amend --no-edit` when amend).
+/// Powers `<GitCommitForm>` submit. Empty messages are rejected
+/// at the Rust layer; the form already validates client-side.
+#[tauri::command]
+pub async fn git_commit_cmd(
+    vault_path: String,
+    message: String,
+    amend: bool,
+) -> Result<(), String> {
+    git_commit(&PathBuf::from(vault_path), &message, amend)
 }
 
 #[cfg(test)]
