@@ -1,9 +1,15 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import { clearTauriMocks, mockTauriCommand } from "@/test/mocks/tauri";
 
 import { useTagIndexStore } from "../tagIndex";
 
 beforeEach(() => {
   useTagIndexStore.getState().clearAll();
+});
+
+afterEach(() => {
+  clearTauriMocks();
 });
 
 describe("tagIndex store", () => {
@@ -107,5 +113,108 @@ describe("tagIndex store", () => {
       "mango.md",
       "zebra.md",
     ]);
+  });
+
+  // Story 04 task 1 — loadFromVault (vault-open bootstrap)
+
+  it("loadFromVault populates the index from scan_vault_tags_cmd", async () => {
+    mockTauriCommand("scan_vault_tags_cmd", () => [
+      { path: "alpha.md", tags: ["payments", "debug"] },
+      { path: "beta.md", tags: ["payments"] },
+    ]);
+    const count = await useTagIndexStore.getState().loadFromVault("/v");
+    expect(count).toBe(2);
+    const s = useTagIndexStore.getState();
+    expect(s.getAllTags()).toEqual(["debug", "payments"]);
+    expect(s.getFilesByTag("payments")).toEqual(["alpha.md", "beta.md"]);
+    expect(s.getFilesByTag("debug")).toEqual(["alpha.md"]);
+  });
+
+  it("loadFromVault forwards the vaultPath argument", async () => {
+    let captured: unknown;
+    mockTauriCommand("scan_vault_tags_cmd", (args) => {
+      captured = args;
+      return [];
+    });
+    await useTagIndexStore.getState().loadFromVault("/some/vault/root");
+    expect(captured).toEqual({ vaultPath: "/some/vault/root" });
+  });
+
+  it("loadFromVault returns 0 when the walker reports nothing", async () => {
+    mockTauriCommand("scan_vault_tags_cmd", () => []);
+    const count = await useTagIndexStore.getState().loadFromVault("/v");
+    expect(count).toBe(0);
+    expect(useTagIndexStore.getState().getAllTags()).toEqual([]);
+  });
+
+  it("loadFromVault replaces every existing entry (no merge)", async () => {
+    // Stale state from a prior scan should not survive the next
+    // bootstrap — vault-switch needs to start clean.
+    useTagIndexStore.getState().setTagsForFile("stale.md", ["legacy"]);
+    mockTauriCommand("scan_vault_tags_cmd", () => [
+      { path: "fresh.md", tags: ["next"] },
+    ]);
+    await useTagIndexStore.getState().loadFromVault("/v");
+    const s = useTagIndexStore.getState();
+    expect(Object.keys(s.byFile)).toEqual(["fresh.md"]);
+    expect(s.getAllTags()).toEqual(["next"]);
+    expect(s.getFilesByTag("legacy")).toEqual([]);
+  });
+
+  it("loadFromVault dedups same-tag-twice within a file", async () => {
+    mockTauriCommand("scan_vault_tags_cmd", () => [
+      { path: "a.md", tags: ["foo", "foo", "bar"] },
+    ]);
+    await useTagIndexStore.getState().loadFromVault("/v");
+    const s = useTagIndexStore.getState();
+    expect(s.byFile["a.md"]).toEqual(["foo", "bar"]);
+    expect(s.getAllTags()).toEqual(["bar", "foo"]);
+  });
+
+  it("loadFromVault skips defensively malformed entries", async () => {
+    mockTauriCommand("scan_vault_tags_cmd", () => [
+      { path: "good.md", tags: ["ok"] },
+      null,
+      { path: 42, tags: ["x"] },
+      { path: "bad.md", tags: "not-array" },
+      { path: "empty-tags.md", tags: [] },
+    ]);
+    const count = await useTagIndexStore.getState().loadFromVault("/v");
+    expect(count).toBe(2); // good.md + empty-tags.md (kept; just no tag bucket)
+    const s = useTagIndexStore.getState();
+    expect(s.byFile["good.md"]).toEqual(["ok"]);
+    expect(s.getAllTags()).toEqual(["ok"]);
+    expect(s.getFilesByTag("ok")).toEqual(["good.md"]);
+  });
+
+  it("loadFromVault batches into a single render via one set call", async () => {
+    // Subscribe to the store; assert the listener fires exactly once
+    // for a load that touches many files. Per-file setTagsForFile
+    // would dispatch N renders.
+    let renderCount = 0;
+    const unsub = useTagIndexStore.subscribe(() => {
+      renderCount += 1;
+    });
+    try {
+      mockTauriCommand("scan_vault_tags_cmd", () =>
+        Array.from({ length: 50 }, (_, i) => ({
+          path: `f${i}.md`,
+          tags: ["t"],
+        })),
+      );
+      await useTagIndexStore.getState().loadFromVault("/v");
+      expect(renderCount).toBe(1);
+    } finally {
+      unsub();
+    }
+  });
+
+  it("loadFromVault propagates Tauri rejections", async () => {
+    mockTauriCommand("scan_vault_tags_cmd", () => {
+      throw new Error("vault not found");
+    });
+    await expect(
+      useTagIndexStore.getState().loadFromVault("/missing"),
+    ).rejects.toThrow("vault not found");
   });
 });
