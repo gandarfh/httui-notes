@@ -68,6 +68,20 @@ pub async fn set_file_auto_capture(
     store.set_file_auto_capture(&file_path, auto_capture).await
 }
 
+/// Toggle `docheader_compact` for `file_path`. Same prune semantics
+/// as auto_capture. Powers Epic 50 Story 06.
+#[tauri::command]
+pub async fn set_file_docheader_compact(
+    vault_path: String,
+    file_path: String,
+    compact: bool,
+) -> Result<(), String> {
+    let store = WorkspaceStore::new(vault_path);
+    store
+        .set_file_docheader_compact(&file_path, compact)
+        .await
+}
+
 #[tauri::command]
 pub async fn get_user_config() -> Result<UserFile, String> {
     let store = UserStore::from_default_path()?;

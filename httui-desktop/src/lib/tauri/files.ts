@@ -52,3 +52,17 @@ export function setFileAutoCapture(
     autoCapture,
   });
 }
+
+/** Set the DocHeader compact-mode flag for `file_path`. Same prune
+ * semantics as `setFileAutoCapture`. Powers Epic 50 Story 06. */
+export function setFileDocheaderCompact(
+  vaultPath: string,
+  filePath: string,
+  compact: boolean,
+): Promise<void> {
+  return invoke("set_file_docheader_compact", {
+    vaultPath,
+    filePath,
+    compact,
+  });
+}
