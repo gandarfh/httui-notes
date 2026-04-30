@@ -1,0 +1,162 @@
+// Epic 50 consumer-mount shell — composes the 4 DocHeader card
+// components shipped this loop into a single render surface.
+//
+// Pure presentational. The actual page consumer (PaneContainer /
+// MarkdownEditor wrapping for `.md` tabs) collects the data via
+// Tauri / stores and passes it through. This shell handles the
+// compact-mode gating logic (only H1 + meta strip visible per
+// Story 06) and the `onToggleCompact` flow that consumers wire to
+// the workspace.toml persistence.
+
+import { Box, Flex } from "@chakra-ui/react";
+
+import {
+  PreflightPills,
+  type PreflightPillItem,
+} from "@/components/blocks/preflight/PreflightPills";
+
+import { DocHeaderAbstract } from "./DocHeaderAbstract";
+import { DocHeaderActionRow } from "./DocHeaderActionRow";
+import { DocHeaderCard } from "./DocHeaderCard";
+import { DocHeaderMetaStrip } from "./DocHeaderMetaStrip";
+import type { DocHeaderFrontmatter } from "./docheader-derive";
+import type {
+  AuthorInfo,
+  BranchSummaryData,
+  LastRunSummary,
+} from "./docheader-meta";
+
+export interface DocHeaderShellProps {
+  // ── DocHeaderCard inputs ───────────────────────────────────────
+  filePath: string;
+  relativeFilePath?: string | null;
+  frontmatter?: DocHeaderFrontmatter | null;
+  firstHeading?: string | null;
+  /** True when the card is collapsed to H1 + meta strip only.
+   *  Driven by the consumer (reads from workspace.toml). */
+  compact?: boolean;
+  /** Click-on-title toggle. Consumer flips compact + persists. */
+  onToggleCompact?: () => void;
+  onBreadcrumbSelect?: (path: string) => void;
+
+  // ── Meta strip inputs ──────────────────────────────────────────
+  author?: AuthorInfo | null;
+  mtimeMs?: number | null;
+  dirty?: boolean;
+  branch?: BranchSummaryData | null;
+  lastRun?: LastRunSummary | null;
+  onSelectAuthor?: () => void;
+  onSelectEdited?: () => void;
+  onSelectBranch?: () => void;
+  onSelectLastRun?: () => void;
+
+  // ── Action row inputs ──────────────────────────────────────────
+  onRunAll?: () => void;
+  runAllBusy?: boolean;
+  onShare?: () => void;
+  onDuplicate?: () => void;
+  onArchive?: () => void;
+  onDelete?: () => void;
+
+  // ── Pre-flight inputs ──────────────────────────────────────────
+  preflightItems?: ReadonlyArray<PreflightPillItem>;
+  preflightRechecking?: boolean;
+  onPreflightFailureSelect?: (item: PreflightPillItem) => void;
+  onPreflightRecheck?: () => void;
+}
+
+export function DocHeaderShell(props: DocHeaderShellProps) {
+  const {
+    filePath,
+    relativeFilePath,
+    frontmatter,
+    firstHeading,
+    compact,
+    onToggleCompact,
+    onBreadcrumbSelect,
+    author,
+    mtimeMs,
+    dirty,
+    branch,
+    lastRun,
+    onSelectAuthor,
+    onSelectEdited,
+    onSelectBranch,
+    onSelectLastRun,
+    onRunAll,
+    runAllBusy,
+    onShare,
+    onDuplicate,
+    onArchive,
+    onDelete,
+    preflightItems,
+    preflightRechecking,
+    onPreflightFailureSelect,
+    onPreflightRecheck,
+  } = props;
+
+  const showActionRow = !compact;
+  const showAbstract = !compact;
+  const showPreflight = !compact && (preflightItems?.length ?? 0) > 0;
+
+  return (
+    <Box data-testid="docheader-shell" data-compact={compact || undefined}>
+      <Box position="relative">
+        <DocHeaderCard
+          filePath={filePath}
+          relativeFilePath={relativeFilePath}
+          frontmatter={frontmatter}
+          firstHeading={firstHeading}
+          compact={compact}
+          onTitleClick={onToggleCompact}
+          onBreadcrumbSelect={onBreadcrumbSelect}
+        />
+        {showActionRow && (
+          <Box
+            data-testid="docheader-shell-action-row-slot"
+            position="absolute"
+            top={5}
+            right={6}
+          >
+            <DocHeaderActionRow
+              onRunAll={onRunAll}
+              runAllBusy={runAllBusy}
+              onShare={onShare}
+              onDuplicate={onDuplicate}
+              onArchive={onArchive}
+              onDelete={onDelete}
+            />
+          </Box>
+        )}
+        <Flex px={6} pb={3} direction="column">
+          <DocHeaderMetaStrip
+            author={author}
+            mtimeMs={mtimeMs}
+            dirty={dirty}
+            branch={branch}
+            lastRun={lastRun}
+            onSelectAuthor={onSelectAuthor}
+            onSelectEdited={onSelectEdited}
+            onSelectBranch={onSelectBranch}
+            onSelectLastRun={onSelectLastRun}
+          />
+          {showAbstract && (
+            <Box data-testid="docheader-shell-abstract-slot">
+              <DocHeaderAbstract frontmatter={frontmatter ?? null} />
+            </Box>
+          )}
+          {showPreflight && preflightItems && (
+            <Box data-testid="docheader-shell-preflight-slot">
+              <PreflightPills
+                items={preflightItems}
+                rechecking={preflightRechecking}
+                onSelectFailure={onPreflightFailureSelect}
+                onRecheck={onPreflightRecheck}
+              />
+            </Box>
+          )}
+        </Flex>
+      </Box>
+    </Box>
+  );
+}
