@@ -22,6 +22,7 @@ import { WorkspaceContext } from "@/contexts/WorkspaceContext";
 import { useAutoUpdate } from "@/hooks/useAutoUpdate";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { EmptyVaultScreen } from "./EmptyVaultScreen";
+import { MigrationBannerHost } from "./empty-vault/MigrationBannerHost";
 import { ColorModeSync } from "./ColorModeSync";
 
 export function AppShell() {
@@ -160,6 +161,8 @@ export function AppShell() {
           schemaPanelOpen={schemaPanelOpen}
           onToggleSchemaPanel={toggleSchemaPanel}
         />
+
+        {vaultPath !== null && <MigrationBannerHost vaultPath={vaultPath} />}
 
         <Flex flex={1} overflow="hidden">
           {vaultPath === null ? (

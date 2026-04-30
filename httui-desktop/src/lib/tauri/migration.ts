@@ -33,3 +33,30 @@ export function detectVaultMigration(
 ): Promise<MigrationCandidate> {
   return invoke("detect_vault_migration", { vaultPath });
 }
+
+/** Mirror of `httui_core::vault_config::migration::MigrationReport`.
+ * Counts reflect what was actually written (or, on a dry run, what
+ * would be). Backed by `migrate_vault_to_v1`. */
+export interface MigrationReport {
+  vault_path: string;
+  backup_path: string | null;
+  connections_migrated: number;
+  connections_skipped: number;
+  environments_migrated: number;
+  environments_skipped: number;
+  variables_migrated: number;
+  variables_skipped: number;
+  prefs_migrated: number;
+  dry_run: boolean;
+  notes: string[];
+}
+
+/** Migrate the MVP-era SQLite vault to the v1 file layout. Set
+ * `dryRun=true` to preview without writing. Pure `invoke()` shell
+ * over `migrate_vault_to_v1` (`vault_config_commands.rs`). */
+export function migrateVaultToV1(
+  vaultPath: string,
+  dryRun: boolean,
+): Promise<MigrationReport> {
+  return invoke("migrate_vault_to_v1", { vaultPath, dryRun });
+}
