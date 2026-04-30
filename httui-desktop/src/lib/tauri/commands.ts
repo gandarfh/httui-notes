@@ -450,6 +450,14 @@ export interface HistoryEntry {
   elapsed_ms: number | null;
   outcome: string;
   ran_at: string;
+  /** EXPLAIN ANALYZE plan captured for this run (Epic 53 Story 01).
+   * Stored as the JSON-stringified plan value (Postgres JSON or
+   * MySQL EXPLAIN-as-text after backend cap). Optional because:
+   * - Rust serde skips the field with
+   *   `skip_serializing_if = "Option::is_none"`, so non-EXPLAIN
+   *   runs don't emit it on the wire;
+   * - blocks without `explain=true` info-string never populate it. */
+  plan?: string;
 }
 
 export interface InsertHistoryEntry {
@@ -462,6 +470,12 @@ export interface InsertHistoryEntry {
   response_size: number | null;
   elapsed_ms: number | null;
   outcome: string;
+  /** Optional EXPLAIN plan blob (Epic 53 Story 01). Pass when the
+   * block ran with `explain=true` info-string and the executor
+   * returned a non-null `DbResponse.plan` — JSON.stringify the
+   * value before passing here. Omit / pass undefined for regular
+   * runs so the column stays NULL. */
+  plan?: string;
 }
 
 export function listBlockHistory(
