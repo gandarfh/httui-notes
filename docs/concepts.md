@@ -136,6 +136,68 @@ GET {{BASE_URL}}/me
 Authorization: Bearer {{login.body.token}}
 ```
 
+## Pre-flight checks
+
+A runbook can declare preconditions in YAML frontmatter. httui
+evaluates them when you open the file and again before **Run all**;
+failures surface as red pills in the DocHeader card.
+
+```markdown
+---
+title: "Refund a payment"
+preflight:
+  - connection: payments-db
+  - env_var: STRIPE_KEY
+  - branch: main
+  - keychain: payments-db.password
+  - file_exists: ./schema/refund.sql
+  - command: psql --version
+---
+
+Body of the runbook starts here…
+```
+
+The six check kinds:
+
+| Kind | Resolves against | Pass when |
+|---|---|---|
+| `connection` | `connections.toml` | the named alias exists |
+| `env_var` | active env (`envs/<name>.toml` + `.local` overrides) | the key is set (any value) |
+| `branch` | the vault's git repo | the current branch name matches |
+| `keychain` | OS keychain (or active backend) | the entry exists (presence only, no value read) |
+| `file_exists` | the vault root | the path resolves to an existing file (relative paths resolve against the vault; absolute paths pass through) |
+| `command` | `$PATH` | the binary is found (path-qualified commands check the literal path) |
+
+Each item produces one of three outcomes:
+
+- **Pass** — green ✓ pill.
+- **Fail** — red ✗ pill with a reason ("connection `payments-db`
+  not found", "on branch `feature/x`, expected `main`"). Click the
+  pill to jump to the panel that fixes it.
+- **Skip** — grey – pill. Used when the check can't be evaluated
+  (e.g. `branch:` in a non-git vault) or when the kind is unknown
+  to this httui version (forward-compat).
+
+### Run-all gate
+
+When you click **Run all** with one or more failing checks, httui
+blocks with a confirmation: "*N pre-flight checks failed. Run
+anyway?*" Hold **Shift** while clicking to skip the gate; the
+override is recorded in the run-all report ("3 failed pre-flight,
+ran anyway via shift") so reviewers can spot it later.
+
+The pill row also has a manual **Re-check** button — useful after
+you switch envs or land a fix in another window.
+
+### When to use it
+
+- New teammate runbooks: declare what the runbook needs so a fresh
+  clone fails *visibly* instead of mid-execution.
+- Production playbooks: pin `branch: main` to refuse to run from a
+  feature branch by accident.
+- Domain-specific tooling: `command: psql` confirms the local
+  binary is installed before a SQL block tries to shell out.
+
 ## Multi-user, multi-machine
 
 The git workflow does the heavy lifting:
