@@ -9,7 +9,7 @@ Replaces the current Chakra form-only experience.
 truth; `db::connections` legacy commands removed)
 **Desbloqueia:** Epic 23 (connection quick-edit popover), Epic 28
 (sidebar Schema tab pulls preview from here)
-**Status:** in progress (Stories 01-03 shipped at component level — commits 0f1fb06, 8ed373d, 3f70006, a4eaae5; audit-031 deferral on PK/FK + row counts)
+**Status:** in progress (Stories 01-04 shipped at component level — commits 0f1fb06, 8ed373d, 3f70006, a4eaae5, d6a3698; audit-031 deferral on PK/FK + row counts)
 **Effort:** 5-6 days
 
 ---
@@ -88,14 +88,24 @@ truth; `db::connections` legacy commands removed)
       renders above the table tree). Real source from a
       `block_run_history` join lands with the page mount.
 
-## Story 04: Detail panel — used-in-runbooks
+## Story 04: Detail panel — used-in-runbooks — done at component level (d6a3698)
 
 ### Tasks
 
-- [ ] Vault grep for blocks with `db-<connection_id>` block type
-- [ ] List file:line entries; click to open file at that block
-- [ ] Cached on connection select; refreshes on file save (file
-      watcher already debounces)
+- [x] Vault grep for blocks with `db-<connection_id>` block type
+      — closed by d6a3698. Pure scanner `findUsagesInFile` /
+      `findUsagesAcrossVault` in `connection-usages.ts` walks
+      markdown line-by-line and matches opening fences with
+      whitespace-bounded `db-<id>` token. Tauri-side vault-walk
+      command carries — consumer hook drives the scanner.
+- [x] List file:line entries; click to open file at that block —
+      closed by d6a3698. `<ConnectionDetailUsedIn>` renders
+      file:line + optional 80-char preview line, dispatches
+      `onOpen(filePath, line)`.
+- [ ] Cached on connection select; refreshes on file save —
+      consumer cache hook (carry; uses the existing `fs/watcher.rs`
+      debounce). Component is consumer-driven so this lands
+      with the page mount slice.
 
 ## Story 05: Footer actions
 

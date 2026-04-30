@@ -93,7 +93,7 @@ just unbudgeted (see audit-011).
 | 39 | [Workbench shell redesign](./39-workbench-shell.md) | partial done (Stories 01-05 shipped — commits 002e1f5, e7bc8a2, 90bdb3f, 83edce8, 6d08e61, 6293e3c, f4e74ea, 05e27b2; mount-into-editor + per-file persistence carries) |
 | 40 | [Visual design system](./40-design-system.md) | partial done (all 6 Stories shipped end-to-end — commits 446a10d, 6767693, e4b8b8b, dc8538b, f4e74ea, 590d823, 2a0ae19, dd71cd7, 78f7a81, ed0d2dc, 1e3bc77, fd22383; carries: Story 01 woff2 self-host, Story 02 HttpFencedPanel badge (Epic 30a Story 02), Story 03 PNG assets) |
 | 41 | [Empty state polish](./41-empty-state.md) | partial done (Stories 01-07 shipped at component level — commits d5917f1, 6755c2e, 32d8f5f, 6a24781, 459053c, 3e368c8, d0d9657, 95689c4; carries: 04+05 picker logic + 06 paste-URL handler + 07 detection hook + AppShell mount) |
-| 42 | [Connections refined UI](./42-connections-refined.md) | in progress (Stories 01-03 shipped at component level — commits 0f1fb06, 8ed373d, 3f70006, a4eaae5; audit-031; carries: real enrichment + store loader + page mount + Stories 04-06 + PK/FK row counts backend ext) |
+| 42 | [Connections refined UI](./42-connections-refined.md) | in progress (Stories 01-04 shipped at component level — commits 0f1fb06, 8ed373d, 3f70006, a4eaae5, d6a3698; audit-031; carries: real enrichment + store loader + page mount + Stories 05-06 + PK/FK row counts backend ext + vault-grep Tauri cmd) |
 | 43 | [Variables master-detail](./43-vars-master-detail.md) | pending (canvas §6 vars; new — audit-011) |
 | 44 | [Environments page](./44-envs-page.md) | pending (canvas §6 envs; new — audit-011) |
 | 45 | [Block assertions](./45-block-assertions.md) | pending (canvas §10 v1; new — audit-011) |
