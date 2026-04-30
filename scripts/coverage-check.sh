@@ -13,6 +13,11 @@
 # Files with `// coverage:exclude file` on line 1 are reported as
 # EXCLUDED and don't count against the gate.
 #
+# Workspace-level exclusion: `httui-web/` (the marketing landing) is
+# skipped entirely. It has no test setup and is purely presentational
+# JSX — gating it would force coverage:exclude opt-outs on every new
+# file. Add app-grade workspaces here if you spin up more landings.
+#
 # Exits 0 when every touched file meets the threshold (or there are
 # no touched code files). Exits 1 otherwise (unless MODE=report).
 
@@ -48,6 +53,7 @@ while IFS= read -r line; do
     [ -n "$line" ] && CHANGED_FILES+=("$line")
 done < <(git diff --name-only "$DIFF_RANGE" 2>/dev/null \
     | grep -E '\.(rs|ts|tsx)$' \
+    | grep -v -E '^httui-web/' \
     | grep -v -E '/(__tests__|tests)/' \
     | grep -v -E '\.(test|spec|browser\.test|browser\.spec)\.(ts|tsx)$' \
     | grep -v -E '/test/' \
