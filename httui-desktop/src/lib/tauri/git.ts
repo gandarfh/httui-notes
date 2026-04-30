@@ -71,3 +71,14 @@ export interface Remote {
 export function gitRemoteList(vaultPath: string): Promise<Remote[]> {
   return invoke("git_remote_list_cmd", { vaultPath });
 }
+
+export function gitCheckout(vaultPath: string, branch: string): Promise<void> {
+  return invoke("git_checkout_cmd", { vaultPath, branch });
+}
+
+export function gitCheckoutB(
+  vaultPath: string,
+  newBranch: string,
+): Promise<void> {
+  return invoke("git_checkout_b_cmd", { vaultPath, newBranch });
+}

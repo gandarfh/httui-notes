@@ -2,8 +2,8 @@
 //! the panel UI calls these, the substantive logic lives in core.
 
 use httui_core::git::{
-    git_branch_list, git_diff, git_log, git_remote_list, git_status, BranchInfo, CommitInfo,
-    GitStatus, Remote,
+    git_branch_list, git_checkout, git_checkout_b, git_diff, git_log, git_remote_list,
+    git_status, BranchInfo, CommitInfo, GitStatus, Remote,
 };
 use std::path::PathBuf;
 
@@ -43,6 +43,24 @@ pub async fn git_branch_list_cmd(vault_path: String) -> Result<Vec<BranchInfo>, 
 #[tauri::command]
 pub async fn git_remote_list_cmd(vault_path: String) -> Result<Vec<Remote>, String> {
     git_remote_list(&PathBuf::from(vault_path))
+}
+
+/// `git checkout <branch>` — switch to an existing branch. Powers
+/// Epic 48 Story 04's `<GitBranchPicker>` selection flow. The
+/// consumer handles the dirty-state stash precheck before calling.
+#[tauri::command]
+pub async fn git_checkout_cmd(vault_path: String, branch: String) -> Result<(), String> {
+    git_checkout(&PathBuf::from(vault_path), &branch)
+}
+
+/// `git checkout -b <new>` — create branch + switch. Forks from the
+/// current branch (git's default).
+#[tauri::command]
+pub async fn git_checkout_b_cmd(
+    vault_path: String,
+    new_branch: String,
+) -> Result<(), String> {
+    git_checkout_b(&PathBuf::from(vault_path), &new_branch)
 }
 
 #[cfg(test)]
