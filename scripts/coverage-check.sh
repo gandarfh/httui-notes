@@ -37,21 +37,28 @@ cd "$REPO_ROOT"
 
 # ---------- changed file set --------------------------------------------------
 
-if [ -n "$BASE_REF" ]; then
-    DIFF_RANGE="$BASE_REF...HEAD"
-else
-    DIFF_RANGE="HEAD~1..HEAD"
-fi
+DIFF_MODE="${DIFF_MODE:-}"
 
-if ! git rev-parse --verify HEAD~1 >/dev/null 2>&1 && [ -z "$BASE_REF" ]; then
-    echo "coverage-check: only one commit in branch; nothing to check"
-    exit 0
+if [ "$DIFF_MODE" = "staged" ]; then
+    DIFF_CMD=(git diff --cached --name-only)
+else
+    if [ -n "$BASE_REF" ]; then
+        DIFF_RANGE="$BASE_REF...HEAD"
+    else
+        DIFF_RANGE="HEAD~1..HEAD"
+    fi
+
+    if ! git rev-parse --verify HEAD~1 >/dev/null 2>&1 && [ -z "$BASE_REF" ]; then
+        echo "coverage-check: only one commit in branch; nothing to check"
+        exit 0
+    fi
+    DIFF_CMD=(git diff --name-only "$DIFF_RANGE")
 fi
 
 CHANGED_FILES=()
 while IFS= read -r line; do
     [ -n "$line" ] && CHANGED_FILES+=("$line")
-done < <(git diff --name-only "$DIFF_RANGE" 2>/dev/null \
+done < <("${DIFF_CMD[@]}" 2>/dev/null \
     | grep -E '\.(rs|ts|tsx)$' \
     | grep -v -E '^httui-web/' \
     | grep -v -E '/(__tests__|tests)/' \

@@ -5,6 +5,7 @@ set -e
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 export MODE=report
+export DIFF_MODE=staged
 
 "$REPO_ROOT/scripts/size-check.sh"
 exec "$REPO_ROOT/scripts/coverage-check.sh"
