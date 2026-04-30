@@ -56,9 +56,8 @@ function EmptyState() {
         Selecione uma variável
       </Text>
       <Text fontSize="11px" color="fg.3" textAlign="center" lineHeight={1.5}>
-        Clique em uma linha à esquerda para ver e editar o valor por
-        ambiente, configurar override de sessão e listar os blocos que
-        a usam.
+        Clique em uma linha à esquerda para ver e editar o valor por ambiente,
+        configurar override de sessão e listar os blocos que a usam.
       </Text>
     </Flex>
   );

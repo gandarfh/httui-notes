@@ -11,10 +11,7 @@ import {
 describe("VariablesScopesSidebar", () => {
   it("renders the 5 scopes with default count of 0", () => {
     renderWithProviders(
-      <VariablesScopesSidebar
-        selectedScope="all"
-        onSelectScope={vi.fn()}
-      />,
+      <VariablesScopesSidebar selectedScope="all" onSelectScope={vi.fn()} />,
     );
     for (const scope of VARIABLE_SCOPES) {
       expect(
@@ -38,13 +35,11 @@ describe("VariablesScopesSidebar", () => {
       screen.getByTestId("variables-scope-secret").getAttribute("data-active"),
     ).toBe("true");
     expect(
-      screen
-        .getByTestId("variables-scope-all")
-        .getAttribute("data-active"),
+      screen.getByTestId("variables-scope-all").getAttribute("data-active"),
     ).toBeNull();
-    expect(
-      screen.getByTestId("variables-scope-all-count").textContent,
-    ).toBe("8");
+    expect(screen.getByTestId("variables-scope-all-count").textContent).toBe(
+      "8",
+    );
     expect(
       screen.getByTestId("variables-scope-workspace-count").textContent,
     ).toBe("3");
@@ -82,19 +77,14 @@ describe("VariablesScopesSidebar", () => {
 
   it("renders all 4 helpers and the secrets hint", () => {
     renderWithProviders(
-      <VariablesScopesSidebar
-        selectedScope="all"
-        onSelectScope={vi.fn()}
-      />,
+      <VariablesScopesSidebar selectedScope="all" onSelectScope={vi.fn()} />,
     );
     for (const helper of VARIABLE_HELPERS) {
       expect(
         screen.getByTestId(`variables-helper-${helper.syntax}`),
       ).toBeInTheDocument();
     }
-    expect(
-      screen.getByTestId("variables-secrets-hint"),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("variables-secrets-hint")).toBeInTheDocument();
     expect(screen.getByText(/Secrets locais/)).toBeInTheDocument();
   });
 });

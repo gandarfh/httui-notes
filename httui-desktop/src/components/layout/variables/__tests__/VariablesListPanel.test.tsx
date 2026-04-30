@@ -14,21 +14,18 @@ describe("VariablesListPanel", () => {
   it("renders the serif H1 + resolution hint + buttons", () => {
     renderWithProviders(<VariablesListPanel {...defaultProps} />);
     expect(screen.getByText("Variables")).toBeInTheDocument();
-    expect(
-      screen.getByTestId("variables-resolution-hint").textContent,
-    ).toMatch(/bloco/);
-    expect(
-      screen.getByTestId("variables-import-dotenv"),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("variables-resolution-hint").textContent).toMatch(
+      /bloco/,
+    );
+    expect(screen.getByTestId("variables-import-dotenv")).toBeInTheDocument();
     expect(screen.getByTestId("variables-create-new")).toBeInTheDocument();
   });
 
   it("disables Import / Nova when handlers are omitted", () => {
     renderWithProviders(<VariablesListPanel {...defaultProps} />);
     expect(
-      (
-        screen.getByTestId("variables-import-dotenv") as HTMLButtonElement
-      ).disabled,
+      (screen.getByTestId("variables-import-dotenv") as HTMLButtonElement)
+        .disabled,
     ).toBe(true);
     expect(
       (screen.getByTestId("variables-create-new") as HTMLButtonElement)
@@ -44,12 +41,10 @@ describe("VariablesListPanel", () => {
     expect(
       screen.getByTestId("variables-env-header-staging"),
     ).toBeInTheDocument();
-    expect(
-      screen.getByTestId("variables-env-header-prod"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByTestId("variables-table-headers").textContent,
-    ).toMatch(/USES/);
+    expect(screen.getByTestId("variables-env-header-prod")).toBeInTheDocument();
+    expect(screen.getByTestId("variables-table-headers").textContent).toMatch(
+      /USES/,
+    );
   });
 
   it("pads the env header row when fewer than 3 envs are supplied", () => {
@@ -86,14 +81,11 @@ describe("VariablesListPanel", () => {
 
   it("renders the active env pill when supplied", () => {
     renderWithProviders(
-      <VariablesListPanel
-        {...defaultProps}
-        activeEnvName="staging"
-      />,
+      <VariablesListPanel {...defaultProps} activeEnvName="staging" />,
     );
-    expect(
-      screen.getByTestId("variables-active-env-pill").textContent,
-    ).toMatch(/staging/);
+    expect(screen.getByTestId("variables-active-env-pill").textContent).toMatch(
+      /staging/,
+    );
   });
 
   it("typing in search dispatches onSearchChange", async () => {
@@ -105,9 +97,7 @@ describe("VariablesListPanel", () => {
         onSearchChange={onSearchChange}
       />,
     );
-    await userEvent
-      .setup()
-      .type(screen.getByTestId("variables-search"), "x");
+    await userEvent.setup().type(screen.getByTestId("variables-search"), "x");
     expect(onSearchChange).toHaveBeenCalledWith("x");
   });
 
@@ -148,8 +138,8 @@ describe("VariablesListPanel", () => {
 
   it("renders the footer keymap hint", () => {
     renderWithProviders(<VariablesListPanel {...defaultProps} />);
-    expect(
-      screen.getByTestId("variables-footer-hint").textContent,
-    ).toMatch(/⌘⇧V nova/);
+    expect(screen.getByTestId("variables-footer-hint").textContent).toMatch(
+      /⌘⇧V nova/,
+    );
   });
 });

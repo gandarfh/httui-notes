@@ -1,19 +1,24 @@
-// Canvas §6 Variables — page composition (Epic 43 Story 01 slice 1).
+// Canvas §6 Variables — page composition (Epic 43 Story 01).
 //
 // Three-column layout 200/1fr/380. Owns scope selection + search
-// state locally; data wiring (rows, env list, counts, detail) carries
-// to slice 2+ as the consumer plugs them via the panels below.
+// state locally. Slice 2 lights up the rows path: pass `rows` and the
+// page derives (scope filter + search match + name sort) and renders
+// `<VariableListRow>` for each. `rowsSlot` still wins when a consumer
+// wants full custom composition.
 
 import { Flex } from "@chakra-ui/react";
-import { useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
+import { VariableListRow } from "./VariableListRow";
 import { VariablesDetailPanel } from "./VariablesDetailPanel";
 import { VariablesListPanel } from "./VariablesListPanel";
 import { VariablesScopesSidebar } from "./VariablesScopesSidebar";
 import {
-  VARIABLE_SCOPES,
-  type VariableScope,
-} from "./variable-scopes";
+  countVariableScopes,
+  deriveVariableRows,
+  type VariableRow,
+} from "./variable-derive";
+import { VARIABLE_SCOPES, type VariableScope } from "./variable-scopes";
 
 export interface VariablesPageProps {
   /** Initial selected scope. Defaults to "all". */
@@ -22,14 +27,18 @@ export interface VariablesPageProps {
   envColumnNames?: ReadonlyArray<string>;
   /** Active env name shown in the right-of-search pill. */
   activeEnvName?: string;
-  /** Per-scope counts (canvas spec: "Todas 8 / Workspace 3 / …"). */
+  /** Per-scope counts (overrides the derive(rows) fallback). */
   countsByScope?: Partial<Record<VariableScope, number>>;
+  /** Raw rows. When provided AND `rowsSlot` is absent, the page
+   * derives (filter+search+sort) and renders rows itself. */
+  rows?: ReadonlyArray<VariableRow>;
   selectedKey?: string | null;
+  onSelectKey?: (key: string) => void;
   onImportDotenv?: () => void;
   onCreateNew?: () => void;
-  /** Slice 2+ — overridable composition slots from the consumer. */
-  rowsSlot?: React.ReactNode;
-  detailSlot?: React.ReactNode;
+  /** Manual composition slot. Wins over the auto-rows path. */
+  rowsSlot?: ReactNode;
+  detailSlot?: ReactNode;
 }
 
 export function VariablesPage({
@@ -37,7 +46,9 @@ export function VariablesPage({
   envColumnNames = [],
   activeEnvName,
   countsByScope,
+  rows,
   selectedKey,
+  onSelectKey,
   onImportDotenv,
   onCreateNew,
   rowsSlot,
@@ -47,6 +58,36 @@ export function VariablesPage({
     VARIABLE_SCOPES.includes(initialScope) ? initialScope : "all",
   );
   const [search, setSearch] = useState("");
+
+  const derivedRows = useMemo(
+    () => (rows ? deriveVariableRows({ rows, scope, search }) : undefined),
+    [rows, scope, search],
+  );
+
+  const counts = useMemo(() => {
+    if (countsByScope) return countsByScope;
+    if (rows) return countVariableScopes(rows);
+    return undefined;
+  }, [countsByScope, rows]);
+
+  const autoRows: ReactNode = derivedRows
+    ? derivedRows.map((row) => (
+        <VariableListRow
+          key={row.key}
+          row={row}
+          envColumnNames={envColumnNames}
+          selected={row.key === selectedKey}
+          onClick={() => onSelectKey?.(row.key)}
+        />
+      ))
+    : null;
+
+  const finalRowsSlot =
+    rowsSlot !== undefined
+      ? rowsSlot
+      : derivedRows && derivedRows.length > 0
+        ? autoRows
+        : undefined;
 
   return (
     <Flex
@@ -59,7 +100,7 @@ export function VariablesPage({
       <VariablesScopesSidebar
         selectedScope={scope}
         onSelectScope={setScope}
-        countsByScope={countsByScope}
+        countsByScope={counts}
       />
       <VariablesListPanel
         envColumnNames={envColumnNames}
@@ -68,7 +109,7 @@ export function VariablesPage({
         onSearchChange={setSearch}
         onImportDotenv={onImportDotenv}
         onCreateNew={onCreateNew}
-        rowsSlot={rowsSlot}
+        rowsSlot={finalRowsSlot}
       />
       <VariablesDetailPanel selectedKey={selectedKey}>
         {detailSlot}

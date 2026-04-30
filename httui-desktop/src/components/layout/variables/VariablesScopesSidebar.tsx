@@ -129,8 +129,11 @@ export function VariablesScopesSidebar({
         color="fg.2"
         lineHeight={1.4}
       >
-        🔑 <Text as="span" fontWeight="bold">Secrets locais</Text> — Valor vive
-        no keychain. Outro device → recadastra.
+        🔑{" "}
+        <Text as="span" fontWeight="bold">
+          Secrets locais
+        </Text>{" "}
+        — Valor vive no keychain. Outro device → recadastra.
       </Box>
     </Flex>
   );

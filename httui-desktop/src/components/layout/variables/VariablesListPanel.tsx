@@ -42,18 +42,16 @@ export function VariablesListPanel({
       minW={0}
       h="full"
     >
-      <Flex
-        align="flex-end"
-        justify="space-between"
-        px={5}
-        pt={5}
-        gap={3}
-      >
+      <Flex align="flex-end" justify="space-between" px={5} pt={5} gap={3}>
         <Box>
           <Text fontFamily="serif" fontSize="26px" fontWeight={500} color="fg">
             Variables
           </Text>
-          <Text fontSize="11px" color="fg.2" data-testid="variables-resolution-hint">
+          <Text
+            fontSize="11px"
+            color="fg.2"
+            data-testid="variables-resolution-hint"
+          >
             {VAR_RESOLUTION_HINT}
           </Text>
         </Box>
@@ -145,11 +143,7 @@ function TableHeaders({
     >
       <Text as="span">KEY · SCOPE</Text>
       {envColumnNames.slice(0, 3).map((env) => (
-        <Text
-          as="span"
-          key={env}
-          data-testid={`variables-env-header-${env}`}
-        >
+        <Text as="span" key={env} data-testid={`variables-env-header-${env}`}>
           {env}
         </Text>
       ))}

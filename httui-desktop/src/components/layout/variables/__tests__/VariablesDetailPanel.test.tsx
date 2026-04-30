@@ -6,17 +6,13 @@ import { VariablesDetailPanel } from "@/components/layout/variables/VariablesDet
 describe("VariablesDetailPanel", () => {
   it("renders the empty state when no key is selected", () => {
     renderWithProviders(<VariablesDetailPanel />);
-    expect(
-      screen.getByTestId("variables-detail-empty"),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("variables-detail-empty")).toBeInTheDocument();
     expect(screen.getByText(/Selecione uma variável/)).toBeInTheDocument();
   });
 
   it("renders the empty state when key is selected but no children supplied", () => {
     renderWithProviders(<VariablesDetailPanel selectedKey="api_base" />);
-    expect(
-      screen.getByTestId("variables-detail-empty"),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("variables-detail-empty")).toBeInTheDocument();
   });
 
   it("renders the children slot when key + children are both present", () => {
@@ -33,8 +29,6 @@ describe("VariablesDetailPanel", () => {
 
   it("renders the panel container regardless of state", () => {
     renderWithProviders(<VariablesDetailPanel />);
-    expect(
-      screen.getByTestId("variables-detail-panel"),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("variables-detail-panel")).toBeInTheDocument();
   });
 });
