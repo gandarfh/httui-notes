@@ -4,7 +4,8 @@ allowed-tools: Read, Bash, Grep, Glob, ExitPlanMode
 ---
 
 You're resuming work on the httui v1 refactor. The full planning lives in
-`docs-llm/v1/` (gitignored, only present locally). Your job:
+`docs-llm/v1/` (gitignored on line 40, **never committed** — read freely,
+edit freely, but never `git add -f` it). Your job:
 
 1. **Orient yourself** by reading the planning state:
    - `docs-llm/v1/README.md` (overview of the 6 planning docs)

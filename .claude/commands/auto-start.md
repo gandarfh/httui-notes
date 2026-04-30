@@ -8,6 +8,43 @@ no human in the loop right now — you decide, execute, commit, log, and
 schedule the next iteration. **Do NOT ask "should I continue?" or use
 ExitPlanMode**. Your output is read after the fact via the audit folder.
 
+# 0. Local-only files (READ FIRST)
+
+**`docs-llm/` is in `.gitignore` (line 40). Everything under it is
+local-only — never tracked, never committed.** That includes:
+
+- `docs-llm/jaum-audit/*.md` — audit entries, SESSION-LOG, state snapshots
+- `docs-llm/v1/backlog/**` — backlog index, epic files, tech-debt
+- `docs-llm/v1/*.md` — definition-of-done, ADRs, etc.
+
+**The rule for the loop:**
+
+- ✅ Read these files (orientation, audit format, backlog).
+- ✅ Write/Edit them as you go (audit entries, SESSION-LOG, state
+     snapshots, backlog status updates).
+- ❌ **NEVER `git add -f docs-llm/...`**. The `-f` is what bypasses
+     the `.gitignore` and tracks the file. Without `-f`, `git add
+     docs-llm/...` will be silently ignored — that's the correct
+     behaviour.
+- ❌ **NEVER commit a file under `docs-llm/`**. If `git status`
+     shows untracked `docs-llm/...` paths, leave them. They're the
+     local audit trail.
+
+**Concrete commit shape — only specific source paths:**
+
+```
+git add httui-core/src/...        # Rust source
+git add httui-desktop/src/...     # Frontend source
+git commit -m "..."               # never -f, never docs-llm
+```
+
+**Why:** the `docs-llm/` tree is the human's review queue + your
+loop notes. They travel locally with the working copy and survive
+across sessions on disk. Pushing them into version control pollutes
+the branch and forces history rewrites later (this rule was added
+after a session committed 14+ docs-llm files via `git add -f` —
+see commit `164581a` "stop tracking docs-llm/").
+
 # 1. Orient
 
 Same as `/start`:
@@ -47,7 +84,8 @@ trade-off, work moved between epics, opt-out from a quality gate):
 1. Pick the option you'd recommend after thinking it through.
 2. **Write an audit entry** at `docs-llm/jaum-audit/{NNN}-{slug}.md`
    following the template in `docs-llm/jaum-audit/README.md`. Use the
-   next available 3-digit number.
+   next available 3-digit number. **The file stays untracked — see
+   Section 0.** Do NOT include it in any commit.
 3. Continue executing. Don't wait for review.
 
 Bias: **smaller, reversible, well-tested over big-bang**. When in doubt,
@@ -68,7 +106,10 @@ For each Story in the chosen epic, in order:
 - Commit atomically per Story with the same message style we've been
   using (`feat(crate): summary (epic NN / story NN)`).
 
-# 7. Update tracking
+# 7. Update tracking (LOCAL EDITS — never committed)
+
+Every file in this section lives under `docs-llm/` per Section 0.
+Edit them on disk; do **not** stage or commit them.
 
 After each epic finishes:
 
@@ -81,6 +122,10 @@ After each epic finishes:
 - Append to `docs-llm/jaum-audit/SESSION-LOG.md` a one-line summary:
   `2026-04-29 14:32 — Epic 09 done (commits a1b2c3, d4e5f6); 3 audit
   entries (audit-007 .. 009)`.
+
+After staging the source-tree changes: `git status` should show those
+`docs-llm/` edits as modified-but-untracked. Leave them. They survive
+across sessions on disk; the user reads them out-of-band.
 
 # 8. Iterate
 
@@ -109,6 +154,14 @@ When the epic is committed and tracking is updated:
 - Do NOT scope-creep — if you find a problem outside the current
   epic, write an audit entry and add it to `tech-debt.md`, don't fix
   it now.
+- **Do NOT `git add -f docs-llm/...`** — see Section 0. The audit
+  trail, SESSION-LOG, state snapshots, and backlog tracking are
+  local-only by design. Force-adding past `.gitignore` is a
+  process violation; the cleanup is expensive (`git rm -r --cached
+  docs-llm/` + history rewrite if many commits accumulate).
+- Do NOT skip pre-commit hooks (`--no-verify`, `--no-gpg-sign`,
+  etc.) unless the user explicitly asks for it. If a hook fails,
+  diagnose and fix the underlying issue.
 
 # Honesty notes
 

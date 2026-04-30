@@ -7,6 +7,11 @@ You're wrapping up a working session on the httui v1 refactor. Walk
 through the closing checklist below in order. Don't skip steps; don't
 batch them silently.
 
+> **Reminder:** `docs-llm/` is gitignored (line 40 of `.gitignore`).
+> Edit it locally; **never** `git add -f` it. The "Stage only" steps
+> below mean public docs (root README, CLAUDE.md, CHANGELOG, etc.) —
+> NOT the `docs-llm/v1/backlog/` files (those stay local-only).
+
 ## 1. Identify what was worked on
 
 - `git log --oneline -10` — recent commits this session
@@ -64,14 +69,21 @@ Only update what the epic actually changed. Don't speculate.
 - Run any test commands the epic specifies in Acceptance criteria
 - If any fail, surface that and stop before declaring done
 
-## 6. Commit the doc updates
+## 6. Commit the public doc updates (NOT docs-llm/)
 
-If documentation was updated:
+If public documentation was updated:
 
-- Stage only the doc + backlog files
+- **Stage only the public doc files**: `README.md`, `CLAUDE.md`,
+  `docs/ARCHITECTURE.md`, `CHANGELOG.md`, etc.
+- **Never `git add -f docs-llm/...`**. The backlog index, epic
+  files, and tech-debt updates from step 3 stay local-only —
+  edit them on disk and leave them untracked. The user reads
+  them out-of-band; they survive on disk across sessions.
 - Commit with message format: `docs(v1): close epic NN — <epic title>`
 - Don't bundle implementation changes into this commit (they should
   already be committed earlier in the session)
+- After staging, `git status` should still show `docs-llm/...`
+  paths as modified-but-untracked. That's correct — leave them.
 
 ## 7. Surface what's next
 
