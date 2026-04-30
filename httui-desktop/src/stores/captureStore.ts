@@ -55,6 +55,17 @@ interface CaptureState {
     filePath: string,
     alias: string,
   ) => Readonly<Record<string, CaptureEntry>>;
+  /** Hydrate a file's captures from the JSON shape persisted in
+   * `.httui/captures/<file_relpath>.json`. Tolerant: invalid JSON or
+   * an unexpected shape is a no-op (the cache is best-effort). The
+   * `isSecret` flag is re-derived from the key name on insert, so
+   * the persisted shape doesn't need to round-trip it. */
+  loadFromCacheJson: (filePath: string, json: string) => void;
+  /** Serialize a file's captures into the persistence shape, dropping
+   * every entry whose key matched the secret-name regex. Returns
+   * `null` when there's nothing to persist (consumer should skip the
+   * write). */
+  dumpForCacheJson: (filePath: string) => string | null;
 }
 
 export const useCaptureStore = create<CaptureState>()(
@@ -123,10 +134,80 @@ export const useCaptureStore = create<CaptureState>()(
 
       getBlockCaptures: (filePath, alias) =>
         get().values[filePath]?.[alias] ?? {},
+
+      loadFromCacheJson: (filePath, json) => {
+        const parsed = parseCacheJson(json);
+        if (!parsed) return;
+        set(
+          (state) => {
+            const fileMap: Record<string, Record<string, CaptureEntry>> = {};
+            for (const [alias, byKey] of Object.entries(parsed)) {
+              const block: Record<string, CaptureEntry> = {};
+              for (const [k, v] of Object.entries(byKey)) {
+                block[k] = {
+                  value: coerceCapturedValue(v),
+                  isSecret: isSecretCaptureKey(k),
+                };
+              }
+              fileMap[alias] = block;
+            }
+            return {
+              values: { ...state.values, [filePath]: fileMap },
+            };
+          },
+          false,
+          "captures/loadFromCache",
+        );
+      },
+
+      dumpForCacheJson: (filePath) => {
+        const fileMap = get().values[filePath];
+        if (!fileMap) return null;
+        const out: Record<string, Record<string, CapturedValue>> = {};
+        for (const [alias, byKey] of Object.entries(fileMap)) {
+          const block: Record<string, CapturedValue> = {};
+          for (const [k, entry] of Object.entries(byKey)) {
+            if (entry.isSecret) continue;
+            block[k] = entry.value;
+          }
+          if (Object.keys(block).length > 0) {
+            out[alias] = block;
+          }
+        }
+        if (Object.keys(out).length === 0) return null;
+        return JSON.stringify(out);
+      },
     }),
     { name: "capture-store" },
   ),
 );
+
+/** Parse + shape-validate the persisted JSON. Returns the parsed
+ * `{ alias: { key: value } }` map, or `null` when the input is
+ * unparseable / not the expected shape. The `value` is left as
+ * `unknown` so `coerceCapturedValue` can apply the same primitives-
+ * only rule used at runtime. */
+function parseCacheJson(
+  json: string,
+): Record<string, Record<string, unknown>> | null {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(json);
+  } catch {
+    return null;
+  }
+  if (!isPlainObject(raw)) return null;
+  const out: Record<string, Record<string, unknown>> = {};
+  for (const [alias, byKey] of Object.entries(raw)) {
+    if (!isPlainObject(byKey)) continue;
+    out[alias] = byKey;
+  }
+  return out;
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
 
 function filterMap<T>(
   obj: Readonly<Record<string, T>>,

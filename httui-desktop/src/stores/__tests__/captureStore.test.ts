@@ -120,4 +120,131 @@ describe("useCaptureStore", () => {
       {},
     );
   });
+
+  // Story 03 — persistence (loadFromCacheJson / dumpForCacheJson)
+
+  it("loadFromCacheJson hydrates the file from a valid JSON map", () => {
+    const json = JSON.stringify({
+      login: { user_id: 42, role: "admin" },
+      profile: { handle: "alice" },
+    });
+    useCaptureStore.getState().loadFromCacheJson("a.md", json);
+    const file = useCaptureStore.getState().values["a.md"];
+    expect(file?.login?.user_id).toEqual({ value: 42, isSecret: false });
+    expect(file?.login?.role).toEqual({ value: "admin", isSecret: false });
+    expect(file?.profile?.handle).toEqual({ value: "alice", isSecret: false });
+  });
+
+  it("loadFromCacheJson re-derives isSecret from key name", () => {
+    // The persisted shape doesn't round-trip the secret flag — it's
+    // recomputed on read so the in-memory mask survives even if the
+    // user opens an older cache file.
+    const json = JSON.stringify({ login: { token: "tk", user_id: 1 } });
+    useCaptureStore.getState().loadFromCacheJson("a.md", json);
+    const block = useCaptureStore.getState().values["a.md"]?.login;
+    expect(block?.token?.isSecret).toBe(true);
+    expect(block?.user_id?.isSecret).toBe(false);
+  });
+
+  it("loadFromCacheJson is a no-op on invalid JSON", () => {
+    useCaptureStore.getState().setBlockCaptures("a.md", "x", { a: 1 });
+    const before = useCaptureStore.getState().values;
+    useCaptureStore.getState().loadFromCacheJson("a.md", "not-json");
+    expect(useCaptureStore.getState().values).toBe(before);
+  });
+
+  it("loadFromCacheJson is a no-op when top-level isn't an object", () => {
+    useCaptureStore.getState().setBlockCaptures("a.md", "x", { a: 1 });
+    const before = useCaptureStore.getState().values;
+    useCaptureStore.getState().loadFromCacheJson("a.md", JSON.stringify([1, 2]));
+    expect(useCaptureStore.getState().values).toBe(before);
+    useCaptureStore.getState().loadFromCacheJson("a.md", JSON.stringify(null));
+    expect(useCaptureStore.getState().values).toBe(before);
+    useCaptureStore.getState().loadFromCacheJson("a.md", JSON.stringify("x"));
+    expect(useCaptureStore.getState().values).toBe(before);
+  });
+
+  it("loadFromCacheJson skips alias entries that aren't objects", () => {
+    // Defensive: a corrupted file shouldn't blow up the hydrate; only
+    // the well-shaped aliases land.
+    const json = JSON.stringify({
+      good: { k: "v" },
+      bad_array: [1, 2],
+      bad_str: "x",
+      bad_null: null,
+    });
+    useCaptureStore.getState().loadFromCacheJson("a.md", json);
+    const file = useCaptureStore.getState().values["a.md"];
+    expect(Object.keys(file ?? {})).toEqual(["good"]);
+    expect(file?.good?.k).toEqual({ value: "v", isSecret: false });
+  });
+
+  it("loadFromCacheJson coerces non-primitive values via the same rules", () => {
+    const json = JSON.stringify({
+      block: {
+        obj_val: { nested: 1 },
+        arr_val: [1, 2],
+        nil_val: null,
+        str_val: "ok",
+      },
+    });
+    useCaptureStore.getState().loadFromCacheJson("a.md", json);
+    const block = useCaptureStore.getState().values["a.md"]?.block;
+    expect(block?.obj_val?.value).toBeNull();
+    expect(block?.arr_val?.value).toBeNull();
+    expect(block?.nil_val?.value).toBeNull();
+    expect(block?.str_val?.value).toBe("ok");
+  });
+
+  it("loadFromCacheJson replaces the file's whole capture map", () => {
+    useCaptureStore.getState().setBlockCaptures("a.md", "old", { k: "v" });
+    useCaptureStore
+      .getState()
+      .loadFromCacheJson("a.md", JSON.stringify({ fresh: { k2: "v2" } }));
+    const file = useCaptureStore.getState().values["a.md"];
+    expect(Object.keys(file ?? {})).toEqual(["fresh"]);
+  });
+
+  it("dumpForCacheJson returns null when the file is absent", () => {
+    expect(useCaptureStore.getState().dumpForCacheJson("absent.md")).toBeNull();
+  });
+
+  it("dumpForCacheJson returns null when every alias is empty after filter", () => {
+    // Single secret-named entry — drops to nothing, so the consumer
+    // should skip the write.
+    useCaptureStore.getState().setBlockCaptures("a.md", "x", { token: "t" });
+    expect(useCaptureStore.getState().dumpForCacheJson("a.md")).toBeNull();
+  });
+
+  it("dumpForCacheJson filters secrets out of the persisted JSON", () => {
+    useCaptureStore
+      .getState()
+      .setBlockCaptures("a.md", "login", { token: "t", user_id: 7 });
+    const json = useCaptureStore.getState().dumpForCacheJson("a.md");
+    expect(json).not.toBeNull();
+    const parsed = JSON.parse(json!);
+    expect(parsed).toEqual({ login: { user_id: 7 } });
+  });
+
+  it("dumpForCacheJson preserves non-secret aliases across blocks", () => {
+    useCaptureStore.getState().setBlockCaptures("a.md", "p", { id: 1 });
+    useCaptureStore.getState().setBlockCaptures("a.md", "q", { name: "alice" });
+    const json = useCaptureStore.getState().dumpForCacheJson("a.md");
+    expect(JSON.parse(json!)).toEqual({
+      p: { id: 1 },
+      q: { name: "alice" },
+    });
+  });
+
+  it("dump → load round-trips non-secret values", () => {
+    useCaptureStore
+      .getState()
+      .setBlockCaptures("a.md", "x", { id: 99, name: "bob" });
+    const json = useCaptureStore.getState().dumpForCacheJson("a.md")!;
+    useCaptureStore.setState({ values: {} });
+    useCaptureStore.getState().loadFromCacheJson("a.md", json);
+    const block = useCaptureStore.getState().values["a.md"]?.x;
+    expect(block?.id).toEqual({ value: 99, isSecret: false });
+    expect(block?.name).toEqual({ value: "bob", isSecret: false });
+  });
 });
