@@ -14,7 +14,10 @@
 
 use httui_core::secrets::Keychain;
 use httui_core::vault_config::gitignore::{ensure_local_overrides_in_gitignore, GitignoreOutcome};
-use httui_core::vault_config::migration::{run_migration, MigrationOptions, MigrationReport};
+use httui_core::vault_config::migration::{
+    detect_migration_candidate, run_migration, MigrationCandidate, MigrationOptions,
+    MigrationReport,
+};
 use httui_core::vault_config::missing_secrets::{scan_missing_secrets, MissingRef};
 use httui_core::vault_config::scaffold::{is_vault, scaffold_new_vault, ScaffoldReport};
 use httui_core::vault_config::user::UserFile;
@@ -114,6 +117,20 @@ pub async fn list_missing_secrets(vault_path: String) -> Result<Vec<MissingRef>,
     scan_missing_secrets(&path, &Keychain)
 }
 
+/// Probe `vault_path` to decide whether to surface the MVP→v1
+/// migration banner (Epic 41 Story 07 carry slice 2). Returns a
+/// `MigrationCandidate { has_legacy_db, has_v1_layout }` —
+/// `should_prompt()` on the result is `true` iff the legacy
+/// `notes.db` is present and the v1 `.httui/` layout is not
+/// initialised. Frontend gates the banner on this AND the
+/// `mvp_migration_dismissed` user pref.
+#[tauri::command]
+pub async fn detect_vault_migration(
+    vault_path: String,
+) -> Result<MigrationCandidate, String> {
+    Ok(detect_migration_candidate(&PathBuf::from(vault_path)))
+}
+
 /// Migrate the MVP SQLite-backed vault to the v1 file layout (Epic
 /// 12 / audit-005). Migrates `connections` and `environments` +
 /// `env_variables`. Prefs migration is part of Epic 19's settings
@@ -192,6 +209,39 @@ mod tests {
         let second = ensure_vault_gitignore(vault_str).await.unwrap();
         assert_eq!(second, GitignoreOutcome::AlreadyPresent);
         assert!(vault.join(".gitignore").exists());
+    }
+
+    #[tokio::test]
+    async fn detect_vault_migration_returns_neither_for_fresh_folder() {
+        let (_dir, vault) = temp_xdg();
+        let vault_str = vault.to_string_lossy().into_owned();
+        let r = detect_vault_migration(vault_str).await.unwrap();
+        assert!(!r.has_legacy_db);
+        assert!(!r.has_v1_layout);
+        assert!(!r.should_prompt());
+    }
+
+    #[tokio::test]
+    async fn detect_vault_migration_prompts_when_legacy_db_present() {
+        let (_dir, vault) = temp_xdg();
+        std::fs::write(vault.join("notes.db"), b"").unwrap();
+        let vault_str = vault.to_string_lossy().into_owned();
+        let r = detect_vault_migration(vault_str).await.unwrap();
+        assert!(r.has_legacy_db);
+        assert!(!r.has_v1_layout);
+        assert!(r.should_prompt());
+    }
+
+    #[tokio::test]
+    async fn detect_vault_migration_does_not_prompt_after_v1_layout_initialized() {
+        let (_dir, vault) = temp_xdg();
+        std::fs::write(vault.join("notes.db"), b"").unwrap();
+        std::fs::create_dir(vault.join(".httui")).unwrap();
+        let vault_str = vault.to_string_lossy().into_owned();
+        let r = detect_vault_migration(vault_str).await.unwrap();
+        assert!(r.has_legacy_db);
+        assert!(r.has_v1_layout);
+        assert!(!r.should_prompt());
     }
 
     #[tokio::test]

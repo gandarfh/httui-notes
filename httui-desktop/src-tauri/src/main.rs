@@ -458,6 +458,8 @@ fn main() {
             httui_notes::vault_config_commands::ensure_vault_gitignore,
             // Epic 12 — vault migration script.
             httui_notes::vault_config_commands::migrate_vault_to_v1,
+            // Epic 41 Story 07 — empty-state migration banner detection.
+            httui_notes::vault_config_commands::detect_vault_migration,
             // Epic 17 — vault scaffold + validate.
             httui_notes::vault_config_commands::check_is_vault,
             httui_notes::vault_config_commands::scaffold_vault,

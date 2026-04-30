@@ -1,0 +1,35 @@
+// Migration-related Tauri wrappers. Epic 41 Story 07 carry — the
+// MVP-to-v1 migration banner detection probe.
+//
+// These wrappers stay pure `invoke()` shells. Coverage comes from
+// the consumer hook (`useMigrationDetection`) which mocks the
+// Tauri command names — the wrapper itself is exercised end-to-
+// end via those tests.
+
+import { invoke } from "@tauri-apps/api/core";
+
+/** Mirror of `httui_core::vault_config::migration::MigrationCandidate`.
+ * The backend reports both flags so the frontend can also display
+ * "v1 already initialised" hints; `should_prompt()` lives on the
+ * Rust side and is mirrored here as `shouldPromptMigration`. */
+export interface MigrationCandidate {
+  has_legacy_db: boolean;
+  has_v1_layout: boolean;
+}
+
+/** True iff a legacy `notes.db` is present and the v1 `.httui/`
+ * layout has not been initialised. Frontend gates the banner on
+ * this AND the `mvpMigrationDismissed` user pref. Mirrors the
+ * `MigrationCandidate::should_prompt` Rust helper. */
+export function shouldPromptMigration(c: MigrationCandidate): boolean {
+  return c.has_legacy_db && !c.has_v1_layout;
+}
+
+/** Probe `vaultPath` to decide whether to surface the MVP→v1
+ * migration banner. Pure `invoke()` shell over
+ * `detect_vault_migration` (`vault_config_commands.rs`). */
+export function detectVaultMigration(
+  vaultPath: string,
+): Promise<MigrationCandidate> {
+  return invoke("detect_vault_migration", { vaultPath });
+}
