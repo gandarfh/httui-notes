@@ -198,6 +198,33 @@ you switch envs or land a fix in another window.
 - Domain-specific tooling: `command: psql` confirms the local
   binary is installed before a SQL block tries to shell out.
 
+## Sharing a vault
+
+httui has no "share modal", "snapshot link", or expiring-password
+flow. **Sharing a vault is sharing the git repo.** Every collaborator
+who clones the repo gets the same TOML config and runbooks; secrets
+stay in each person's local keychain (per the [Secrets](#secrets)
+section).
+
+The git panel offers three one-click actions over the configured
+`origin` remote:
+
+| Action | What you copy / open |
+|---|---|
+| **Copy repo URL** | `https://github.com/acme/runbooks` (or whatever the active remote points at — picker if you have multiple) |
+| **Copy permalink at current commit** | `https://github.com/acme/runbooks/blob/<sha>/runbooks/payments-debug.md#L42` — pinned to the current HEAD sha so the link doesn't drift if the file changes later |
+| **Open pull request** | Opens `https://github.com/acme/runbooks/compare/main...feature/x` in the browser via `tauri.shell.open` |
+
+Hosts auto-detected from the remote URL: GitHub, GitLab.com,
+self-hosted GitLab (any `gitlab.*` host), Bitbucket, Gitea. The first
+three get the right URL shape (`/blob/`, `/-/blob/`, `/compare/`);
+Bitbucket and Gitea fall back to "open the remote in your browser"
+plus a copy-URL button — adding shape parsers for them is a v1.x
+follow-up, not a v1 blocker.
+
+If the vault doesn't have an `origin` remote, the popover reports
+"No remote configured" and links into Workspace settings to add one.
+
 ## Multi-user, multi-machine
 
 The git workflow does the heavy lifting:

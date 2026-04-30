@@ -165,6 +165,20 @@ keychain entry sticks.
 build reads from `notes.db` exclusively; nothing else needs to be
 undone.
 
+## Sharing — no share modal in v1
+
+Earlier mockups showed a "Share" modal with snapshot links, live
+links, expirations and generated passwords. v1 ships **none of
+that**. Sharing a vault is sharing the git repo — clone it,
+permission it through your hosting provider (GitHub, GitLab, …), and
+each collaborator's secrets stay on their machine via the keychain
+flow already covered above. The git panel exposes "Copy repo URL",
+"Copy permalink at current commit", and "Open pull request" as
+one-click actions over the configured `origin` remote.
+
+See [`docs/concepts.md` → Sharing a vault](./concepts.md#sharing-a-vault)
+for the full picture.
+
 ## Reference
 
 - ADR 0001 — TOML schemas: `docs/adr/0001-toml-schemas.md`
