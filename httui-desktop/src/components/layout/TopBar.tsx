@@ -22,6 +22,7 @@ import {
   LuMessageSquare,
   LuSettings,
   LuDatabase,
+  LuListTree,
 } from "react-icons/lu";
 
 import { Brand } from "@/components/layout/topbar/Brand";
@@ -46,6 +47,8 @@ interface TopBarProps {
   onToggleChat: () => void;
   schemaPanelOpen: boolean;
   onToggleSchemaPanel: () => void;
+  outlinePanelOpen?: boolean;
+  onToggleOutlinePanel?: () => void;
   /** Optional override for tests / consumer-driven control. Defaults
    * to dispatching a `Mod-p` keyboard event so existing handlers
    * pick it up. */
@@ -75,6 +78,8 @@ export function TopBar({
   onToggleChat,
   schemaPanelOpen,
   onToggleSchemaPanel,
+  outlinePanelOpen,
+  onToggleOutlinePanel,
   onSearch = defaultSearchTrigger,
   onRunAll,
 }: TopBarProps) {
@@ -187,6 +192,19 @@ export function TopBar({
 
       <Box w="1px" h="16px" bg="line" mx={1} aria-hidden />
 
+      {onToggleOutlinePanel && (
+        <IconButton
+          aria-label={
+            outlinePanelOpen ? "Close outline panel" : "Open outline panel"
+          }
+          variant="ghost"
+          size="xs"
+          onClick={onToggleOutlinePanel}
+          color={outlinePanelOpen ? "accent" : undefined}
+        >
+          <LuListTree />
+        </IconButton>
+      )}
       <IconButton
         aria-label={schemaPanelOpen ? "Close schema panel" : "Open schema panel"}
         variant="ghost"

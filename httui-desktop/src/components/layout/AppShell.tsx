@@ -9,6 +9,7 @@ import { SearchPanel } from "@/components/search/SearchPanel";
 import { EnvironmentManager } from "./environments/EnvironmentManager";
 import { SettingsDrawer } from "./settings/SettingsDrawer";
 import { SchemaPanel } from "./schema/SchemaPanel";
+import { OutlinePanel } from "./outline/OutlinePanel";
 import { usePaneStore } from "@/stores/pane";
 import { useSettingsStore } from "@/stores/settings";
 import { useWorkspaceStore } from "@/stores/workspace";
@@ -34,10 +35,16 @@ export function AppShell() {
   const [chatWidth] = useState(380);
   const [schemaPanelOpen, setSchemaPanelOpen] = useState(false);
   const [schemaPanelWidth] = useState(300);
+  const [outlinePanelOpen, setOutlinePanelOpen] = useState(false);
+  const [outlinePanelWidth] = useState(280);
 
   const toggleChat = useCallback(() => setChatOpen((prev) => !prev), []);
   const toggleSchemaPanel = useCallback(
     () => setSchemaPanelOpen((prev) => !prev),
+    [],
+  );
+  const toggleOutlinePanel = useCallback(
+    () => setOutlinePanelOpen((prev) => !prev),
     [],
   );
 
@@ -95,11 +102,13 @@ export function AppShell() {
       forceSave: editorSession.forceSave,
       toggleChat,
       toggleSchemaPanel,
+      toggleOutlinePanel,
     }),
     [
       toggleSidebar,
       toggleChat,
       toggleSchemaPanel,
+      toggleOutlinePanel,
       splitVertical,
       splitHorizontal,
       closeTab,
@@ -160,6 +169,8 @@ export function AppShell() {
           onToggleChat={toggleChat}
           schemaPanelOpen={schemaPanelOpen}
           onToggleSchemaPanel={toggleSchemaPanel}
+          outlinePanelOpen={outlinePanelOpen}
+          onToggleOutlinePanel={toggleOutlinePanel}
         />
 
         {vaultPath !== null && <MigrationBannerHost vaultPath={vaultPath} />}
@@ -186,6 +197,12 @@ export function AppShell() {
                 handleEditorChange={editorSession.handleEditorChange}
                 onNavigateFile={editorSession.handleFileSelect}
               />
+              {outlinePanelOpen && (
+                <OutlinePanel
+                  width={outlinePanelWidth}
+                  onClose={toggleOutlinePanel}
+                />
+              )}
               {schemaPanelOpen && (
                 <SchemaPanel
                   width={schemaPanelWidth}
