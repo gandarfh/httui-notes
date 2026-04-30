@@ -9,7 +9,7 @@ Replaces the current Chakra form-only experience.
 truth; `db::connections` legacy commands removed)
 **Desbloqueia:** Epic 23 (connection quick-edit popover), Epic 28
 (sidebar Schema tab pulls preview from here)
-**Status:** in progress (Stories 01-04 shipped at component level — commits 0f1fb06, 8ed373d, 3f70006, a4eaae5, d6a3698; audit-031 deferral on PK/FK + row counts)
+**Status:** in progress (Stories 01-05 shipped at component level — commits 0f1fb06, 8ed373d, 3f70006, a4eaae5, d6a3698, 2688224; audit-031 + audit-032)
 **Effort:** 5-6 days
 
 ---
@@ -107,16 +107,26 @@ truth; `db::connections` legacy commands removed)
       debounce). Component is consumer-driven so this lands
       with the page mount slice.
 
-## Story 05: Footer actions
+## Story 05: Footer actions — done at component level (2688224)
 
 ### Tasks
 
-- [ ] **Test** — calls `test_connection` Tauri command; shows
-      success/failure inline with latency
-- [ ] **Rotate** — opens password rotation dialog (Story 02)
-- [ ] **Duplicate** — clones the connection with " (copy)" appended
-      to name; password not copied (forces re-entry)
-- [ ] **Delete** — confirms, removes from `connections.toml` + keychain
+- [x] **Test** — calls `test_connection` Tauri command; shows
+      success/failure inline with latency — closed by 2688224.
+      Footer's `onTest` returns `Promise<latencyMs>`; inline OK
+      banner shows "Conexão OK · 47ms" per canvas spec.
+- [x] **Rotate** — opens password rotation dialog (Story 02) —
+      closed by 3f70006 + audit-032. Footer omits a duplicate
+      Rotate button; the credentials section's "🔑 Rotate
+      password" button is the canonical entry point.
+- [x] **Duplicate** — clones the connection with " (copy)" appended
+      to name; password not copied (forces re-entry) — closed by
+      2688224 (footer dispatches `onDuplicate`; consumer handles
+      the suffix + create call without password).
+- [x] **Delete** — confirms, removes from `connections.toml` +
+      keychain — closed by 2688224 (two-step confirm: click flips
+      to "Click again to confirm", second click within timeout
+      dispatches `onDelete`).
 
 ## Story 06: New connection modal with tabs (canvas spec)
 
