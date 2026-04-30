@@ -23,6 +23,7 @@ import {
   LuSettings,
   LuDatabase,
   LuListTree,
+  LuClock,
 } from "react-icons/lu";
 
 import { Brand } from "@/components/layout/topbar/Brand";
@@ -49,6 +50,8 @@ interface TopBarProps {
   onToggleSchemaPanel: () => void;
   outlinePanelOpen?: boolean;
   onToggleOutlinePanel?: () => void;
+  historyPanelOpen?: boolean;
+  onToggleHistoryPanel?: () => void;
   /** Optional override for tests / consumer-driven control. Defaults
    * to dispatching a `Mod-p` keyboard event so existing handlers
    * pick it up. */
@@ -80,6 +83,8 @@ export function TopBar({
   onToggleSchemaPanel,
   outlinePanelOpen,
   onToggleOutlinePanel,
+  historyPanelOpen,
+  onToggleHistoryPanel,
   onSearch = defaultSearchTrigger,
   onRunAll,
 }: TopBarProps) {
@@ -203,6 +208,19 @@ export function TopBar({
           color={outlinePanelOpen ? "accent" : undefined}
         >
           <LuListTree />
+        </IconButton>
+      )}
+      {onToggleHistoryPanel && (
+        <IconButton
+          aria-label={
+            historyPanelOpen ? "Close history panel" : "Open history panel"
+          }
+          variant="ghost"
+          size="xs"
+          onClick={onToggleHistoryPanel}
+          color={historyPanelOpen ? "accent" : undefined}
+        >
+          <LuClock />
         </IconButton>
       )}
       <IconButton

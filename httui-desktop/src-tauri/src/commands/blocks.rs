@@ -148,6 +148,20 @@ pub async fn list_block_history(
         .map_err(|e| e.to_string())
 }
 
+/// Return the most recent N run-history rows for a file across all
+/// aliases. Powers the Epic 29 sidebar History tab. Pass `limit <= 0`
+/// to fall back to the 50-entry default.
+#[tauri::command]
+pub async fn list_block_history_for_file(
+    pool: State<'_, SqlitePool>,
+    file_path: String,
+    limit: i64,
+) -> Result<Vec<HistoryEntry>, String> {
+    block_history::list_history_for_file(&pool, &file_path, limit)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Append a single run-history row; trim to the retention cap is
 /// handled by the underlying `insert_history_entry`.
 #[tauri::command]

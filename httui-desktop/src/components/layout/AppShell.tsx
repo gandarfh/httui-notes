@@ -10,6 +10,7 @@ import { EnvironmentManager } from "./environments/EnvironmentManager";
 import { SettingsDrawer } from "./settings/SettingsDrawer";
 import { SchemaPanel } from "./schema/SchemaPanel";
 import { OutlinePanel } from "./outline/OutlinePanel";
+import { HistoryPanel } from "./history/HistoryPanel";
 import { usePaneStore } from "@/stores/pane";
 import { useSettingsStore } from "@/stores/settings";
 import { useWorkspaceStore } from "@/stores/workspace";
@@ -37,6 +38,8 @@ export function AppShell() {
   const [schemaPanelWidth] = useState(300);
   const [outlinePanelOpen, setOutlinePanelOpen] = useState(false);
   const [outlinePanelWidth] = useState(280);
+  const [historyPanelOpen, setHistoryPanelOpen] = useState(false);
+  const [historyPanelWidth] = useState(300);
 
   const toggleChat = useCallback(() => setChatOpen((prev) => !prev), []);
   const toggleSchemaPanel = useCallback(
@@ -45,6 +48,10 @@ export function AppShell() {
   );
   const toggleOutlinePanel = useCallback(
     () => setOutlinePanelOpen((prev) => !prev),
+    [],
+  );
+  const toggleHistoryPanel = useCallback(
+    () => setHistoryPanelOpen((prev) => !prev),
     [],
   );
 
@@ -103,12 +110,14 @@ export function AppShell() {
       toggleChat,
       toggleSchemaPanel,
       toggleOutlinePanel,
+      toggleHistoryPanel,
     }),
     [
       toggleSidebar,
       toggleChat,
       toggleSchemaPanel,
       toggleOutlinePanel,
+      toggleHistoryPanel,
       splitVertical,
       splitHorizontal,
       closeTab,
@@ -171,6 +180,8 @@ export function AppShell() {
           onToggleSchemaPanel={toggleSchemaPanel}
           outlinePanelOpen={outlinePanelOpen}
           onToggleOutlinePanel={toggleOutlinePanel}
+          historyPanelOpen={historyPanelOpen}
+          onToggleHistoryPanel={toggleHistoryPanel}
         />
 
         {vaultPath !== null && <MigrationBannerHost vaultPath={vaultPath} />}
@@ -201,6 +212,12 @@ export function AppShell() {
                 <OutlinePanel
                   width={outlinePanelWidth}
                   onClose={toggleOutlinePanel}
+                />
+              )}
+              {historyPanelOpen && (
+                <HistoryPanel
+                  width={historyPanelWidth}
+                  onClose={toggleHistoryPanel}
                 />
               )}
               {schemaPanelOpen && (

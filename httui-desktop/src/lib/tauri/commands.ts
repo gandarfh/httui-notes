@@ -485,6 +485,16 @@ export function listBlockHistory(
   return invoke("list_block_history", { filePath, blockAlias });
 }
 
+/** Return the most recent N runs for `filePath` across every alias.
+ *  Powers the Epic 29 sidebar History tab. Pass `limit <= 0` to fall
+ *  back to the 50-entry default. */
+export function listBlockHistoryForFile(
+  filePath: string,
+  limit: number,
+): Promise<HistoryEntry[]> {
+  return invoke("list_block_history_for_file", { filePath, limit });
+}
+
 export function insertBlockHistory(entry: InsertHistoryEntry): Promise<void> {
   return invoke("insert_block_history", { entry });
 }
