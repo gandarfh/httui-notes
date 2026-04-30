@@ -9,7 +9,7 @@ Replaces the current Chakra form-only experience.
 truth; `db::connections` legacy commands removed)
 **Desbloqueia:** Epic 23 (connection quick-edit popover), Epic 28
 (sidebar Schema tab pulls preview from here)
-**Status:** in progress (Story 01 slice 1 shipped — commit 0f1fb06)
+**Status:** in progress (Story 01 slices 1+2 shipped — commits 0f1fb06, 8ed373d)
 **Effort:** 5-6 days
 
 ---
@@ -45,16 +45,12 @@ truth; `db::connections` legacy commands removed)
       — closed by 0f1fb06.
 - [x] Search box: "Buscar por nome, host, env… ⌘K" — closed by
       0f1fb06.
-- [ ] **Compact list** rows (9px 12px padding, grid
-      `26px 1.5fr 1.4fr 80px 70px 60px`):
-      - Connection icon 22px
-      - Name (12px weight 500, 600 if selected) + PROD chip when prod
-      - Host mono 10px `--fg-3` truncated
-      - Env mono 11px
-      - Status: dot + latency mono 11px (`—` if 0)
-      - "N uses" mono 11px
-      - ⋮ more icon
-      - Selected: 2px accent left border + `--accent 8%` bg
+- [x] **Compact list** rows (9px 12px padding, grid
+      `26px 1.5fr 1.4fr 80px 70px 60px`) — closed by 8ed373d:
+      `<ConnectionListRow>` covers icon (or fallback for sqlite),
+      name + PROD chip, host mono 10px, env mono 11px, status dot
+      + latency, "N uses", ⋮ row-action trigger. Selection styled
+      with 2px accent left border + accent.soft bg.
 - [x] Footer hint: "⌘P abre quick-edit · ⌘⇧N nova · ⌘⌥T testar todas"
       — closed by 0f1fb06.
 - [x] Empty selection shows "Select a connection or create a new one"
